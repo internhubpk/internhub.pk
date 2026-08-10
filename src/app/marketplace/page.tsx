@@ -649,7 +649,7 @@ export default function MarketplacePage() {
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
       {/* ============ HERO / SEARCH SECTION ============ */}
-      <section className="relative bg-gradient-to-br from-primary/5 via-background to-primary/3 overflow-hidden">
+      <section className="relative bg-gradient-to-br from-primary/5 via-background to-primary/3 overflow-hidden w-full">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
@@ -657,7 +657,7 @@ export default function MarketplacePage() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20 lg:py-24">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16 lg:py-20 w-full">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -677,7 +677,7 @@ export default function MarketplacePage() {
             </motion.div>
 
             {/* Main heading */}
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold tracking-tight leading-tight">
               Discover{" "}
               <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 Opportunities
@@ -686,7 +686,7 @@ export default function MarketplacePage() {
               That Shape Your Future
             </h1>
 
-            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
               Explore {mockInternships.length}+ active internships from top companies. 
               Launch your career with hands-on experience that matters.
             </p>
@@ -696,16 +696,16 @@ export default function MarketplacePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="max-w-3xl mx-auto w-full px-4 sm:px-0"
+              className="max-w-3xl mx-auto w-full px-0 sm:px-0"
             >
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                 <Input
                   type="search"
-                  placeholder="Search internships by title, company, or skills..."
+                  placeholder="Search internships..."
                   value={filters.search}
                   onChange={(e) => updateFilter("search", e.target.value)}
-                  className="pl-12 pr-[100px] sm:pr-[140px] h-12 sm:h-14 text-base rounded-xl sm:rounded-2xl border-2 shadow-lg shadow-black/5 focus-visible:ring-primary/20 focus-visible:border-primary/50 bg-white/80 backdrop-blur-sm w-full"
+                  className="pl-12 pr-20 sm:pr-[140px] h-11 sm:h-12 md:h-14 text-sm sm:text-base rounded-xl sm:rounded-2xl border-2 shadow-lg shadow-black/5 focus-visible:ring-primary/20 focus-visible:border-primary/50 bg-white/80 backdrop-blur-sm w-full min-w-0"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2">
                   <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
@@ -744,14 +744,14 @@ export default function MarketplacePage() {
               </div>
 
               {/* Quick Filters */}
-              <div className="flex flex-wrap justify-center gap-2 mt-5">
+              <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mt-4 sm:mt-5 max-w-full">
                 {quickFilterOptions.map((option) => (
                   <Button
                     key={option.id}
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-full text-sm h-9 px-4 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                    className="rounded-full text-xs sm:text-sm h-8 sm:h-9 px-2.5 sm:px-4 hover:bg-primary/10 hover:border-primary/30 transition-all whitespace-nowrap"
                   >
                     {option.icon}
                     {option.label}
@@ -761,7 +761,7 @@ export default function MarketplacePage() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="rounded-full text-sm h-9 px-4 text-muted-foreground hover:text-foreground"
+                  className="rounded-full text-xs sm:text-sm h-8 sm:h-9 px-2.5 sm:px-4 text-muted-foreground hover:text-foreground whitespace-nowrap"
                 >
                   All Categories
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -774,7 +774,7 @@ export default function MarketplacePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="grid grid-cols-2 sm:flex sm:flex-wrap justify-center gap-4 sm:gap-6 lg:gap-8 pt-8 max-w-full"
+              className="grid grid-cols-2 sm:flex sm:flex-wrap justify-center gap-3 sm:gap-4 sm:gap-6 lg:gap-8 pt-6 sm:pt-8 w-full max-w-full"
             >
               {[
                 { value: `${mockInternships.length}`, label: "Active Internships", icon: Briefcase },
@@ -782,11 +782,11 @@ export default function MarketplacePage() {
                 { value: "12", label: "Universities", icon: Star },
                 { value: "95%", label: "Satisfaction Rate", icon: TrendingUp },
               ].map((stat) => (
-                <div key={stat.label} className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-white/50 backdrop-blur-sm border border-border/50 justify-center sm:justify-start">
+                <div key={stat.label} className="flex items-center gap-1.5 sm:gap-2 sm:gap-3 px-2 sm:px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-white/50 backdrop-blur-sm border border-border/50 justify-center sm:justify-start min-w-0">
                   <stat.icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
                   <div className="text-left min-w-0">
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold">{stat.value}</p>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
+                    <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold leading-none">{stat.value}</p>
+                    <p className="text-[9px] sm:text-[10px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
                   </div>
                 </div>
               ))}
@@ -796,7 +796,7 @@ export default function MarketplacePage() {
       </section>
 
       {/* ============ MAIN CONTENT AREA ============ */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 w-full overflow-x-hidden">
         <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
           {/* ============ FILTER SIDEBAR (Desktop) ============ */}
           <aside className="hidden lg:block w-72 shrink-0">
@@ -829,11 +829,11 @@ export default function MarketplacePage() {
           </aside>
 
           {/* ============ LISTINGS AREA ============ */}
-          <div className="flex-1 min-w-0 w-full space-y-6 overflow-x-hidden">
+          <div className="flex-1 min-w-0 w-full space-y-4 sm:space-y-6 overflow-x-hidden">
             {/* Results Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <p className="text-lg font-semibold">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-base sm:text-lg font-semibold truncate">
                   Found{" "}
                   <span className="text-primary">{filteredInternships.length}</span>{" "}
                   internships
@@ -843,7 +843,7 @@ export default function MarketplacePage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 {/* View Toggle */}
                 <div className="hidden sm:flex items-center border rounded-lg p-1">
                   <Button
@@ -866,7 +866,7 @@ export default function MarketplacePage() {
 
                 {/* Sort Dropdown */}
                 <Select value={filters.sortBy} onValueChange={(v) => updateFilter("sortBy", v)}>
-                  <SelectTrigger className="w-[180px] h-10 rounded-xl">
+                  <SelectTrigger className="w-[130px] sm:w-[150px] md:w-[180px] h-9 sm:h-10 rounded-xl text-sm">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
@@ -882,11 +882,11 @@ export default function MarketplacePage() {
 
             {/* Active Filters Pills */}
             {hasActiveFilters && (
-              <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-xl">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 p-2.5 sm:p-3 bg-muted/50 rounded-xl min-w-0">
                 <span className="text-sm text-muted-foreground mr-1">Active:</span>
                 
                 {filters.search && (
-                  <Badge variant="secondary" className="gap-1">
+                  <Badge variant="secondary" className="gap-1 text-xs max-w-[180px] sm:max-w-none truncate">
                     Search: {filters.search}
                     <button onClick={() => updateFilter("search", "")} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
                       <X className="h-3 w-3" />
@@ -895,7 +895,7 @@ export default function MarketplacePage() {
                 )}
                 
                 {filters.locations.map(loc => (
-                  <Badge key={loc} variant="secondary" className="gap-1 capitalize">
+                  <Badge key={loc} variant="secondary" className="gap-1 capitalize text-xs">
                     {loc}
                     <button onClick={() => toggleArrayFilter("locations", loc)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
                       <X className="h-3 w-3" />
@@ -904,7 +904,7 @@ export default function MarketplacePage() {
                 ))}
                 
                 {filters.stipends.map(s => (
-                  <Badge key={s} variant="secondary" className="gap-1 capitalize">
+                  <Badge key={s} variant="secondary" className="gap-1 capitalize text-xs">
                     {s}
                     <button onClick={() => toggleArrayFilter("stipends", s)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
                       <X className="h-3 w-3" />
@@ -913,7 +913,7 @@ export default function MarketplacePage() {
                 ))}
 
                 {filters.durations.map(d => (
-                  <Badge key={d} variant="secondary" className="gap-1">
+                  <Badge key={d} variant="secondary" className="gap-1 text-xs">
                     {d} weeks
                     <button onClick={() => toggleArrayFilter("durations", d)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
                       <X className="h-3 w-3" />
@@ -934,7 +934,7 @@ export default function MarketplacePage() {
 
             {/* Loading State */}
             {isLoading ? (
-              <div className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}>
+              <div className={`grid gap-4 sm:gap-6 ${viewMode === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}>
                 {[...Array(itemsPerPage)].map((_, i) => (
                   <InternshipCardSkeleton key={i} viewMode={viewMode} />
                 ))}
@@ -949,7 +949,7 @@ export default function MarketplacePage() {
                     initial="hidden"
                     animate="visible"
                     exit={{ opacity: 0 }}
-                    className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}
+                    className={`grid gap-4 sm:gap-6 ${viewMode === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}
                   >
                     {paginatedInternships.map((internship) => (
                       <motion.div key={internship.id} variants={fadeInUp}>
@@ -990,13 +990,13 @@ export default function MarketplacePage() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 pt-8">
+                  <div className="flex items-center justify-center gap-1 sm:gap-2 pt-6 sm:pt-8 overflow-x-auto pb-2 px-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="rounded-xl h-10 w-10"
+                      className="rounded-xl h-9 w-9 sm:h-10 sm:w-10 shrink-0"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -1010,13 +1010,13 @@ export default function MarketplacePage() {
                       .map((page, idx, arr) => (
                         <React.Fragment key={page}>
                           {idx > 0 && page - arr[idx - 1] > 1 && (
-                            <span className="text-muted-foreground px-1">...</span>
+                            <span className="text-muted-foreground px-0.5 sm:px-1 shrink-0">...</span>
                           )}
                           <Button
                             variant={currentPage === page ? "default" : "outline"}
                             size="icon"
                             onClick={() => setCurrentPage(page)}
-                            className={`rounded-xl h-10 w-10 ${
+                            className={`rounded-xl h-9 w-9 sm:h-10 sm:w-10 shrink-0 ${
                               currentPage === page ? "shadow-lg shadow-primary/25" : ""
                             }`}
                           >
@@ -1030,7 +1030,7 @@ export default function MarketplacePage() {
                       size="icon"
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className="rounded-xl h-10 w-10"
+                      className="rounded-xl h-9 w-9 sm:h-10 sm:w-10 shrink-0"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -1044,57 +1044,57 @@ export default function MarketplacePage() {
 
       {/* ============ SEARCH MODAL (⌘K) ============ */}
       {showSearchModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm" onClick={() => setShowSearchModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] sm:pt-[20vh] bg-black/50 backdrop-blur-sm px-2 sm:px-4" onClick={() => setShowSearchModal(false)}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="w-full max-w-2xl mx-4 bg-background rounded-2xl shadow-2xl overflow-hidden border"
+            className="w-full max-w-2xl mx-2 sm:mx-4 bg-background rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden border"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3 p-4 border-b">
-              <Search className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-3 p-3 sm:p-4 border-b">
+              <Search className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground shrink-0" />
               <input
                 type="text"
                 placeholder="Search internships..."
                 autoFocus
                 value={filters.search}
                 onChange={(e) => updateFilter("search", e.target.value)}
-                className="flex-1 outline-none text-lg bg-transparent"
+                className="flex-1 outline-none text-base sm:text-lg bg-transparent min-w-0"
               />
-              <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
+              <kbd className="hidden xs:inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
                 ESC
               </kbd>
             </div>
             
-            <div className="max-h-[400px] overflow-y-auto p-2">
+            <div className="max-h-[60vh] sm:max-h-[400px] overflow-y-auto p-2">
               {filters.search ? (
                 filteredInternships.slice(0, 8).map((internship) => (
                   <Link
                     key={internship.id}
                     href={`/marketplace/${internship.id}`}
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors"
+                    className="flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl hover:bg-muted transition-colors"
                     onClick={() => setShowSearchModal(false)}
                   >
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate">{internship.title}</p>
-                      <p className="text-sm text-muted-foreground truncate">{internship.company_name}</p>
+                      <p className="font-medium text-sm sm:text-base truncate">{internship.title}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground truncate">{internship.company_name}</p>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
                   </Link>
                 ))
               ) : (
-                <div className="p-8 text-center text-muted-foreground">
-                  <p>Type to search internships...</p>
+                <div className="p-6 sm:p-8 text-center text-muted-foreground">
+                  <p className="text-sm sm:text-base">Type to search internships...</p>
                 </div>
               )}
               
               {filters.search && filteredInternships.length === 0 && (
-                <div className="p-8 text-center text-muted-foreground">
-                  <p>No results found for "{filters.search}"</p>
+                <div className="p-6 sm:p-8 text-center text-muted-foreground">
+                  <p className="text-sm sm:text-base">No results found for "{filters.search}"</p>
                 </div>
               )}
             </div>
@@ -1103,29 +1103,29 @@ export default function MarketplacePage() {
       )}
 
       {/* ============ CTA SECTION ============ */}
-      <section className="bg-gradient-to-br from-primary/5 via-primary/10 to-background py-16 mt-12">
+      <section className="bg-gradient-to-br from-primary/5 via-primary/10 to-background py-10 sm:py-12 md:py-16 mt-8 sm:mt-12 w-full">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="space-y-4"
+            className="space-y-3 sm:space-y-4"
           >
-            <h2 className="text-3xl md:text-4xl font-bold">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight px-2">
               Ready to Find Your{" "}
               <span className="text-primary">Dream Internship</span>?
             </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto px-2">
               Create an account to save internships, track applications, and get personalized recommendations based on your profile.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button size="lg" className="rounded-xl px-8 shadow-lg shadow-primary/25" asChild>
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center pt-3 sm:pt-4">
+              <Button size="lg" className="rounded-xl px-6 sm:px-8 shadow-lg shadow-primary/25 text-sm sm:text-base" asChild>
                 <Link href="/register">
                   Get Started Free
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" className="rounded-xl px-8" asChild>
+              <Button size="lg" variant="outline" className="rounded-xl px-6 sm:px-8 text-sm sm:text-base" asChild>
                 <Link href="/login">Sign In</Link>
               </Button>
             </div>
@@ -1134,23 +1134,23 @@ export default function MarketplacePage() {
       </section>
 
       {/* ============ FOOTER ============ */}
-      <footer className="border-t py-8 px-4 sm:px-6 lg:px-8 bg-muted/30">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+      <footer className="border-t py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-muted/30 w-full">
+        <div className="max-w-7xl mx-auto w-full">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
                 <Briefcase className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-lg">InternHub Marketplace</span>
+              <span className="font-semibold text-base sm:text-lg">InternHub Marketplace</span>
             </div>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">About</a>
-              <a href="#" className="hover:text-foreground transition-colors">For Employers</a>
-              <a href="#" className="hover:text-foreground transition-colors">For Universities</a>
-              <a href="#" className="hover:text-foreground transition-colors">Contact</a>
-              <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm text-muted-foreground max-w-full">
+              <a href="#" className="hover:text-foreground transition-colors whitespace-nowrap">About</a>
+              <a href="#" className="hover:text-foreground transition-colors whitespace-nowrap">For Employers</a>
+              <a href="#" className="hover:text-foreground transition-colors whitespace-nowrap">For Universities</a>
+              <a href="#" className="hover:text-foreground transition-colors whitespace-nowrap">Contact</a>
+              <a href="#" className="hover:text-foreground transition-colors whitespace-nowrap">Privacy Policy</a>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground shrink-0">
               © {new Date().getFullYear()} InternHub. All rights reserved.
             </p>
           </div>

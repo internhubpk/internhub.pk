@@ -11,7 +11,6 @@
  *     └─ nust.internhub.pk (NUST portal)
  */
 
-import { headers } from "next/headers";
 import type { TenantConfig as BaseTenantConfig } from "@/types";
 
 // ============================================================
@@ -187,7 +186,7 @@ export const DEMO_TENANTS: Record<string, TenantConfig> = {
 };
 
 // ============================================================
-// SUBDOMAIN DETECTION UTILITIES
+// SUBDOMAIN DETECTION UTILITIES (CLIENT-SAFE)
 // ============================================================
 
 /** 
@@ -247,37 +246,8 @@ export function extractSubdomain(hostname: string): string | null {
 }
 
 /**
- * Detect tenant slug from request headers (server-side)
- * Falls back to query param for local dev testing
- */
-export async function detectTenantSlug(): Promise<string | null> {
-  try {
-    const headersList = await headers();
-    const host = headersList.get("host") || "";
-    
-    // Try to extract from hostname first
-    const subdomain = extractSubdomain(host);
-    
-    if (subdomain && DEMO_TENANTS[subdomain]) {
-      return subdomain;
-    }
-    
-    // Fallback: check X-Tenant header (for reverse proxy setups)
-    const tenantHeader = headersList.get("x-tenant");
-    if (tenantHeader && DEMO_TENANTS[tenantHeader]) {
-      return tenantHeader;
-    }
-    
-    return null;
-  } catch (error) {
-    // Headers might not be available in all contexts
-    console.log("Tenant detection error:", error instanceof Error ? error.message : error);
-    return null;
-  }
-}
-
-/**
  * Detect tenant slug client-side from window.location
+ * Safe for use in client components
  */
 export function detectClientTenantSlug(): string | null {
   if (typeof window === "undefined") return null;
@@ -300,7 +270,7 @@ export function detectClientTenantSlug(): string | null {
 }
 
 // ============================================================
-// TENANT CONFIGURATION GETTERS
+// TENANT CONFIGURATION GETTERS (CLIENT-SAFE)
 // ============================================================
 
 /**
@@ -313,14 +283,6 @@ export function getTenantConfig(slug: string | null): TenantConfig {
   }
   
   return DEMO_TENANTS[slug] || DEMO_TENANTS.main;
-}
-
-/**
- * Get tenant configuration server-side (from request)
- */
-export async function getServerTenantConfig(): Promise<TenantConfig> {
-  const slug = await detectTenantSlug();
-  return getTenantConfig(slug);
 }
 
 /**
@@ -386,18 +348,3 @@ export function getTenantOpenGraph(tenant: TenantConfig) {
     siteName: tenant.name,
   };
 }
-
-// ============================================================
-// LEGACY COMPATIBILITY - Keep existing functions working
-// ============================================================
-
-/**
- * Resolve tenant from domain/subdomain (legacy function - kept for compatibility)
- * @deprecated Use extractSubdomain() instead
- */
-export function resolveTenantFromDomain(hostname: string): string | null {
-  return extractSubdomain(hostname);
-}
-
-// Re-export types for convenience
-export type { TenantContext } from "@/types";

@@ -3,7 +3,7 @@ import { Inter, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TenantProvider } from "@/components/providers/tenant-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { getServerTenantConfig } from "@/lib/tenant";
+import { getServerTenantConfig } from "@/lib/tenant-server";
 import type { TenantConfig } from "@/lib/tenant";
 import "./globals.css";
 
