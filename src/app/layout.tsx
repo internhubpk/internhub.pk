@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { TenantProvider } from "@/components/providers/tenant-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { getServerTenantConfig } from "@/lib/tenant";
+import type { TenantConfig } from "@/lib/tenant";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,102 +33,158 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export const metadata: Metadata = {
-  title: {
-    default: "InternHub - Enterprise Internship Management Platform",
-    template: "%s | InternHub",
-  },
-  description:
-    "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships. Streamline internship postings, applications, evaluations, and more.",
-  keywords: [
-    "InternHub",
-    "internship management",
-    "university internships",
-    "student placements",
-    "enterprise SaaS",
-    "education technology",
-    "career services",
-    "internship tracking",
-    "Next.js",
-    "TypeScript",
-  ],
-  authors: [{ name: "InternHub Team" }],
-  creator: "InternHub",
-  publisher: "InternHub",
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-  metadataBase: new URL("https://internhub.app"),
-  alternates: {
-    canonical: "/",
-  },
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "32x32" },
-      { url: "/icon.svg", type: "image/svg+xml" },
-    ],
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180" },
-    ],
-  },
-  manifest: "/manifest.json",
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://internhub.app",
-    siteName: "InternHub",
-    title: "InternHub - Enterprise Internship Management Platform",
+/**
+ * Generate dynamic metadata based on tenant
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const tenantConfig = await getServerTenantConfig();
+  
+  const isMainPlatform = tenantConfig.slug === "main";
+  
+  return {
+    title: {
+      default: isMainPlatform 
+        ? "InternHub - Enterprise Internship Management Platform"
+        : `${tenantConfig.name} - ${tenantConfig.branding.tagline || "Internship Portal"}`,
+      template: isMainPlatform 
+        ? "%s | InternHub" 
+        : `%s | ${tenantConfig.name}`,
+    },
     description:
-      "Streamline your university's internship program with our comprehensive management platform.",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "InternHub - Enterprise Internship Management",
-      },
+      tenantConfig.branding.description ||
+      "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
+    keywords: [
+      tenantConfig.name,
+      "InternHub",
+      "internship management",
+      "university internships",
+      "student placements",
+      ...(isMainPlatform ? ["enterprise SaaS", "education technology"] : []),
     ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "InternHub - Enterprise Internship Management Platform",
-    description:
-      "Streamline your university's internship program with our comprehensive management platform.",
-    images: ["/og-image.png"],
-    creator: "@internhub",
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+    authors: [{ name: isMainPlatform ? "InternHub Team" : tenantConfig.name }],
+    creator: "InternHub",
+    publisher: tenantConfig.name,
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
+    metadataBase: new URL("https://internhub.pk"),
+    alternates: {
+      canonical: "/",
+    },
+    icons: {
+      icon: tenantConfig.favicon
+        ? [{ url: tenantConfig.favicon, sizes: "32x32" }]
+        : [
+            { url: "/favicon.ico", sizes: "32x32" },
+            { url: "/icon.svg", type: "image/svg+xml" },
+          ],
+      apple: [
+        { url: "/apple-touch-icon.png", sizes: "180x180" },
+      ],
+    },
+    manifest: "/manifest.json",
+    openGraph: {
+      type: "website",
+      locale: "en_US",
+      url: tenantConfig.domain 
+        ? `https://${tenantConfig.domain}` 
+        : "https://internhub.pk",
+      siteName: tenantConfig.name,
+      title: isMainPlatform 
+        ? "InternHub - Enterprise Internship Management Platform"
+        : `${tenantConfig.name} - ${tenantConfig.branding.tagline || "Internship Portal"}`,
+      description: tenantConfig.branding.description,
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: `${tenantConfig.name} - Internship Management`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: isMainPlatform 
+        ? "InternHub - Enterprise Internship Management Platform"
+        : `${tenantConfig.name}`,
+      description: tenantConfig.branding.description,
+      images: ["/og-image.png"],
+      creator: "@internhub",
+    },
+    robots: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-video-preview": -1,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
     },
-  },
-  category: "Education Technology",
-};
+    category: "Education Technology",
+    // Add theme color based on tenant
+    other: {
+      "theme-color": tenantConfig.primaryColor,
+    },
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Detect tenant server-side for initial render
+  const tenantConfig: TenantConfig = await getServerTenantConfig();
+  
+  // Generate CSS variables for theming
+  const tenantThemeVars = `
+    --tenant-primary: ${tenantConfig.primaryColor};
+    --tenant-secondary: ${tenantConfig.secondaryColor};
+  `;
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-tenant={tenantConfig.slug}>
       <head>
         {/* Preconnect to external resources for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         
+        {/* Pass tenant data to client via meta tag for hydration */}
+        <meta 
+          name="x-tenant-data" 
+          content={JSON.stringify({
+            id: tenantConfig.id,
+            name: tenantConfig.name,
+            slug: tenantConfig.slug,
+            logo: tenantConfig.logo,
+            primaryColor: tenantConfig.primaryColor,
+            secondaryColor: tenantConfig.secondaryColor,
+            domain: tenantConfig.domain,
+          })}
+        />
+        
+        {/* Inline style for tenant-specific CSS variables (prevents flash) */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `:root { ${tenantThemeVars} }`,
+          }}
+        />
+        
         {/* Security headers would be set via next.config.js middleware */}
       </head>
       <body
         className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
+        style={
+          {
+            "--tenant-primary": tenantConfig.primaryColor,
+            "--tenant-secondary": tenantConfig.secondaryColor,
+          } as React.CSSProperties
+        }
       >
         <ThemeProvider
           attribute="class"
@@ -133,26 +192,29 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* Skip to main content for accessibility */}
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
-          >
-            Skip to main content
-          </a>
-          
-          <main id="main-content">
-            {children}
-          </main>
-          
-          <Toaster 
-            position="top-right"
-            richColors
-            closeButton
-            toastOptions={{
-              duration: 5000,
-            }}
-          />
+          <TenantProvider initialTenant={tenantConfig}>
+            {/* Skip to main content for accessibility */}
+            <a
+              href="#main-content"
+              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+              style={{ backgroundColor: `var(--tenant-primary)` }}
+            >
+              Skip to main content
+            </a>
+            
+            <main id="main-content">
+              {children}
+            </main>
+            
+            <Toaster 
+              position="top-right"
+              richColors
+              closeButton
+              toastOptions={{
+                duration: 5000,
+              }}
+            />
+          </TenantProvider>
         </ThemeProvider>
       </body>
     </html>

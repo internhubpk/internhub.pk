@@ -15,6 +15,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SiteNav } from "@/components/layout/site-nav";
 import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
+import { 
+  useTenant, 
+  useTenantBranding,
+} from "@/components/providers/tenant-provider";
 import {
   Building2,
   GraduationCap,
@@ -279,8 +283,8 @@ function AnimatedSection({
   );
 }
 
-// Dashboard Preview Component
-function DashboardPreview() {
+// Dashboard Preview Component - Now accepts primaryColor prop
+function DashboardPreview({ primaryColor }: { primaryColor: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 30 }}
@@ -288,8 +292,13 @@ function DashboardPreview() {
       transition={{ duration: 0.8, delay: 0.3 }}
       className="relative"
     >
-      {/* Glow effect */}
-      <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 rounded-3xl blur-2xl opacity-60" />
+      {/* Glow effect - uses tenant color */}
+      <div 
+        className="absolute -inset-4 rounded-3xl blur-2xl opacity-60"
+        style={{
+          background: `linear-gradient(to right, ${primaryColor}20, ${primaryColor}15, ${primaryColor}10)`
+        }}
+      />
       
       {/* Main dashboard card */}
       <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -331,7 +340,10 @@ function DashboardPreview() {
                   initial={{ height: 0 }}
                   animate={{ height: `${h}%` }}
                   transition={{ duration: 0.5, delay: 0.8 + i * 0.1 }}
-                  className="flex-1 bg-gradient-to-t from-primary to-primary/60 rounded-t-sm"
+                  className="flex-1 rounded-t-sm"
+                  style={{
+                    background: `linear-gradient(to top, ${primaryColor}, ${primaryColor}99)`
+                  }}
                 />
               ))}
             </div>
@@ -341,8 +353,11 @@ function DashboardPreview() {
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-primary" />
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: `${primaryColor}15` }}
+                >
+                  <Users className="w-4 h-4" style={{ color: primaryColor }} />
                 </div>
                 <div className="flex-1">
                   <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-1" />
@@ -358,8 +373,249 @@ function DashboardPreview() {
   );
 }
 
+// Tenant-Specific Hero Section Component
+function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
+  const { tenant } = useTenant();
+  
+  return (
+    <section 
+      className="relative min-h-[85vh] flex items-center"
+      style={{
+        background: `linear-gradient(135deg, ${branding.primaryColor}08 0%, white 50%, ${branding.primaryColor}05 100%)`,
+        position: 'relative',
+        zIndex: 1
+      }}
+    >
+      {/* Background decorative elements using tenant colors */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
+        <div 
+          className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl"
+          style={{ backgroundColor: `${branding.primaryColor}15` }}
+        />
+        <div 
+          className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl"
+          style={{ backgroundColor: `${branding.secondaryColor}12` }}
+        />
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-3xl"
+          style={{ background: `linear-gradient(to right, ${branding.primaryColor}05, ${branding.secondaryColor}05)` }}
+        />
+      </div>
+
+      <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16 relative z-10">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Left Content */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7 }}
+            className="max-w-xl"
+          >
+            {/* Tenant Badge */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <Badge
+                variant="secondary"
+                className="mb-6 px-4 py-2 text-sm font-medium cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: `${branding.primaryColor}15`,
+                  color: branding.primaryColor,
+                }}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {branding.name} Portal
+              </Badge>
+            </motion.div>
+
+            {/* Headline */}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
+              <span className="block">Welcome to</span>
+              <span 
+                className="block mt-2 bg-clip-text text-transparent"
+                style={{
+                  backgroundImage: `linear-gradient(to right, ${branding.primaryColor}, ${branding.secondaryColor})`
+                }}
+              >
+                {branding.name}
+              </span>
+              <span className="block mt-2">Internship Portal</span>
+            </h1>
+
+            {/* Subtitle - uses tenant tagline/description */}
+            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-8 max-w-lg">
+              {branding.tagline || branding.description || 
+                "Manage your internship journey from application to completion."}
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <Button
+                size="lg"
+                asChild
+                className="w-full sm:w-auto h-14 px-8 text-base font-semibold text-white shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group"
+                style={{
+                  background: `linear-gradient(to right, ${branding.primaryColor}, ${branding.secondaryColor})`,
+                  boxShadow: `0 10px 25px -5px ${branding.primaryColor}40`,
+                }}
+              >
+                <Link href="/login">
+                  Sign In to Portal
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+              
+              <QuickTourDialog />
+            </div>
+
+            {/* Trust Badges - tenant specific */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="flex flex-wrap items-center gap-6 pt-4 border-t border-border/50"
+            >
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4" style={{ color: branding.primaryColor }} />
+                <span>Powered by <strong className="text-foreground">InternHub</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <TrendingUp className="h-4 w-4" style={{ color: branding.primaryColor }} />
+                <span><strong className="text-foreground">{tenant.features.maxStudents === Infinity ? 'Unlimited' : `${tenant.features.maxStudents.toLocaleString()}+`} Students</strong> Supported</span>
+              </div>
+            </motion.div>
+          </motion.div>
+
+          {/* Right Side - Dashboard Preview */}
+          <div className="hidden lg:block">
+            <DashboardPreview primaryColor={branding.primaryColor} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Main Platform Hero Section (original)
+function MainHero() {
+  return (
+    <section 
+      className="relative min-h-[85vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
+      style={{ position: 'relative', zIndex: 1 }}
+    >
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16 relative z-10">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Left Content */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7 }}
+            className="max-w-xl"
+          >
+            {/* Badge */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <Badge
+                variant="secondary"
+                className="mb-6 px-4 py-2 text-sm font-medium bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer transition-colors"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                #1 Enterprise Internship Platform
+              </Badge>
+            </motion.div>
+
+            {/* Headline with gradient text */}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
+              <span className="block">Enterprise Internship</span>
+              <span className="block mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                Management for Modern
+              </span>
+              <span className="block mt-2">Universities</span>
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-8 max-w-lg">
+              Streamline your entire internship program with our multi-tenant SaaS platform.
+              From student onboarding to certificate generation — all in one place.
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <Button
+                size="lg"
+                asChild
+                className="w-full sm:w-auto h-14 px-8 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 cursor-pointer group"
+              >
+                <Link href="/register">
+                  Get Started Free
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+              
+              <QuickTourDialog />
+            </div>
+
+            {/* Trust Badges */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="flex flex-wrap items-center gap-6 pt-4 border-t border-border/50"
+            >
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4 text-emerald-500" />
+                <span>Trusted by <strong className="text-foreground">200+ Universities</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <TrendingUp className="h-4 w-4 text-blue-500" />
+                <span><strong className="text-foreground">10,000+</strong> Active Internships</span>
+              </div>
+            </motion.div>
+
+            {/* Logos row */}
+            <div className="mt-8">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-4 font-medium">
+                Trusted by leading institutions worldwide
+              </p>
+              <div className="flex items-center gap-8 opacity-50 grayscale">
+                {["MIT", "Stanford", "Harvard", "Oxford", "Cambridge"].map((uni) => (
+                  <div
+                    key={uni}
+                    className="text-lg font-bold text-foreground/80"
+                  >
+                    {uni}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Right Side - Dashboard Preview */}
+          <div className="hidden lg:block">
+            <DashboardPreview primaryColor="#2563eb" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
+  const { isTenant, tenant } = useTenant();
+  const branding = useTenantBranding();
 
   return (
     <div className="min-h-screen bg-background" style={{ overflowX: 'hidden' }}>
@@ -367,116 +623,13 @@ export default function LandingPage() {
       <SiteNav />
 
       {/* ========================================== */}
-      {/* HERO SECTION */}
+      {/* HERO SECTION - Tenant-aware */}
       {/* ========================================== */}
-      <section 
-        className="relative min-h-[85vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
-        style={{ position: 'relative', zIndex: 1 }}
-      >
-        {/* Background decorative elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
-          <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-3xl" />
-        </div>
-
-        <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            {/* Left Content */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7 }}
-              className="max-w-xl"
-            >
-              {/* Badge */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-              >
-                <Badge
-                  variant="secondary"
-                  className="mb-6 px-4 py-2 text-sm font-medium bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer transition-colors"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  #1 Enterprise Internship Platform
-                </Badge>
-              </motion.div>
-
-              {/* Headline with gradient text */}
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
-                <span className="block">Enterprise Internship</span>
-                <span className="block mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Management for Modern
-                </span>
-                <span className="block mt-2">Universities</span>
-              </h1>
-
-              {/* Subtitle */}
-              <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed mb-8 max-w-lg">
-                Streamline your entire internship program with our multi-tenant SaaS platform.
-                From student onboarding to certificate generation — all in one place.
-              </p>
-
-              {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button
-                  size="lg"
-                  asChild
-                  className="w-full sm:w-auto h-14 px-8 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 cursor-pointer group"
-                >
-                  <Link href="/register">
-                    Get Started Free
-                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                </Button>
-                
-                <QuickTourDialog />
-              </div>
-
-              {/* Trust Badges */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.5 }}
-                className="flex flex-wrap items-center gap-6 pt-4 border-t border-border/50"
-              >
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Shield className="h-4 w-4 text-emerald-500" />
-                  <span>Trusted by <strong className="text-foreground">200+ Universities</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <TrendingUp className="h-4 w-4 text-blue-500" />
-                  <span><strong className="text-foreground">10,000+</strong> Active Internships</span>
-                </div>
-              </motion.div>
-
-              {/* Logos row */}
-              <div className="mt-8">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-4 font-medium">
-                  Trusted by leading institutions worldwide
-                </p>
-                <div className="flex items-center gap-8 opacity-50 grayscale">
-                  {["MIT", "Stanford", "Harvard", "Oxford", "Cambridge"].map((uni) => (
-                    <div
-                      key={uni}
-                      className="text-lg font-bold text-foreground/80"
-                    >
-                      {uni}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Right Side - Dashboard Preview */}
-            <div className="hidden lg:block">
-              <DashboardPreview />
-            </div>
-          </div>
-        </div>
-      </section>
+      {isTenant ? (
+        <TenantHero branding={branding} />
+      ) : (
+        <MainHero />
+      )}
 
       {/* ========================================== */}
       {/* FEATURES SECTION - Icon Cards Grid */}
@@ -490,7 +643,12 @@ export default function LandingPage() {
           </Badge>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
             Everything You Need to{" "}
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <span 
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: `linear-gradient(to right, ${branding.primaryColor}, #9333ea)`
+              }}
+            >
               Manage Internships
             </span>
           </h2>
@@ -538,7 +696,10 @@ export default function LandingPage() {
       {/* ========================================== */}
       <AnimatedSection id="how-it-works" className="bg-muted/30">
         {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+        <div 
+          className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"
+          style={{ backgroundColor: `${branding.primaryColor}08` }}
+        />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
 
         {/* Section Header */}
@@ -548,7 +709,12 @@ export default function LandingPage() {
           </Badge>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
             Up and Running in{" "}
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <span 
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: `linear-gradient(to right, ${branding.primaryColor}, #9333ea)`
+              }}
+            >
               Three Steps
             </span>
           </h2>
@@ -563,13 +729,27 @@ export default function LandingPage() {
             <div key={step.step} className="relative text-center">
               {/* Connector line (hidden on mobile) */}
               {index < howItWorks.length - 1 && (
-                <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary/30 to-transparent" />
+                <div 
+                  className="hidden md:block absolute top-12 left-[60%] w-[80%] h-0.5"
+                  style={{
+                    background: `linear-gradient(to right, ${branding.primaryColor}40, transparent)`
+                  }}
+                />
               )}
 
               {/* Step number circle */}
-              <div className="relative inline-flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-2xl font-bold mb-6 shadow-lg shadow-primary/25 ring-4 ring-primary/10">
+              <div 
+                className="relative inline-flex h-24 w-24 items-center justify-center rounded-full text-primary-foreground text-2xl font-bold mb-6 shadow-lg ring-4 ring-primary/10"
+                style={{
+                  background: `linear-gradient(to bottom, ${branding.primaryColor}, ${branding.secondaryColor || branding.primaryColor})`,
+                  boxShadow: `0 10px 25px -5px ${branding.primaryColor}40`
+                }}
+              >
                 {step.step}
-                <step.icon className="absolute -bottom-1 -right-1 h-8 w-8 bg-background rounded-full p-1.5 text-primary border-2 border-background" />
+                <step.icon 
+                  className="absolute -bottom-1 -right-1 h-8 w-8 bg-background rounded-full p-1.5 border-2 border-background"
+                  style={{ color: branding.primaryColor }}
+                />
               </div>
 
               <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
@@ -638,7 +818,12 @@ export default function LandingPage() {
 
                 {/* Author */}
                 <div className="flex items-center gap-4 pt-4 border-t border-border/50">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-semibold text-sm ring-2 ring-primary/10">
+                  <div 
+                    className="flex h-12 w-12 items-center justify-center rounded-full text-primary font-semibold text-sm ring-2 ring-primary/10"
+                    style={{
+                      background: `linear-gradient(to bottom right, ${branding.primaryColor}10, ${branding.primaryColor}05)`
+                    }}
+                  >
                     {testimonial.avatar}
                   </div>
                   <div>
@@ -655,11 +840,18 @@ export default function LandingPage() {
       </AnimatedSection>
 
       {/* ========================================== */}
-      {/* PRICING / CTA SECTION */}
+      {/* PRICING / CTA SECTION - Tenant-aware */}
       {/* ========================================== */}
       <section id="pricing" className="py-20 md:py-28 relative overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
-        {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600" />
+        {/* Background - uses tenant colors or default gradient */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: isTenant 
+              ? `linear-gradient(to bottom right, ${branding.primaryColor}, ${branding.secondaryColor || branding.primaryColor}dd)`
+              : "linear-gradient(to bottom right, #2563eb, #9333ea, #ec4899)"
+          }}
+        />
         
         {/* Decorative blobs */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
@@ -679,23 +871,36 @@ export default function LandingPage() {
             </div>
 
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight mb-6">
-              Ready to Transform Your{" "}
-              <span className="text-white/90">Internship Program?</span>
+              {isTenant ? (
+                <>Start Your <span className="text-white/90">Journey Today</span></>
+              ) : (
+                <>Ready to Transform Your <span className="text-white/90">Internship Program?</span></>
+              )}
             </h2>
 
             <p className="text-lg text-white/80 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Join 200+ universities already using InternHub to streamline their 
-              internship management. Start your free trial today.
+              {isTenant ? (
+                <>
+                  Join {branding.name}&apos;s internship portal and take the next step 
+                  in your professional development.
+                </>
+              ) : (
+                <>
+                  Join 200+ universities already using InternHub to streamline their 
+                  internship management. Start your free trial today.
+                </>
+              )}
             </p>
 
             {/* CTA Button */}
             <Button
               size="lg"
               asChild
-              className="w-full sm:w-auto h-14 px-10 text-base font-semibold bg-white text-primary hover:bg-white/90 shadow-xl shadow-black/20 hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer group"
+              className="w-full sm:w-auto h-14 px-10 text-base font-semibold bg-white hover:bg-white/90 shadow-xl shadow-black/20 hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer group"
+              style={{ color: branding.primaryColor }}
             >
-              <Link href="/register">
-                Start Free Trial
+              <Link href={isTenant ? "/login" : "/register"}>
+                {isTenant ? "Sign In Now" : "Start Free Trial"}
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </Button>
@@ -710,7 +915,7 @@ export default function LandingPage() {
       </section>
 
       {/* ========================================== */}
-      {/* FOOTER */}
+      {/* FOOTER - Tenant-aware branding */}
       {/* ========================================== */}
       <footer className="bg-muted/30 border-t border-border/50" style={{ position: 'relative', zIndex: 1 }}>
         <div className="container mx-auto px-4 md:px-6 lg:px-8 py-16">
@@ -718,14 +923,31 @@ export default function LandingPage() {
             {/* Brand column */}
             <div className="col-span-2">
               <Link href="/" className="flex items-center gap-3 mb-6 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow cursor-pointer">
+                <div 
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-primary-foreground shadow-lg group-hover:shadow-xl transition-shadow cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to bottom right, ${branding.primaryColor}, ${branding.secondaryColor || branding.primaryColor})`,
+                    boxShadow: `0 4px 15px -3px ${branding.primaryColor}40`
+                  }}
+                >
                   <GraduationCap className="h-5 w-5" />
                 </div>
-                <span className="text-xl font-bold tracking-tight">InternHub</span>
+                <span className="text-xl font-bold tracking-tight">
+                  {isTenant ? branding.name : "InternHub"}
+                </span>
               </Link>
               <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-xs">
-                The enterprise-grade internship management platform trusted by leading 
-                universities worldwide. Streamline, automate, and elevate your programs.
+                {isTenant ? (
+                  <>
+                    {branding.name}&apos;s official internship management portal, powered by 
+                    InternHub&rsquo;s enterprise platform.
+                  </>
+                ) : (
+                  <>
+                    The enterprise-grade internship management platform trusted by leading 
+                    universities worldwide. Streamline, automate, and elevate your programs.
+                  </>
+                )}
               </p>
               
               {/* Social icons */}
@@ -829,7 +1051,7 @@ export default function LandingPage() {
           {/* Bottom bar */}
           <div className="mt-12 pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} InternHub. All rights reserved.
+              © {new Date().getFullYear()} {isTenant ? branding.name : "InternHub"}. All rights reserved.
             </p>
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <span className="flex items-center gap-1.5">

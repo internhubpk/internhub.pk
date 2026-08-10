@@ -1,226 +1,403 @@
 /**
- * InternHub Tenant Resolution Service
+ * InternHub Subdomain-Based Multi-Tenancy Service
  * 
  * This service provides centralized tenant (university) resolution
- * for multi-tenant isolation. All university-specific operations
- * should use this service to determine the active tenant context.
+ * based on subdomain detection for the InternHub SaaS platform.
  * 
- * IMPORTANT: Never trust client-provided university_id.
- * Always derive tenant from authenticated user context.
+ * Architecture:
+ *   internhub.pk (main platform)
+ *     ├─ iiui.internhub.pk (IIUI portal)
+ *     ├─ comsats.internhub.pk (COMSATS portal)
+ *     └─ nust.internhub.pk (NUST portal)
  */
 
-import { createClient } from "@/utils/supabase/server";
-import { createClient as createBrowserClient } from "@/utils/supabase/client";
-import { cookies } from "next/headers";
-import type { University, Profile, UserRole } from "@/types";
+import { headers } from "next/headers";
+import type { TenantConfig as BaseTenantConfig } from "@/types";
 
-export interface TenantContext {
-  university: University | null;
-  universityId: string | null;
-  isResolved: boolean;
-  error?: string;
+// ============================================================
+// TENANT CONFIGURATION INTERFACE
+// ============================================================
+
+export interface TenantConfig extends BaseTenantConfig {
+  /** Unique identifier (e.g., UUID or slug) */
+  id: string;
+  /** Display name of the tenant/university */
+  name: string;
+  /** URL-safe slug used in subdomain */
+  slug: string;
+  /** Logo URL - can be relative or absolute */
+  logo: string;
+  /** Favicon URL for browser tab */
+  favicon?: string;
+  /** Primary brand color (hex) */
+  primaryColor: string;
+  /** Secondary/accent color (hex) */
+  secondaryColor: string;
+  /** Full domain for this tenant (e.g., iiui.internhub.pk) */
+  domain: string;
+  /** Feature flags for this tenant */
+  features: TenantFeatures;
+  /** Custom branding configuration */
+  branding: {
+    loginBackgroundImage?: string;
+    supportEmail?: string;
+    supportPhone?: string;
+    tagline?: string;
+    description?: string;
+  };
 }
 
-/**
- * Get the current tenant context for server-side operations
- * Uses authenticated user's profile to determine university
- */
-export async function getServerTenantContext(): Promise<TenantContext> {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-    
-    // Get current authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return {
-        university: null,
-        universityId: null,
-        isResolved: false,
-        error: "Not authenticated"
-      };
-    }
-    
-    // Get user profile with university relationship
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("*, universities!inner(*)")
-      .eq("user_id", user.id)
-      .single();
-    
-    if (profileError || !profile) {
-      // User exists but no profile - might need onboarding
-      return {
-        university: null,
-        universityId: null,
-        isResolved: false,
-        error: "Profile not found"
-      };
-    }
-    
-    // Super Admin may not have a specific university
-    if (profile.role === "super_admin") {
-      return {
-        university: null,
-        universityId: null,
-        isResolved: true
-      };
-    }
-    
-    // Extract university from profile relationship
-    const university = (profile as any).universities as University | null;
-    
-    if (!university) {
-      return {
-        university: null,
-        universityId: profile.university_id || null,
-        isResolved: !!profile.university_id,
-        error: profile.university_id ? "University not found" : "No university assigned"
-      };
-    }
-    
-    return {
-      university,
-      universityId: university.id,
-      isResolved: true
-    };
-    
-  } catch (error) {
-    console.error("Tenant resolution error:", error);
-    return {
-      university: null,
-      universityId: null,
-      isResolved: false,
-      error: "Failed to resolve tenant"
-    };
-  }
+export interface TenantFeatures {
+  enableMarketplace: boolean;
+  enableEvaluations: boolean;
+  enableCertificates: boolean;
+  enableAttendance: boolean;
+  customWorkflow: boolean;
+  enableSSO: boolean;
+  enableCustomDomain: boolean;
+  maxStudents: number;
 }
 
-/**
- * Get current tenant context for client-side operations
- * Should be used in React components with 'use client' directive
- */
-export async function getClientTenantContext(): Promise<TenantContext> {
-  try {
-    const supabase = createBrowserClient();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return {
-        university: null,
-        universityId: null,
-        isResolved: false,
-        error: "Not authenticated"
-      };
-    }
-    
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("*, universities!inner(*)")
-      .eq("user_id", user.id)
-      .single();
-    
-    if (profileError || !profile) {
-      return {
-        university: null,
-        universityId: null,
-        isResolved: false,
-        error: "Profile not found"
-      };
-    }
-    
-    if (profile.role === "super_admin") {
-      return {
-        university: null,
-        universityId: null,
-        isResolved: true
-      };
-    }
-    
-    const university = (profile as any).universities as University | null;
-    
-    return {
-      university,
-      universityId: university?.id || profile.university_id || null,
-      isResolved: !!(university || profile.university_id)
-    };
-    
-  } catch (error) {
-    console.error("Client tenant resolution error:", error);
-    return {
-      university: null,
-      universityId: null,
-      isResolved: false,
-      error: "Failed to resolve tenant"
-    };
-  }
-}
+// ============================================================
+// MOCK TENANT DATA FOR DEMO
+// ============================================================
 
 /**
- * Resolve tenant from domain/subdomain
- * For future use when implementing subdomain-based routing
+ * Demo tenant configurations
+ * In production, these would come from a database or config service
  */
-export function resolveTenantFromDomain(hostname: string): string | null {
-  // Example: iiui.internhub.pk -> iiui
-  // Example: comsats.internhub.pk -> comsats
+export const DEMO_TENANTS: Record<string, TenantConfig> = {
+  // Main platform (no subdomain)
+  main: {
+    id: "main",
+    name: "InternHub",
+    slug: "main",
+    logo: "/logo.svg",
+    favicon: "/favicon.ico",
+    primaryColor: "#2563eb", // Blue-600
+    secondaryColor: "#1e40af", // Blue-800
+    domain: "internhub.pk",
+    features: {
+      enableMarketplace: true,
+      enableEvaluations: true,
+      enableCertificates: true,
+      enableAttendance: true,
+      customWorkflow: true,
+      enableSSO: true,
+      enableCustomDomain: true,
+      maxStudents: Infinity,
+    },
+    branding: {
+      tagline: "Enterprise Internship Management Platform",
+      description:
+        "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
+      supportEmail: "support@internhub.pk",
+      supportPhone: "+92-300-1234567",
+    },
+  },
+
+  // IIUI - International Islamic University Islamabad
+  iiui: {
+    id: "tenant-iiui-001",
+    name: "International Islamic University Islamabad",
+    slug: "iiui",
+    logo: "/logos/iiui-logo.svg",
+    favicon: "/favicons/iiui.ico",
+    primaryColor: "#006a4e", // IIUI Green
+    secondaryColor: "#004d33",
+    domain: "iiui.internhub.pk",
+    features: {
+      enableMarketplace: true,
+      enableEvaluations: true,
+      enableCertificates: true,
+      enableAttendance: true,
+      customWorkflow: false,
+      enableSSO: false,
+      enableCustomDomain: false,
+      maxStudents: 5000,
+    },
+    branding: {
+      loginBackgroundImage: "/backgrounds/iiui-bg.jpg",
+      tagline: "Excellence in Professional Development",
+      description:
+        "IIUI Internship Portal - Connecting students with industry opportunities.",
+      supportEmail: "internships@iiu.edu.pk",
+      supportPhone: "+92-51-9019350",
+    },
+  },
+
+  // COMSATS - COMSATS University Islamabad
+  comsats: {
+    id: "tenant-comsats-002",
+    name: "COMSATS University Islamabad",
+    slug: "comsats",
+    logo: "/logos/comsats-logo.svg",
+    favicon: "/favicons/comsats.ico",
+    primaryColor: "#1a365d", // COMSATS Navy
+    secondaryColor: "#0f2744",
+    domain: "comsats.internhub.pk",
+    features: {
+      enableMarketplace: true,
+      enableEvaluations: true,
+      enableCertificates: true,
+      enableAttendance: false,
+      customWorkflow: false,
+      enableSSO: true,
+      enableCustomDomain: false,
+      maxStudents: 10000,
+    },
+    branding: {
+      tagline: "Bridging Academia and Industry",
+      description:
+        "CUI Internship Portal - Your gateway to professional experience.",
+      supportEmail: "careers@comsats.edu.pk",
+      supportPhone: "+92-51-9247700",
+    },
+  },
+
+  // NUST - National University of Sciences & Technology
+  nust: {
+    id: "tenant-nust-003",
+    name: "National University of Sciences & Technology",
+    slug: "nust",
+    logo: "/logos/nust-logo.svg",
+    favicon: "/favicons/nust.ico",
+    primaryColor: "#7c2d12", // NUST Brown/Rust
+    secondaryColor: "#5c1d0b",
+    domain: "nust.internhub.pk",
+    features: {
+      enableMarketplace: true,
+      enableEvaluations: true,
+      enableCertificates: true,
+      enableAttendance: true,
+      customWorkflow: true,
+      enableSSO: true,
+      enableCustomDomain: true,
+      maxStudents: 15000,
+    },
+    branding: {
+      loginBackgroundImage: "/backgrounds/nust-bg.jpg",
+      tagline: "Leading Innovation and Excellence",
+      description:
+        "NUST Internship Portal - Empowering future leaders through practical experience.",
+      supportEmail: "placements@nust.edu.pk",
+      supportPhone: "+92-51-90851000",
+    },
+  },
+};
+
+// ============================================================
+// SUBDOMAIN DETECTION UTILITIES
+// ============================================================
+
+/** 
+ * Base domain for the platform 
+ * In production, this would be an environment variable
+ */
+const BASE_DOMAINS = [
+  "internhub.pk",
+  "internhub.app",
+  "localhost:3000",
+  "localhost",
+];
+
+/**
+ * Extract subdomain from hostname
+ * Examples:
+ *   iiui.internhub.pk -> "iiui"
+ *   internhub.pk -> null (main)
+ *   localhost:3000 -> null (main)
+ *   iiui.localhost:3000 -> "iiui" (dev mode)
+ */
+export function extractSubdomain(hostname: string): string | null {
+  // Remove port if present for local development
+  const hostWithoutPort = hostname.split(":")[0];
   
-  const domainParts = hostname.split(".");
+  // Check for localhost development patterns
+  if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
+    return null; // Main platform on localhost
+  }
+
+  // Split hostname into parts
+  const parts = hostWithoutPort.split(".");
+
+  // Need at least 3 parts for subdomain (sub.domain.tld)
+  if (parts.length < 3) {
+    return null; // No subdomain
+  }
+
+  // Get potential subdomain (first part)
+  const subdomain = parts[0];
+
+  // Check if base domain matches our known domains
+  const baseDomain = parts.slice(-2).join(".");
   
-  // Check if it's a subdomain format
-  if (domainParts.length >= 3 && domainParts[domainParts.length - 2] + "." + domainParts[domainParts.length - 1] === "internhub.pk") {
-    const subdomain = domainParts[0];
+  if (!BASE_DOMAINS.some(d => d.includes(baseDomain))) {
+    // Unknown domain - treat as main platform
+    return null;
+  }
+
+  // Skip common non-tenant subdomains
+  const reservedSubdomains = ["www", "app", "admin", "api", "mail", "cdn", "static"];
+  if (reservedSubdomains.includes(subdomain)) {
+    return null;
+  }
+
+  return subdomain;
+}
+
+/**
+ * Detect tenant slug from request headers (server-side)
+ * Falls back to query param for local dev testing
+ */
+export async function detectTenantSlug(): Promise<string | null> {
+  try {
+    const headersList = await headers();
+    const host = headersList.get("host") || "";
     
-    // Don't treat www or app as subdomains
-    if (!["www", "app", "admin", "api"].includes(subdomain)) {
+    // Try to extract from hostname first
+    const subdomain = extractSubdomain(host);
+    
+    if (subdomain && DEMO_TENANTS[subdomain]) {
       return subdomain;
     }
+    
+    // Fallback: check X-Tenant header (for reverse proxy setups)
+    const tenantHeader = headersList.get("x-tenant");
+    if (tenantHeader && DEMO_TENANTS[tenantHeader]) {
+      return tenantHeader;
+    }
+    
+    return null;
+  } catch (error) {
+    // Headers might not be available in all contexts
+    console.log("Tenant detection error:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/**
+ * Detect tenant slug client-side from window.location
+ */
+export function detectClientTenantSlug(): string | null {
+  if (typeof window === "undefined") return null;
+  
+  const hostname = window.location.hostname;
+  const subdomain = extractSubdomain(hostname);
+  
+  if (subdomain && DEMO_TENANTS[subdomain]) {
+    return subdomain;
+  }
+  
+  // Fallback: check URL search params for testing
+  const params = new URLSearchParams(window.location.search);
+  const testTenant = params.get("tenant");
+  if (testTenant && DEMO_TENANTS[testTenant]) {
+    return testTenant;
   }
   
   return null;
 }
 
+// ============================================================
+// TENANT CONFIGURATION GETTERS
+// ============================================================
+
 /**
- * Validate that a resource belongs to the current tenant
- * Prevents cross-tenant data access
+ * Get full tenant configuration by slug
+ * Returns main platform config if no slug provided or not found
  */
-export function validateTenantOwnership(
-  resourceUniversityId: string | null | undefined,
-  currentUniversityId: string | null
-): boolean {
-  // If no current university context, deny access
-  if (!currentUniversityId) {
-    return false;
+export function getTenantConfig(slug: string | null): TenantConfig {
+  if (!slug) {
+    return DEMO_TENANTS.main;
   }
   
-  // If resource has no university, allow (platform-level resource)
-  if (!resourceUniversityId) {
-    return true;
-  }
-  
-  // Strict equality check
-  return resourceUniversityId === currentUniversityId;
+  return DEMO_TENANTS[slug] || DEMO_TENANTS.main;
 }
 
 /**
- * Build RLS-compliant query with university filter
- * Always include this filter for university-specific queries
+ * Get tenant configuration server-side (from request)
  */
-export function buildTenantQuery(baseQuery: any, universityId: string) {
-  return baseQuery.eq("university_id", universityId);
+export async function getServerTenantConfig(): Promise<TenantConfig> {
+  const slug = await detectTenantSlug();
+  return getTenantConfig(slug);
 }
 
 /**
- * Hook-like function for getting tenant in Server Components
- * Use this at the top of server components that need tenant context
+ * Get tenant configuration client-side
  */
-export async function requireTenant() {
-  const context = await getServerTenantContext();
-  
-  if (!context.isResolved) {
-    throw new Error(context.error || "Tenant not resolved");
-  }
-  
-  return context;
+export function getClientTenantConfig(): TenantConfig {
+  const slug = detectClientTenantSlug();
+  return getTenantConfig(slug);
 }
+
+/**
+ * Check if a given slug is a valid tenant
+ */
+export function isValidTenant(slug: string): boolean {
+  return slug in DEMO_TENANTS;
+}
+
+/**
+ * Get list of all available tenants (for admin/super-admin views)
+ */
+export function getAllTenants(): TenantConfig[] {
+  return Object.values(DEMO_TENANTS).filter(t => t.slug !== "main");
+}
+
+/**
+ * Get tenant's CSS custom properties for theming
+ */
+export function getTenantThemeVars(tenant: TenantConfig): Record<string, string> {
+  return {
+    "--tenant-primary": tenant.primaryColor,
+    "--tenant-secondary": tenant.secondaryColor,
+    "--tenant-primary-rgb": hexToRgb(tenant.primaryColor),
+  };
+}
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return "37, 99, 235"; // Default blue
+  return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
+}
+
+/**
+ * Generate tenant-specific page title
+ */
+export function getTenantPageTitle(tenant: TenantConfig, pageTitle?: string): string {
+  if (pageTitle) {
+    return `${pageTitle} | ${tenant.name}`;
+  }
+  return tenant.name;
+}
+
+/**
+ * Generate Open Graph metadata for tenant
+ */
+export function getTenantOpenGraph(tenant: TenantConfig) {
+  return {
+    title: `${tenant.name} - ${tenant.branding.tagline}`,
+    description: tenant.branding.description,
+    siteName: tenant.name,
+  };
+}
+
+// ============================================================
+// LEGACY COMPATIBILITY - Keep existing functions working
+// ============================================================
+
+/**
+ * Resolve tenant from domain/subdomain (legacy function - kept for compatibility)
+ * @deprecated Use extractSubdomain() instead
+ */
+export function resolveTenantFromDomain(hostname: string): string | null {
+  return extractSubdomain(hostname);
+}
+
+// Re-export types for convenience
+export type { TenantContext } from "@/types";
