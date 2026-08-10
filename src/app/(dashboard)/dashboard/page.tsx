@@ -26,10 +26,9 @@ export default async function DashboardPage() {
   const profile = await getCurrentProfile();
   
   if (!profile || !profile.role) {
-    // Profile not found or no role set - redirect to setup/onboarding
-    // For now, we'll redirect to a default student dashboard
-    // In production, you might want to show an onboarding flow
-    redirect("/onboarding");
+    // Profile not found or no role set - redirect to default dashboard
+    // University Admin will assign proper role from admin panel
+    redirect("/student");
   }
 
   // Map role to dashboard path

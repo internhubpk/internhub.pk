@@ -74,19 +74,20 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profileError || !profile) {
-      // User exists but no profile - might need onboarding
+      // User exists but no profile - redirect to default dashboard
+      // University Admin will assign proper role from admin panel
       return NextResponse.json<ApiResponse<{
         user: typeof authData.user;
         redirectPath: string;
-        needsOnboarding: true;
+        needsProfile: boolean;
       }>>(
         {
           success: true,
-          message: "Login successful. Profile setup required.",
+          message: "Login successful. Awaiting role assignment.",
           data: {
             user: authData.user,
-            redirectPath: "/onboarding",
-            needsOnboarding: true,
+            redirectPath: "/student",
+            needsProfile: true,
           },
         }
       );
