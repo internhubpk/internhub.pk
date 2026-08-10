@@ -110,7 +110,7 @@ export interface Internship {
   max_applicants: number | null;
   current_applicants: number;
   start_date: string | null;
-  end_date: string null;
+  end_date: string | null;
   application_deadline: string | null;
   created_by: string;
   created_at: string;
@@ -352,7 +352,8 @@ export type NotificationPriority = "low" | "medium" | "high" | "urgent";
 export interface Notification {
   id: string;
   user_id: string;
-  title: message: string;
+  title: string;
+  message: string;
   category: NotificationCategory;
   priority: NotificationPriority;
   is_read: boolean;

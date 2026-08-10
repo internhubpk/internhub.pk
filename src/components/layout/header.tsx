@@ -399,9 +399,44 @@ export function Header({ className }: HeaderProps) {
     setBreadcrumbs(getBreadcrumbs(pathname));
   }, [pathname]);
 
+  // Get display name with fallbacks: profile -> user metadata -> email
+  const getDisplayName = () => {
+    if (profile?.full_name) return profile.full_name;
+    if (profile?.first_name || profile?.last_name) {
+      return `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+    }
+    // Fallback to auth user metadata
+    const meta = user?.user_metadata as Record<string, string> | undefined;
+    if (meta?.full_name) return meta.full_name;
+    if (meta?.name) return meta.name;
+    if (meta?.preferred_username) return meta.preferred_username;
+    // Last resort: use email part before @
+    if (user?.email) {
+      return user.email.split("@")[0];
+    }
+    return "User";
+  };
+
+  // Get avatar URL with fallbacks
+  const getAvatarUrl = (): string | null | undefined => {
+    return profile?.avatar_url ||
+           (user?.user_metadata as Record<string, string> | undefined)?.avatar_url ||
+           null;
+  };
+
+  // Get user email for display
+  const getUserEmail = () => {
+    return profile?.email || user?.email || "";
+  };
+
   const getInitials = (firstName?: string, lastName?: string) => {
     const first = firstName?.charAt(0)?.toUpperCase() || "";
     const last = lastName?.charAt(0)?.toUpperCase() || "";
+    // If no name, try to get initials from display name
+    if (!first && !last) {
+      const name = getDisplayName();
+      return name.charAt(0).toUpperCase() || "U";
+    }
     return first + last || "U";
   };
 
@@ -610,15 +645,15 @@ export function Header({ className }: HeaderProps) {
                 >
                   <Avatar className="h-7 w-7 ring-2 ring-primary/20 ring-offset-background">
                     <AvatarImage
-                      src={profile?.avatar_url}
-                      alt={`${profile?.first_name}`}
+                      src={getAvatarUrl()}
+                      alt={getDisplayName()}
                     />
                     <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                       {getInitials(profile?.first_name, profile?.last_name)}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden lg:inline-flex text-sm font-medium max-w-[120px] truncate">
-                    {profile?.first_name} {profile?.last_name?.charAt(0)}.
+                    {getDisplayName()}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
@@ -632,8 +667,8 @@ export function Header({ className }: HeaderProps) {
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10 ring-2 ring-primary/20">
                         <AvatarImage
-                          src={profile?.avatar_url}
-                          alt={`${profile?.first_name}`}
+                          src={getAvatarUrl()}
+                          alt={getDisplayName()}
                         />
                         <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                           {getInitials(profile?.first_name, profile?.last_name)}
@@ -641,10 +676,10 @@ export function Header({ className }: HeaderProps) {
                       </Avatar>
                       <div className="flex flex-col space-y-0.5">
                         <p className="text-sm font-medium leading-none">
-                          {profile?.first_name} {profile?.last_name}
+                          {getDisplayName()}
                         </p>
                         <p className="text-xs leading-none text-muted-foreground">
-                          {profile?.email || "user@university.edu"}
+                          {getUserEmail() || "user@university.edu"}
                         </p>
                       </div>
                     </div>

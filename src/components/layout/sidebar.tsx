@@ -188,9 +188,44 @@ function SidebarContent({
     if (onClose) onClose();
   };
 
+  // Get display name with fallbacks: profile -> user metadata -> email
+  const getDisplayName = () => {
+    if (profile?.full_name) return profile.full_name;
+    if (profile?.first_name || profile?.last_name) {
+      return `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+    }
+    // Fallback to auth user metadata
+    const meta = user?.user_metadata as Record<string, string> | undefined;
+    if (meta?.full_name) return meta.full_name;
+    if (meta?.name) return meta.name;
+    if (meta?.preferred_username) return meta.preferred_username;
+    // Last resort: use email part before @
+    if (user?.email) {
+      return user.email.split("@")[0];
+    }
+    return "User";
+  };
+
+  // Get avatar URL with fallbacks
+  const getAvatarUrl = (): string | null | undefined => {
+    return profile?.avatar_url ||
+           (user?.user_metadata as Record<string, string> | undefined)?.avatar_url ||
+           null;
+  };
+
+  // Get user email for display
+  const getUserEmail = () => {
+    return profile?.email || user?.email || "";
+  };
+
   const getInitials = (firstName?: string, lastName?: string) => {
     const first = firstName?.charAt(0)?.toUpperCase() || "";
     const last = lastName?.charAt(0)?.toUpperCase() || "";
+    // If no name, try to get initials from display name
+    if (!first && !last) {
+      const name = getDisplayName();
+      return name.charAt(0).toUpperCase() || "U";
+    }
     return first + last || "U";
   };
 
@@ -320,8 +355,8 @@ function SidebarContent({
             )}
           >
             <AvatarImage
-              src={profile?.avatar_url}
-              alt={`${profile?.first_name} ${profile?.last_name}`}
+              src={getAvatarUrl()}
+              alt={getDisplayName()}
             />
             <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
               {getInitials(profile?.first_name, profile?.last_name)}
@@ -338,7 +373,10 @@ function SidebarContent({
                 className="flex flex-col min-w-0 flex-1"
               >
                 <span className="text-sm font-medium truncate text-white">
-                  {profile?.first_name} {profile?.last_name}
+                  {getDisplayName()}
+                </span>
+                <span className="text-xs text-slate-400 truncate">
+                  {getUserEmail()}
                 </span>
                 <Badge
                   variant="secondary"

@@ -715,8 +715,9 @@ CREATE POLICY "Super admin full access universities" ON public.universities
     ));
 
 -- Everyone can view active universities (for marketplace)
+-- Note: NULL status is treated as active for backwards compatibility
 CREATE POLICY "Anyone can view universities" ON public.universities
-    FOR SELECT USING (status = 'active');
+    FOR SELECT USING (status = 'active' OR status IS NULL);
 
 -- ----------------------------------------------------------
 -- DEPARTMENTS RLS Policies
