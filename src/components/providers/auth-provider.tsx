@@ -61,8 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Handle case where profile doesn't exist yet (new user) or table doesn't exist
       if (profileError) {
-        // Table might not exist or other error - don't crash
-        console.log("Profile fetch info:", profileError.code || profileError.message);
+        // Silently handle - table might not exist yet or other error
         if (isMountedRef.current) {
           setProfile(null);
         }
