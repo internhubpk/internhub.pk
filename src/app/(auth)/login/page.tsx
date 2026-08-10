@@ -15,8 +15,6 @@ import {
   EyeOff,
   Loader2,
   ArrowRight,
-  GraduationCap,
-  Building2,
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
@@ -127,37 +125,44 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 px-4 py-8 overflow-x-hidden">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md mx-auto"
       >
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sign In</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Enter your credentials to access your account</p>
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="mx-auto w-12 h-12 sm:w-14 sm:h-14 bg-primary rounded-xl flex items-center justify-center mb-4 shadow-lg">
+            <span className="text-white font-bold text-lg sm:text-xl">IH</span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+            Welcome Back
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground px-2">
+            Sign in to access your InternHub account
+          </p>
         </div>
 
         {/* Login Form Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-5 sm:p-8">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-5">
               {/* Email Field */}
               <FormField
                 control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Email</FormLabel>
+                    <FormLabel className="text-sm font-medium">Email Address</FormLabel>
                     <FormControl>
                       <div className="relative mt-1.5">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="email"
                           placeholder="name@university.edu"
-                          className="h-12 pl-10 rounded-lg"
+                          className="h-12 pl-10 pr-4 rounded-xl text-sm sm:text-base"
                           {...field}
                         />
                       </div>
@@ -175,7 +180,10 @@ export default function LoginPage() {
                   <FormItem>
                     <div className="flex items-center justify-between mt-5">
                       <FormLabel className="text-sm font-medium">Password</FormLabel>
-                      <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">
+                      <Link 
+                        href="/forgot-password" 
+                        className="text-xs text-primary hover:underline font-medium whitespace-nowrap ml-2"
+                      >
                         Forgot password?
                       </Link>
                     </div>
@@ -185,14 +193,15 @@ export default function LoginPage() {
                         <Input
                           type={showPassword ? "text" : "password"}
                           placeholder="Enter your password"
-                          className="h-12 pl-10 pr-11 rounded-lg"
+                          className="h-12 pl-10 pr-11 rounded-xl text-sm sm:text-base"
                           {...field}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 cursor-pointer"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 cursor-pointer transition-colors"
                           tabIndex={-1}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -204,9 +213,15 @@ export default function LoginPage() {
               />
 
               {/* Remember Me */}
-              <div className="flex items-center">
-                <Checkbox id="remember-me" className="data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
-                <label htmlFor="remember-me" className="ml-2 text-sm text-muted-foreground cursor-pointer">
+              <div className="flex items-center pt-1">
+                <Checkbox 
+                  id="remember-me" 
+                  className="data-[state=checked]:bg-primary data-[state=checked]:border-primary h-4 w-4" 
+                />
+                <label 
+                  htmlFor="remember-me" 
+                  className="ml-2 text-sm text-muted-foreground cursor-pointer select-none"
+                >
                   Remember me
                 </label>
               </div>
@@ -215,7 +230,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-12 cursor-pointer rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg hover:shadow-xl transition-all"
+                className="w-full h-12 cursor-pointer rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm sm:text-base shadow-lg hover:shadow-xl transition-all mt-2"
               >
                 {isLoading ? (
                   <>
@@ -231,61 +246,24 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-
-          {/* 
-            Demo Accounts Section - Hidden for production
-            Uncomment below for development/testing purposes
-          */}
-          {/*
-          <div className="my-6 flex items-center">
-            <div className="flex-1 border-t border-border" />
-            <span className="px-3 text-xs text-muted-foreground uppercase">Demo Accounts</span>
-            <div className="flex-1 border-t border-border" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 cursor-pointer hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
-              onClick={() => {
-                form.setValue("email", "student@demo.internhub.edu");
-                form.setValue("password", "demo123456");
-              }}
-            >
-              <GraduationCap className="mr-2 h-4 w-4 text-blue-600" />
-              Student
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 cursor-pointer hover:border-purple-300 hover:bg-purple-50/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-              onClick={() => {
-                form.setValue("email", "hr@company.internhub.edu");
-                form.setValue("password", "demo123456");
-              }}
-            >
-              <Building2 className="mr-2 h-4 w-4 text-purple-600" />
-              Company HR
-            </Button>
-          </div>
-          */}
         </div>
 
         {/* Footer */}
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-semibold text-primary hover:underline">
-            Create account
-          </Link>
-        </p>
+        <div className="mt-6 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="font-semibold text-primary hover:underline">
+              Request access
+            </Link>
+          </p>
 
-        <p className="mt-4 text-center text-xs text-muted-foreground/70">
-          By signing in, you agree to our{" "}
-          <Link href="/terms" className="hover:text-foreground underline">Terms</Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="hover:text-foreground underline">Privacy Policy</Link>
-        </p>
+          <p className="text-xs text-muted-foreground/70 leading-relaxed px-4">
+            By signing in, you agree to our{" "}
+            <Link href="/terms" className="hover:text-foreground underline">Terms</Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="hover:text-foreground underline">Privacy Policy</Link>
+          </p>
+        </div>
       </motion.div>
     </div>
   );
