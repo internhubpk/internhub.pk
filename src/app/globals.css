@@ -1,160 +1,363 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* ===================================================
+   INTERNHUB - Enterprise SaaS Design System
+   Complete theme configuration in ONE FILE
+   Change brand identity from this single location
+   =================================================== */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Font System - Inter as primary typeface */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  
+  /* Color Tokens - Semantic Variables */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-accent-purple: var(--accent-purple);
-  --color-accent-purple-foreground: var(--accent-purple-foreground);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  /* Semantic Status Colors */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  
+  /* Sidebar Colors */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* Chart Colors */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  
+  /* Border Radius Scale */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
 }
+
+/* ===================================================
+   LIGHT THEME - Professional Enterprise Palette
+   Primary: Deep Indigo / Royal Blue (#3b5998 → #2563eb)
+   Secondary: Slate / Cool Gray
+   Accent: Professional Violet (#6366f1)
+   =================================================== */
 
 :root {
+  /* Base Dimensions */
   --radius: 0.625rem;
-  /* InternHub Color Scheme - Light Mode */
-  --background: oklch(0.985 0.002 247);
-  --foreground: oklch(0.145 0.015 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.015 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.015 250);
   
-  /* Primary - Blue (#2563eb) */
-  --primary: oklch(0.623 0.214 259);
-  --primary-foreground: oklch(0.985 0 0);
+  /* Background & Foreground */
+  --background: #f8fafc;
+  --foreground: #0f172a;
   
-  --secondary: oklch(0.967 0.003 247);
-  --secondary-foreground: oklch(0.205 0.015 250);
-  --muted: oklch(0.967 0.003 247);
-  --muted-foreground: oklch(0.556 0.02 250);
-  --accent: oklch(0.967 0.003 247);
-  --accent-foreground: oklch(0.205 0.015 250);
+  /* Card & Popover */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
   
-  /* Accent Purple (#9333ea) */
-  --accent-purple: oklch(0.554 0.28 293);
-  --accent-purple-foreground: oklch(0.985 0 0);
+  /* 
+   * PRIMARY COLOR - Deep Indigo / Royal Blue
+   * Main brand color for CTAs, links, active states
+   */
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
   
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.005 247);
-  --input: oklch(0.922 0.005 247);
-  --ring: oklch(0.623 0.214 259);
+  /*
+   * SECONDARY COLOR - Slate / Cool Gray
+   * For secondary actions, subtle backgrounds
+   */
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
   
-  --chart-1: oklch(0.623 0.214 259); /* Blue */
-  --chart-2: oklch(0.554 0.28 293); /* Purple */
-  --chart-3: oklch(0.65 0.2 150); /* Green */
-  --chart-4: oklch(0.7 0.18 60); /* Orange */
-  --chart-5: oklch(0.65 0.22 10); /* Red */
+  /* Muted - For less prominent elements */
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
   
-  /* Sidebar Colors */
-  --sidebar: oklch(0.97 0.005 260);
-  --sidebar-foreground: oklch(0.145 0.015 250);
-  --sidebar-primary: oklch(0.623 0.214 259);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.94 0.01 260);
-  --sidebar-accent-foreground: oklch(0.205 0.015 250);
-  --sidebar-border: oklch(0.91 0.01 260);
-  --sidebar-ring: oklch(0.623 0.214 259);
+  /*
+   * ACCENT COLOR - Professional Violet/Indigo
+   * For highlights, special states, gradient endpoints
+   */
+  --accent: #eef2ff;
+  --accent-foreground: #3730a3;
+  
+  /* Destructive - Error/danger actions */
+  --destructive: #dc2626;
+  
+  /* Borders & Inputs */
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #2563eb;
+  
+  /*
+   * SEMANTIC STATUS COLORS
+   * Success: Emerald (for completed, approved, positive)
+   * Warning: Amber (for pending, caution)
+   * Danger: Red (for errors, rejected, critical)
+   * Info: Blue (for information, neutral)
+   */
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
+  --danger: #ef4444;
+  --danger-foreground: #ffffff;
+  --info: #3b82f6;
+  --info-foreground: #ffffff;
+  
+  /* Chart Colors - Data Visualization */
+  --chart-1: #2563eb;  /* Blue - Primary data */
+  --chart-2: #7c3aed;  /* Purple - Secondary data */
+  --chart-3: #059669;  /* Green - Positive/Success data */
+  --chart-4: #d97706;  /* Orange - Warning data */
+  --chart-5: #dc2626;  /* Red - Critical/Error data */
+  
+  /* Sidebar - Professional Dark Slate */
+  --sidebar: #1e293b;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #334155;
+  --sidebar-ring: #3b82f6;
+  
+  /* Spacing Scale (optional reference) */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  
+  /* Shadow Scale */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  
+  /* Transition Timing */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 200ms ease-in-out;
+  --transition-slow: 300ms ease-in-out;
 }
+
+/* ===================================================
+   DARK THEME - Professional Dark Mode
+   Same semantic structure, adjusted luminance
+   =================================================== */
 
 .dark {
-  --background: oklch(0.13 0.015 250);
-  --foreground: oklch(0.985 0.005 250);
-  --card: oklch(0.18 0.015 250);
-  --card-foreground: oklch(0.985 0.005 250);
-  --popover: oklch(0.18 0.015 250);
-  --popover-foreground: oklch(0.985 0.005 250);
+  /* Background & Foreground - Inverted */
+  --background: #0f172a;
+  --foreground: #f8fafc;
   
-  /* Primary - Blue (#2563eb) - Dark mode adjusted */
-  --primary: oklch(0.68 0.2 255);
-  --primary-foreground: oklch(0.13 0 0);
+  /* Card & Popover - Elevated surfaces */
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
   
-  --secondary: oklch(0.22 0.015 250);
-  --secondary-foreground: oklch(0.985 0.005 250);
-  --muted: oklch(0.22 0.015 250);
-  --muted-foreground: oklch(0.708 0.02 250);
-  --accent: oklch(0.22 0.015 250);
-  --accent-foreground: oklch(0.985 0.005 250);
+  /* Primary - Lighter blue for dark backgrounds */
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
   
-  /* Accent Purple - Dark mode */
-  --accent-purple: oklch(0.62 0.26 293);
-  --accent-purple-foreground: oklch(0.13 0 0);
+  /* Secondary - Subtle elevation */
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
   
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.28 0.02 250);
-  --input: oklch(0.28 0.02 250);
-  --ring: oklch(0.68 0.2 255);
+  /* Muted - Reduced contrast for less prominence */
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
   
-  --chart-1: oklch(0.68 0.2 255); /* Blue */
-  --chart-2: oklch(0.62 0.26 293); /* Purple */
-  --chart-3: oklch(0.7 0.18 150); /* Green */
-  --chart-4: oklch(0.75 0.18 60); /* Orange */
-  --chart-5: oklch(0.7 0.22 10); /* Red */
+  /* Accent - Deeper violet for dark mode */
+  --accent: #312e81;
+  --accent-foreground: #c7d2fe;
   
-  /* Sidebar Colors - Dark Mode */
-  --sidebar: oklch(0.16 0.02 255);
-  --sidebar-foreground: oklch(0.985 0.005 250);
-  --sidebar-primary: oklch(0.68 0.2 255);
-  --sidebar-primary-foreground: oklch(0.13 0 0);
-  --sidebar-accent: oklch(0.22 0.02 255);
-  --sidebar-accent-foreground: oklch(0.985 0.005 250);
-  --sidebar-border: oklch(0.26 0.02 250);
-  --sidebar-ring: oklch(0.68 0.2 255);
+  /* Destructive - Brighter red on dark */
+  --destructive: #ef4444;
+  
+  /* Borders & Inputs - Subtle visibility */
+  --border: #334155;
+  --input: #334155;
+  --ring: #3b82f6;
+  
+  /* Semantic Status Colors - Dark Mode */
+  --success: #34d399;
+  --success-foreground: #022c22;
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
+  --danger: #f87171;
+  --danger-foreground: #450a0a;
+  --info: #60a5fa;
+  --info-foreground: #172554;
+  
+  /* Chart Colors - Adjusted for dark background */
+  --chart-1: #3b82f6;
+  --chart-2: #8b5cf6;
+  --chart-3: #34d399;
+  --chart-4: #fbbf24;
+  --chart-5: #f87171;
+  
+  /* Sidebar - Even darker for depth */
+  --sidebar: #0c1222;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #60a5fa;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #60a5fa;
 }
 
-/* ============ BASE STYLES ============ */
+/* ===================================================
+   TYPOGRAPHY SYSTEM
+   Using Inter font family with consistent hierarchy
+   =================================================== */
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   
-  body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
-  
   html {
     scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-size: 14px; /* Base body size */
+    line-height: 1.6;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "ss03" 1;
+  }
+  
+  /* Display - Hero text, marketing headers (48-64px) */
+  .text-display {
+    font-size: clamp(2.75rem, 5vw + 1rem, 4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+  
+  /* H1 - Page titles (36-48px) */
+  h1, .text-h1 {
+    font-size: clamp(2rem, 4vw + 0.5rem, 3rem);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+  }
+  
+  /* H2 - Section headers (28-36px) */
+  h2, .text-h2 {
+    font-size: clamp(1.5rem, 3vw + 0.5rem, 2.25rem);
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+  
+  /* H3 - Card titles, subsections (22-28px) */
+  h3, .text-h3 {
+    font-size: clamp(1.25rem, 2vw + 0.25rem, 1.75rem);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+  }
+  
+  /* H4 - Small headers, labels (18-22px) */
+  h4, .text-h4 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+  }
+  
+  /* Body Text - Default content (14-16px) */
+  .text-body {
+    font-size: 0.9375rem; /* 15px */
+    font-weight: 400;
+    line-height: 1.6;
+  }
+  
+  .text-body-lg {
+    font-size: 1rem; /* 16px */
+    font-weight: 400;
+    line-height: 1.65;
+  }
+  
+  /* Small Text - Secondary info, captions (13-14px) */
+  .text-small {
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  
+  /* Caption - Metadata, timestamps (12px) */
+  .text-caption {
+    font-size: 0.75rem; /* 12px */
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  
+  /* Label - Form labels, table headers */
+  .text-label {
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  
+  /* Font Weight Classes */
+  .font-normal { font-weight: 400; }
+  .font-medium { font-weight: 500; }
+  .font-semibold { font-weight: 600; }
+  .font-bold { font-weight: 700; }
 }
 
-/* ============ CUSTOM SCROLLBAR STYLES ============ */
+/* ===================================================
+   CUSTOM SCROLLBAR STYLES
+   Thin, professional scrollbars
+   =================================================== */
 
 @layer utilities {
   /* Webkit browsers (Chrome, Safari, Edge) */
@@ -169,13 +372,13 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: oklch(0.8 0.02 250 / 40%);
+    background-color: oklch(0.7 0.02 250 / 40%);
     border-radius: 9999px;
     transition: background-color 0.2s ease;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: oklch(0.7 0.02 250 / 60%);
+    background-color: oklch(0.6 0.02 250 / 60%);
   }
 
   .scrollbar-none::-webkit-scrollbar {
@@ -190,69 +393,82 @@
   /* Firefox scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.8 0.02 250 / 40%) transparent;
+    scrollbar-color: oklch(0.7 0.02 250 / 40%) transparent;
   }
 }
 
-/* ============ INTERNHUB UTILITY CLASSES ============ */
+/* ===================================================
+   INTERNHUB UTILITY CLASSES
+   Reusable utility classes for common patterns
+   =================================================== */
 
 @layer utilities {
-  /* Gradient text utility */
+  /* Gradient text - Brand gradient effect */
   .text-gradient {
-    @apply bg-gradient-to-r from-primary to-accent-purple bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-[#2563eb] to-[#7c3aed] bg-clip-text text-transparent;
+  }
+  
+  /* Gradient text variant using CSS variables */
+  .text-gradient-brand {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--chart-2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  /* Glass morphism effect */
+  /* Glass morphism effect - Subtle, not excessive */
   .glass {
-    @apply bg-white/80 backdrop-blur-lg;
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
   }
 
   .dark .glass {
-    @apply bg-black/40;
+    @apply bg-black/40 backdrop-blur-md border border-white/10;
   }
 
-  /* Card hover effects */
+  /* Card hover effects - Subtle elevation */
   .card-hover {
-    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+    @apply transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5;
   }
 
-  /* Focus ring styles */
+  /* Focus ring styles - Accessible focus indicators */
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
-  /* Status color utilities */
+  /* Status color utilities - Semantic status badges */
   .status-success {
-    @apply text-emerald-600 bg-emerald-50;
+    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+  }
+  .dark .status-success {
+    @apply bg-emerald-950/30 text-emerald-400 border-emerald-800/50;
   }
 
   .status-warning {
-    @apply text-amber-600 bg-amber-50;
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
+  }
+  .dark .status-warning {
+    @apply bg-amber-950/30 text-amber-400 border-amber-800/50;
   }
 
   .status-error {
-    @apply text-red-600 bg-red-50;
+    @apply bg-red-50 text-red-700 border border-red-200;
+  }
+  .dark .status-error {
+    @apply bg-red-950/30 text-red-400 border-red-800/50;
   }
 
   .status-info {
-    @apply text-blue-600 bg-blue-50;
+    @apply bg-blue-50 text-blue-700 border border-blue-200;
   }
-
-  /* Dark mode status adjustments */
-  .dark .status-success {
-    @apply bg-emerald-950/50 text-emerald-400;
-  }
-
-  .dark .status-warning {
-    @apply bg-amber-950/50 text-amber-400;
-  }
-
-  .dark .status-error {
-    @apply bg-red-950/50 text-red-400;
-  }
-
   .dark .status-info {
-    @apply bg-blue-950/50 text-blue-400;
+    @apply bg-blue-950/30 text-blue-400 border-blue-800/50;
+  }
+
+  .status-neutral {
+    @apply bg-slate-50 text-slate-700 border border-slate-200;
+  }
+  .dark .status-neutral {
+    @apply bg-slate-800/50 text-slate-300 border-slate-700/50;
   }
 
   /* Animation delays for staggered animations */
@@ -284,16 +500,53 @@
   .safe-top {
     padding-top: env(safe-area-inset-top, 0px);
   }
+  
+  /* Professional shadow utilities */
+  .shadow-soft {
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04);
+  }
+  
+  .dark .shadow-soft {
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Border utilities with CSS variable support */
+  .border-themed {
+    border-color: var(--border);
+  }
+  
+  /* Background pattern - Subtle grid */
+  .bg-grid-pattern {
+    background-image: 
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
 }
 
-/* ============ SMOOTH TRANSITIONS ============ */
+/* ===================================================
+   SMOOTH TRANSITIONS
+   Respect prefers-reduced-motion for accessibility
+   =================================================== */
 
 @layer base {
   /* Smooth color scheme transitions */
   * {
-    transition-property: background-color, border-color;
+    transition-property: background-color, border-color, fill, stroke, opacity, box-shadow, transform;
     transition-duration: 150ms;
-    transition-timing-function: ease-in-out;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Disable transitions for users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Disable transitions on page load */
@@ -302,12 +555,16 @@
   }
 }
 
-/* ============ PRINT STYLES ============ */
+/* ===================================================
+   PRINT STYLES
+   Clean output for printing reports/certificates
+   =================================================== */
 
 @media print {
   body {
     background: white !important;
     color: black !important;
+    font-family: "Inter", sans-serif !important;
   }
 
   /* Hide non-essential elements when printing */
@@ -316,8 +573,10 @@
   header,
   footer,
   [role="navigation"],
-  button,
-  .btn {
+  button:not(.print-show),
+  .btn:not(.print-show),
+  .sidebar,
+  .mobile-menu {
     display: none !important;
   }
 
@@ -357,9 +616,19 @@
   .page-break-inside-avoid {
     page-break-inside: avoid;
   }
+  
+  /* Print-friendly colors */
+  * {
+    color: black !important;
+    background: white !important;
+    box-shadow: none !important;
+  }
 }
 
-/* ============ SIDEBAR SPECIFIC STYLES ============ */
+/* ===================================================
+   SIDEBAR SPECIFIC STYLES
+   Active state indicator with gradient
+   =================================================== */
 
 .sidebar-nav-item {
   position: relative;
@@ -374,9 +643,9 @@
   transform: translateY(-50%);
   width: 3px;
   height: 0;
-  background: linear-gradient(to bottom, var(--primary), var(--accent-purple));
+  background: linear-gradient(to bottom, var(--primary), var(--chart-2));
   border-radius: 0 2px 2px 0;
-  transition: height 0.2s ease;
+  transition: height var(--transition-fast);
 }
 
 .sidebar-nav-item.active::before,
@@ -384,7 +653,10 @@
   height: 60%;
 }
 
-/* ============ LOADING ANIMATIONS ============ */
+/* ===================================================
+   LOADING ANIMATIONS
+   Shimmer effect for skeleton loaders
+   =================================================== */
 
 @keyframes shimmer {
   0% {
@@ -416,14 +688,33 @@
   background-size: 200% 100%;
 }
 
-/* ============ TOOLTIP STYLES ============ */
+/* Pulse animation for loading states */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ===================================================
+   TOOLTIP STYLES
+   =================================================== */
 
 .tooltip-content {
   z-index: 50;
   pointer-events: none;
 }
 
-/* ============ RESPONSIVE HELPERS ============ */
+/* ===================================================
+   RESPONSIVE HELPERS
+   Visibility utilities based on breakpoint
+   =================================================== */
 
 @media (max-width: 639px) {
   .hide-mobile {
@@ -431,9 +722,14 @@
   }
   
   .mobile-full-width {
-    width: 100%;
-    margin-left: 0;
-    margin-right: 0;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  /* Stack flex containers on mobile */
+  .mobile-stack {
+    flex-direction: column !important;
   }
 }
 
@@ -447,4 +743,171 @@
   .hide-desktop {
     display: none !important;
   }
+}
+
+/* ===================================================
+   DATA TABLE STYLES
+   Professional table styling for dashboards
+   =================================================== */
+
+.data-table-container {
+  @apply w-full overflow-x-auto rounded-lg border border-[var(--border)] bg-card;
+}
+
+.data-table {
+  @apply w-full text-small;
+}
+
+.data-table th {
+  @apply px-4 py-3 text-left font-semibold text-muted-foreground bg-secondary/50 border-b border-[var(--border)];
+}
+
+.data-table td {
+  @apply px-4 py-3 border-b border-[var(--border)] last:border-b-0;
+}
+
+.data-table tr:hover td {
+  @apply bg-muted/30;
+}
+
+.data-table tr:last-child td {
+  @apply border-b-0;
+}
+
+/* ===================================================
+   FORM STYLES
+   Consistent form element styling
+   =================================================== */
+
+.form-group {
+  @apply space-y-2;
+}
+
+.form-label {
+  @apply text-label text-foreground font-medium;
+}
+
+.form-input {
+  @apply w-full rounded-lg border border-[var(--border)] bg-background px-3 py-2 text-body placeholder:text-muted-foreground focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-50 transition-colors;
+}
+
+.form-error {
+  @apply text-xs text-danger mt-1;
+}
+
+.form-helper {
+  @apply text-xs text-muted-foreground mt-1;
+}
+
+/* ===================================================
+   BADGE & STATUS INDICATORS
+   Consistent status badge styling
+   =================================================== */
+
+.badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors;
+}
+
+.badge-primary {
+  @apply bg-primary/10 text-primary;
+}
+
+.badge-secondary {
+  @apply bg-secondary text-secondary-foreground;
+}
+
+.badge-success {
+  @apply bg-success/10 text-success;
+}
+
+.badge-warning {
+  @apply bg-warning/10 text-warning;
+}
+
+.badge-danger {
+  @apply bg-danger/10 text-danger;
+}
+
+.badge-info {
+  @apply bg-info/10 text-info;
+}
+
+.badge-outline {
+  @apply border border-current bg-transparent;
+}
+
+/* ===================================================
+   DASHBOARD CARD STYLES
+   Consistent card patterns for dashboard widgets
+   =================================================== */
+
+.dashboard-card {
+  @apply rounded-xl border border-[var(--border)] bg-card p-6 shadow-soft transition-all duration-200;
+}
+
+.dashboard-card-header {
+  @apply flex items-center justify-between mb-4;
+}
+
+.dashboard-card-title {
+  @apply text-h4 font-semibold text-foreground;
+}
+
+.dashboard-card-value {
+  @apply text-display font-bold text-gradient-brand;
+}
+
+.dashboard-card-description {
+  @apply text-small text-muted-foreground mt-2;
+}
+
+/* Stat card specific */
+.stat-card {
+  @apply dashboard-card card-hover;
+}
+
+.stat-card-icon {
+  @apply w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary;
+}
+
+/* ===================================================
+   PAGE LAYOUT STRUCTURE
+   Consistent page header and content area
+   =================================================== */
+
+.page-container {
+  @apply max-w-screen-2xl mx-auto p-4 md:p-6 lg:p-8;
+}
+
+.page-header {
+  @apply mb-6 md:mb-8;
+}
+
+.page-title {
+  @apply text-h2 font-bold text-foreground mb-2;
+}
+
+.page-description {
+  @apply text-body text-muted-foreground max-w-2xl;
+}
+
+.page-actions {
+  @apply flex flex-wrap items-center gap-3 mt-4;
+}
+
+/* Content grid layouts */
+.content-grid {
+  @apply grid gap-6;
+}
+
+.content-grid-cols-2 {
+  @apply grid-cols-1 md:grid-cols-2;
+}
+
+.content-grid-cols-3 {
+  @apply grid-cols-1 md:grid-cols-2 lg:grid-cols-3;
+}
+
+.content-grid-cols-4 {
+  @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-4;
 }
