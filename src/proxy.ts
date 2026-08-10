@@ -18,6 +18,22 @@ import {
  */
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  // ============================================================
+  // SKIP MIDDLEWARE FOR AUTH CALLBACKS & API ROUTES
+  // ============================================================
+  
+  // Let auth callback routes pass through without interference
+  if (
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/auth/confirm")
+  ) {
+    const { supabaseResponse } = createClient(request);
+    return supabaseResponse;
+  }
+
   const { supabase, supabaseResponse } = createClient(request);
 
   // ============================================================
@@ -94,19 +110,19 @@ export async function proxy(request: NextRequest) {
   ];
 
   const isProtectedPath = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+    pathname.startsWith(path)
   );
 
   // Auth routes that should redirect if already authenticated
   const authPaths = ["/login", "/register"];
   const isAuthPath = authPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+    pathname.startsWith(path)
   );
 
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("redirect", request.nextUrl.pathname);
+    url.searchParams.set("redirect", pathname);
     
     // Preserve tenant context in redirect URL for subdomain scenarios
     if (tenantSlug) {
@@ -117,6 +133,8 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isAuthPath && user) {
+    // User is already logged in and trying to access login/register
+    // Redirect them to their dashboard (will be further routed by /dashboard page)
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
@@ -135,6 +153,6 @@ export const config = {
      * - public folder
      * - api routes (they handle their own auth)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

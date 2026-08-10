@@ -25,15 +25,22 @@ export default async function DashboardPage() {
   // Get user's profile with role
   const profile = await getCurrentProfile();
   
-  if (!profile || !profile.role) {
-    // Profile not found or no role set - redirect to default dashboard
-    // University Admin will assign proper role from admin panel
-    redirect("/student");
-  }
-
-  // Map role to dashboard path
-  const dashboardPath = ROLE_DASHBOARD_PATHS[profile.role as UserRole] || DEFAULT_PATH;
+  // Determine the correct dashboard path
+  let dashboardPath: string;
   
+  if (profile && profile.role) {
+    // User has a profile with a role - use it
+    dashboardPath = ROLE_DASHBOARD_PATHS[profile.role as UserRole] || DEFAULT_PATH;
+  } else {
+    // No profile or no role - check for common patterns or default to student
+    // In production, University Admin would assign roles via admin panel
+    console.log(`No profile/role found for user ${user.id}, redirecting to student dashboard`);
+    dashboardPath = DEFAULT_PATH;
+  }
+  
+  // Log the redirection for debugging
+  console.log(`Redirecting user ${user.id} to ${dashboardPath} (role: ${profile?.role || 'none'})`);
+
   // Redirect to the appropriate dashboard
   redirect(dashboardPath);
 }
