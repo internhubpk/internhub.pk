@@ -62,20 +62,10 @@ CREATE TRIGGER update_universities_updated_at
     EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ============================================================
--- 2. PROFILES TABLE - Add missing columns
+-- 2. PROFILES TABLE - Add missing columns (NO new PK - user_id stays as PK)
 -- ============================================================
-
--- Add id as separate surrogate key (user_id stays as natural key to auth.users)
-ALTER TABLE public.profiles 
-ADD COLUMN IF NOT EXISTS id uuid PRIMARY KEY DEFAULT uuid_generate_v4();
-
--- NOTE: If the above fails because user_id is already the PRIMARY KEY, 
--- we need a different approach. In that case, use this instead:
-
--- If you get error "multiple primary keys", run these commands:
--- ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_pkey;
--- ALTER TABLE public.profiles ADD PRIMARY KEY (id);
--- CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
+-- NOTE: Your schema has user_id as PRIMARY KEY, so we won't add another one.
+-- The app code has been updated to use user_id as the identifier.
 
 -- Add email column (cached from auth.users for easier queries)
 ALTER TABLE public.profiles 
@@ -152,7 +142,7 @@ BEGIN
     
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINer;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger to auto-sync email and generate full_name
 DROP TRIGGER IF EXISTS sync_profile_fields ON public.profiles;
@@ -162,14 +152,7 @@ CREATE TRIGGER sync_profile_fields
     EXECUTE FUNCTION public.sync_profile_email();
 
 -- ============================================================
--- 5. Update RLS policies to use new id column
--- ============================================================
-
--- Note: The existing policies use user_id which is fine for auth checks.
--- The new `id` column is for application-level references.
-
--- ============================================================
--- VERIFICATION QUERIES (run these to verify)
+-- VERIFICATION QUERIES (run these to verify success)
 -- ============================================================
 
 -- Check universities table structure
@@ -178,7 +161,7 @@ CREATE TRIGGER sync_profile_fields
 -- WHERE table_name = 'universities' 
 -- ORDER BY ordinal_position;
 
--- Check profiles table structure
+-- Check profiles table structure  
 -- SELECT column_name, data_type, is_nullable, column_default 
 -- FROM information_schema.columns 
 -- WHERE table_name = 'profiles' 
