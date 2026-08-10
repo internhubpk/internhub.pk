@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/cookies";
+import { cookies } from "next/headers";
 import type { UserRole, ApiResponse } from "@/types";
 
 // Role-based dashboard paths

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile, University, UserRole } from "@/types";
 import { createClient } from "@/utils/supabase/client";
 
@@ -25,11 +26,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [university, setUniversity] = useState<University | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const supabase = createClient();
-
-  const fetchProfile = useCallback(async (userId: string) => {
+  // Lazy initialize Supabase client to avoid build-time issues
+  const [supabase] = useState<SupabaseClient | null>(() => {
     try {
-      const { data: profileData, error: profileError } = await supabase
+      if (typeof window !== "undefined") {
+        return createClient();
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const fetchProfile = useCallback(async (userId: string, client: SupabaseClient | null) => {
+    if (!client) return;
+    try {
+      const { data: profileData, error: profileError } = await client
         .from("profiles")
         .select("*")
         .eq("user_id", userId)
@@ -41,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Fetch university if profile has university_id
       if (profileData?.university_id) {
-        const { data: uniData, error: uniError } = await supabase
+        const { data: uniData, error: uniError } = await client
           .from("universities")
           .select("*")
           .eq("id", profileData.university_id)
@@ -56,9 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       setUniversity(null);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
+    // Skip if supabase client is not available (SSR or build time)
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
+
     // Get initial session
     const initializeAuth = async () => {
       try {
@@ -68,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user.id, supabase);
         }
       } catch (error) {
         console.error("Error initializing auth:", error);
@@ -84,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         if (event === "SIGNED_IN" && session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user.id, supabase);
         } else if (event === "SIGNED_OUT") {
           setUser(null);
           setProfile(null);
@@ -100,13 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, fetchProfile]);
 
   const refreshProfile = useCallback(async () => {
-    if (user) {
-      await fetchProfile(user.id);
+    if (user && supabase) {
+      await fetchProfile(user.id, supabase);
     }
-  }, [user, fetchProfile]);
+  }, [user, supabase, fetchProfile]);
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setProfile(null);
     setUniversity(null);
