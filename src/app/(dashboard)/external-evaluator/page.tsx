@@ -405,7 +405,7 @@ export default function ExternalEvaluatorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Assigned Evaluations</h2>
-              <p className="text-small text-muted-foreground mt-1">Evaluations assigned to you for completion</p>
+              <p className="text-xs text-muted-foreground mt-1">Evaluations assigned to you for completion</p>
             </div>
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -480,7 +480,7 @@ export default function ExternalEvaluatorDashboard() {
               <div className="dashboard-card-header">
                 <div>
                   <h3 className="dashboard-card-title">External Evaluation</h3>
-                  <p className="text-small text-muted-foreground">Evaluating: {selectedEvalStudent}</p>
+                  <p className="text-xs text-muted-foreground">Evaluating: {selectedEvalStudent}</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -671,7 +671,7 @@ export default function ExternalEvaluatorDashboard() {
                         </Avatar>
                         <div>
                           <h4 className="font-semibold">{history.studentName}</h4>
-                          <p className="text-small text-muted-foreground">{history.university}</p>
+                          <p className="text-xs text-muted-foreground">{history.university}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
                             <span className="text-sm">{history.internshipTitle}</span>
@@ -727,7 +727,7 @@ export default function ExternalEvaluatorDashboard() {
                 <MessageSquare className="h-5 w-5 text-chart-2" />
                 Comments Template Library
               </h2>
-              <p className="text-small text-muted-foreground mt-1">Save time with pre-written comment templates</p>
+              <p className="text-xs text-muted-foreground mt-1">Save time with pre-written comment templates</p>
             </div>
             <Button onClick={() => setShowNewTemplateDialog(true)} className="focus-ring">
               <PenTool className="mr-2 h-4 w-4" />
@@ -873,22 +873,5 @@ export default function ExternalEvaluatorDashboard() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function CopyIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
-      <path d="M16 8L8 16L2 10"/>
-    </svg>
-  );
-}
-
-function Zap({ className }: { className?: string }) {
-  return (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14.5 13 22 11 22 17 21 19 16 13 12 2 11 2 9.5 2S7 5 3Z"/>
-    </svg>
   );
 }

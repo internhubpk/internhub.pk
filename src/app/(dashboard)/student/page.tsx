@@ -423,7 +423,7 @@ export default function StudentDashboard() {
                   <CheckCircle2 className="mr-1 h-3 w-3" />
                   Active Internship
                 </span>
-                <span className="text-small text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   Week {mockProgress.currentWeek} of {mockProgress.totalWeeks}
                 </span>
               </div>
@@ -822,7 +822,7 @@ export default function StudentDashboard() {
           >
             <div>
               <h2 className="text-h4 font-semibold">Weekly Activity Logs</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Track your weekly progress and activities during the internship
               </p>
             </div>
@@ -857,11 +857,11 @@ export default function StudentDashboard() {
                         <h3 className="text-h4 font-semibold">Week {log.week_number} Activity Log</h3>
                         <StatusBadge status={log.status} />
                       </div>
-                      <p className="text-small text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {new Date(log.week_start).toLocaleDateString()} —{" "}
                         {new Date(log.week_end).toLocaleDateString()}
                       </p>
-                      <p className="text-small line-clamp-1">
+                      <p className="text-xs line-clamp-1">
                         {log.tasks_completed}
                       </p>
                     </div>
@@ -919,7 +919,7 @@ export default function StudentDashboard() {
           >
             <div>
               <h2 className="text-h4 font-semibold">Reports</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Submit and track your internship reports
               </p>
             </div>
@@ -1044,7 +1044,7 @@ export default function StudentDashboard() {
           >
             <div className="mb-6">
               <h2 className="text-h4 font-semibold">Documents</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Manage your internship-related documents
               </p>
             </div>
@@ -1076,7 +1076,7 @@ export default function StudentDashboard() {
                       <h3 className="text-h4 font-semibold capitalize">
                         {doc.document_type.replace("_", " ")}
                       </h3>
-                      <p className="text-small text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         {doc.description || "No description"}
                       </p>
                       

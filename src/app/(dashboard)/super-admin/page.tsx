@@ -1238,7 +1238,7 @@ export default function SuperAdminDashboard() {
               <motion.div key={stat.label} variants={itemVariants} className="dashboard-card">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-small text-muted-foreground">{stat.label}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
                     <p className="text-h3 font-bold mt-1">{stat.value}</p>
                   </div>
                   <div className={`p-3 rounded-lg bg-muted ${stat.color}`}>
@@ -1375,7 +1375,7 @@ export default function SuperAdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Monthly Recurring Revenue</span>
+                  <span className="text-xs text-muted-foreground">Monthly Recurring Revenue</span>
                   <div className="stat-card-icon">
                     <DollarSign className="h-5 w-5" />
                   </div>
@@ -1390,7 +1390,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Annual Run Rate</span>
+                  <span className="text-xs text-muted-foreground">Annual Run Rate</span>
                   <div className="stat-card-icon bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                     <TrendingUp className="h-5 w-5" />
                   </div>
@@ -1405,7 +1405,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Outstanding Invoices</span>
+                  <span className="text-xs text-muted-foreground">Outstanding Invoices</span>
                   <div className="stat-card-icon bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
                     <Receipt className="h-5 w-5" />
                   </div>
@@ -1419,7 +1419,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Avg Revenue/Uni</span>
+                  <span className="text-xs text-muted-foreground">Avg Revenue/Uni</span>
                   <div className="stat-card-icon bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                     <Building2 className="h-5 w-5" />
                   </div>
@@ -1679,18 +1679,18 @@ export default function SuperAdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Total Licenses</span>
+                  <span className="text-xs text-muted-foreground">Total Licenses</span>
                   <div className="stat-card-icon">
                     <Key className="h-5 w-5" />
                   </div>
                 </div>
                 <p className="dashboard-card-value">{mockLicenses.length}</p>
-                <p className="text-small text-muted-foreground mt-2">Across all types</p>
+                <p className="text-xs text-muted-foreground mt-2">Across all types</p>
               </motion.div>
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Active Licenses</span>
+                  <span className="text-xs text-muted-foreground">Active Licenses</span>
                   <div className="stat-card-icon bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                     <Shield className="h-5 w-5" />
                   </div>
@@ -1704,7 +1704,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Expiring Soon</span>
+                  <span className="text-xs text-muted-foreground">Expiring Soon</span>
                   <div className="stat-card-icon bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
                     <Clock className="h-5 w-5" />
                   </div>
@@ -1718,13 +1718,13 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Revoked/Expired</span>
+                  <span className="text-xs text-muted-foreground">Revoked/Expired</span>
                   <div className="stat-card-icon bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
                     <Ban className="h-5 w-5" />
                   </div>
                 </div>
                 <p className="dashboard-card-value">{mockLicenses.filter(l => l.status === "revoked" || l.status === "expired" || l.status === "suspended").length}</p>
-                <p className="text-small text-muted-foreground mt-2">Need attention</p>
+                <p className="text-xs text-muted-foreground mt-2">Need attention</p>
               </motion.div>
             </div>
 
@@ -1856,7 +1856,7 @@ export default function SuperAdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Total Used</span>
+                  <span className="text-xs text-muted-foreground">Total Used</span>
                   <div className="stat-card-icon bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
                     <Database className="h-5 w-5" />
                   </div>
@@ -1873,18 +1873,18 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Total Allocated</span>
+                  <span className="text-xs text-muted-foreground">Total Allocated</span>
                   <div className="stat-card-icon bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                     <HardDrive className="h-5 w-5" />
                   </div>
                 </div>
                 <p className="dashboard-card-value">{platformStorageOverview.totalAlloclocated} GB</p>
-                <p className="text-small text-muted-foreground mt-2">Across {mockStorageBreakdown.length} universities</p>
+                <p className="text-xs text-muted-foreground mt-2">Across {mockStorageBreakdown.length} universities</p>
               </motion.div>
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Available</span>
+                  <span className="text-xs text-muted-foreground">Available</span>
                   <div className="stat-card-icon bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                     <Layers className="h-5 w-5" />
                   </div>
@@ -2568,7 +2568,7 @@ export default function SuperAdminDashboard() {
               ].map((stat) => (
                 <motion.div key={stat.label} variants={itemVariants} className="stat-card">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-small text-muted-foreground">{stat.label}</span>
+                    <span className="text-xs text-muted-foreground">{stat.label}</span>
                     <div className={`p-2 rounded-lg ${stat.color}`}>
                       <stat.icon className="h-4 w-4" />
                     </div>
@@ -2592,7 +2592,7 @@ export default function SuperAdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Total Universities</span>
+                  <span className="text-xs text-muted-foreground">Total Universities</span>
                   <div className="stat-card-icon">
                     <Building2 className="h-5 w-5" />
                   </div>
@@ -2607,7 +2607,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Total Users</span>
+                  <span className="text-xs text-muted-foreground">Total Users</span>
                   <div className="stat-card-icon bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                     <Users className="h-5 w-5" />
                   </div>
@@ -2622,7 +2622,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Active Internships</span>
+                  <span className="text-xs text-muted-foreground">Active Internships</span>
                   <div className="stat-card-icon bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                     <Briefcase className="h-5 w-5" />
                   </div>
@@ -2637,7 +2637,7 @@ export default function SuperAdminDashboard() {
 
               <motion.div variants={itemVariants} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-small text-muted-foreground">Platform Health</span>
+                  <span className="text-xs text-muted-foreground">Platform Health</span>
                   <div className="stat-card-icon bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
                     <HeartPulse className="h-5 w-5" />
                   </div>

@@ -447,7 +447,7 @@ export default function SiteSupervisorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Assigned Interns</h2>
-              <p className="text-small text-muted-foreground mt-1">{mockInterns.length} interns under your supervision</p>
+              <p className="text-xs text-muted-foreground mt-1">{mockInterns.length} interns under your supervision</p>
             </div>
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -477,7 +477,7 @@ export default function SiteSupervisorDashboard() {
                         <h3 className="text-h4 font-semibold">{intern.name}</h3>
                         <StatusBadge status={intern.status} />
                       </div>
-                      <p className="text-small text-muted-foreground">{intern.company} • {intern.department}</p>
+                      <p className="text-xs text-muted-foreground">{intern.company} • {intern.department}</p>
                       <div className="flex items-center gap-4 mt-2 text-caption text-muted-foreground">
                         <span>Week {intern.currentWeek} of {intern.totalWeeks}</span>
                         <span className="w-1 h-1 rounded-full bg-border" />
@@ -538,7 +538,7 @@ export default function SiteSupervisorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Pending Activity Approvals</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Review weekly logs submitted by your interns
                 <Badge variant="outline" className="ml-2 badge-info">
                   <Calendar className="h-3 w-3 mr-1" />
@@ -758,7 +758,7 @@ export default function SiteSupervisorDashboard() {
                 <Star className="h-5 w-5 text-warning" />
                 Every-3-Weeks Evaluations
               </h2>
-              <p className="text-small text-muted-foreground mt-1">Complete periodic evaluations for each intern</p>
+              <p className="text-xs text-muted-foreground mt-1">Complete periodic evaluations for each intern</p>
             </div>
             <Button
               onClick={() => setShowEvaluationForm(true)}

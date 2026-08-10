@@ -402,7 +402,7 @@ export default function DepartmentCoordinatorDashboard() {
               Headed by {departmentInfo.head}
             </p>
             <div className="flex items-center gap-3 mt-2">
-              <span className="text-small text-muted-foreground">Code: {departmentInfo.code}</span>
+              <span className="text-xs text-muted-foreground">Code: {departmentInfo.code}</span>
               <span className="w-1 h-1 rounded-full bg-border" />
               <span className="badge badge-success">Accredited</span>
             </div>
@@ -501,7 +501,7 @@ export default function DepartmentCoordinatorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Department Students</h2>
-              <p className="text-small text-muted-foreground mt-1">{filteredStudents.length} students found</p>
+              <p className="text-xs text-muted-foreground mt-1">{filteredStudents.length} students found</p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1 min-w-[200px]">
@@ -613,7 +613,7 @@ export default function DepartmentCoordinatorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Department Internships</h2>
-              <p className="text-small text-muted-foreground mt-1">All internships related to your department's programs</p>
+              <p className="text-xs text-muted-foreground mt-1">All internships related to your department's programs</p>
             </div>
             <Button variant="outline" className="focus-ring">
               <Download className="h-4 w-4 mr-2" />
@@ -636,7 +636,7 @@ export default function DepartmentCoordinatorDashboard() {
                       <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
                       <div>
                         <h3 className="text-h4 font-semibold">{internship.title}</h3>
-                        <p className="text-small text-muted-foreground">{internship.company}</p>
+                        <p className="text-xs text-muted-foreground">{internship.company}</p>
                         <span className="badge badge-secondary mt-1">{internship.program}</span>
                       </div>
                     </div>
@@ -721,7 +721,7 @@ export default function DepartmentCoordinatorDashboard() {
                 <FileText className="h-5 w-5 text-primary" />
                 Department Reports
               </h2>
-              <p className="text-small text-muted-foreground mt-1">Generate and download department-level reports</p>
+              <p className="text-xs text-muted-foreground mt-1">Generate and download department-level reports</p>
             </div>
             <Button className="focus-ring">
               <Plus className="h-4 w-4 mr-2" />
@@ -740,7 +740,7 @@ export default function DepartmentCoordinatorDashboard() {
                 <CardContent className="py-6 text-center">
                   <card.icon className="h-10 w-10 mx-auto text-primary mb-3" />
                   <h3 className="text-h4 font-semibold mb-1">{card.title}</h3>
-                  <p className="text-small text-muted-foreground mb-4">{card.desc}</p>
+                  <p className="text-xs text-muted-foreground mb-4">{card.desc}</p>
                   <Button size="sm" variant="outline" onClick={() => handleExportReport(card.format as "pdf" | "excel")} className="focus-ring">
                     Generate {card.format.toUpperCase()}
                   </Button>
@@ -823,7 +823,7 @@ export default function DepartmentCoordinatorDashboard() {
                         </Avatar>
                         <div className="min-w-0">
                           <h4 className="font-semibold truncate">{faculty.name}</h4>
-                          <p className="text-small text-muted-foreground">{faculty.specialization}</p>
+                          <p className="text-xs text-muted-foreground">{faculty.specialization}</p>
                         </div>
                       </div>
 
@@ -955,7 +955,7 @@ export default function DepartmentCoordinatorDashboard() {
                 <MessageSquare className="h-5 w-5 text-chart-2" />
                 Coordination Memos & Notes
               </h2>
-              <p className="text-small text-muted-foreground mt-1">Internal communications and announcements</p>
+              <p className="text-xs text-muted-foreground mt-1">Internal communications and announcements</p>
             </div>
             <Button onClick={() => setShowNewMemoDialog(true)} className="focus-ring">
               <PenTool className="mr-2 h-4 w-4" />

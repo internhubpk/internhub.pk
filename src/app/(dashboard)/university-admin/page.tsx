@@ -2342,7 +2342,7 @@ export default function UniversityAdminDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-small text-muted-foreground">Actions Today</p>
+                    <p className="text-xs text-muted-foreground">Actions Today</p>
                     <p className="text-h3 text-gradient-brand">24</p>
                   </div>
                   <div className="stat-card-icon bg-emerald-100 text-emerald-600">
@@ -2355,7 +2355,7 @@ export default function UniversityAdminDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-small text-muted-foreground">Actions This Week</p>
+                    <p className="text-xs text-muted-foreground">Actions This Week</p>
                     <p className="text-h3 text-gradient-brand">156</p>
                   </div>
                   <div className="stat-card-icon bg-blue-100 text-blue-600">
@@ -2368,7 +2368,7 @@ export default function UniversityAdminDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-small text-muted-foreground">Most Active Admin</p>
+                    <p className="text-xs text-muted-foreground">Most Active Admin</p>
                     <p className="text-sm font-semibold text-foreground">John Admin</p>
                   </div>
                   <div className="stat-card-icon bg-purple-100 text-purple-600">
@@ -2381,7 +2381,7 @@ export default function UniversityAdminDashboard() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-small text-muted-foreground">Critical Actions</p>
+                    <p className="text-xs text-muted-foreground">Critical Actions</p>
                     <p className="text-h3 text-gradient-brand text-red-500">3</p>
                   </div>
                   <div className="stat-card-icon bg-red-100 text-red-600">

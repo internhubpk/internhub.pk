@@ -533,7 +533,7 @@ export default function FacultySupervisorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Assigned Students</h2>
-              <p className="text-small text-muted-foreground mt-1">{mockStudents.length} students under your supervision</p>
+              <p className="text-xs text-muted-foreground mt-1">{mockStudents.length} students under your supervision</p>
             </div>
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -563,7 +563,7 @@ export default function FacultySupervisorDashboard() {
                       <h3 className="text-h4 font-semibold truncate">{student.name}</h3>
                       <StatusBadge status={student.status} />
                     </div>
-                    <p className="text-small text-muted-foreground truncate">{student.internshipTitle}</p>
+                    <p className="text-xs text-muted-foreground truncate">{student.internshipTitle}</p>
                     <p className="text-caption text-muted-foreground">{student.company}</p>
                   </div>
                 </div>
@@ -642,7 +642,7 @@ export default function FacultySupervisorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Pending Reviews</h2>
-              <p className="text-small text-muted-foreground mt-1">{mockReports.filter(r => r.status === "pending_review").length} reports awaiting your review</p>
+              <p className="text-xs text-muted-foreground mt-1">{mockReports.filter(r => r.status === "pending_review").length} reports awaiting your review</p>
             </div>
             <div className="flex items-center gap-2">
               {selectedReports.length > 0 && (
@@ -691,7 +691,7 @@ export default function FacultySupervisorDashboard() {
                             <StatusBadge status={report.type} />
                             <StatusBadge status={report.priority} />
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-small text-muted-foreground">
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                             <span>{report.studentName}</span>
                             <span>•</span>
                             <span>Submitted {new Date(report.submittedAt).toLocaleDateString()}</span>
@@ -727,7 +727,7 @@ export default function FacultySupervisorDashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-h4 font-semibold">Evaluations</h2>
-              <p className="text-small text-muted-foreground mt-1">Track and complete student evaluations</p>
+              <p className="text-xs text-muted-foreground mt-1">Track and complete student evaluations</p>
             </div>
             <Button onClick={() => setShowEvaluationForm(true)} className="focus-ring">
               <Plus className="mr-2 h-4 w-4" />

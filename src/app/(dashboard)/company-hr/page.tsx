@@ -532,7 +532,7 @@ export default function CompanyHRDashboard() {
                 <Building2 className="h-4 w-4" />
                 {mockCompany.industry}
               </p>
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-small text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
                   San Francisco, CA
@@ -768,7 +768,7 @@ export default function CompanyHRDashboard() {
                     <div className="flex-1 pb-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <AuditBadge type={entry.type} />
-                        <span className="text-small font-medium">{entry.action}</span>
+                        <span className="text-xs font-medium">{entry.action}</span>
                       </div>
                       <p className="text-caption text-muted-foreground mt-0.5">{entry.detail}</p>
                       <p className="text-caption text-muted-foreground/70">{entry.timestamp} • {entry.user}</p>
@@ -815,7 +815,7 @@ export default function CompanyHRDashboard() {
           >
             <div>
               <h2 className="text-h4 font-semibold">Posted Internships</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Manage your internship postings
               </p>
             </div>
@@ -854,7 +854,7 @@ export default function CompanyHRDashboard() {
                         )}
                       </div>
                       
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-small text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5" />
                           {internship.location}
@@ -875,7 +875,7 @@ export default function CompanyHRDashboard() {
                         )}
                       </div>
 
-                      <p className="text-small line-clamp-1 mt-1">{internship.description}</p>
+                      <p className="text-xs line-clamp-1 mt-1">{internship.description}</p>
                     </div>
                   </div>
 
@@ -913,7 +913,7 @@ export default function CompanyHRDashboard() {
           >
             <div>
               <h2 className="text-h4 font-semibold">Applications</h2>
-              <p className="text-small text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Review and manage incoming applications
               </p>
             </div>
@@ -1085,7 +1085,7 @@ export default function CompanyHRDashboard() {
                           </h4>
                           <StatusBadge status={supervisor.is_active ? "active" : "draft"} />
                         </div>
-                        <p className="text-small text-muted-foreground">{supervisor.title}</p>
+                        <p className="text-xs text-muted-foreground">{supervisor.title}</p>
                         <p className="text-caption text-muted-foreground">{supervisor.specialization}</p>
                         
                         <div className="flex items-center gap-3 mt-2 text-caption text-muted-foreground">
@@ -1146,7 +1146,7 @@ export default function CompanyHRDashboard() {
                           
                           <div>
                             <h4 className="font-medium">{evaluation.evaluation_period}</h4>
-                            <p className="text-small text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {evaluation.student_name}
                             </p>
                             {evaluation.status === "completed" && (
@@ -1215,7 +1215,7 @@ export default function CompanyHRDashboard() {
                   </div>
                   <div>
                     <h4 className="text-h4 font-semibold">Issue Completion Certificates</h4>
-                    <p className="text-small text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Generate and issue certificates for interns who have successfully completed their program.
                     </p>
                   </div>
@@ -1274,11 +1274,11 @@ export default function CompanyHRDashboard() {
                         <Award className="h-8 w-8 text-warning" />
                         <div>
                           <p className="font-medium">{cert.name}</p>
-                          <p className="text-small text-muted-foreground">{cert.position}</p>
+                          <p className="text-xs text-muted-foreground">{cert.position}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-small text-muted-foreground">{cert.date}</span>
+                        <span className="text-xs text-muted-foreground">{cert.date}</span>
                         <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
                           <Download className="h-4 w-4" />
                         </Button>

@@ -14,7 +14,9 @@ import { z } from "zod";
 // ============ ZOD VALIDATION SCHEMAS ============
 
 const UpdateSettingsSchema = z.object({
-  settings: z.record(z.string(), z.any()).min(1, "At least one setting is required"),
+  settings: z.record(z.string(), z.any()).refine((val) => Object.keys(val).length > 0, {
+    message: "At least one setting is required",
+  }),
 });
 
 const SettingsFilterSchema = z.object({
