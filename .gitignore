@@ -58,7 +58,7 @@ credentials*
 secrets*
 .env.production
 .env.local
-supabase*
+/supabase/
 # Upload directory (user files)
 upload/
 # Tool results (auto-generated)
