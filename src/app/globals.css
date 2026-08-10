@@ -4,7 +4,7 @@
 /* ===================================================
    INTERNHUB - Enterprise SaaS Design System
    Complete theme configuration in ONE FILE
-   Change brand identity from this single location
+   Multi-tenant University Internship Management Platform
    =================================================== */
 
 @custom-variant dark (&:is(.dark *));
@@ -44,81 +44,82 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   
-  /* Sidebar Colors */
-  --color-sidebar: var(--sidebar);
+  /* Sidebar Colors - Enterprise Dark Sidebar */
+  --color-sidebar-background: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-primary: var(--sidebar-primary, var(--primary));
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground, var(--primary-foreground));
+  --color-sidebar-ring: var(--sidebar-ring, var(--ring));
   
-  /* Chart Colors */
+  /* Chart Colors - Data Visualization */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   
-  /* Border Radius Scale */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  /* Border Radius Scale - Enterprise Design System */
+  --radius-sm: 6px;    /* Inputs, small elements */
+  --radius-md: 8px;    /* Cards, buttons */
+  --radius-lg: 12px;   /* Modals, large cards */
+  --radius-xl: 16px;   /* Hero sections */
+  --radius-2xl: 20px;  /* Special containers */
 }
 
 /* ===================================================
    LIGHT THEME - Professional Enterprise Palette
-   Primary: Deep Indigo / Royal Blue (#3b5998 → #2563eb)
-   Secondary: Slate / Cool Gray
-   Accent: Professional Violet (#6366f1)
+   Primary: Professional Blue (#2563eb)
+   Secondary: Sophisticated Purple (#7c3aed)
+   Accent: Success Green (#059669)
    =================================================== */
 
 :root {
   /* Base Dimensions */
-  --radius: 0.625rem;
+  --radius: 8px;
   
-  /* Background & Foreground */
-  --background: #f8fafc;
+  /* Background & Foreground - Clean White Background */
+  --background: #ffffff;
   --foreground: #0f172a;
   
-  /* Card & Popover */
+  /* Card & Popover - Elevated Surfaces */
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
   
   /* 
-   * PRIMARY COLOR - Deep Indigo / Royal Blue
+   * PRIMARY COLOR - Professional Blue (#2563eb)
    * Main brand color for CTAs, links, active states
+   * High contrast for enterprise readability
    */
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   
   /*
-   * SECONDARY COLOR - Slate / Cool Gray
-   * For secondary actions, subtle backgrounds
+   * SECONDARY COLOR - Sophisticated Purple (#7c3aed)
+   * For secondary actions, gradient endpoints, special highlights
    */
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
+  --secondary: #7c3aed;
+  --secondary-foreground: #ffffff;
   
-  /* Muted - For less prominent elements */
+  /* Muted - Subtle backgrounds for cards/panels */
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
   
   /*
-   * ACCENT COLOR - Professional Violet/Indigo
-   * For highlights, special states, gradient endpoints
+   * ACCENT COLOR - Success Green (#059669)
+   * For positive actions, success states, confirmations
    */
-  --accent: #eef2ff;
-  --accent-foreground: #3730a3;
+  --accent: #059669;
+  --accent-foreground: #ffffff;
   
-  /* Destructive - Error/danger actions */
+  /* Destructive - Error/danger actions (Red) */
   --destructive: #dc2626;
   
-  /* Borders & Inputs */
+  /* Borders & Inputs - Subtle definition */
   --border: #e2e8f0;
   --input: #e2e8f0;
   --ring: #2563eb;
@@ -130,47 +131,56 @@
    * Danger: Red (for errors, rejected, critical)
    * Info: Blue (for information, neutral)
    */
-  --success: #10b981;
+  --success: #059669;
   --success-foreground: #ffffff;
-  --warning: #f59e0b;
+  --warning: #d97706;
   --warning-foreground: #ffffff;
-  --danger: #ef4444;
+  --danger: #dc2626;
   --danger-foreground: #ffffff;
-  --info: #3b82f6;
+  --info: #2563eb;
   --info-foreground: #ffffff;
   
-  /* Chart Colors - Data Visualization */
-  --chart-1: #2563eb;  /* Blue - Primary data */
-  --chart-2: #7c3aed;  /* Purple - Secondary data */
+  /* Chart Colors - Data Visualization Palette */
+  --chart-1: #2563eb;  /* Blue - Primary data series */
+  --chart-2: #7c3aed;  /* Purple - Secondary data series */
   --chart-3: #059669;  /* Green - Positive/Success data */
   --chart-4: #d97706;  /* Orange - Warning data */
   --chart-5: #dc2626;  /* Red - Critical/Error data */
   
-  /* Sidebar - Professional Dark Slate */
-  --sidebar: #1e293b;
-  --sidebar-foreground: #f8fafc;
+  /* 
+   * SIDEBAR - Enterprise Dark Navigation
+   * Deep slate for professional appearance
+   */
+  --sidebar-background: #0f172a;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-border: #1e293b;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #e2e8f0;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #334155;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #334155;
   --sidebar-ring: #3b82f6;
   
-  /* Spacing Scale (optional reference) */
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --space-2xl: 3rem;
+  /* Spacing Scale - 4px Base Unit */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
   
-  /* Shadow Scale */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  /* Shadow Scale - Enterprise Elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
   
-  /* Transition Timing */
+  /* Transition Timing - Smooth Interactions */
   --transition-fast: 150ms ease-in-out;
   --transition-normal: 200ms ease-in-out;
   --transition-slow: 300ms ease-in-out;
@@ -178,45 +188,46 @@
 
 /* ===================================================
    DARK THEME - Professional Dark Mode
-   Same semantic structure, adjusted luminance
+   Same semantic structure, optimized for dark surfaces
+   Ensures proper contrast ratios throughout
    =================================================== */
 
 .dark {
-  /* Background & Foreground - Inverted */
+  /* Background & Foreground - Deep Slate */
   --background: #0f172a;
   --foreground: #f8fafc;
   
-  /* Card & Popover - Elevated surfaces */
+  /* Card & Popover - Elevated dark surfaces */
   --card: #1e293b;
   --card-foreground: #f8fafc;
   --popover: #1e293b;
   --popover-foreground: #f8fafc;
   
-  /* Primary - Lighter blue for dark backgrounds */
+  /* Primary - Brighter blue for dark backgrounds */
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
   
-  /* Secondary - Subtle elevation */
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
+  /* Secondary - Lighter purple for visibility */
+  --secondary: #8b5cf6;
+  --secondary-foreground: #ffffff;
   
   /* Muted - Reduced contrast for less prominence */
   --muted: #1e293b;
   --muted-foreground: #94a3b8;
   
-  /* Accent - Deeper violet for dark mode */
-  --accent: #312e81;
-  --accent-foreground: #c7d2fe;
+  /* Accent - Vibrant green for dark mode */
+  --accent: #10b981;
+  --accent-foreground: #ffffff;
   
   /* Destructive - Brighter red on dark */
   --destructive: #ef4444;
   
-  /* Borders & Inputs - Subtle visibility */
+  /* Borders & Inputs - Subtle but visible */
   --border: #334155;
   --input: #334155;
   --ring: #3b82f6;
   
-  /* Semantic Status Colors - Dark Mode */
+  /* Semantic Status Colors - Dark Mode Optimized */
   --success: #34d399;
   --success-foreground: #022c22;
   --warning: #fbbf24;
@@ -226,27 +237,34 @@
   --info: #60a5fa;
   --info-foreground: #172554;
   
-  /* Chart Colors - Adjusted for dark background */
+  /* Chart Colors - Adjusted for dark background contrast */
   --chart-1: #3b82f6;
-  --chart-2: #8b5cf6;
+  --chart-2: #a78bfa;
   --chart-3: #34d399;
   --chart-4: #fbbf24;
   --chart-5: #f87171;
   
-  /* Sidebar - Even darker for depth */
-  --sidebar: #0c1222;
-  --sidebar-foreground: #f8fafc;
+  /* Sidebar - Deepest level for visual hierarchy */
+  --sidebar-background: #0a0f1a;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-border: #1e293b;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #e2e8f0;
   --sidebar-primary: #60a5fa;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e293b;
   --sidebar-ring: #60a5fa;
+  
+  /* Shadow Scale - Dark mode with more opacity */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
 }
 
 /* ===================================================
    TYPOGRAPHY SYSTEM
-   Using Inter font family with consistent hierarchy
+   Inter font family with clear hierarchy
+   Optimized for readability at all sizes
    =================================================== */
 
 @layer base {
@@ -254,6 +272,7 @@
     @apply border-border outline-ring/50;
   }
   
+  /* Smooth Scrolling & Font Rendering */
   html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
@@ -261,11 +280,12 @@
     text-rendering: optimizeLegibility;
   }
   
+  /* Base Body Styles */
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
-    font-size: 14px; /* Base body size */
-    line-height: 1.6;
+    font-size: 1rem;      /* 16px base size */
+    line-height: 1.6;     /* Optimal readability */
     font-weight: 400;
     letter-spacing: -0.01em;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "ss03" 1;
@@ -279,31 +299,49 @@
     letter-spacing: -0.03em;
   }
   
-  /* H1 - Page titles (36-48px) */
+  /* H1 - Page titles (2.5rem / 40px) */
   h1, .text-h1 {
-    font-size: clamp(2rem, 4vw + 0.5rem, 3rem);
+    font-size: 2.5rem;
     font-weight: 700;
     line-height: 1.2;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
   }
   
-  /* H2 - Section headers (28-36px) */
+  @media (max-width: 768px) {
+    h1, .text-h1 {
+      font-size: clamp(1.75rem, 4vw + 0.5rem, 2.5rem);
+    }
+  }
+  
+  /* H2 - Section headers (2rem / 32px) */
   h2, .text-h2 {
-    font-size: clamp(1.5rem, 3vw + 0.5rem, 2.25rem);
+    font-size: 2rem;
     font-weight: 600;
     line-height: 1.25;
     letter-spacing: -0.02em;
   }
   
-  /* H3 - Card titles, subsections (22-28px) */
-  h3, .text-h3 {
-    font-size: clamp(1.25rem, 2vw + 0.25rem, 1.75rem);
-    font-weight: 600;
-    line-height: 1.3;
-    letter-spacing: -0.015em;
+  @media (max-width: 768px) {
+    h2, .text-h2 {
+      font-size: clamp(1.5rem, 3vw + 0.5rem, 2rem);
+    }
   }
   
-  /* H4 - Small headers, labels (18-22px) */
+  /* H3 - Card titles, subsections (1.5rem / 24px) */
+  h3, .text-h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  
+  @media (max-width: 768px) {
+    h3, .text-h3 {
+      font-size: clamp(1.25rem, 2vw + 0.25rem, 1.5rem);
+    }
+  }
+  
+  /* H4 - Small headers, labels (1.125rem / 18px) */
   h4, .text-h4 {
     font-size: 1.125rem;
     font-weight: 600;
@@ -311,29 +349,29 @@
     letter-spacing: -0.01em;
   }
   
-  /* Body Text - Default content (14-16px) */
+  /* Body Text - Default content (1rem / 16px) */
   .text-body {
-    font-size: 0.9375rem; /* 15px */
+    font-size: 1rem;
     font-weight: 400;
     line-height: 1.6;
   }
   
   .text-body-lg {
-    font-size: 1rem; /* 16px */
+    font-size: 1.125rem;
     font-weight: 400;
     line-height: 1.65;
   }
   
-  /* Small Text - Secondary info, captions (13-14px) */
-  .text-xs {
-    font-size: 0.8125rem; /* 13px */
+  /* Small Text - Secondary info, captions (0.875rem / 14px) */
+  .text-small {
+    font-size: 0.875rem;
     font-weight: 400;
     line-height: 1.5;
   }
   
-  /* Caption - Metadata, timestamps (12px) */
+  /* Caption - Metadata, timestamps (0.75rem / 12px) */
   .text-caption {
-    font-size: 0.75rem; /* 12px */
+    font-size: 0.75rem;
     font-weight: 500;
     line-height: 1.4;
     letter-spacing: 0.02em;
@@ -342,21 +380,186 @@
   
   /* Label - Form labels, table headers */
   .text-label {
-    font-size: 0.8125rem; /* 13px */
+    font-size: 0.875rem;
     font-weight: 500;
     letter-spacing: 0.01em;
   }
   
-  /* Font Weight Classes */
+  /* Font Weight Utilities */
   .font-normal { font-weight: 400; }
   .font-medium { font-weight: 500; }
   .font-semibold { font-weight: 600; }
   .font-bold { font-weight: 700; }
+  
+  /* Focus States for Accessibility */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  
+  /* Interactive Elements - Consistent Cursor & Transitions */
+  button,
+  [role="button"],
+  a:not([href^="http"]),
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  [type="button"]:not(.no-cursor),
+  [type="submit"]:not(.no-cursor),
+  select,
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  [tabindex]:not([tabindex="-1"]) {
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+  }
+  
+  /* Remove default button styles while keeping cursor */
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+  }
+}
+
+/* ===================================================
+   ANIMATION UTILITIES
+   Smooth entrance animations for UI elements
+   Respects prefers-reduced-motion
+   =================================================== */
+
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+  }
+  to { 
+    opacity: 1; 
+  }
+}
+
+@keyframes fadeOut {
+  from { 
+    opacity: 1; 
+  }
+  to { 
+    opacity: 0; 
+  }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes slideDown {
+  from { 
+    opacity: 0; 
+    transform: translateY(-10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes slideLeft {
+  from { 
+    opacity: 0; 
+    transform: translateX(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0); 
+  }
+}
+
+@keyframes slideRight {
+  from { 
+    opacity: 0; 
+    transform: translateX(-10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0); 
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.95); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+}
+
+@keyframes scaleOut {
+  from { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+  to { 
+    opacity: 0; 
+    transform: scale(0.95); 
+  }
+}
+
+/* Animation Utility Classes */
+.animate-fadeIn { 
+  animation: fadeIn 0.3s ease-out forwards; 
+}
+.animate-fadeOut { 
+  animation: fadeOut 0.3s ease-out forwards; 
+}
+.animate-slideUp { 
+  animation: slideUp 0.4s ease-out forwards; 
+}
+.animate-slideDown { 
+  animation: slideDown 0.4s ease-out forwards; 
+}
+.animate-slideLeft { 
+  animation: slideLeft 0.4s ease-out forwards; 
+}
+.animate-slideRight { 
+  animation: slideRight 0.4s ease-out forwards; 
+}
+.animate-scaleIn { 
+  animation: scaleIn 0.2s ease-out forwards; 
+}
+.animate-scaleOut { 
+  animation: scaleOut 0.2s ease-out forwards; 
+}
+
+/* Animation Delays for Staggered Effects */
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+.animation-delay-500 { animation-delay: 500ms; }
+
+/* Animation Fill Modes */
+.animate-fill-forwards {
+  animation-fill-mode: forwards;
+}
+
+.animate-fill-backwards {
+  animation-fill-mode: backwards;
 }
 
 /* ===================================================
    CUSTOM SCROLLBAR STYLES
-   Thin, professional scrollbars
+   Thin, professional scrollbars for webkit browsers
    =================================================== */
 
 @layer utilities {
@@ -403,14 +606,22 @@
    =================================================== */
 
 @layer utilities {
-  /* Gradient text - Brand gradient effect */
+  /* Gradient text - Brand gradient effect (Blue to Purple) */
   .text-gradient {
     @apply bg-gradient-to-r from-[#2563eb] to-[#7c3aed] bg-clip-text text-transparent;
   }
   
   /* Gradient text variant using CSS variables */
   .text-gradient-brand {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--chart-2) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Gradient accent variant (Primary to Accent/Green) */
+  .text-gradient-accent {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -471,12 +682,6 @@
     @apply bg-slate-800/50 text-slate-300 border-slate-700/50;
   }
 
-  /* Animation delays for staggered animations */
-  .animation-delay-100 { animation-delay: 100ms; }
-  .animation-delay-200 { animation-delay: 200ms; }
-  .animation-delay-300 { animation-delay: 300ms; }
-  .animation-delay-500 { animation-delay: 500ms; }
-
   /* Truncate with ellipsis after specific lines */
   .line-clamp-2 {
     display: -webkit-box;
@@ -501,13 +706,37 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
   
-  /* Professional shadow utilities */
+  /* Professional shadow utilities using CSS variables */
   .shadow-soft {
-    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .shadow-elevated {
+    box-shadow: var(--shadow-md);
+  }
+  
+  .shadow-prominent {
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .shadow-dramatic {
+    box-shadow: var(--shadow-xl);
   }
   
   .dark .shadow-soft {
-    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+  
+  .dark .shadow-elevated {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  }
+  
+  .dark .shadow-prominent {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.35);
+  }
+  
+  .dark .shadow-dramatic {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
   }
   
   /* Border utilities with CSS variable support */
@@ -522,6 +751,19 @@
       linear-gradient(to bottom, var(--border) 1px, transparent 1px);
     background-size: 24px 24px;
   }
+  
+  /* Transition utilities */
+  .transition-fast {
+    transition: all var(--transition-fast);
+  }
+  
+  .transition-normal {
+    transition: all var(--transition-normal);
+  }
+  
+  .transition-slow {
+    transition: all var(--transition-slow);
+  }
 }
 
 /* ===================================================
@@ -530,11 +772,16 @@
    =================================================== */
 
 @layer base {
-  /* Smooth color scheme transitions */
-  * {
-    transition-property: background-color, border-color, fill, stroke, opacity, box-shadow, transform;
-    transition-duration: 150ms;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Smooth color scheme transitions for theme switching */
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: background-color 300ms ease-in-out,
+                border-color 300ms ease-in-out,
+                color 150ms ease-in-out,
+                fill 150ms ease-in-out,
+                stroke 150ms ease-in-out,
+                box-shadow 300ms ease-in-out !important;
   }
 
   /* Disable transitions for users who prefer reduced motion */
@@ -546,6 +793,20 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+    
+    /* Disable animation classes */
+    .animate-fadeIn,
+    .animate-fadeOut,
+    .animate-slideUp,
+    .animate-slideDown,
+    .animate-slideLeft,
+    .animate-slideRight,
+    .animate-scaleIn,
+    .animate-scaleOut {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
     }
   }
 
@@ -627,7 +888,7 @@
 
 /* ===================================================
    SIDEBAR SPECIFIC STYLES
-   Active state indicator with gradient
+   Active state indicator with gradient accent
    =================================================== */
 
 .sidebar-nav-item {
@@ -643,7 +904,7 @@
   transform: translateY(-50%);
   width: 3px;
   height: 0;
-  background: linear-gradient(to bottom, var(--primary), var(--chart-2));
+  background: linear-gradient(to bottom, var(--primary), var(--secondary));
   border-radius: 0 2px 2px 0;
   transition: height var(--transition-fast);
 }
@@ -700,6 +961,20 @@
 
 .pulse-soft {
   animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Spin animation for loading indicators */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
 
 /* ===================================================
@@ -784,7 +1059,7 @@
 }
 
 .form-label {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--foreground);
@@ -792,12 +1067,13 @@
 
 .form-input {
   width: 100%;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background-color: var(--background);
   padding: 0.5rem 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.6;
+  transition: all var(--transition-normal);
 }
 .form-input::placeholder {
   color: var(--muted-foreground);
@@ -834,7 +1110,7 @@
 }
 
 .badge-secondary {
-  @apply bg-secondary text-secondary-foreground;
+  @apply bg-secondary/10 text-secondary;
 }
 
 .badge-success {
@@ -863,12 +1139,16 @@
    =================================================== */
 
 .dashboard-card {
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background-color: var(--card);
   padding: 1.5rem;
-  box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.08), 0 4px 16px -4px rgb(0 0 0 / 0.04);
-  transition: all 200ms ease-in-out;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .dashboard-card-header {
@@ -887,35 +1167,39 @@
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--chart-2) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .dashboard-card-description {
-  @apply text-xs text-muted-foreground mt-2;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin-top: 0.5rem;
 }
 
 /* Stat card specific */
 .stat-card {
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background-color: var(--card);
   padding: 1.5rem;
-  box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.08), 0 4px 16px -4px rgb(0 0 0 / 0.04);
-  transition: all 200ms ease-in-out;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 .stat-card-icon {
   width: 3rem;
   height: 3rem;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   background-color: rgb(37 99 235 / 0.1);
   display: flex;
   align-items: center;
@@ -937,16 +1221,22 @@
 }
 
 .page-title {
-  font-size: clamp(2rem, 4vw + 0.5rem, 3rem);
+  font-size: 2.5rem;
   font-weight: 700;
   line-height: 1.2;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   color: var(--foreground);
   margin-bottom: 0.5rem;
 }
 
+@media (max-width: 768px) {
+  .page-title {
+    font-size: clamp(1.75rem, 4vw + 0.5rem, 2.5rem);
+  }
+}
+
 .page-description {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 400;
   line-height: 1.6;
   color: var(--muted-foreground);
@@ -972,4 +1262,147 @@
 
 .content-grid-cols-4 {
   @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-4;
+}
+
+/* ===================================================
+   SPACING UTILITIES
+   Quick access to design system spacing tokens
+   =================================================== */
+
+@layer utilities {
+  .gap-1 { gap: var(--space-1); }
+  .gap-2 { gap: var(--space-2); }
+  .gap-3 { gap: var(--space-3); }
+  .gap-4 { gap: var(--space-4); }
+  .gap-5 { gap: var(--space-5); }
+  .gap-6 { gap: var(--space-6); }
+  .gap-8 { gap: var(--space-8); }
+  .gap-10 { gap: var(--space-10); }
+  .gap-12 { gap: var(--space-12); }
+  
+  .p-1 { padding: var(--space-1); }
+  .p-2 { padding: var(--space-2); }
+  .p-3 { padding: var(--space-3); }
+  .p-4 { padding: var(--space-4); }
+  .p-5 { padding: var(--space-5); }
+  .p-6 { padding: var(--space-6); }
+  .p-8 { padding: var(--space-8); }
+  
+  .m-1 { margin: var(--space-1); }
+  .m-2 { margin: var(--space-2); }
+  .m-3 { margin: var(--space-3); }
+  .m-4 { margin: var(--space-4); }
+  .m-6 { margin: var(--space-6); }
+  .m-8 { margin: var(--space-8); }
+}
+
+/* ===================================================
+   BORDER RADIUS UTILITIES
+   Enterprise border radius scale
+   =================================================== */
+
+@layer utilities {
+  .rounded-enterprise-sm {
+    border-radius: var(--radius-sm);
+  }
+  
+  .rounded-enterprise-md {
+    border-radius: var(--radius-md);
+  }
+  
+  .rounded-enterprise-lg {
+    border-radius: var(--radius-lg);
+  }
+  
+  .rounded-enterprise-xl {
+    border-radius: var(--radius-xl);
+  }
+}
+
+/* ===================================================
+   VISIBILITY UTILITIES
+   Screen reader only and visibility helpers
+   =================================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sr-only-focusable:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* Visually hidden but accessible */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===================================================
+   INTERACTIVE STATE HELPERS
+   Hover, active, disabled states
+   =================================================== */
+
+@layer utilities {
+  /* Interactive base class */
+  .interactive {
+    cursor: pointer;
+    transition: all var(--transition-normal);
+  }
+  
+  .interactive:hover {
+    transform: translateY(-1px);
+  }
+  
+  .interactive:active {
+    transform: translateY(0);
+  }
+  
+  /* Disabled state */
+  .disabled,
+  [disabled] {
+    pointer-events: none;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Link styling */
+  .link {
+    color: var(--primary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  
+  .link:hover {
+    color: var(--secondary);
+    text-decoration: underline;
+  }
+  
+  .link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }

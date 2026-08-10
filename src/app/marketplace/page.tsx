@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,12 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import Skeleton from "@/components/ui/skeleton";
 import { InternshipCard, InternshipCardSkeleton } from "@/components/marketplace/internship-card";
-import { SearchFilters, type MarketplaceFilters, QuickFilters } from "@/components/marketplace/search-filters";
 import type { Internship } from "@/types";
 import {
-  Search as SearchIcon,
+  Search,
   MapPin,
   Briefcase,
   DollarSign,
@@ -36,169 +45,206 @@ import {
   Laptop,
   Calendar,
   Users,
+  Heart,
+  Grid3X3,
+  List,
+  SlidersHorizontal,
+  RotateCcw,
+  Zap,
+  ChevronLeft,
+  ChevronRight,
+  Command,
 } from "lucide-react";
 
-// Mock internships data
+// ============ MOCK DATA ============
+
 const mockInternships: (Internship & {
   company_name: string;
   company_logo_url?: string;
   is_saved?: boolean;
+  applicant_count?: number;
+  rating?: number;
+  review_count?: number;
 })[] = [
   {
     id: "1",
     company_id: "c1",
     university_id: "u1",
-    title: "Software Engineering Intern",
-    description: "Join our dynamic engineering team to build cutting-edge software solutions. You'll work on real projects that impact millions of users worldwide. Perfect opportunity to learn modern development practices and contribute to meaningful products.",
+    title: "Frontend Developer Intern",
+    description: "Join our dynamic frontend team to build cutting-edge web experiences using React and Next.js. You'll work on real projects that impact thousands of users. Perfect opportunity to learn modern development practices and contribute to meaningful products that shape the future of education technology.",
     department_ids: ["d1"],
     program_ids: ["p1", "p2"],
-    requirements: "Currently pursuing a degree in Computer Science or related field. Proficiency in at least one programming language (Python, Java, JavaScript). Understanding of data structures and algorithms.",
-    responsibilities: "Develop and maintain software applications, participate in code reviews, collaborate with cross-functional teams, write unit and integration tests, attend daily standups and sprint planning.",
-    skills: ["Python", "JavaScript", "React", "SQL", "Git"],
-    location: "San Francisco, CA",
+    requirements: "Currently pursuing a degree in Computer Science or related field. Proficiency in HTML, CSS, JavaScript. Familiarity with React or similar frameworks. Understanding of responsive design principles.",
+    responsibilities: "Develop and maintain frontend applications, implement pixel-perfect UI designs, optimize application performance, participate in code reviews, collaborate with designers and backend developers.",
+    skills: ["React", "TypeScript", "Tailwind CSS", "Next.js", "Git"],
+    location: "Islamabad",
     is_remote: false,
     is_paid: true,
-    stipend: 5000,
-    duration_weeks: 12,
+    stipend: 25000,
+    duration_weeks: 6,
     start_date: "2024-06-01",
-    end_date: "2024-08-24",
+    end_date: "2024-07-15",
     vacancies: 3,
     status: "published",
     created_by: "hr1",
-    created_at: "2024-01-15T10:00:00Z",
-    updated_at: "2024-01-15T10:00:00Z",
-    company_name: "TechCorp Inc.",
+    created_at: "2024-05-10T10:00:00Z",
+    updated_at: "2024-05-10T10:00:00Z",
+    company_name: "TechCorp Pakistan",
+    company_logo_url: undefined,
     is_saved: false,
+    applicant_count: 45,
+    rating: 4.5,
+    review_count: 12,
   },
   {
     id: "2",
     company_id: "c2",
     university_id: "u1",
-    title: "Data Science Intern",
-    description: "Work with our data team to analyze large datasets, build machine learning models, and derive actionable insights. Great opportunity for students passionate about AI/ML and data analytics.",
+    title: "Backend Engineer Intern",
+    description: "Work with our backend team to design and implement robust APIs and microservices. Great opportunity for students passionate about server-side development, databases, and cloud infrastructure.",
     department_ids: ["d1", "d2"],
     program_ids: ["p3"],
-    requirements: "Background in Statistics, Mathematics, or Computer Science. Experience with Python, pandas, scikit-learn. Knowledge of SQL and data visualization tools.",
-    responsibilities: "Clean and preprocess datasets, develop ML models, create visualizations and dashboards, present findings to stakeholders, document methodologies and results.",
-    skills: ["Python", "Machine Learning", "SQL", "Tableau", "Statistics"],
+    requirements: "Background in Computer Science. Experience with Python, Node.js, or Java. Understanding of RESTful APIs and database design. Knowledge of cloud platforms is a plus.",
+    responsibilities: "Design and implement REST APIs, write clean and tested code, optimize database queries, work with cloud services (AWS/GCP), participate in architecture discussions.",
+    skills: ["Node.js", "Python", "PostgreSQL", "AWS", "Docker"],
     location: null,
     is_remote: true,
     is_paid: true,
-    stipend: 4500,
-    duration_weeks: 16,
+    stipend: 30000,
+    duration_weeks: 8,
     start_date: "2024-05-15",
-    end_date: "2024-09-02",
+    end_date: "2024-07-10",
     vacancies: 2,
     status: "published",
     created_by: "hr2",
-    created_at: "2024-01-14T14:30:00Z",
-    updated_at: "2024-01-14T14:30:00Z",
-    company_name: "DataDriven Co.",
+    created_at: "2024-05-09T14:30:00Z",
+    updated_at: "2024-05-09T14:30:00Z",
+    company_name: "Systems Ltd",
+    company_logo_url: undefined,
     is_saved: true,
+    applicant_count: 32,
+    rating: 4.7,
+    review_count: 18,
   },
   {
     id: "3",
     company_id: "c3",
     university_id: "u1",
-    title: "Frontend Developer Intern",
-    description: "Help us create beautiful, responsive web interfaces using React and modern CSS frameworks. You'll work closely with designers and backend developers to deliver exceptional user experiences.",
+    title: "Data Science Intern",
+    description: "Join our data team to analyze large datasets, build machine learning models, and derive actionable insights. Perfect for students passionate about AI/ML and data analytics.",
     department_ids: ["d1"],
     program_ids: ["p1", "p4"],
-    requirements: "HTML, CSS, JavaScript fundamentals. Familiarity with React or similar framework. Eye for design and user experience. Portfolio of web projects preferred.",
-    responsibilities: "Build responsive UI components, implement designs from Figma/Sketch, optimize application performance, ensure cross-browser compatibility, write clean, maintainable code.",
-    skills: ["React", "TypeScript", "CSS", "Tailwind", "Figma"],
-    location: "New York, NY",
+    requirements: "Pursuing degree in CS, Statistics, or related field. Experience with Python, pandas, scikit-learn. Knowledge of SQL and data visualization tools. Strong analytical thinking.",
+    responsibilities: "Clean and preprocess datasets, develop ML models, create visualizations and dashboards, present findings to stakeholders, document methodologies and results.",
+    skills: ["Python", "Machine Learning", "TensorFlow", "SQL", "Tableau"],
+    location: "Lahore",
     is_remote: false,
     is_paid: true,
-    stipend: 4000,
-    duration_weeks: 10,
-    start_date: "2024-06-15",
-    end_date: "2024-08-23",
+    stipend: 40000,
+    duration_weeks: 12,
+    start_date: "2024-06-01",
+    end_date: "2024-08-24",
     vacancies: 5,
     status: "published",
     created_by: "hr3",
-    created_at: "2024-01-13T09:00:00Z",
-    updated_at: "2024-01-13T09:00:00Z",
-    company_name: "WebStudio Pro",
+    created_at: "2024-05-08T09:00:00Z",
+    updated_at: "2024-05-08T09:00:00Z",
+    company_name: "NetSol Technologies",
+    company_logo_url: undefined,
     is_saved: false,
+    applicant_count: 18,
+    rating: 4.8,
+    review_count: 24,
   },
   {
     id: "4",
     company_id: "c4",
     university_id: "u1",
-    title: "Cybersecurity Analyst Intern",
-    description: "Join our security operations center to help protect organizational assets. Learn about threat detection, vulnerability assessment, and incident response in a real-world environment.",
+    title: "Mobile App Developer Intern",
+    description: "Help us create amazing mobile experiences for iOS and Android platforms. Work with modern frameworks like React Native and Flutter to build apps used by millions.",
     department_ids: ["d1"],
     program_ids: ["p5"],
-    requirements: "Understanding of network security concepts. Knowledge of common attack vectors. Certifications like Security+ or CEH a plus. Strong analytical and problem-solving skills.",
-    responsibilities: "Monitor security systems, analyze potential threats, assist with penetration testing, document security procedures, stay current on threat landscape.",
-    skills: ["Network Security", "Penetration Testing", "SIEM", "Linux", "Python"],
-    location: "Austin, TX",
+    requirements: "Understanding of mobile development fundamentals. Experience with React Native, Flutter, or native iOS/Android development. Portfolio of mobile projects preferred.",
+    responsibilities: "Build cross-platform mobile features, implement beautiful UI components, optimize app performance, ensure code quality through testing, collaborate with product team.",
+    skills: ["React Native", "Flutter", "TypeScript", "Firebase", "REST APIs"],
+    location: "Karachi",
     is_remote: false,
     is_paid: true,
-    stipend: 4200,
-    duration_weeks: 12,
-    start_date: "2024-06-01",
-    end_date: "2024-08-24",
-    vacancies: 2,
+    stipend: 28000,
+    duration_weeks: 8,
+    start_date: "2024-06-15",
+    end_date: "2024-08-10",
+    vacancies: 4,
     status: "published",
     created_by: "hr4",
-    created_at: "2024-01-12T11:45:00Z",
-    updated_at: "2024-01-12T11:45:00Z",
-    company_name: "SecureNet Solutions",
+    created_at: "2024-05-07T11:45:00Z",
+    updated_at: "2024-05-07T11:45:00Z",
+    company_name: "AppWorks Studio",
+    company_logo_url: undefined,
     is_saved: false,
+    applicant_count: 56,
+    rating: 4.3,
+    review_count: 9,
   },
   {
     id: "5",
     company_id: "c5",
     university_id: "u1",
-    title: "Product Management Intern",
-    description: "Learn what it takes to build great products by working alongside our product team. You'll gain hands-on experience in market research, roadmap planning, and feature prioritization.",
+    title: "UI/UX Design Intern",
+    description: "Learn what it takes to create intuitive user experiences by working alongside our design team. Gain hands-on experience in user research, wireframing, and prototyping.",
     department_ids: ["d2", "d3"],
     program_ids: ["p6", "p7"],
-    requirements: "Strong communication and analytical skills. Interest in technology products. Experience with data analysis tools. Business or technical background welcome.",
-    responsibilities: "Conduct market research, analyze user feedback, create product requirements documents, coordinate with engineering teams, track key metrics.",
-    skills: ["Product Strategy", "Data Analysis", "Agile", "Jira", "Communication"],
-    location: "Seattle, WA",
+    requirements: "Strong visual design skills. Proficiency in Figma or Adobe Creative Suite. Understanding of design principles and user-centered design process. Portfolio required.",
+    responsibilities: "Create user flows and wireframes, design high-fidelity mockups, conduct usability testing, maintain design systems, collaborate with developers on implementation.",
+    skills: ["Figma", "Adobe XD", "User Research", "Prototyping", "Design Systems"],
+    location: "Islamabad",
     is_remote: true,
     is_paid: true,
-    stipend: 4800,
-    duration_weeks: 14,
+    stipend: 22000,
+    duration_weeks: 6,
     start_date: "2024-06-01",
-    end_date: "2024-08-31",
-    vacancies: 1,
+    end_date: "2024-07-13",
+    vacancies: 2,
     status: "published",
     created_by: "hr5",
-    created_at: "2024-01-11T16:20:00Z",
-    updated_at: "2024-01-11T16:20:00Z",
-    company_name: "InnovateTech LLC",
-    is_saved: false,
+    created_at: "2024-05-06T16:20:00Z",
+    updated_at: "2024-05-06T16:20:00Z",
+    company_name: "DesignHub Agency",
+    company_logo_url: undefined,
+    is_saved: true,
+    applicant_count: 29,
+    rating: 4.6,
+    review_count: 15,
   },
   {
     id: "6",
     company_id: "c6",
     university_id: "u1",
-    title: "Marketing Intern (Unpaid)",
-    description: "Gain valuable marketing experience at a growing startup. Perfect for students looking to build their portfolio while learning digital marketing, content creation, and social media management.",
+    title: "Digital Marketing Intern",
+    description: "Gain valuable marketing experience at a growing tech company. Learn digital marketing strategies, content creation, social media management, and performance analytics.",
     department_ids: ["d3"],
     program_ids: ["p7", "p8"],
-    requirements: "Creative mindset, strong writing skills, familiarity with social media platforms. Marketing coursework or previous experience a plus but not required.",
-    responsibilities: "Create social media content, assist with email campaigns, conduct competitor analysis, support event planning, track campaign metrics.",
-    skills: ["Social Media", "Content Writing", "Canva", "Analytics", "SEO"],
-    location: "Los Angeles, CA",
+    requirements: "Creative mindset with strong writing skills. Familiarity with social media platforms and digital marketing tools. Marketing coursework or previous experience a plus but not required.",
+    responsibilities: "Create social media content, assist with email campaigns, conduct competitor analysis, support event planning, track campaign metrics and prepare reports.",
+    skills: ["Social Media", "Content Writing", "Google Analytics", "SEO", "Canva"],
+    location: "Lahore",
     is_remote: false,
     is_paid: false,
     stipend: undefined,
     duration_weeks: 8,
     start_date: "2024-07-01",
     end_date: "2024-08-26",
-    vacancies: 4,
+    vacancies: 6,
     status: "published",
     created_by: "hr6",
-    created_at: "2024-01-10T13:00:00Z",
-    updated_at: "2024-01-10T13:00:00Z",
+    created_at: "2024-05-05T13:00:00Z",
+    updated_at: "2024-05-05T13:00:00Z",
     company_name: "GrowthStart Co.",
+    company_logo_url: undefined,
     is_saved: false,
+    applicant_count: 67,
+    rating: 4.1,
+    review_count: 8,
   },
   {
     id: "7",
@@ -208,80 +254,218 @@ const mockInternships: (Internship & {
     description: "Get hands-on experience with cloud infrastructure, CI/CD pipelines, and containerization technologies. Work on automating deployment processes and maintaining production systems.",
     department_ids: ["d1"],
     program_ids: ["p1", "p2"],
-    requirements: "Basic knowledge of Linux, networking concepts. Familiarity with cloud platforms (AWS/GCP/Azure) helpful. Scripting ability in Bash or Python.",
-    responsibilities: "Manage CI/CD pipelines, configure cloud infrastructure, monitor system health, automate repetitive tasks, maintain documentation.",
+    requirements: "Basic knowledge of Linux and networking concepts. Familiarity with cloud platforms (AWS/GCP/Azure). Scripting ability in Bash or Python. Eagerness to learn DevOps practices.",
+    responsibilities: "Manage CI/CD pipelines, configure cloud infrastructure, monitor system health, automate repetitive tasks, maintain documentation, assist with incident response.",
     skills: ["AWS", "Docker", "Kubernetes", "Terraform", "Bash"],
     location: null,
     is_remote: true,
     is_paid: true,
-    stipend: 5500,
+    stipend: 35000,
     duration_weeks: 12,
     start_date: "2024-06-15",
     end_date: "2024-09-07",
     vacancies: 2,
     status: "published",
     created_by: "hr7",
-    created_at: "2024-01-09T10:30:00Z",
-    updated_at: "2024-01-09T10:30:00Z",
+    created_at: "2024-05-04T10:30:00Z",
+    updated_at: "2024-05-04T10:30:00Z",
     company_name: "CloudTech Solutions",
-    is_saved: true,
+    company_logo_url: undefined,
+    is_saved: false,
+    applicant_count: 14,
+    rating: 4.9,
+    review_count: 21,
   },
   {
     id: "8",
     company_id: "c8",
     university_id: "u1",
-    title: "UX Design Intern",
-    description: "Join our design team to create intuitive user experiences. You'll conduct user research, create wireframes and prototypes, and collaborate with developers to bring designs to life.",
-    department_ids: ["d2"],
+    title: "Product Management Intern",
+    description: "Learn what it takes to build great products by working alongside our product team. Gain experience in market research, roadmap planning, feature prioritization, and stakeholder communication.",
+    department_ids: ["d2", "d3"],
     program_ids: ["p9"],
-    requirements: "Portfolio demonstrating UX/UI work. Proficiency in Figma or Sketch. Understanding of design principles and user-centered design process.",
-    responsibilities: "Conduct user research sessions, create wireframes and prototypes, design user flows, conduct usability testing, maintain design systems.",
-    skills: ["Figma", "User Research", "Prototyping", "Design Systems", "Usability Testing"],
-    location: "Chicago, IL",
-    is_remote: true,
+    requirements: "Strong communication and analytical skills. Interest in technology products. Experience with data analysis tools. Business or technical background welcome. Problem-solving mindset essential.",
+    responsibilities: "Conduct market research, analyze user feedback, create product requirements documents, coordinate with engineering teams, track key metrics, prepare presentations.",
+    skills: ["Product Strategy", "Data Analysis", "Agile", "Jira", "Communication"],
+    location: "Rawalpindi",
+    is_remote: false,
     is_paid: true,
-    stipend: 4000,
-    duration_weeks: 10,
+    stipend: 20000,
+    duration_weeks: 6,
     start_date: "2024-06-01",
-    end_date: "2024-08-09",
-    vacancies: 2,
+    end_date: "2024-07-13",
+    vacancies: 1,
     status: "published",
     created_by: "hr8",
-    created_at: "2024-01-08T15:00:00Z",
-    updated_at: "2024-01-08T15:00:00Z",
-    company_name: "DesignHub Agency",
+    created_at: "2024-05-03T15:00:00Z",
+    updated_at: "2024-05-03T15:00:00Z",
+    company_name: "InnovateTech LLC",
+    company_logo_url: undefined,
     is_saved: false,
+    applicant_count: 41,
+    rating: 4.4,
+    review_count: 11,
+  },
+  {
+    id: "9",
+    company_id: "c9",
+    university_id: "u1",
+    title: "Cybersecurity Analyst Intern",
+    description: "Join our security operations center to help protect organizational assets. Learn about threat detection, vulnerability assessment, and incident response in a real-world environment.",
+    department_ids: ["d1"],
+    program_ids: ["p5"],
+    requirements: "Understanding of network security concepts. Knowledge of common attack vectors. Certifications like Security+ or CEH a plus. Strong analytical and problem-solving skills.",
+    responsibilities: "Monitor security systems, analyze potential threats, assist with penetration testing, document security procedures, stay current on threat landscape.",
+    skills: ["Network Security", "Penetration Testing", "SIEM", "Linux", "Python"],
+    location: "Islamabad",
+    is_remote: false,
+    is_paid: true,
+    stipend: 32000,
+    duration_weeks: 10,
+    start_date: "2024-06-01",
+    end_date: "2024-08-10",
+    vacancies: 2,
+    status: "published",
+    created_by: "hr9",
+    created_at: "2024-05-02T11:45:00Z",
+    updated_at: "2024-05-02T11:45:00Z",
+    company_name: "SecureNet Solutions",
+    company_logo_url: undefined,
+    is_saved: false,
+    applicant_count: 23,
+    rating: 4.7,
+    review_count: 16,
+  },
+  {
+    id: "10",
+    company_id: "c10",
+    university_id: "u1",
+    title: "Quality Assurance Intern",
+    description: "Ensure the quality of our software products through comprehensive testing. Learn manual and automated testing methodologies while working on real products.",
+    department_ids: ["d1"],
+    program_ids: ["p1", "p2"],
+    requirements: "Attention to detail and quality-focused mindset. Basic understanding of software testing concepts. Familiarity with bug tracking tools. Willingness to learn automation tools.",
+    responsibilities: "Write and execute test cases, report and track bugs, perform regression testing, collaborate with developers on fixes, contribute to test documentation.",
+    skills: ["Manual Testing", "Selenium", "JIRA", "API Testing", "SQL"],
+    location: "Karachi",
+    is_remote: true,
+    is_paid: true,
+    stipend: 18000,
+    duration_weeks: 8,
+    start_date: "2024-06-15",
+    end_date: "2024-08-10",
+    vacancies: 4,
+    status: "published",
+    created_by: "hr10",
+    created_at: "2024-05-01T09:00:00Z",
+    updated_at: "2024-05-01T09:00:00Z",
+    company_name: "QA Experts Inc",
+    company_logo_url: undefined,
+    is_saved: false,
+    applicant_count: 38,
+    rating: 4.2,
+    review_count: 14,
+  },
+  {
+    id: "11",
+    company_id: "c11",
+    university_id: "u1",
+    title: "Full Stack Developer Intern",
+    description: "End-to-end development opportunity where you'll work on both frontend and backend. Build complete features from database to user interface in an agile environment.",
+    department_ids: ["d1"],
+    program_ids: ["p1"],
+    requirements: "Proficiency in JavaScript/TypeScript. Experience with React and Node.js. Understanding of database design. Ability to work independently and in teams.",
+    responsibilities: "Build full-stack features, design database schemas, create RESTful APIs, implement responsive UIs, write unit and integration tests, participate in code reviews.",
+    skills: ["React", "Node.js", "MongoDB", "Express", "TypeScript"],
+    location: "Lahore",
+    is_remote: false,
+    is_paid: true,
+    stipend: 28000,
+    duration_weeks: 12,
+    start_date: "2024-06-01",
+    end_date: "2024-08-24",
+    vacancies: 3,
+    status: "published",
+    created_by: "hr11",
+    created_at: "2024-04-30T14:00:00Z",
+    updated_at: "2024-04-30T14:00:00Z",
+    company_name: "Stack Builders",
+    company_logo_url: undefined,
+    is_saved: true,
+    applicant_count: 52,
+    rating: 4.5,
+    review_count: 19,
+  },
+  {
+    id: "12",
+    company_id: "c12",
+    university_id: "u1",
+    title: "Business Analyst Intern",
+    description: "Bridge the gap between business needs and technical solutions. Learn to gather requirements, analyze processes, and present recommendations to stakeholders.",
+    department_ids: ["d3"],
+    program_ids: ["p6", "p7"],
+    requirements: "Strong analytical and communication skills. Interest in business process improvement. Proficiency in Excel and presentation tools. Detail-oriented approach.",
+    responsibilities: "Gather and document requirements, analyze business processes, create process flow diagrams, prepare reports and presentations, facilitate stakeholder meetings.",
+    skills: ["Requirements Analysis", "SQL", "Excel", "Process Mapping", "Visio"],
+    location: "Islamabad",
+    is_remote: false,
+    is_paid: true,
+    stipend: 22000,
+    duration_weeks: 8,
+    start_date: "2024-07-01",
+    end_date: "2024-08-26",
+    vacancies: 2,
+    status: "published",
+    created_by: "hr12",
+    created_at: "2024-04-29T11:00:00Z",
+    updated_at: "2024-04-29T11:00:00Z",
+    company_name: "ConsultPro Group",
+    company_logo_url: undefined,
+    is_saved: false,
+    applicant_count: 33,
+    rating: 4.3,
+    review_count: 10,
   },
 ];
 
-const featuredInternships = mockInternships.slice(0, 4);
+// Filter options
+const filterOptions = {
+  locations: [
+    { id: "remote", label: "Remote", count: 23 },
+    { id: "islamabad", label: "Islamabad", count: 45 },
+    { id: "lahore", label: "Lahore", count: 38 },
+    { id: "karachi", label: "Karachi", count: 29 },
+    { id: "rawalpindi", label: "Rawalpindi", count: 21 },
+  ],
+  types: [
+    { id: "full-time", label: "Full-time", count: 89 },
+    { id: "part-time", label: "Part-time", count: 42 },
+    { id: "remote", label: "Remote", count: 25 },
+  ],
+  durations: [
+    { id: "4", label: "4 weeks", count: 28 },
+    { id: "6", label: "6 weeks", count: 67 },
+    { id: "8", label: "8 weeks", count: 45 },
+    { id: "12", label: "12 weeks", count: 44 },
+  ],
+  stipends: [
+    { id: "paid", label: "Paid", count: 120 },
+    { id: "unpaid", label: "Unpaid", count: 36 },
+  ],
+  industries: [
+    { id: "software", label: "Software & IT", count: 56 },
+    { id: "finance", label: "Finance & Banking", count: 28 },
+    { id: "marketing", label: "Marketing & Media", count: 24 },
+    { id: "engineering", label: "Engineering", count: 32 },
+    { id: "design", label: "Design & Creative", count: 18 },
+  ],
+};
 
-const departments = [
-  "Computer Science",
-  "Information Technology",
-  "Data Science",
-  "Business Administration",
-  "Marketing",
-  "Design",
-];
-
-const industries = [
-  "Technology",
-  "Finance",
-  "Healthcare",
-  "Marketing",
-  "Consulting",
-  "E-commerce",
-];
-
-const locations = [
-  "San Francisco, CA",
-  "New York, NY",
-  "Austin, TX",
-  "Seattle, WA",
-  "Los Angeles, CA",
-  "Chicago, IL",
-  "Remote",
+const quickFilterOptions = [
+  { id: "tech", label: "Tech", icon: <Laptop className="h-4 w-4" /> },
+  { id: "data", label: "Data", icon: <span className="text-lg">📊</span> },
+  { id: "design", label: "Design", icon: <span className="text-lg">🎨</span> },
+  { id: "marketing", label: "Marketing", icon: <Briefcase className="h-4 w-4" /> },
 ];
 
 // Animation variants
@@ -294,32 +478,58 @@ const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 }
+    transition: { staggerChildren: 0.06 }
   }
 };
 
+// ============ TYPES ============
+interface Filters {
+  search: string;
+  locations: string[];
+  types: string[];
+  durations: string[];
+  stipends: string[];
+  industries: string[];
+  sortBy: string;
+}
+
+const defaultFilters: Filters = {
+  search: "",
+  locations: [],
+  types: [],
+  durations: [],
+  stipends: [],
+  industries: [],
+  sortBy: "relevance",
+};
+
+// ============ MAIN COMPONENT ============
 export default function MarketplacePage() {
-  const [filters, setFilters] = useState<MarketplaceFilters>({
-    search: "",
-    location: "",
-    isRemote: null,
-    isPaid: null,
-    department: "",
-    industry: "",
-    durationMin: 0,
-    durationMax: 52,
-    stipendMin: 0,
-    stipendMax: 10000,
-    datePosted: "",
-    sortBy: "relevance",
-  });
-  
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [isLoading, setIsLoading] = useState(false);
   const [savedInternships, setSavedInternships] = useState<Set<string>>(
     new Set(mockInternships.filter(i => i.is_saved).map(i => i.id))
   );
-  const [quickFilterSelections, setQuickFilterSelections] = useState<string[]>([]);
-  const [showAllResults, setShowAllResults] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const itemsPerPage = viewMode === "grid" ? 9 : 8;
+
+  // Keyboard shortcut for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearchModal(true);
+      }
+      if (e.key === "Escape") {
+        setShowSearchModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Filter and sort internships
   const filteredInternships = useMemo(() => {
@@ -338,84 +548,60 @@ export default function MarketplacePage() {
     }
 
     // Location filter
-    if (filters.location) {
-      result = result.filter(
-        (internship) =>
-          internship.location?.toLowerCase() === filters.location.toLowerCase()
-      );
-    }
-
-    // Remote filter
-    if (filters.isRemote === true) {
-      result = result.filter((internship) => internship.is_remote);
-    }
-
-    // Paid filter
-    if (filters.isPaid === true) {
-      result = result.filter((internship) => internship.is_paid);
-    } else if (filters.isPaid === false) {
-      result = result.filter((internship) => !internship.is_paid);
-    }
-
-    // Duration filter
-    result = result.filter(
-      (internship) =>
-        internship.duration_weeks >= filters.durationMin &&
-        internship.duration_weeks <= filters.durationMax
-    );
-
-    // Stipend filter
-    if (filters.stipendMin > 0 || filters.stipendMax < 10000) {
+    if (filters.locations.length > 0) {
       result = result.filter((internship) => {
-        if (!internship.is_paid || !internship.stipend) return false;
-        return (
-          internship.stipend >= filters.stipendMin &&
-          internship.stipend <= filters.stipendMax
+        if (filters.locations.includes("remote") && internship.is_remote) return true;
+        return filters.locations.some(loc => 
+          internship.location?.toLowerCase().includes(loc.toLowerCase())
         );
       });
     }
 
+    // Stipend filter
+    if (filters.stipends.includes("paid")) {
+      result = result.filter(internship => internship.is_paid);
+    }
+    if (filters.stipends.includes("unpaid")) {
+      result = result.filter(internship => !internship.is_paid);
+    }
+
+    // Duration filter
+    if (filters.durations.length > 0) {
+      result = result.filter(internship =>
+        filters.durations.some(d => String(internship.duration_weeks) === d)
+      );
+    }
+
     // Sort
     switch (filters.sortBy) {
-      case "date_newest":
-        result.sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+      case "recent":
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         break;
-      case "date_oldest":
-        result.sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
+      case "deadline":
+        result.sort((a, b) => new Date(a.end_date || "").getTime() - new Date(b.end_date || "").getTime());
         break;
-      case "stipend_high":
+      case "applicants":
+        result.sort((a, b) => (b.applicant_count || 0) - (a.applicant_count || 0));
+        break;
+      case "stipend":
         result.sort((a, b) => (b.stipend || 0) - (a.stipend || 0));
         break;
-      case "stipend_low":
-        result.sort((a, b) => (a.stipend || 0) - (b.stipend || 0));
-        break;
       default:
-        // relevance - keep original order (featured first)
         break;
     }
 
     return result;
   }, [filters]);
 
-  // Display limited results initially
-  const displayedInternships = showAllResults
-    ? filteredInternships
-    : filteredInternships.slice(0, 9);
-
-  const handleSearch = useCallback((query: string) => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(true), 300); // Simulate loading
-  }, []);
+  // Pagination
+  const totalPages = Math.ceil(filteredInternships.length / itemsPerPage);
+  const paginatedInternships = filteredInternships.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   const handleApply = useCallback((id: string) => {
     console.log("Applying for internship:", id);
-    // In real app, this would open application modal or redirect
     alert("Please log in to apply for this internship.");
   }, []);
 
@@ -431,45 +617,47 @@ export default function MarketplacePage() {
     });
   }, []);
 
-  const handleQuickFilterToggle = useCallback((filterId: string) => {
-    setQuickFilterSelections((prev) => {
-      const newSelections = prev.includes(filterId)
-        ? prev.filter((f) => f !== filterId)
-        : [...prev, filterId];
-
-      // Update main filters based on quick selections
-      setFilters((current) => ({
-        ...current,
-        isRemote: newSelections.includes("remote") ? true : current.isRemote,
-        isPaid: newSelections.includes("paid")
-          ? true
-          : newSelections.includes("unpaid")
-          ? false
-          : current.isPaid,
-      }));
-
-      return newSelections;
-    });
+  const updateFilter = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
   }, []);
 
-  const quickFilterOptions = [
-    { id: "remote", label: "Remote", icon: <Laptop className="h-4 w-4" /> },
-    { id: "paid", label: "Paid", icon: <DollarSign className="h-4 w-4" /> },
-    { id: "onsite", label: "On-site", icon: <Building2 className="h-4 w-4" /> },
-    { id: "hybrid", label: "Hybrid", icon: <Globe className="h-4 w-4" /> },
-  ];
+  const toggleArrayFilter = useCallback((key: keyof Pick<Filters, "locations" | "types" | "durations" | "stipends" | "industries">, value: string) => {
+    setFilters(prev => {
+      const current = prev[key] as string[];
+      const newArray = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value];
+      return { ...prev, [key]: newArray };
+    });
+    setCurrentPage(1);
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setFilters(defaultFilters);
+    setCurrentPage(1);
+  }, []);
+
+  const hasActiveFilters = 
+    filters.search ||
+    filters.locations.length > 0 ||
+    filters.types.length > 0 ||
+    filters.durations.length > 0 ||
+    filters.stipends.length > 0 ||
+    filters.industries.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-primary/5 via-primary/10 to-background overflow-hidden">
+      {/* ============ HERO / SEARCH SECTION ============ */}
+      <section className="relative bg-gradient-to-br from-primary/5 via-background to-primary/3 overflow-hidden">
         {/* Background decoration */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-20 lg:py-24">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -482,22 +670,24 @@ export default function MarketplacePage() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.1 }}
             >
-              <Badge variant="secondary" className="px-4 py-2 text-sm font-medium bg-primary/10 text-primary border-primary/20">
+              <Badge variant="secondary" className="px-4 py-2 text-sm font-medium bg-primary/10 text-primary border-primary/20 hover:bg-primary/15 transition-colors">
                 <Sparkles className="h-4 w-4 mr-2" />
-                Find Your Dream Internship
+                Find Your Perfect Internship
               </Badge>
             </motion.div>
 
             {/* Main heading */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
               Discover{" "}
-              <span className="text-primary">Internship</span>
+              <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                Opportunities
+              </span>
               <br />
-              Opportunities
+              That Shape Your Future
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-              Explore thousands of internship opportunities from top companies.
+              Explore {mockInternships.length}+ active internships from top companies. 
               Launch your career with hands-on experience that matters.
             </p>
 
@@ -508,23 +698,75 @@ export default function MarketplacePage() {
               transition={{ delay: 0.2 }}
               className="max-w-3xl mx-auto"
             >
-              <SearchFilters
-                filters={filters}
-                onFiltersChange={setFilters}
-                onSearch={handleSearch}
-                departments={departments}
-                industries={industries}
-                locations={locations}
-                totalResults={filteredInternships.length}
-                className="mb-4"
-              />
+              <div className="relative group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <Input
+                  type="search"
+                  placeholder="Search internships by title, company, or skills..."
+                  value={filters.search}
+                  onChange={(e) => updateFilter("search", e.target.value)}
+                  className="pl-12 pr-[140px] h-14 text-base rounded-2xl border-2 shadow-lg shadow-black/5 focus-visible:ring-primary/20 focus-visible:border-primary/50 bg-white/80 backdrop-blur-sm"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
+                    <Command className="h-3 w-3" />
+                    K
+                  </kbd>
+                  
+                  {/* Mobile Filter Trigger */}
+                  <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl lg:hidden">
+                        <SlidersHorizontal className="h-4 w-4" />
+                        {hasActiveFilters && (
+                          <span className="absolute -top-1 -right-1 h-4 w-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                            !
+                          </span>
+                        )}
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+                      <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2">
+                          <Filter className="h-5 w-5" />
+                          Filters
+                        </SheetTitle>
+                      </SheetHeader>
+                      <FilterSidebar 
+                        filters={filters}
+                        onToggleFilter={toggleArrayFilter}
+                        onUpdateFilter={updateFilter}
+                        onClearAll={clearAllFilters}
+                      />
+                    </SheetContent>
+                  </Sheet>
+                </div>
+              </div>
 
               {/* Quick Filters */}
-              <QuickFilters
-                selectedFilters={quickFilterSelections}
-                onToggleFilter={handleQuickFilterToggle}
-                options={quickFilterOptions}
-              />
+              <div className="flex flex-wrap justify-center gap-2 mt-5">
+                {quickFilterOptions.map((option) => (
+                  <Button
+                    key={option.id}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full text-sm h-9 px-4 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                  >
+                    {option.icon}
+                    {option.label}
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full text-sm h-9 px-4 text-muted-foreground hover:text-foreground"
+                >
+                  All Categories
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
             </motion.div>
 
             {/* Stats */}
@@ -535,14 +777,17 @@ export default function MarketplacePage() {
               className="flex flex-wrap justify-center gap-8 pt-8"
             >
               {[
-                { value: "500+", label: "Active Internships" },
-                { value: "200+", label: "Companies" },
-                { value: "50+", label: "Universities" },
-                { value: "95%", label: "Satisfaction Rate" },
+                { value: `${mockInternships.length}`, label: "Active Internships", icon: Briefcase },
+                { value: "45", label: "Companies", icon: Building2 },
+                { value: "12", label: "Universities", icon: Star },
+                { value: "95%", label: "Satisfaction Rate", icon: TrendingUp },
               ].map((stat) => (
-                <div key={stat.label} className="text-center">
-                  <p className="text-2xl md:text-3xl font-bold text-primary">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <div key={stat.label} className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/50 backdrop-blur-sm border border-border/50">
+                  <stat.icon className="h-5 w-5 text-primary" />
+                  <div className="text-left">
+                    <p className="text-xl md:text-2xl font-bold">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                  </div>
                 </div>
               ))}
             </motion.div>
@@ -550,202 +795,360 @@ export default function MarketplacePage() {
         </div>
       </section>
 
-      {/* Featured Internships Carousel */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Star className="h-6 w-6 text-yellow-500 fill-yellow-500" />
-              Featured Opportunities
-            </h2>
-            <p className="text-muted-foreground mt-1">Hand-picked internships just for you</p>
-          </div>
-          <Link href="/marketplace?featured=true">
-            <Button variant="ghost" className="hidden sm:flex items-center gap-2">
-              View All
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
+      {/* ============ MAIN CONTENT AREA ============ */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex gap-8">
+          {/* ============ FILTER SIDEBAR (Desktop) ============ */}
+          <aside className="hidden lg:block w-72 shrink-0">
+            <div className="sticky top-24 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-lg flex items-center gap-2">
+                  <Filter className="h-5 w-5 text-primary" />
+                  Filters
+                </h2>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Clear All
+                  </Button>
+                )}
+              </div>
 
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-        >
-          {featuredInternships.map((internship) => (
-            <motion.div key={internship.id} variants={fadeInUp}>
-              <InternshipCard
-                internship={{
-                  ...internship,
-                  is_saved: savedInternships.has(internship.id),
-                }}
-                onApply={handleApply}
-                onSave={handleSave}
+              <FilterSidebar 
+                filters={filters}
+                onToggleFilter={toggleArrayFilter}
+                onUpdateFilter={updateFilter}
+                onClearAll={clearAllFilters}
               />
-            </motion.div>
-          ))}
-        </motion.div>
-      </section>
+            </div>
+          </aside>
 
-      {/* All Internships Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold">All Internships</h2>
-            <p className="text-muted-foreground mt-1">
-              Showing {displayedInternships.length} of {filteredInternships.length} opportunities
-            </p>
-          </div>
-          
-          {(filters.search || filters.location || filters.isRemote !== null || filters.isPaid !== null) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFilters({
-                search: "",
-                location: "",
-                isRemote: null,
-                isPaid: null,
-                department: "",
-                industry: "",
-                durationMin: 0,
-                durationMax: 52,
-                stipendMin: 0,
-                stipendMax: 10000,
-                datePosted: "",
-                sortBy: "relevance",
-              })}
-              className="text-muted-foreground"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Clear Filters
-            </Button>
-          )}
-        </div>
-
-        {/* Loading State */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <InternshipCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* Internships Grid */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${filters.search}-${filters.sortBy}-${filters.isPaid}`}
-                variants={staggerContainer}
-                initial="hidden"
-                animate="visible"
-                exit={{ opacity: 0 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
-                {displayedInternships.map((internship) => (
-                  <motion.div key={internship.id} variants={fadeInUp}>
-                    <InternshipCard
-                      internship={{
-                        ...internship,
-                        is_saved: savedInternships.has(internship.id),
-                      }}
-                      onApply={handleApply}
-                      onSave={handleSave}
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
-            </AnimatePresence>
-
-            {/* Empty State */}
-            {filteredInternships.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-16"
-              >
-                <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                  <SearchIcon className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No internships found</h3>
-                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                  Try adjusting your search terms or filters to find more opportunities.
+          {/* ============ LISTINGS AREA ============ */}
+          <div className="flex-1 min-w-0 space-y-6">
+            {/* Results Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-lg font-semibold">
+                  Found{" "}
+                  <span className="text-primary">{filteredInternships.length}</span>{" "}
+                  internships
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    setFilters({
-                      search: "",
-                      location: "",
-                      isRemote: null,
-                      isPaid: null,
-                      department: "",
-                      industry: "",
-                      durationMin: 0,
-                      durationMax: 52,
-                      stipendMin: 0,
-                      stipendMax: 10000,
-                      datePosted: "",
-                      sortBy: "relevance",
-                    })
-                  }
-                >
-                  Clear All Filters
-                </Button>
-              </motion.div>
-            )}
+                <p className="text-sm text-muted-foreground">
+                  {filteredInternships.length > 0 && `Page ${currentPage} of ${totalPages}`}
+                </p>
+              </div>
 
-            {/* Load More Button */}
-            {!showAllResults && filteredInternships.length > 9 && (
-              <div className="text-center mt-10">
+              <div className="flex items-center gap-3">
+                {/* View Toggle */}
+                <div className="hidden sm:flex items-center border rounded-lg p-1">
+                  <Button
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode("grid")}
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode("list")}
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Sort Dropdown */}
+                <Select value={filters.sortBy} onValueChange={(v) => updateFilter("sortBy", v)}>
+                  <SelectTrigger className="w-[180px] h-10 rounded-xl">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relevance">Relevance</SelectItem>
+                    <SelectItem value="recent">Most Recent</SelectItem>
+                    <SelectItem value="deadline">Deadline Soon</SelectItem>
+                    <SelectItem value="applicants">Most Applicants</SelectItem>
+                    <SelectItem value="stipend">Highest Stipend</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Active Filters Pills */}
+            {hasActiveFilters && (
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-xl">
+                <span className="text-sm text-muted-foreground mr-1">Active:</span>
+                
+                {filters.search && (
+                  <Badge variant="secondary" className="gap-1">
+                    Search: {filters.search}
+                    <button onClick={() => updateFilter("search", "")} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                
+                {filters.locations.map(loc => (
+                  <Badge key={loc} variant="secondary" className="gap-1 capitalize">
+                    {loc}
+                    <button onClick={() => toggleArrayFilter("locations", loc)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                
+                {filters.stipends.map(s => (
+                  <Badge key={s} variant="secondary" className="gap-1 capitalize">
+                    {s}
+                    <button onClick={() => toggleArrayFilter("stipends", s)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+
+                {filters.durations.map(d => (
+                  <Badge key={d} variant="secondary" className="gap-1">
+                    {d} weeks
+                    <button onClick={() => toggleArrayFilter("durations", d)} className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+
                 <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => setShowAllResults(true)}
-                  className="min-w-[200px]"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="h-6 text-xs ml-auto"
                 >
-                  Load More Internships
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                  Clear all
                 </Button>
               </div>
             )}
-          </>
-        )}
-      </section>
 
-      {/* CTA Section */}
-      <section className="bg-primary/5 py-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready to find your perfect internship?</h2>
-          <p className="text-lg text-muted-foreground mb-8">
-            Create an account to save internships, track applications, and get personalized recommendations.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="min-w-[160px]" asChild>
-              <Link href="/register">Get Started Free</Link>
-            </Button>
-            <Button size="lg" variant="outline" className="min-w-[160px]" asChild>
-              <Link href="/login">Sign In</Link>
-            </Button>
+            {/* Loading State */}
+            {isLoading ? (
+              <div className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}>
+                {[...Array(itemsPerPage)].map((_, i) => (
+                  <InternshipCardSkeleton key={i} viewMode={viewMode} />
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* Internships Grid/List */}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${viewMode}-${currentPage}-${filters.sortBy}`}
+                    variants={staggerContainer}
+                    initial="hidden"
+                    animate="visible"
+                    exit={{ opacity: 0 }}
+                    className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}
+                  >
+                    {paginatedInternships.map((internship) => (
+                      <motion.div key={internship.id} variants={fadeInUp}>
+                        <InternshipCard
+                          internship={{
+                            ...internship,
+                            is_saved: savedInternships.has(internship.id),
+                          }}
+                          onApply={handleApply}
+                          onSave={handleSave}
+                          viewMode={viewMode}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
+
+                {/* Empty State */}
+                {filteredInternships.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-center py-16"
+                  >
+                    <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
+                      <Search className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-2xl font-semibold mb-2">No internships found</h3>
+                    <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                      Try adjusting your search terms or filters to find more opportunities that match your interests.
+                    </p>
+                    <Button onClick={clearAllFilters} variant="outline" className="rounded-xl">
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Clear All Filters
+                    </Button>
+                  </motion.div>
+                )}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 pt-8">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="rounded-xl h-10 w-10"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => 
+                        page === 1 || 
+                        page === totalPages || 
+                        Math.abs(page - currentPage) <= 1
+                      )
+                      .map((page, idx, arr) => (
+                        <React.Fragment key={page}>
+                          {idx > 0 && page - arr[idx - 1] > 1 && (
+                            <span className="text-muted-foreground px-1">...</span>
+                          )}
+                          <Button
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="icon"
+                            onClick={() => setCurrentPage(page)}
+                            className={`rounded-xl h-10 w-10 ${
+                              currentPage === page ? "shadow-lg shadow-primary/25" : ""
+                            }`}
+                          >
+                            {page}
+                          </Button>
+                        </React.Fragment>
+                      ))}
+                    
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="rounded-xl h-10 w-10"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
+        </div>
+      </main>
+
+      {/* ============ SEARCH MODAL (⌘K) ============ */}
+      {showSearchModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm" onClick={() => setShowSearchModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full max-w-2xl mx-4 bg-background rounded-2xl shadow-2xl overflow-hidden border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 p-4 border-b">
+              <Search className="h-5 w-5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search internships..."
+                autoFocus
+                value={filters.search}
+                onChange={(e) => updateFilter("search", e.target.value)}
+                className="flex-1 outline-none text-lg bg-transparent"
+              />
+              <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
+                ESC
+              </kbd>
+            </div>
+            
+            <div className="max-h-[400px] overflow-y-auto p-2">
+              {filters.search ? (
+                filteredInternships.slice(0, 8).map((internship) => (
+                  <Link
+                    key={internship.id}
+                    href={`/marketplace/${internship.id}`}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors"
+                    onClick={() => setShowSearchModal(false)}
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{internship.title}</p>
+                      <p className="text-sm text-muted-foreground truncate">{internship.company_name}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </Link>
+                ))
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <p>Type to search internships...</p>
+                </div>
+              )}
+              
+              {filters.search && filteredInternships.length === 0 && (
+                <div className="p-8 text-center text-muted-foreground">
+                  <p>No results found for "{filters.search}"</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ============ CTA SECTION ============ */}
+      <section className="bg-gradient-to-br from-primary/5 via-primary/10 to-background py-16 mt-12">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="space-y-4"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold">
+              Ready to Find Your{" "}
+              <span className="text-primary">Dream Internship</span>?
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Create an account to save internships, track applications, and get personalized recommendations based on your profile.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+              <Button size="lg" className="rounded-xl px-8 shadow-lg shadow-primary/25" asChild>
+                <Link href="/register">
+                  Get Started Free
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" className="rounded-xl px-8" asChild>
+                <Link href="/login">Sign In</Link>
+              </Button>
+            </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t py-8 px-4 sm:px-6 lg:px-8">
+      {/* ============ FOOTER ============ */}
+      <footer className="border-t py-8 px-4 sm:px-6 lg:px-8 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Briefcase className="h-6 w-6 text-primary" />
-              <span className="font-semibold">InternHub Marketplace</span>
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                <Briefcase className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="font-semibold text-lg">InternHub Marketplace</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <a href="#" className="hover:text-foreground transition-colors">About</a>
               <a href="#" className="hover:text-foreground transition-colors">For Employers</a>
               <a href="#" className="hover:text-foreground transition-colors">For Universities</a>
               <a href="#" className="hover:text-foreground transition-colors">Contact</a>
+              <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
             </div>
             <p className="text-sm text-muted-foreground">
               © {new Date().getFullYear()} InternHub. All rights reserved.
@@ -753,6 +1156,197 @@ export default function MarketplacePage() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+// ============ FILTER SIDEBAR COMPONENT ============
+function FilterSidebar({
+  filters,
+  onToggleFilter,
+  onUpdateFilter,
+  onClearAll,
+}: {
+  filters: Filters;
+  onToggleFilter: (key: keyof Pick<Filters, "locations" | "types" | "durations" | "stipends" | "industries">, value: string) => void;
+  onUpdateFilter: <K extends keyof Filters>(key: K, value: Filters[K]) => void;
+  onClearAll: () => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Location Filter */}
+      <FilterGroup title="Location" icon={<MapPin className="h-4 w-4" />}>
+        {filterOptions.locations.map((option) => (
+          <label
+            key={option.id}
+            className="flex items-center gap-3 cursor-pointer group/item py-1.5"
+          >
+            <Checkbox
+              checked={filters.locations.includes(option.id)}
+              onCheckedChange={() => onToggleFilter("locations", option.id)}
+              className="rounded-md data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <span className="flex-1 text-sm group-hover/item:text-foreground transition-colors">
+              {option.label}
+            </span>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {option.count}
+            </span>
+          </label>
+        ))}
+      </FilterGroup>
+
+      <Separator />
+
+      {/* Type Filter */}
+      <FilterGroup title="Type" icon={<Briefcase className="h-4 w-4" />}>
+        {filterOptions.types.map((option) => (
+          <label
+            key={option.id}
+            className="flex items-center gap-3 cursor-pointer group/item py-1.5"
+          >
+            <Checkbox
+              checked={filters.types.includes(option.id)}
+              onCheckedChange={() => onToggleFilter("types", option.id)}
+              className="rounded-md data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <span className="flex-1 text-sm group-hover/item:text-foreground transition-colors">
+              {option.label}
+            </span>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {option.count}
+            </span>
+          </label>
+        ))}
+      </FilterGroup>
+
+      <Separator />
+
+      {/* Duration Filter */}
+      <FilterGroup title="Duration" icon={<Clock className="h-4 w-4" />}>
+        {filterOptions.durations.map((option) => (
+          <label
+            key={option.id}
+            className="flex items-center gap-3 cursor-pointer group/item py-1.5"
+          >
+            <Checkbox
+              checked={filters.durations.includes(option.id)}
+              onCheckedChange={() => onToggleFilter("durations", option.id)}
+              className="rounded-md data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <span className="flex-1 text-sm group-hover/item:text-foreground transition-colors">
+              {option.label}
+            </span>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {option.count}
+            </span>
+          </label>
+        ))}
+      </FilterGroup>
+
+      <Separator />
+
+      {/* Stipend Filter */}
+      <FilterGroup title="Stipend" icon={<DollarSign className="h-4 w-4" />}>
+        {filterOptions.stipends.map((option) => (
+          <label
+            key={option.id}
+            className="flex items-center gap-3 cursor-pointer group/item py-1.5"
+          >
+            <Checkbox
+              checked={filters.stipends.includes(option.id)}
+              onCheckedChange={() => onToggleFilter("stipends", option.id)}
+              className="rounded-md data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <span className="flex-1 text-sm group-hover/item:text-foreground transition-colors">
+              {option.label}
+            </span>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {option.count}
+            </span>
+          </label>
+        ))}
+      </FilterGroup>
+
+      <Separator />
+
+      {/* Industry Filter */}
+      <FilterGroup title="Industry" icon={<Building2 className="h-4 w-4" />}>
+        {filterOptions.industries.map((option) => (
+          <label
+            key={option.id}
+            className="flex items-center gap-3 cursor-pointer group/item py-1.5"
+          >
+            <Checkbox
+              checked={filters.industries.includes(option.id)}
+              onCheckedChange={() => onToggleFilter("industries", option.id)}
+              className="rounded-md data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            />
+            <span className="flex-1 text-sm group-hover/item:text-foreground transition-colors">
+              {option.label}
+            </span>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {option.count}
+            </span>
+          </label>
+        ))}
+      </FilterGroup>
+
+      {/* Clear All Button (Mobile) */}
+      <Button
+        variant="outline"
+        onClick={onClearAll}
+        className="w-full rounded-xl lg:hidden"
+      >
+        <RotateCcw className="h-4 w-4 mr-2" />
+        Clear All Filters
+      </Button>
+    </div>
+  );
+}
+
+// ============ FILTER GROUP COMPONENT ============
+function FilterGroup({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full group"
+      >
+        <span className="flex items-center gap-2 font-medium text-sm">
+          {icon}
+          {title}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden space-y-1 pl-1"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
