@@ -380,6 +380,13 @@ export interface StorageAllocation {
 
 // ============ DASHBOARD TYPES ============
 
+export interface LicenseInfo {
+  status: "active" | "expired" | "trial" | "cancelled" | null;
+  plan: string | null;
+  daysRemaining: number | null;
+  expiresAt: string | null;
+}
+
 export interface DashboardStats {
   totalStudents?: number;
   activeInternships?: number;
@@ -390,6 +397,12 @@ export interface DashboardStats {
   averageRating?: number;
   storageUsed?: number;
   storageLimit?: number;
+  // Enhanced stats
+  storageUsagePercentage?: number;
+  licenseInfo?: LicenseInfo;
+  recentAuditLogCount?: number;
+  unreadMessagesCount?: number;
+  hostOrganizationsCount?: number;
 }
 
 export interface InternshipProgress {

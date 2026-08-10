@@ -37,6 +37,36 @@ import {
   Send,
   RefreshCw,
   BarChart3,
+  MessageSquare,
+  Star,
+  Shield,
+  FileBarChart,
+  UserCog,
+  Inbox,
+  Reply,
+  Archive,
+  Bell,
+  Palette,
+  Lock,
+  History,
+  Activity,
+  FileSpreadsheet,
+  Printer,
+  CalendarClock,
+  UserPlus,
+  Building,
+  Globe,
+  Image as ImageIcon,
+  Save,
+  ToggleLeft,
+  ToggleRight,
+  ChevronRight,
+  Info,
+  AlertCircle,
+  CheckSquare,
+  Square,
+  X,
+  Sparkles,
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,6 +111,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
@@ -178,6 +209,130 @@ const mockEvaluationRules: EvaluationRule[] = [
   { id: "er2", university_id: "uni1", name: "Professional Competency", description: "Evaluates professional skills and workplace behavior", criteria: [{ id: "c5", name: "Communication", description: "Written and verbal communication", max_score: 30, weight: 30 }, { id: "c6", name: "Teamwork", description: "Ability to work in teams", max_score: 25, weight: 25 }, { id: "c7", name: "Initiative", description: "Self-motivation and proactivity", max_score: 25, weight: 25 }, { id: "c8", name: "Time Management", description: "Meeting deadlines effectively", max_score: 20, weight: 20 }], weightings: {}, passing_score: 60, is_active: true, created_at: "2024-01-01" },
 ];
 
+// ===== NEW MOCK DATA FOR NEW SECTIONS =====
+
+// Host Organizations Mock Data
+interface HostOrganization {
+  id: string;
+  name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  industry: string;
+  status: "active" | "inactive";
+  assigned_interns: number;
+  address?: string;
+  created_at: string;
+}
+
+const mockHostOrganizations: HostOrganization[] = [
+  { id: "ho1", name: "TechCorp Solutions", contact_person: "Sarah Mitchell", email: "s.mitchell@techcorp.com", phone: "+1-555-0101", industry: "Technology", status: "active", assigned_interns: 12, address: "123 Tech Blvd, San Francisco, CA", created_at: "2024-01-15" },
+  { id: "ho2", name: "Global Finance Inc", contact_person: "James Chen", email: "j.chen@globalfin.com", phone: "+1-555-0102", industry: "Finance", status: "active", assigned_interns: 8, address: "456 Wall St, New York, NY", created_at: "2024-02-01" },
+  { id: "ho3", name: "HealthFirst Medical", contact_person: "Dr. Emily Roberts", email: "e.roberts@healthfirst.com", phone: "+1-555-0103", industry: "Healthcare", status: "active", assigned_interns: 5, address: "789 Medical Dr, Boston, MA", created_at: "2024-02-15" },
+  { id: "ho4", name: "EduLearn Academy", contact_person: "Michael Thompson", email: "m.thompson@edulearn.com", phone: "+1-555-0104", industry: "Education", status: "inactive", assigned_interns: 0, address: "321 Education Ln, Chicago, IL", created_at: "2024-03-01" },
+  { id: "ho5", name: "GreenEnergy Corp", contact_person: "Lisa Wang", email: "l.wang@greenenergy.com", phone: "+1-555-0105", industry: "Energy", status: "active", assigned_interns: 6, address: "654 Eco Way, Portland, OR", created_at: "2024-03-15" },
+  { id: "ho6", name: "MediaStream Studios", contact_person: "David Park", email: "d.park@mediastream.com", phone: "+1-555-0106", industry: "Media", status: "active", assigned_interns: 4, address: "987 Creative Ave, Los Angeles, CA", created_at: "2024-04-01" },
+];
+
+// Messages Mock Data
+interface Message {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  recipient_id: string;
+  recipient_name: string;
+  subject: string;
+  preview: string;
+  content: string;
+  timestamp: string;
+  is_read: boolean;
+  is_starred: boolean;
+  folder: "inbox" | "sent" | "starred";
+}
+
+const mockMessages: Message[] = [
+  { id: "m1", sender_id: "u2", sender_name: "Sarah Johnson", recipient_id: "admin", recipient_name: "Admin", subject: "Internship Approval Request", preview: "Please review and approve the pending internship application for...", content: "Dear Admin,\n\nI would like to request your approval for the internship application submitted by John Smith for the Software Engineering position at Google LLC. The student has met all the requirements and has excellent academic standing.\n\nPlease review the attached documents and let me know if you need any additional information.\n\nBest regards,\nSarah Johnson", timestamp: "2024-12-10T10:30:00Z", is_read: false, is_starred: true, folder: "inbox" },
+  { id: "m2", sender_id: "u3", sender_name: "Michael Chen", recipient_id: "admin", recipient_name: "Admin", subject: "Policy Update Notification", preview: "The internship policies have been updated with new guidelines...", content: "Dear Admin,\n\nThis is to inform you that the internship policies have been updated. The key changes include:\n\n1. Extended maximum internship duration from 12 to 16 weeks\n2. New remote work policy requirements\n3. Updated evaluation criteria\n\nPlease review the full policy document in the Policies section.\n\nRegards,\nMichael Chen", timestamp: "2024-12-09T14:20:00Z", is_read: true, is_starred: false, folder: "inbox" },
+  { id: "m3", sender_id: "c1", sender_name: "Google LLC HR", recipient_id: "admin", recipient_name: "Admin", subject: "Partnership Renewal", preview: "We would like to discuss renewing our partnership agreement...", content: "Dear University Admin,\n\nAs our current partnership agreement is approaching its renewal date, we would like to schedule a meeting to discuss the terms for the upcoming year. Our internship program has been very successful, and we're looking to expand our collaboration.\n\nPlease let us know your availability for a call next week.\n\nBest regards,\nGoogle HR Team", timestamp: "2024-12-08T09:15:00Z", is_read: false, is_starred: true, folder: "inbox" },
+  { id: "m4", sender_id: "admin", sender_name: "Admin", recipient_id: "u5", recipient_name: "David Wilson", subject: "Re: Suspension Appeal", preview: "Thank you for your appeal. We have reviewed your case...", content: "Dear David,\n\nThank you for submitting your appeal regarding your suspension. After careful review of your case and academic record, we have decided to reinstate your status effective immediately.\n\nPlease ensure that you maintain good academic standing going forward.\n\nBest regards,\nUniversity Administration", timestamp: "2024-12-07T16:45:00Z", is_read: true, is_starred: false, folder: "sent" },
+  { id: "m5", sender_id: "s1", sender_name: "Dr. Robert Brown", recipient_id: "admin", recipient_name: "Admin", subject: "Supervisor Workload Concern", preview: "I wanted to discuss my current intern supervision load...", content: "Dear Admin,\n\nI am writing to express concern about my current supervisory workload. I am currently overseeing 8 interns, which is near my maximum capacity of 10. With the upcoming semester, I expect several more students to be assigned.\n\nCould we discuss possibly redistributing some assignments or hiring additional supervisors?\n\nThank you,\nDr. Robert Brown", timestamp: "2024-12-06T11:00:00Z", is_read: true, is_starred: false, folder: "inbox" },
+  { id: "m6", sender_id: "admin", sender_name: "Admin", recipient_id: "all", recipient_name: "All Faculty", subject: "End of Semester Reminders", preview: "Please note the following important deadlines for the end of semester...", content: "Dear Faculty Members,\n\nAs we approach the end of the semester, please be reminded of the following deadlines:\n\n1. December 15 - Final evaluations due\n2. December 20 - Grade submissions\n3. December 31 - Certificate generation batch\n\nEnsure all internship records are up to date in the system.\n\nAdministration", timestamp: "2024-12-05T08:30:00Z", is_read: true, is_starred: true, folder: "sent" },
+];
+
+// Audit Logs Mock Data
+interface AuditLog {
+  id: string;
+  admin_user: string;
+  admin_role: string;
+  action_type: "create" | "update" | "delete" | "login" | "export" | "approve" | "reject" | "settings_change";
+  target_type: string;
+  target_name: string;
+  details: string;
+  timestamp: string;
+  ip_address?: string;
+}
+
+const mockAuditLogs: AuditLog[] = [
+  { id: "al1", admin_user: "John Admin", admin_role: "university_admin", action_type: "create", target_type: "Student", target_name: "James Taylor", details: "Created new student account with enrollment number STU2024007", timestamp: "2024-12-10T14:30:00Z", ip_address: "192.168.1.100" },
+  { id: "al2", admin_user: "John Admin", admin_role: "university_admin", action_type: "update", target_type: "Company", target_name: "StartupXYZ Inc.", details: "Updated company verification status to verified", timestamp: "2024-12-10T13:15:00Z", ip_address: "192.168.1.100" },
+  { id: "al3", admin_user: "Jane Coordinator", admin_role: "department_coordinator", action_type: "approve", target_type: "Internship", target_name: "Software Engineering Intern - Google", details: "Approved internship application #1045", timestamp: "2024-12-10T12:00:00Z", ip_address: "192.168.1.105" },
+  { id: "al4", admin_user: "John Admin", admin_role: "university_admin", action_type: "delete", target_type: "Policy", target_name: "Old Attendance Policy", details: "Archived outdated attendance policy from 2020", timestamp: "2024-12-09T16:45:00Z", ip_address: "192.168.1.100" },
+  { id: "al5", admin_user: "John Admin", admin_role: "university_admin", action_type: "settings_change", target_type: "Settings", target_name: "University Settings", details: "Changed default internship duration from 12 to 16 weeks", timestamp: "2024-12-09T11:20:00Z", ip_address: "192.168.1.100" },
+  { id: "al6", admin_user: "System", admin_role: "system", action_type: "login", target_type: "Session", target_name: "John Admin Session", details: "Successful login from Chrome on Windows", timestamp: "2024-12-09T09:00:00Z", ip_address: "192.168.1.100" },
+  { id: "al7", admin_user: "Jane Coordinator", admin_role: "department_coordinator", action_type: "export", target_type: "Report", target_name: "Student Enrollment Report", details: "Exported Q4 student enrollment data as PDF", timestamp: "2024-12-08T15:30:00Z", ip_address: "192.168.1.105" },
+  { id: "al8", admin_user: "John Admin", admin_role: "university_admin", action_type: "create", target_type: "Supervisor", target_name: "Dr. Maria Garcia", details: "Added new faculty supervisor to Computer Science department", timestamp: "2024-12-08T10:15:00Z", ip_address: "192.168.1.100" },
+  { id: "al9", admin_user: "John Admin", admin_role: "university_admin", action_type: "reject", target_type: "Company", target_name: "Suspicious Corp", details: "Rejected company registration due to incomplete documentation", timestamp: "2024-12-07T14:00:00Z", ip_address: "192.168.1.100" },
+  { id: "al10", admin_user: "Jane Coordinator", admin_role: "department_coordinator", action_type: "update", target_type: "Evaluation", target_name: "Mid-term Evaluation #892", details: "Updated evaluation score from 72 to 78 after review", timestamp: "2024-12-07T11:30:00Z", ip_address: "192.168.1.105" },
+];
+
+// Faculty & Staff Mock Data
+interface FacultyMember {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  department: string;
+  title: string;
+  specialization: string;
+  photo_url?: string;
+  assigned_students: number;
+  status: "active" | "on_leave" | "inactive";
+  hire_date: string;
+  phone?: string;
+}
+
+const mockFaculty: FacultyMember[] = [
+  { id: "f1", user_id: "fu1", first_name: "Robert", last_name: "Brown", email: "r.brown@university.edu", department: "Computer Science", title: "Professor", specialization: "Artificial Intelligence", assigned_students: 8, status: "active", hire_date: "2015-08-15", phone: "+1-555-1001" },
+  { id: "f2", user_id: "fu2", first_name: "Jennifer", last_name: "Lee", email: "j.lee@university.edu", department: "Business Administration", title: "Associate Professor", specialization: "Strategic Management", assigned_students: 6, status: "active", hire_date: "2018-01-10", phone: "+1-555-1002" },
+  { id: "f3", user_id: "fu3", first_name: "Alan", last_name: "Miller", email: "a.miller@university.edu", department: "Engineering", title: "Senior Lecturer", specialization: "Mechanical Systems", assigned_students: 10, status: "active", hire_date: "2016-06-01", phone: "+1-555-1003" },
+  { id: "f4", user_id: "fu4", first_name: "Maria", last_name: "Garcia", email: "m.garcia@university.edu", department: "Computer Science", title: "Assistant Professor", specialization: "Data Science", assigned_students: 5, status: "active", hire_date: "2020-08-20", phone: "+1-555-1004" },
+  { id: "f5", user_id: "fu5", first_name: "James", last_name: "Wilson", email: "j.wilson@university.edu", department: "Engineering", title: "Lecturer", specialization: "Electrical Systems", assigned_students: 0, status: "on_leave", hire_date: "2021-01-15", phone: "+1-555-1005" },
+  { id: "f6", user_id: "fu6", first_name: "Susan", last_name: "Clark", email: "s.clark@university.edu", department: "Mathematics", title: "Professor", specialization: "Applied Mathematics", assigned_students: 4, status: "active", hire_date: "2012-09-01", phone: "+1-555-1006" },
+  { id: "f7", user_id: "fu7", first_name: "Thomas", last_name: "Anderson", email: "t.anderson@university.edu", department: "Business Administration", title: "Associate Professor", specialization: "Finance", assigned_students: 7, status: "active", hire_date: "2017-03-15", phone: "+1-555-1007" },
+  { id: "f8", user_id: "fu8", first_name: "Patricia", last_name: "Taylor", email: "p.taylor@university.edu", department: "Physics", title: "Senior Lecturer", specialization: "Quantum Physics", assigned_students: 2, status: "inactive", hire_date: "2014-09-01", phone: "+1-555-1008" },
+];
+
+// Reports Configuration
+interface ReportType {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  category: string;
+  formats: string[];
+}
+
+const reportTypes: ReportType[] = [
+  { id: "r1", name: "Student Enrollment Report", description: "Comprehensive overview of student enrollment by department, program, and semester", icon: <Users className="h-5 w-5" />, category: "Academic", formats: ["PDF", "CSV", "Excel"] },
+  { id: "r2", name: "Internship Status Report", description: "Current status of all active, completed, and pending internships", icon: <Briefcase className="h-5 w-5" />, category: "Internships", formats: ["PDF", "CSV", "Excel"] },
+  { id: "r3", name: "Company Partnership Report", description: "Analysis of company partnerships, posting activity, and engagement metrics", icon: <Building2 className="h-5 w-5" />, category: "Partnerships", formats: ["PDF", "Excel"] },
+  { id: "r4", name: "Evaluation Summary Report", description: "Aggregated evaluation scores and performance trends across departments", icon: <ClipboardList className="h-5 w-5" />, category: "Evaluations", formats: ["PDF", "CSV"] },
+  { id: "r5", name: "Completion Rate Report", description: "Internship completion rates with trend analysis and comparisons", icon: <Award className="h-5 w-5" />, category: "Analytics", formats: ["PDF", "Excel"] },
+  { id: "r6", name: "Department Performance Report", description: "Department-wise metrics including placements, ratings, and outcomes", icon: <BarChart3 className="h-5 w-5" />, category: "Academic", formats: ["PDF", "CSV", "Excel"] },
+];
+
 // Chart data
 const internshipStatusData = [
   { name: "Active", value: 45, color: "#10b981" },
@@ -224,6 +379,42 @@ export default function UniversityAdminDashboard() {
   const [isAddProgramOpen, setIsAddProgramOpen] = useState(false);
   const [isViewCompanyOpen, setIsViewCompanyOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<typeof mockCompanies[0] | null>(null);
+
+  // New section states
+  const [hostOrgSearch, setHostOrgSearch] = useState("");
+  const [isAddHostOrgOpen, setIsAddHostOrgOpen] = useState(false);
+  const [messageFolder, setMessageFolder] = useState<"inbox" | "sent" | "starred">("inbox");
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [auditFilterAction, setAuditFilterAction] = useState<string>("all");
+  const [auditFilterUser, setAuditFilterUser] = useState<string>("all");
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [facultySearch, setFacultySearch] = useState("");
+  const [facultyDeptFilter, setFacultyDeptFilter] = useState<string>("all");
+  const [isAddFacultyOpen, setIsAddFacultyOpen] = useState(false);
+  const [selectedReportType, setSelectedReportType] = useState<string>("");
+  const [reportDateRange, setReportDateRange] = useState<string>("this_month");
+  const [reportFormat, setReportFormat] = useState<string>("pdf");
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  // Settings states
+  const [universitySettings, setUniversitySettings] = useState({
+    name: "State University",
+    domain: "stateuniversity.edu",
+    address: "123 University Ave, City, State 12345",
+    phone: "+1-555-0100",
+    email: "admin@stateuniversity.edu",
+    description: "A leading institution of higher education committed to academic excellence and innovation.",
+    defaultInternshipDuration: 12,
+    evaluationFrequency: "monthly" as "weekly" | "bi-weekly" | "monthly",
+    autoApprove: false,
+    emailNotifications: true,
+    applicationAlerts: true,
+    evaluationReminders: true,
+    certificateAlerts: true,
+    primaryColor: "#2563eb",
+    footerText: "© 2024 State University. All rights reserved.",
+  });
 
   // Computed stats
   const totalStudents = mockStudents.length;
@@ -615,6 +806,19 @@ export default function UniversityAdminDashboard() {
             <TabsTrigger value="certificates" className="data-[state=active]:bg-background shadow-sm">Certificates</TabsTrigger>
             <TabsTrigger value="policies" className="data-[state=active]:bg-background shadow-sm">Policies</TabsTrigger>
             <TabsTrigger value="rules" className="data-[state=active]:bg-background shadow-sm">Rules</TabsTrigger>
+            <TabsTrigger value="host-orgs" className="data-[state=active]:bg-background shadow-sm">Host Orgs</TabsTrigger>
+            <TabsTrigger value="messages" className="data-[state=active]:bg-background shadow-sm relative">
+              Messages
+              {mockMessages.filter(m => !m.is_read && m.folder === "inbox").length > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+                  {mockMessages.filter(m => !m.is_read && m.folder === "inbox").length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="data-[state=active]:bg-background shadow-sm">Settings</TabsTrigger>
+            <TabsTrigger value="audit-logs" className="data-[state=active]:bg-background shadow-sm">Audit Logs</TabsTrigger>
+            <TabsTrigger value="faculty" className="data-[state=active]:bg-background shadow-sm">Faculty</TabsTrigger>
+            <TabsTrigger value="reports" className="data-[state=active]:bg-background shadow-sm">Reports</TabsTrigger>
           </TabsList>
         </ScrollArea>
 
@@ -1528,6 +1732,1213 @@ export default function UniversityAdminDashboard() {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        {/* ===== HOST ORGANIZATIONS TAB ===== */}
+        <TabsContent value="host-orgs" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Host Organizations</h2>
+              <p className="text-muted-foreground text-sm">Manage organizations hosting interns</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm">
+                <Upload className="mr-2 h-4 w-4" />
+                Import CSV
+              </Button>
+              <Dialog open={isAddHostOrgOpen} onOpenChange={setIsAddHostOrgOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Organization
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle>Add Host Organization</DialogTitle>
+                    <DialogDescription>Register a new host organization for internships.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="orgName">Organization Name *</Label>
+                      <Input id="orgName" placeholder="Enter organization name" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="contactPerson">Contact Person *</Label>
+                        <Input id="contactPerson" placeholder="Full name" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="orgEmail">Email *</Label>
+                        <Input id="orgEmail" type="email" placeholder="email@company.com" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="orgPhone">Phone</Label>
+                        <Input id="orgPhone" placeholder="+1-555-0000" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="orgIndustry">Industry *</Label>
+                        <Select>
+                          <SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="technology">Technology</SelectItem>
+                            <SelectItem value="finance">Finance</SelectItem>
+                            <SelectItem value="healthcare">Healthcare</SelectItem>
+                            <SelectItem value="education">Education</SelectItem>
+                            <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="orgAddress">Address</Label>
+                      <Input id="orgAddress" placeholder="Full address" />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddHostOrgOpen(false)}>Cancel</Button>
+                    <Button onClick={() => setIsAddHostOrgOpen(false)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Organization
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
+          {/* Search & Filter */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="relative min-w-[250px] flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search organizations..."
+                    value={hostOrgSearch}
+                    onChange={(e) => setHostOrgSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select defaultValue="all">
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Organizations Table */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="data-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Organization</th>
+                      <th>Contact Person</th>
+                      <th>Email / Phone</th>
+                      <th>Industry</th>
+                      <th>Status</th>
+                      <th>Interns</th>
+                      <th className="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mockHostOrganizations
+                      .filter(org => hostOrgSearch === "" || 
+                        org.name.toLowerCase().includes(hostOrgSearch.toLowerCase()) ||
+                        org.contact_person.toLowerCase().includes(hostOrgSearch.toLowerCase()))
+                      .map((org) => (
+                      <tr key={org.id}>
+                        <td>
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center font-bold text-sm text-primary">
+                              {org.name.slice(0, 2)}
+                            </div>
+                            <span className="font-medium">{org.name}</span>
+                          </div>
+                        </td>
+                        <td>{org.contact_person}</td>
+                        <td>
+                          <div className="text-sm">
+                            <p>{org.email}</p>
+                            <p className="text-muted-foreground">{org.phone}</p>
+                          </div>
+                        </td>
+                        <td><Badge variant="outline">{org.industry}</Badge></td>
+                        <td><StatusBadge status={org.status} /></td>
+                        <td><Badge variant="secondary">{org.assigned_interns}</Badge></td>
+                        <td className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8"><Eye className="h-4 w-4" /></Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View Details</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8"><Pencil className="h-4 w-4" /></Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700"><XCircle className="h-4 w-4" /></Button>
+                                </TooltipTrigger>
+                                <TooltipContent>{org.status === "active" ? "Deactivate" : "Activate"}</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== MESSAGES TAB ===== */}
+        <TabsContent value="messages" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Messages</h2>
+              <p className="text-muted-foreground text-sm">Communicate with users within the university</p>
+            </div>
+            <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Send className="mr-2 h-4 w-4" />
+                  Compose Message
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[550px]">
+                <DialogHeader>
+                  <DialogTitle>Compose New Message</DialogTitle>
+                  <DialogDescription>Send a message to users in the system.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label>To</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Search recipients..." className="pl-10" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="msgSubject">Subject</Label>
+                    <Input id="msgSubject" placeholder="Message subject" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="msgContent">Message</Label>
+                    <Textarea id="msgContent" placeholder="Write your message here..." rows={6} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsComposeOpen(false)}>Cancel</Button>
+                  <Button onClick={() => setIsComposeOpen(false)}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Message
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Folder Navigation */}
+            <Card className="lg:col-span-1">
+              <CardContent className="p-4">
+                <nav className="space-y-1">
+                  <button
+                    onClick={() => setMessageFolder("inbox")}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors ${
+                      messageFolder === "inbox" ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Inbox className="h-4 w-4" />
+                      <span>Inbox</span>
+                    </div>
+                    {mockMessages.filter(m => m.folder === "inbox" && !m.is_read).length > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {mockMessages.filter(m => m.folder === "inbox" && !m.is_read).length}
+                      </Badge>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setMessageFolder("sent")}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors ${
+                      messageFolder === "sent" ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Send className="h-4 w-4" />
+                      <span>Sent</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setMessageFolder("starred")}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors ${
+                      messageFolder === "starred" ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Star className="h-4 w-4" />
+                      <span>Starred</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {mockMessages.filter(m => m.is_starred).length}
+                    </Badge>
+                  </button>
+                </nav>
+              </CardContent>
+            </Card>
+
+            {/* Messages List */}
+            <Card className="lg:col-span-2">
+              <CardContent className="p-0">
+                <div className="divide-y max-h-[500px] overflow-y-auto scrollbar-thin">
+                  {mockMessages
+                    .filter(m => messageFolder === "starred" ? m.is_starred : m.folder === messageFolder)
+                    .map((message) => (
+                    <div
+                      key={message.id}
+                      onClick={() => setSelectedMessage(message)}
+                      className={`flex items-start gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                        !message.is_read && message.folder === "inbox" ? "bg-primary/5" : ""
+                      }`}
+                    >
+                      <Avatar className="h-10 w-10 flex-shrink-0">
+                        <AvatarFallback className={
+                          !message.is_read && message.folder === "inbox" ? "bg-primary text-white" : "bg-muted"
+                        }>
+                          {message.sender_name.split(' ').map(n => n[0]).join('')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className={`font-medium truncate ${!message.is_read && message.folder === "inbox" ? "" : "font-normal"}`}>
+                            {message.sender_name}
+                            {!message.is_read && message.folder === "inbox" && (
+                              <span className="ml-2 inline-block h-2 w-2 rounded-full bg-primary"></span>
+                            )}
+                          </p>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {new Date(message.timestamp).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className={`text-sm ${!message.is_read && message.folder === "inbox" ? "font-medium" : "text-muted-foreground"}`}>
+                          {message.subject}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate mt-1">{message.preview}</p>
+                      </div>
+                      <div className="flex-shrink-0 flex items-center gap-1">
+                        {message.is_starred && <Star className="h-4 w-4 fill-amber-400 text-amber-400" />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Selected Message Detail */}
+          {selectedMessage && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle>{selectedMessage.subject}</CardTitle>
+                    <CardDescription className="mt-1">
+                      From: {selectedMessage.sender_name} • {new Date(selectedMessage.timestamp).toLocaleString()}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Reply className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Star className={`h-4 w-4 ${selectedMessage.is_starred ? "fill-amber-400 text-amber-400" : ""}`} />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap bg-muted/30 p-4 rounded-lg">
+                  {selectedMessage.content}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ===== SETTINGS TAB ===== */}
+        <TabsContent value="settings" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">University Settings</h2>
+              <p className="text-muted-foreground text-sm">Configure your university's preferences and settings</p>
+            </div>
+            <Button>
+              <Save className="mr-2 h-4 w-4" />
+              Save All Changes
+            </Button>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* University Profile */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  University Profile
+                </CardTitle>
+                <CardDescription>Basic information about your institution</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>University Logo</Label>
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 cursor-pointer transition-colors">
+                    <ImageIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">Drag & drop or click to upload logo</p>
+                    <p className="text-xs text-muted-foreground mt-1">PNG, JPG up to 2MB</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="uniName">University Name</Label>
+                  <Input 
+                    id="uniName" 
+                    value={universitySettings.name} 
+                    onChange={(e) => setUniversitySettings({...universitySettings, name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="uniDomain">Domain</Label>
+                  <div className="relative">
+                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="uniDomain" 
+                      value={universitySettings.domain} 
+                      onChange={(e) => setUniversitySettings({...universitySettings, domain: e.target.value})}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="uniAddress">Address</Label>
+                  <Input 
+                    id="uniAddress" 
+                    value={universitySettings.address} 
+                    onChange={(e) => setUniversitySettings({...universitySettings, address: e.target.value})}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="uniPhone">Phone</Label>
+                    <Input 
+                      id="uniPhone" 
+                      value={universitySettings.phone} 
+                      onChange={(e) => setUniversitySettings({...universitySettings, phone: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="uniEmail">Email</Label>
+                    <Input 
+                      id="uniEmail" 
+                      type="email"
+                      value={universitySettings.email} 
+                      onChange={(e) => setUniversitySettings({...universitySettings, email: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="uniDesc">About / Description</Label>
+                  <Textarea 
+                    id="uniDesc" 
+                    value={universitySettings.description} 
+                    onChange={(e) => setUniversitySettings({...universitySettings, description: e.target.value})}
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Internship Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ClipboardList className="h-5 w-5" />
+                  Internship Configuration
+                </CardTitle>
+                <CardDescription>Default settings for internship programs</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="internshipDuration">Default Internship Duration (weeks)</Label>
+                  <Select 
+                    value={String(universitySettings.defaultInternshipDuration)} 
+                    onValueChange={(v) => setUniversitySettings({...universitySettings, defaultInternshipDuration: Number(v)})}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="8">8 weeks</SelectItem>
+                      <SelectItem value="10">10 weeks</SelectItem>
+                      <SelectItem value="12">12 weeks</SelectItem>
+                      <SelectItem value="16">16 weeks</SelectItem>
+                      <SelectItem value="24">24 weeks</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Evaluation Frequency</Label>
+                  <div className="flex gap-2">
+                    {(["weekly", "bi-weekly", "monthly"] as const).map((freq) => (
+                      <Button
+                        key={freq}
+                        variant={universitySettings.evaluationFrequency === freq ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setUniversitySettings({...universitySettings, evaluationFrequency: freq})}
+                        className="capitalize"
+                      >
+                        {freq.replace("-", " ")}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-3">
+                  <Label>Required Documents Checklist</Label>
+                  {["Resume/CV", "Transcript", "Insurance Proof", "ID Document", "Recommendation Letter"].map((doc) => (
+                    <label key={doc} className="flex items-center gap-3 cursor-pointer">
+                      <CheckSquare className="h-4 w-4 text-primary" />
+                      <span className="text-sm">{doc}</span>
+                    </label>
+                  ))}
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Auto-Approve Applications</p>
+                    <p className="text-xs text-muted-foreground">Automatically approve eligible applications</p>
+                  </div>
+                  <Switch 
+                    checked={universitySettings.autoApprove}
+                    onCheckedChange={(v) => setUniversitySettings({...universitySettings, autoApprove: v})}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Notification Preferences */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Notification Preferences
+                </CardTitle>
+                <CardDescription>Configure how you receive notifications</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {[
+                  { key: "emailNotifications", label: "Email Notifications", desc: "Receive notifications via email" },
+                  { key: "applicationAlerts", label: "Application Alerts", desc: "Get notified of new applications" },
+                  { key: "evaluationReminders", label: "Evaluation Reminders", desc: "Remind supervisors about pending evaluations" },
+                  { key: "certificateAlerts", label: "Certificate Alerts", desc: "Notify when certificates are issued" },
+                ].map((item) => (
+                  <div key={item.key} className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-sm font-medium">{item.label}</p>
+                      <p className="text-xs text-muted-foreground">{item.desc}</p>
+                    </div>
+                    <Switch 
+                      checked={universitySettings[item.key as keyof typeof universitySettings] as boolean}
+                      onCheckedChange={(v) => setUniversitySettings({...universitySettings, [item.key]: v})}
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Branding Customization */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Palette className="h-5 w-5" />
+                  Branding Customization
+                </CardTitle>
+                <CardDescription>Customize the look and feel</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Primary Color</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {["#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2"].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setUniversitySettings({...universitySettings, primaryColor: color})}
+                        className={`h-10 w-10 rounded-lg border-2 transition-all ${
+                          universitySettings.primaryColor === color ? "border-foreground scale-110" : "border-transparent"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <Label htmlFor="footerText">Custom Footer Text</Label>
+                  <Input 
+                    id="footerText" 
+                    value={universitySettings.footerText} 
+                    onChange={(e) => setUniversitySettings({...universitySettings, footerText: e.target.value})}
+                  />
+                </div>
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-2">Preview:</p>
+                  <p className="text-sm text-center">{universitySettings.footerText}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ===== AUDIT LOGS TAB ===== */}
+        <TabsContent value="audit-logs" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Audit Logs</h2>
+              <p className="text-muted-foreground text-sm">Track all administrative actions and changes</p>
+            </div>
+            <Button variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Export Logs
+            </Button>
+          </div>
+
+          {/* Security Summary Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="stat-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-small text-muted-foreground">Actions Today</p>
+                    <p className="text-h3 text-gradient-brand">24</p>
+                  </div>
+                  <div className="stat-card-icon bg-emerald-100 text-emerald-600">
+                    <Activity className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="stat-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-small text-muted-foreground">Actions This Week</p>
+                    <p className="text-h3 text-gradient-brand">156</p>
+                  </div>
+                  <div className="stat-card-icon bg-blue-100 text-blue-600">
+                    <History className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="stat-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-small text-muted-foreground">Most Active Admin</p>
+                    <p className="text-sm font-semibold text-foreground">John Admin</p>
+                  </div>
+                  <div className="stat-card-icon bg-purple-100 text-purple-600">
+                    <UserCog className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="stat-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-small text-muted-foreground">Critical Actions</p>
+                    <p className="text-h3 text-gradient-brand text-red-500">3</p>
+                  </div>
+                  <div className="stat-card-icon bg-red-100 text-red-600">
+                    <Shield className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Filters */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex items-center gap-2 flex-wrap flex-1">
+                  <Select value={auditFilterAction} onValueChange={setAuditFilterAction}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Action Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Actions</SelectItem>
+                      <SelectItem value="create">Create</SelectItem>
+                      <SelectItem value="update">Update</SelectItem>
+                      <SelectItem value="delete">Delete</SelectItem>
+                      <SelectItem value="approve">Approve</SelectItem>
+                      <SelectItem value="reject">Reject</SelectItem>
+                      <SelectItem value="login">Login</SelectItem>
+                      <SelectItem value="export">Export</SelectItem>
+                      <SelectItem value="settings_change">Settings Change</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={auditFilterUser} onValueChange={setAuditFilterUser}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="User" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Users</SelectItem>
+                      <SelectItem value="John Admin">John Admin</SelectItem>
+                      <SelectItem value="Jane Coordinator">Jane Coordinator</SelectItem>
+                      <SelectItem value="System">System</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>Last 7 days</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Audit Logs Table */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="data-table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Admin User</th>
+                      <th>Action</th>
+                      <th>Target</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mockAuditLogs
+                      .filter(log => {
+                        if (auditFilterAction !== "all" && log.action_type !== auditFilterAction) return false;
+                        if (auditFilterUser !== "all" && log.admin_user !== auditFilterUser) return false;
+                        return true;
+                      })
+                      .map((log) => (
+                      <React.Fragment key={log.id}>
+                        <tr 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
+                        >
+                          <td>
+                            <span className="text-sm">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-7 w-7">
+                                <AvatarFallback className="text-xs bg-secondary">
+                                  {log.admin_user.split(' ').map(n => n[0]).join('')}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{log.admin_user}</p>
+                                <p className="text-xs text-muted-foreground">{log.admin_role.replace('_', ' ')}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <Badge className={
+                              log.action_type === "create" ? "badge-success" :
+                              log.action_type === "delete" || log.action_type === "reject" ? "badge-danger" :
+                              log.action_type === "update" || log.action_type === "approve" ? "badge-info" :
+                              "badge-secondary"
+                            }>
+                              {log.action_type.replace('_', ' ')}
+                            </Badge>
+                          </td>
+                          <td>
+                            <div>
+                              <p className="text-sm font-medium">{log.target_name}</p>
+                              <p className="text-xs text-muted-foreground">{log.target_type}</p>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                {log.details}
+                              </span>
+                              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${expandedLogId === log.id ? 'rotate-90' : ''}`} />
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedLogId === log.id && (
+                          <tr>
+                            <td colSpan={5} className="bg-muted/30">
+                              <div className="p-4 space-y-3">
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground">IP Address</p>
+                                    <p className="font-mono">{log.ip_address || "N/A"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Full Details</p>
+                                    <p>{log.details}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== FACULTY & STAFF TAB ===== */}
+        <TabsContent value="faculty" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Faculty & Staff</h2>
+              <p className="text-muted-foreground text-sm">Manage faculty members and academic staff</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+              <Dialog open={isAddFacultyOpen} onOpenChange={setIsAddFacultyOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Add Faculty Member
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle>Add Faculty Member</DialogTitle>
+                    <DialogDescription>Register a new faculty member in the system.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="facFirstName">First Name *</Label>
+                        <Input id="facFirstName" placeholder="First name" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="facLastName">Last Name *</Label>
+                        <Input id="facLastName" placeholder="Last name" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="facEmail">Email *</Label>
+                        <Input id="facEmail" type="email" placeholder="email@university.edu" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="facPhone">Phone</Label>
+                        <Input id="facPhone" placeholder="+1-555-0000" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="facDept">Department *</Label>
+                        <Select>
+                          <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cs">Computer Science</SelectItem>
+                            <SelectItem value="ba">Business Administration</SelectItem>
+                            <SelectItem value="eng">Engineering</SelectItem>
+                            <SelectItem value="math">Mathematics</SelectItem>
+                            <SelectItem value="physics">Physics</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="facTitle">Title *</Label>
+                        <Select>
+                          <SelectTrigger><SelectValue placeholder="Select title" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="professor">Professor</SelectItem>
+                            <SelectItem value="assoc_prof">Associate Professor</SelectItem>
+                            <SelectItem value="asst_prof">Assistant Professor</SelectItem>
+                            <SelectItem value="senior_lecturer">Senior Lecturer</SelectItem>
+                            <SelectItem value="lecturer">Lecturer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facSpecialization">Specialization</Label>
+                      <Input id="facSpecialization" placeholder="Area of expertise" />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddFacultyOpen(false)}>Cancel</Button>
+                    <Button onClick={() => setIsAddFacultyOpen(false)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Faculty Member
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
+          {/* Search & Filter */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="relative min-w-[250px] flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name or email..."
+                    value={facultySearch}
+                    onChange={(e) => setFacultySearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={facultyDeptFilter} onValueChange={setFacultyDeptFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    <SelectItem value="Computer Science">Computer Science</SelectItem>
+                    <SelectItem value="Business Administration">Business Administration</SelectItem>
+                    <SelectItem value="Engineering">Engineering</SelectItem>
+                    <SelectItem value="Mathematics">Mathematics</SelectItem>
+                    <SelectItem value="Physics">Physics</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Faculty Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {mockFaculty
+              .filter(fac => {
+                if (facultySearch !== "" && 
+                    !`${fac.first_name} ${fac.last_name}`.toLowerCase().includes(facultySearch.toLowerCase()) &&
+                    !fac.email.toLowerCase().includes(facultySearch.toLowerCase())) return false;
+                if (facultyDeptFilter !== "all" && fac.department !== facultyDeptFilter) return false;
+                return true;
+              })
+              .map((faculty) => (
+              <Card key={faculty.id} className="card-hover overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="h-20 bg-gradient-to-r from-primary/10 to-primary/5 flex items-end p-4">
+                    <Avatar className="h-16 w-16 border-4 border-background">
+                      <AvatarFallback className="text-lg bg-primary text-white">
+                        {faculty.first_name[0]}{faculty.last_name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <p className="font-semibold">{faculty.first_name} {faculty.last_name}</p>
+                      <p className="text-sm text-muted-foreground">{faculty.title}</p>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="h-3.5 w-3.5" />
+                        <span className="truncate">{faculty.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        <span>{faculty.department}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Award className="h-3.5 w-3.5" />
+                        <span>{faculty.specialization}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{faculty.assigned_students} students</span>
+                      </div>
+                      <StatusBadge status={faculty.status} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* ===== REPORTS TAB ===== */}
+        <TabsContent value="reports" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Reports Generation</h2>
+              <p className="text-muted-foreground text-sm">Generate and download various reports</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Report Types Selection */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">Available Report Types</CardTitle>
+                <CardDescription>Select a report type to generate</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {reportTypes.map((report) => (
+                    <div
+                      key={report.id}
+                      onClick={() => setSelectedReportType(report.id)}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                        selectedReportType === report.id 
+                          ? "border-primary bg-primary/5 shadow-sm" 
+                          : "border-border hover:border-primary/50 hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${selectedReportType === report.id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                          {report.icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{report.name}</p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{report.description}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="outline" className="text-xs">{report.category}</Badge>
+                            <span className="text-xs text-muted-foreground">
+                              Formats: {report.formats.join(", ")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Report Configuration Panel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Report Configuration</CardTitle>
+                <CardDescription>Set parameters for the report</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Date Range</Label>
+                  <Select value={reportDateRange} onValueChange={setReportDateRange}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="this_week">This Week</SelectItem>
+                      <SelectItem value="this_month">This Month</SelectItem>
+                      <SelectItem value="this_quarter">This Quarter</SelectItem>
+                      <SelectItem value="this_year">This Year</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Format</Label>
+                  <div className="flex gap-2">
+                    {["PDF", "CSV", "Excel"].map((fmt) => (
+                      <Button
+                        key={fmt}
+                        variant={reportFormat === fmt.toLowerCase() ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setReportFormat(fmt.toLowerCase())}
+                        className="flex-1"
+                      >
+                        {fmt === "PDF" && <FileText className="mr-1 h-3.5 w-3.5" />}
+                        {fmt === "CSV" && <FileSpreadsheet className="mr-1 h-3.5 w-3.5" />}
+                        {fmt === "Excel" && <BarChart3 className="mr-1 h-3.5 w-3.5" />}
+                        {fmt}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label>Filters (Optional)</Label>
+                  <Select>
+                    <SelectTrigger><SelectValue placeholder="Department (Optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      <SelectItem value="cs">Computer Science</SelectItem>
+                      <SelectItem value="ba">Business Administration</SelectItem>
+                      <SelectItem value="eng">Engineering</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select>
+                    <SelectTrigger><SelectValue placeholder="Program (Optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      <SelectItem value="bsc">BSc Computer Science</SelectItem>
+                      <SelectItem value="mba">MBA</SelectItem>
+                      <SelectItem value="msc">MSc Data Science</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select>
+                    <SelectTrigger><SelectValue placeholder="Status (Optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <Button 
+                  className="w-full" 
+                  disabled={!selectedReportType || isGeneratingReport}
+                  onClick={() => {
+                    setIsGeneratingReport(true);
+                    setTimeout(() => setIsGeneratingReport(false), 2000);
+                  }}
+                >
+                  {isGeneratingReport ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <FileBarChart className="mr-2 h-4 w-4" />
+                      Generate Report
+                    </>
+                  )}
+                </Button>
+
+                {/* Scheduled Reports Section */}
+                <div className="pt-4 border-t">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Scheduled Reports</Label>
+                  </div>
+                  <div className="space-y-2">
+                    {[
+                      { name: "Weekly Enrollment Summary", freq: "Every Monday", nextRun: "Dec 16, 2024" },
+                      { name: "Monthly Completion Report", freq: "1st of month", nextRun: "Jan 1, 2025" },
+                    ].map((sched, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/50 text-sm">
+                        <div>
+                          <p className="font-medium">{sched.name}</p>
+                          <p className="text-xs text-muted-foreground">{sched.freq}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Next: {sched.nextRun}</span>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" className="w-full" onClick={() => {}}>
+                      <Plus className="mr-2 h-3.5 w-3.5" />
+                      Schedule New Report
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Report Preview Area (shown after generation) */}
+          {isGeneratingReport && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <div className="animate-pulse space-y-4">
+                  <div className="h-4 bg-muted rounded w-1/3 mx-auto"></div>
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-20 bg-muted rounded" style={{ width: `${80 + Math.random() * 20}%`, margin: '0 auto' }}></div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Generating your report...</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recent Reports */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Recently Generated Reports</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {[
+                  { name: "Student Enrollment Report", date: "Dec 9, 2024", format: "PDF", size: "2.4 MB" },
+                  { name: "Internship Status Report", date: "Dec 5, 2024", format: "Excel", size: "1.8 MB" },
+                  { name: "Company Partnership Report", date: "Nov 28, 2024", format: "PDF", size: "3.1 MB" },
+                ].map((report, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded bg-muted">
+                        {report.format === "PDF" ? <FileText className="h-5 w-5 text-red-500" /> :
+                         report.format === "Excel" ? <FileSpreadsheet className="h-5 w-5 text-green-500" /> :
+                         <BarChart3 className="h-5 w-5 text-blue-500" />}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{report.name}</p>
+                        <p className="text-xs text-muted-foreground">{report.date} • {report.size}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm">
+                        <Eye className="mr-1 h-3.5 w-3.5" />
+                        View
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <Download className="mr-1 h-3.5 w-3.5" />
+                        Download
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

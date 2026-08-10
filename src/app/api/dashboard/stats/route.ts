@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type {
   ApiResponse,
   DashboardStats,
+  LicenseInfo,
   UserRole,
 } from "@/types";
 
@@ -48,17 +49,19 @@ export async function GET(request: NextRequest) {
     // Role-based statistics
     switch (profile.role as UserRole) {
       case "super_admin":
-        // Super Admin sees platform-wide stats
+        // Super Admin sees platform-wide stats with enhanced data
         await Promise.all([
           getSuperAdminStats(supabase, stats),
+          getEnhancedStats(supabase, stats, universityId || null, user.id),
         ]);
         break;
 
       case "university_admin":
-        // University Admin sees their university's stats
+        // University Admin sees their university's stats with enhanced data
         if (universityId) {
           await Promise.all([
             getUniversityAdminStats(supabase, stats, universityId),
+            getEnhancedStats(supabase, stats, universityId, user.id),
           ]);
         }
         break;
@@ -73,6 +76,7 @@ export async function GET(request: NextRequest) {
               universityId,
               profile.department_id
             ),
+            getEnhancedStats(supabase, stats, universityId, user.id),
           ]);
         }
         break;
@@ -82,6 +86,7 @@ export async function GET(request: NextRequest) {
         if (universityId) {
           await Promise.all([
             getFacultySupervisorStats(supabase, stats, user.id),
+            getEnhancedStats(supabase, stats, universityId, user.id),
           ]);
         }
         break;
@@ -90,6 +95,7 @@ export async function GET(request: NextRequest) {
         // Student sees their own progress stats
         await Promise.all([
           getStudentStats(supabase, stats, user.id),
+          getEnhancedStats(supabase, stats, universityId || null, user.id),
         ]);
         break;
 
@@ -97,6 +103,7 @@ export async function GET(request: NextRequest) {
         // Company HR sees their company's internship stats
         await Promise.all([
           getCompanyHRStats(supabase, stats, user.id),
+          getEnhancedStats(supabase, stats, universityId || null, user.id),
         ]);
         break;
 
@@ -104,6 +111,7 @@ export async function GET(request: NextRequest) {
         // Site Supervisor sees their assigned interns' stats
         await Promise.all([
           getSiteSupervisorStats(supabase, stats, user.id),
+          getEnhancedStats(supabase, stats, universityId || null, user.id),
         ]);
         break;
 
@@ -111,6 +119,7 @@ export async function GET(request: NextRequest) {
         // External Evaluator sees evaluation-related stats
         await Promise.all([
           getExternalEvaluatorStats(supabase, stats, user.id),
+          getEnhancedStats(supabase, stats, universityId || null, user.id),
         ]);
         break;
     }
@@ -125,6 +134,253 @@ export async function GET(request: NextRequest) {
       { success: false, error: "Internal server error" },
       { status: 500 }
     );
+  }
+}
+
+// ============ ENHANCED STATS FUNCTION ============
+
+/**
+ * Get enhanced statistics for all roles:
+ * - Storage usage percentage
+ * - Active license status
+ * - Recent audit log count
+ * - Unread messages count
+ * - Host organizations count
+ */
+async function getEnhancedStats(
+  supabase: ReturnType<typeof createClient>,
+  stats: DashboardStats,
+  universityId: string | null,
+  userId: string
+): Promise<void> {
+  try {
+    // Run all enhanced stat queries in parallel
+    const [
+      storageResult,
+      licenseResult,
+      auditLogResult,
+      messagesResult,
+      hostOrgsResult,
+    ] = await Promise.allSettled([
+      // Storage usage percentage
+      getStorageUsagePercentage(supabase, universityId),
+      
+      // License information
+      getLicenseInfo(supabase, universityId),
+      
+      // Recent audit log count (last 7 days)
+      getRecentAuditLogCount(supabase, universityId),
+      
+      // Unread messages count
+      getUnreadMessagesCount(supabase, userId),
+      
+      // Host organizations count
+      getHostOrganizationsCount(supabase, universityId),
+    ]);
+
+    // Process storage results
+    if (storageResult.status === "fulfilled") {
+      stats.storageUsagePercentage = storageResult.value.percentage;
+      // Update raw values if not already set
+      if (stats.storageUsed === undefined) {
+        stats.storageUsed = storageResult.value.usedBytes;
+      }
+      if (stats.storageLimit === undefined) {
+        stats.storageLimit = storageResult.value.allocatedBytes;
+      }
+    }
+
+    // Process license results
+    if (licenseResult.status === "fulfilled") {
+      stats.licenseInfo = licenseResult.value;
+    }
+
+    // Process audit log results
+    if (auditLogResult.status === "fulfilled") {
+      stats.recentAuditLogCount = auditLogResult.value;
+    }
+
+    // Process messages results
+    if (messagesResult.status === "fulfilled") {
+      stats.unreadMessagesCount = messagesResult.value;
+    }
+
+    // Process host orgs results
+    if (hostOrgsResult.status === "fulfilled") {
+      stats.hostOrganizationsCount = hostOrgsResult.value;
+    }
+  } catch (error) {
+    console.error("Error fetching enhanced stats:", error);
+    // Don't fail the whole request if enhanced stats fail
+  }
+}
+
+// ============ ENHANCED STAT HELPERS ============
+
+async function getStorageUsagePercentage(
+  supabase: ReturnType<typeof createClient>,
+  universityId: string | null
+): Promise<{ percentage: number; usedBytes: number; allocatedBytes: number }> {
+  try {
+    let query = supabase.from("storage_allocations").select("used_bytes, allocated_bytes");
+    
+    if (universityId) {
+      query = query.eq("university_id", universityId);
+    }
+
+    const { data: allocations, error } = await query;
+
+    if (error || !allocations || allocations.length === 0) {
+      return { percentage: 0, usedBytes: 0, allocatedBytes: 0 };
+    }
+
+    // Sum up all allocations if no specific university
+    const totalUsed = allocations.reduce((sum, a) => sum + (a.used_bytes || 0), 0);
+    const totalAllocated = allocations.reduce((sum, a) => sum + (a.allocated_bytes || 0), 0);
+    
+    const percentage = totalAllocated > 0 ? Math.round((totalUsed / totalAllocated) * 100) : 0;
+
+    return { percentage, usedBytes: totalUsed, allocatedBytes: totalAllocated };
+  } catch (error) {
+    return { percentage: 0, usedBytes: 0, allocatedBytes: 0 };
+  }
+}
+
+async function getLicenseInfo(
+  supabase: ReturnType<typeof createClient>,
+  universityId: string | null
+): Promise<LicenseInfo | null> {
+  try {
+    if (!universityId) {
+      return null;
+    }
+
+    const { data: license, error } = await supabase
+      .from("licenses")
+      .select("*")
+      .eq("university_id", universityId)
+      .in("status", ["active", "trial"])
+      .order("expires_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !license) {
+      // Check for any license record even if expired/cancelled
+      const { data: anyLicense } = await supabase
+        .from("licenses")
+        .select("status, plan, expires_at")
+        .eq("university_id", universityId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (anyLicense) {
+        let daysRemaining: number | null = null;
+        
+        if (anyLicense.expires_at) {
+          const expiryDate = new Date(anyLicense.expires_at);
+          daysRemaining = Math.ceil(
+            (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysRemaining < 0) daysRemaining = null;
+        }
+
+        return {
+          status: anyLicense.status as LicenseInfo["status"],
+          plan: anyLicense.plan,
+          daysRemaining,
+          expiresAt: anyLicense.expires_at,
+        };
+      }
+
+      return null;
+    }
+
+    let daysRemaining: number | null = null;
+    
+    if (license.expires_at) {
+      const expiryDate = new Date(license.expires_at);
+      daysRemaining = Math.ceil(
+        (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+    }
+
+    return {
+      status: license.status as LicenseInfo["status"],
+      plan: license.plan,
+      daysRemaining,
+      expiresAt: license.expires_at,
+    };
+  } catch (error) {
+    console.error("Error getting license info:", error);
+    return null;
+  }
+}
+
+async function getRecentAuditLogCount(
+  supabase: ReturnType<typeof createClient>,
+  universityId: string | null
+): Promise<number> {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    let query = supabase
+      .from("audit_logs")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", sevenDaysAgo.toISOString());
+
+    if (universityId) {
+      query = query.eq("university_id", universityId);
+    }
+
+    const { count, error } = await query;
+
+    if (error) return 0;
+    return count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+async function getUnreadMessagesCount(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("receiver_id", userId)
+      .eq("is_read", false);
+
+    if (error) return 0;
+    return count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+async function getHostOrganizationsCount(
+  supabase: ReturnType<typeof createClient>,
+  universityId: string | null
+): Promise<number> {
+  try {
+    let query = supabase
+      .from("host_organizations")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true);
+
+    if (universityId) {
+      query = query.eq("university_id", universityId);
+    }
+
+    const { count, error } = await query;
+
+    if (error) return 0;
+    return count || 0;
+  } catch (error) {
+    return 0;
   }
 }
 
@@ -562,8 +818,8 @@ async function getSiteSupervisorStats(
         .eq("site_supervisor_id", supervisor.id)
         .in("status", ["active"]);
 
-      if (sis && si.length > 0) {
-        const siIds = si.map((s) => s.id);
+      if (sis && sis.length > 0) {
+        const siIds = sis.map((s) => s.id);
         const { count: present, count: absent } = await Promise.all([
           supabase
             .from("attendance")
