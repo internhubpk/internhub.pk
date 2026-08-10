@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import {
   Building2,
   Users,
-  DollarSign,
   Activity,
   Plus,
   Settings,
@@ -29,7 +28,6 @@ interface PlatformStats {
   totalUniversities: number;
   totalUsers: number;
   activeInternships: number;
-  revenue: number;
 }
 
 type DataState = "loading" | "ready" | "error" | "no_tables";
@@ -49,25 +47,21 @@ export default function SuperAdminDashboard() {
     try {
       const supabase = createClient();
       
-      // Try to fetch stats - this will fail if tables don't exist
-      const [uniRes, userRes, internRes] = await Promise.all([
-        supabase.from("universities").select("id", { count: "exact", head: true }).catch(e => {
-          console.log("Universities table error:", e);
-          return { count: 0, error: e };
-        }),
-        supabase.from("profiles").select("id", { count: "exact", head: true }).catch(e => {
-          console.log("Profiles table error:", e);
-          return { count: 0, error: e };
-        }),
-        supabase.from("internships").select("id", { count: "exact", head: true }).eq("status", "active").catch(e => {
-          console.log("Internships table error:", e);
-          return { count: 0, error: e };
-        }),
+      // Try to fetch stats - use Promise.allSettled to handle errors gracefully
+      const results = await Promise.allSettled([
+        supabase.from("universities").select("id", { count: "exact", head: true }),
+        supabase.from("profiles").select("user_id", { count: "exact", head: true }),
+        supabase.from("internships").select("id", { count: "exact", head: true }).eq("status", "active"),
       ]);
+      
+      // Extract values or defaults
+      const uniRes = results[0].status === 'fulfilled' ? results[0].value : null;
+      const userRes = results[1].status === 'fulfilled' ? results[1].value : null;
+      const internRes = results[2].status === 'fulfilled' ? results[2].value : null;
 
       // Check if we got actual errors (table doesn't exist)
       const hasTableErrors = [uniRes, userRes, internRes].some(
-        (res: any) => res.error?.code === "42P01" || res.error?.message?.includes("does not exist")
+        (res: any) => res?.error?.code === "42P01" || res?.error?.message?.includes("does not exist")
       );
 
       if (hasTableErrors) {
@@ -76,23 +70,10 @@ export default function SuperAdminDashboard() {
         return;
       }
 
-      // Check for other errors
-      const hasOtherErrors = [uniRes, userRes, internRes].some(
-        (res: any) => res.error && !res.count
-      );
-
-      if (hasOtherErrors) {
-        setDataState("error");
-        const firstError = [uniRes, userRes, internRes].find((res: any) => res.error);
-        setErrorMessage(firstError?.error?.message || "Failed to load data");
-        return;
-      }
-
       setStats({
-        totalUniversities: uniRes.count || 0,
-        totalUsers: userRes.count || 0,
-        activeInternships: internRes.count || 0,
-        revenue: 0,
+        totalUniversities: uniRes?.count || 0,
+        totalUsers: userRes?.count || 0,
+        activeInternships: internRes?.count || 0,
       });
       
       setDataState("ready");
@@ -132,13 +113,6 @@ export default function SuperAdminDashboard() {
       icon: Activity,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
-    },
-    {
-      title: "Revenue",
-      value: "$0",
-      icon: DollarSign,
-      color: "text-amber-600",
-      bgColor: "bg-amber-50",
     },
   ];
 
@@ -225,7 +199,7 @@ export default function SuperAdminDashboard() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {statCards.map((card, index) => (
           <motion.div
             key={card.title}
