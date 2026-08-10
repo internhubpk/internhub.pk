@@ -24,6 +24,8 @@ import {
   School,
   UserCog,
   ShieldCheck,
+  Users,
+  Zap,
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
@@ -35,13 +37,6 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Form,
   FormControl,
@@ -92,14 +87,6 @@ const fadeInUp = {
     opacity: 1,
     y: 0,
     transition: { duration: 0.5, ease: "easeOut" },
-  },
-};
-
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
   },
 };
 
@@ -237,7 +224,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ minHeight: '100vh' }}>
       {/* Left Panel - Branding */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -344,9 +331,15 @@ export default function RegisterPage() {
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8 lg:p-12 bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
         <motion.div
-          variants={staggerContainer}
           initial="hidden"
           animate="visible"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+            },
+          }}
           className="w-full max-w-md"
         >
           {/* Mobile Logo */}
@@ -376,8 +369,8 @@ export default function RegisterPage() {
           {/* Progress Indicator */}
           <motion.div variants={fadeInUp} className="mt-6 mb-8">
             <div className="flex items-center gap-2">
-              <div className={`flex-1 h-1 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-border"}`} />
-              <div className={`flex-1 h-1 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-border"}`} />
+              <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-border"}`} />
+              <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-border"}`} />
             </div>
             <div className="flex justify-between mt-2 text-xs text-muted-foreground">
               <span>Account Info</span>
@@ -411,7 +404,7 @@ export default function RegisterPage() {
                             <Input
                               type="text"
                               placeholder="John Doe"
-                              className="h-11 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                           </div>
@@ -434,7 +427,7 @@ export default function RegisterPage() {
                             <Input
                               type="email"
                               placeholder="name@university.edu"
-                              className="h-11 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                           </div>
@@ -457,7 +450,7 @@ export default function RegisterPage() {
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Create a strong password"
-                              className="h-11 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                             <button
@@ -495,7 +488,7 @@ export default function RegisterPage() {
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Confirm your password"
-                              className="h-11 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                           </div>
@@ -647,6 +640,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-// Import missing icons
-import { Users, Zap } from "lucide-react";

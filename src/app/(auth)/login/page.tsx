@@ -69,14 +69,6 @@ const fadeInUp = {
   },
 };
 
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-  },
-};
-
 // Feature items for left panel
 const features = [
   {
@@ -178,7 +170,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ minHeight: '100vh' }}>
       {/* Left Panel - Branding (Hidden on mobile) */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -303,9 +295,15 @@ export default function LoginPage() {
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8 lg:p-12 bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
         <motion.div
-          variants={staggerContainer}
           initial="hidden"
           animate="visible"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+            },
+          }}
           className="w-full max-w-md"
         >
           {/* Mobile Logo */}
@@ -335,156 +333,154 @@ export default function LoginPage() {
           {/* Form */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-5">
-              <motion.div variants={staggerContainer} initial="hidden" animate="visible">
-                {/* Email Field */}
-                <motion.div variants={fadeInUp}>
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium">Email address</FormLabel>
-                        <FormControl>
-                          <div className="relative mt-1.5">
-                            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              type="email"
-                              placeholder="name@university.edu"
-                              className="h-11 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                              {...field}
-                            />
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </motion.div>
-
-                {/* Password Field */}
-                <motion.div variants={fadeInUp}>
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center justify-between mt-5">
-                          <FormLabel className="text-sm font-medium">Password</FormLabel>
-                          <Link
-                            href="/forgot-password"
-                            className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-                          >
-                            Forgot password?
-                          </Link>
+              {/* Email Field */}
+              <motion.div variants={fadeInUp}>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Email address</FormLabel>
+                      <FormControl>
+                        <div className="relative mt-1.5">
+                          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="email"
+                            placeholder="name@university.edu"
+                            className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                            {...field}
+                          />
                         </div>
-                        <FormControl>
-                          <div className="relative mt-1.5">
-                            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="Enter your password"
-                              className="h-11 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                              {...field}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 cursor-pointer"
-                              tabIndex={-1}
-                            >
-                              {showPassword ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </motion.div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </motion.div>
 
-                {/* Remember Me */}
-                <motion.div variants={fadeInUp} className="flex items-center pt-1">
-                  <Checkbox
-                    id="remember-me"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                    className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                  />
-                  <label
-                    htmlFor="remember-me"
-                    className="ml-2 text-sm text-muted-foreground cursor-pointer select-none"
-                  >
-                    Remember me for 30 days
-                  </label>
-                </motion.div>
+              {/* Password Field */}
+              <motion.div variants={fadeInUp}>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center justify-between mt-5">
+                        <FormLabel className="text-sm font-medium">Password</FormLabel>
+                        <Link
+                          href="/forgot-password"
+                          className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
+                      <FormControl>
+                        <div className="relative mt-1.5">
+                          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Enter your password"
+                            className="h-12 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                            {...field}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 cursor-pointer"
+                            tabIndex={-1}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </motion.div>
 
-                {/* Submit Button */}
-                <motion.div variants={fadeInUp}>
+              {/* Remember Me */}
+              <motion.div variants={fadeInUp} className="flex items-center pt-1">
+                <Checkbox
+                  id="remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 text-sm text-muted-foreground cursor-pointer select-none"
+                >
+                  Remember me for 30 days
+                </label>
+              </motion.div>
+
+              {/* Submit Button */}
+              <motion.div variants={fadeInUp}>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full h-12 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </motion.div>
+
+              {/* Demo Quick Access */}
+              <motion.div variants={fadeInUp} className="pt-3">
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border/60" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Demo Access
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 mt-4">
                   <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full h-12 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-12 py-2.5 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                    onClick={() => {
+                      form.setValue("email", "student@demo.internhub.edu");
+                      form.setValue("password", "demo123456");
+                    }}
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      <>
-                        Sign In
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
+                    <GraduationCap className="mr-2 h-4 w-4 text-blue-600" />
+                    Student
                   </Button>
-                </motion.div>
-
-                {/* Demo Quick Access */}
-                <motion.div variants={fadeInUp} className="pt-3">
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-border/60" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Demo Access
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 mt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-11 py-2.5 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
-                      onClick={() => {
-                        form.setValue("email", "student@demo.internhub.edu");
-                        form.setValue("password", "demo123456");
-                      }}
-                    >
-                      <GraduationCap className="mr-2 h-4 w-4 text-blue-600" />
-                      Student
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-11 py-2.5 cursor-pointer transition-all duration-200 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-                      onClick={() => {
-                        form.setValue("email", "hr@company.internhub.edu");
-                        form.setValue("password", "demo123456");
-                      }}
-                    >
-                      <Building2 className="mr-2 h-4 w-4 text-purple-600" />
-                      Company HR
-                    </Button>
-                  </div>
-                </motion.div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-12 py-2.5 cursor-pointer transition-all duration-200 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                    onClick={() => {
+                      form.setValue("email", "hr@company.internhub.edu");
+                      form.setValue("password", "demo123456");
+                    }}
+                  >
+                    <Building2 className="mr-2 h-4 w-4 text-purple-600" />
+                    Company HR
+                  </Button>
+                </div>
               </motion.div>
             </form>
           </Form>

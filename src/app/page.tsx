@@ -247,19 +247,26 @@ function RocketIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-// Animated Section wrapper component - Fixed to ensure visibility
+// Animated Section wrapper component - Fixed visibility
 function AnimatedSection({
   children,
   className = "",
+  id = "",
 }: {
   children: React.ReactNode;
   className?: string;
+  id?: string;
 }) {
   const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-80px" });
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section ref={ref} className={`py-20 md:py-28 relative ${className}`}>
+    <section 
+      ref={ref} 
+      id={id}
+      className={`py-16 md:py-24 lg:py-28 relative ${className}`}
+      style={{ position: 'relative', zIndex: 1 }}
+    >
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
@@ -355,27 +362,22 @@ export default function LandingPage() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="min-h-screen bg-background" style={{ overflowX: 'hidden' }}>
       {/* Navigation */}
       <SiteNav />
 
       {/* ========================================== */}
-      {/* HERO SECTION - Full Viewport Height */}
+      {/* HERO SECTION */}
       {/* ========================================== */}
-      <section className="relative min-h-[90vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30">
+      <section 
+        className="relative min-h-[85vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
+        style={{ position: 'relative', zIndex: 1 }}
+      >
         {/* Background decorative elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
           <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl" />
           <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-400/10 rounded-full blur-3xl" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-3xl" />
-          
-          {/* Grid pattern overlay */}
-          <div 
-            className="absolute inset-0 opacity-[0.02] dark:opacity-[0.05]"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            }}
-          />
         </div>
 
         <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16 relative z-10">
@@ -474,15 +476,12 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
       </section>
 
       {/* ========================================== */}
       {/* FEATURES SECTION - Icon Cards Grid */}
       {/* ========================================== */}
-      <AnimatedSection className="bg-background">
+      <AnimatedSection id="features" className="bg-background">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <Badge variant="outline" className="mb-4 px-3 py-1">
@@ -537,7 +536,7 @@ export default function LandingPage() {
       {/* ========================================== */}
       {/* HOW IT WORKS SECTION */}
       {/* ========================================== */}
-      <AnimatedSection className="bg-muted/30">
+      <AnimatedSection id="how-it-works" className="bg-muted/30">
         {/* Background decoration */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
@@ -554,7 +553,7 @@ export default function LandingPage() {
             </span>
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Get your university's internship program online in minutes, not months.
+            Get your university&apos;s internship program online in minutes, not months.
           </p>
         </div>
 
@@ -658,15 +657,9 @@ export default function LandingPage() {
       {/* ========================================== */}
       {/* PRICING / CTA SECTION */}
       {/* ========================================== */}
-      <section className="py-20 md:py-28 relative overflow-hidden">
+      <section id="pricing" className="py-20 md:py-28 relative overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
         {/* Background */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600" />
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
         
         {/* Decorative blobs */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
@@ -719,7 +712,7 @@ export default function LandingPage() {
       {/* ========================================== */}
       {/* FOOTER */}
       {/* ========================================== */}
-      <footer className="bg-muted/30 border-t border-border/50">
+      <footer className="bg-muted/30 border-t border-border/50" style={{ position: 'relative', zIndex: 1 }}>
         <div className="container mx-auto px-4 md:px-6 lg:px-8 py-16">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-8 lg:gap-12">
             {/* Brand column */}
@@ -847,7 +840,7 @@ export default function LandingPage() {
                 <Shield className="h-3.5 w-3.5" />
                 GDPR Ready
               </span>
-              <span>🌍 Available Worldwide</span>
+              <span>Available Worldwide</span>
             </div>
           </div>
         </div>
@@ -855,5 +848,3 @@ export default function LandingPage() {
     </div>
   );
 }
-
-

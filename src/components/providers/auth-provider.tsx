@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!client) return;
     
     try {
+      // Check if profiles table exists and is accessible
       const { data: profileData, error: profileError } = await client
         .from("profiles")
         .select("*")
@@ -50,13 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Handle case where profile doesn't exist yet (new user)
       if (profileError) {
-        if (profileError.code === 'PGRST116') {
-          // No rows returned - profile doesn't exist yet
-          console.log("Profile not found for user:", userId);
-          setProfile(null);
-          return;
-        }
-        console.error("Profile fetch error:", profileError.message);
+        // Table might not exist or other error - don't crash
+        console.log("Profile fetch info:", profileError.code || profileError.message);
         setProfile(null);
         return;
       }
@@ -76,11 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUniversity(uniData as University);
           }
         } catch (uniErr) {
-          console.error("University fetch error:", uniErr);
+          // University table might not exist - that's ok
+          console.log("University fetch skipped:", uniErr instanceof Error ? uniErr.message : "Unknown error");
         }
       }
     } catch (error) {
-      console.error("Error fetching profile:", error);
+      // Catch any unexpected errors gracefully
+      console.log("Profile fetch error:", error instanceof Error ? error.message : "Unknown error");
       setProfile(null);
       setUniversity(null);
     }
@@ -109,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await fetchProfile(session.user.id, supabase);
         }
       } catch (error) {
-        console.error("Error initializing auth:", error);
+        console.error("Error initializing auth:", error instanceof Error ? error.message : error);
       } finally {
         setIsLoading(false);
       }
@@ -130,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUniversity(null);
           }
         } catch (error) {
-          console.error("Auth state change error:", error);
+          console.error("Auth state change error:", error instanceof Error ? error.message : error);
         } finally {
           setIsLoading(false);
         }
@@ -153,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await supabase.auth.signOut();
       } catch (error) {
-        console.error("Logout error:", error);
+        console.error("Logout error:", error instanceof Error ? error.message : error);
       }
     }
     setUser(null);
