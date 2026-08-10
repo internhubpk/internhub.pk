@@ -6,6 +6,17 @@ import {
   PaginationSchema,
   FilterSchema,
 } from "@/lib/validations";
+import {
+  requireAuth,
+  requireUniversityAccess,
+  requireRole,
+  hasPermission,
+  authorizationError,
+  authenticationError,
+} from "@/lib/authorization";
+import { validateTenantOwnership } from "@/lib/tenant";
+import { audit } from "@/lib/audit";
+import { sanitizeInput, extractClientInfo, validatePaginationParams } from "@/lib/api-security";
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -24,41 +35,51 @@ const VIEW_STUDENT_ROLES: UserRole[] = [
 // Roles that can create students
 const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin"];
 
+// Allowed sort fields to prevent SQL injection
+const ALLOWED_SORT_FIELDS = [
+  "created_at",
+  "updated_at",
+  "enrollment_number",
+  "status",
+  "cgpa",
+  "semester",
+] as const;
+
+/**
+ * Validate and sanitize sort parameters
+ */
+function validateSortParam(sortBy: string | null, sortOrder: string | null): {
+  sortBy: typeof ALLOWED_SORT_FIELDS[number];
+  ascending: boolean;
+} {
+  const validSort = ALLOWED_SORT_FIELDS.includes(sortBy as any)
+    ? (sortBy as typeof ALLOWED_SORT_FIELDS[number])
+    : "created_at";
+  
+  return {
+    sortBy: validSort,
+    ascending: sortOrder === "asc",
+  };
+}
+
 /**
  * GET /api/students
  * List students - filtered by university/department based on role
+ * SECURITY: University-scoped queries, department coordinator restrictions
  */
 export async function GET(request: NextRequest) {
   try {
+    // Authenticate and get context with university access verification
+    const authContext = await requireAuth();
+    
+    if (!authContext.profile || !VIEW_STUDENT_ROLES.includes(authContext.profile.role as UserRole)) {
+      return authorizationError("Forbidden: Insufficient permissions to view students");
+    }
+
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    // Authenticate user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // Get user profile with role and university info
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, university_id, department_id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!profile || !VIEW_STUDENT_ROLES.includes(profile.role as UserRole)) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Insufficient permissions" },
-        { status: 403 }
-      );
-    }
-
-    // Parse query parameters
+    // Parse query parameters with validation
     const { searchParams } = new URL(request.url);
     const paginationResult = PaginationSchema.safeParse(
       Object.fromEntries(searchParams)
@@ -67,13 +88,21 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(searchParams)
     );
 
-    const page = paginationResult.success ? paginationResult.data.page : 1;
-    const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
+    // Validate pagination bounds
+    const validatedPagination = validatePaginationParams(searchParams);
+    const page = paginationResult.success ? paginationResult.data.page : validatedPagination.page;
+    const pageSize = paginationResult.success ? paginationResult.data.pageSize : validatedPagination.pageSize;
     const filters = filterResult.success ? filterResult.data : {};
-    const search = searchParams.get("search");
+    
+    // Sanitize search input to prevent XSS/injection
+    const search = searchParams.get("search") ? sanitizeInput(searchParams.get("search")!) : null;
     const status = searchParams.get("status");
-    const sortBy = searchParams.get("sort_by") || "created_at";
-    const sortOrder = searchParams.get("sort_order") === "asc" ? true : false;
+    
+    // Validate sort parameters
+    const { sortBy, ascending } = validateSortParam(
+      searchParams.get("sort_by"),
+      searchParams.get("sort_order")
+    );
 
     // Build base query with joins for related data
     let query = supabase
@@ -85,31 +114,63 @@ export async function GET(request: NextRequest) {
         programs:program_id(name, code)
       `, { count: "exact" });
 
-    // Apply role-based filtering
-    if (profile.role === "university_admin" && profile.university_id) {
-      query = query.eq("university_id", profile.university_id);
-    } else if (profile.role === "department_coordinator" && profile.department_id) {
-      query = query.eq("department_id", profile.department_id);
-    } else if (
-      profile.role === "faculty_supervisor" &&
-      profile.university_id
-    ) {
-      query = query.eq("university_id", profile.university_id);
+    // Apply role-based filtering with university access enforcement
+    const userRole = authContext.profile.role;
+    const userUniversityId = authContext.profile.university_id;
+    const userDepartmentId = authContext.profile.department_id;
+
+    if (userRole === "super_admin") {
+      // Super admins can see all students, but respect explicit university filter
+      if (filters.university_id) {
+        query = query.eq("university_id", filters.university_id);
+      }
+    } else if (userRole === "university_admin" && userUniversityId) {
+      // University admins can only see their university's students
+      query = query.eq("university_id", userUniversityId);
+      
+      // Security: Prevent accessing other universities even if filter is provided
+      if (filters.university_id && filters.university_id !== userUniversityId) {
+        // Silently ignore the filter - don't expose error that could leak info
+        console.warn(`User ${authContext.user.id} attempted to access different university`);
+      }
+    } else if (userRole === "department_coordinator") {
+      // Department coordinators can ONLY see their department's students
+      if (userDepartmentId) {
+        query = query.eq("department_id", userDepartmentId);
+        
+        // Also enforce university scope
+        if (userUniversityId) {
+          query = query.eq("university_id", userUniversityId);
+        }
+      } else {
+        // Department coordinator without department assignment gets empty results
+        return NextResponse.json<ApiResponse<PaginatedResponse<Student>>>({
+          success: true,
+          data: {
+            data: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0,
+          },
+        });
+      }
+    } else if (userRole === "faculty_supervisor" && userUniversityId) {
+      // Faculty supervisors see their university's students
+      query = query.eq("university_id", userUniversityId);
+    } else {
+      // Other roles get empty results or denied
+      return authorizationError("Insufficient permissions");
     }
 
-    // Apply additional filters
-    if (filters.university_id) {
-      query = query.eq("university_id", filters.university_id);
-    }
-    if (filters.department_id) {
-      query = query.eq("department_id", filters.department_id);
-    }
+    // Apply additional filters (only if not already restricted by role)
     if (status) {
       query = query.eq("status", status);
     }
 
-    // Apply search filter
+    // Apply sanitized search filter
     if (search) {
+      // Use parameterized-like approach with ilike
       query = query.or(`enrollment_number.ilike.%${search}%`);
     }
 
@@ -121,7 +182,7 @@ export async function GET(request: NextRequest) {
     const end = page * pageSize - 1;
 
     const { data: students, error } = await query
-      .order(sortBy, { ascending: sortOrder })
+      .order(sortBy, { ascending })
       .range(start, end);
 
     if (error) {
@@ -146,6 +207,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in GET /api/students:", error);
+    
+    if (error instanceof Error && error.message.includes("Authentication")) {
+      return authenticationError(error.message);
+    }
+    if (error instanceof Error && error.message.includes("Access denied")) {
+      return authorizationError(error.message);
+    }
+    
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }
@@ -156,36 +225,15 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/students
  * Register new student - Uni Admin only
+ * SECURITY: Validates university ownership, logs audit trail
  */
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication and appropriate role
+    const authContext = await requireRole(CREATE_STUDENT_ROLES);
+    
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-
-    // Authenticate user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // Check user role
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, university_id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!profile || !CREATE_STUDENT_ROLES.includes(profile.role as UserRole)) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin access required" },
-        { status: 403 }
-      );
-    }
 
     // Parse and validate request body
     const body = await request.json();
@@ -204,12 +252,42 @@ export async function POST(request: NextRequest) {
 
     const studentData = validation.data;
 
-    // Uni admins can only create students in their own university
-    if (profile.role === "university_admin") {
-      if (studentData.university_id !== profile.university_id) {
+    // SECURITY: Validate that university_id matches authenticated user's university
+    const userRole = authContext.profile?.role;
+    const userUniversityId = authContext.profile?.university_id;
+
+    if (userRole === "university_admin") {
+      // Uni admins can ONLY create students in their own university
+      if (!userUniversityId) {
+        return authorizationError("No university assigned to your account");
+      }
+      
+      if (studentData.university_id !== userUniversityId) {
+        // Audit log this security violation attempt
+        await audit.studentCreate(
+          "unknown",
+          studentData.university_id
+        );
+        
+        return authorizationError("Cannot create student in another university");
+      }
+      
+      // Override with user's university ID for extra security
+      studentData.university_id = userUniversityId;
+    }
+
+    // For super admins, verify the university exists
+    if (userRole === "super_admin") {
+      const { data: university } = await supabase
+        .from("universities")
+        .select("id")
+        .eq("id", studentData.university_id)
+        .single();
+
+      if (!university) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Cannot create student in another university" },
-          { status: 403 }
+          { success: false, error: "Referenced university does not exist" },
+          { status: 400 }
         );
       }
     }
@@ -229,31 +307,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify that the referenced entities exist
-    const [universityCheck, departmentCheck, programCheck] = await Promise.all([
-      supabase.from("universities").select("id").eq("id", studentData.university_id).single(),
-      supabase.from("departments").select("id").eq("id", studentData.department_id).single(),
-      supabase.from("programs").select("id").eq("id", studentData.program_id).single(),
+    // Verify that the referenced entities exist and belong to same university
+    const [departmentCheck, programCheck] = await Promise.all([
+      supabase
+        .from("departments")
+        .select("id, university_id")
+        .eq("id", studentData.department_id)
+        .single(),
+      supabase
+        .from("programs")
+        .select("id, university_id")
+        .eq("id", studentData.program_id)
+        .single(),
     ]);
 
-    if (!universityCheck.data) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Referenced university does not exist" },
-        { status: 400 }
-      );
-    }
+    // SECURITY: Verify department belongs to the same university
     if (!departmentCheck.data) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Referenced department does not exist" },
         { status: 400 }
       );
     }
+    
+    if (departmentCheck.data.university_id !== studentData.university_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Department does not belong to the specified university" },
+        { status: 400 }
+      );
+    }
+
     if (!programCheck.data) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Referenced program does not exist" },
         { status: 400 }
       );
     }
+
+    // Get client info for audit log
+    const clientInfo = extractClientInfo(request);
 
     // Create student
     const { data: student, error } = await supabase
@@ -282,6 +373,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // AUDIT LOG: Log student creation for compliance
+    await audit.studentCreate(student!.id, studentData.university_id);
+
     return NextResponse.json<ApiResponse<Student>>({
       success: true,
       data: student as Student,
@@ -289,6 +383,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in POST /api/students:", error);
+    
+    if (error instanceof Error && error.message.includes("Authentication")) {
+      return authenticationError(error.message);
+    }
+    if (error instanceof Error && (error.message.includes("role") || error.message.includes("Access"))) {
+      return authorizationError(error.message);
+    }
+    
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }

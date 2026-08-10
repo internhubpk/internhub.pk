@@ -72,6 +72,16 @@ import {
   BarChart3,
   Target,
   Zap,
+  HardDrive,
+  Bell,
+  Settings,
+  Palette,
+  FileSignature,
+  History,
+  Inbox,
+  Megaphone,
+  Activity,
+  Database,
 } from "lucide-react";
 import { InternshipForm, type InternshipFormData } from "@/components/company/internship-form";
 import { ApplicationCard, ApplicationDetail } from "@/components/company/application-card";
@@ -111,6 +121,21 @@ const mockStats = {
   pendingApplications: 12,
   completedInternships: 23,
   averageRating: 4.7,
+};
+
+// Storage usage mock data
+const storageUsage = {
+  used: 2.8,
+  total: 5,
+  unit: "GB",
+  percentage: 56,
+  documents: [
+    { name: "Resumes", size: 850, count: 145 },
+    { name: "Offer Letters", size: 420, count: 48 },
+    { name: "Certificates", size: 380, count: 23 },
+    { name: "Reports", size: 650, count: 89 },
+    { name: "Other Documents", size: 500, count: 120 },
+  ],
 };
 
 const mockInternships: (Internship & { applicants_count?: number })[] = [
@@ -185,29 +210,6 @@ const mockInternships: (Internship & { applicants_count?: number })[] = [
     updated_at: "2025-02-18T10:00:00Z",
     applicants_count: 32,
   },
-  {
-    id: "int-4",
-    company_id: "comp-1",
-    university_id: "uni-1",
-    title: "UX Design Intern",
-    description: "Help create intuitive and beautiful user experiences for our products.",
-    requirements: "Portfolio demonstrating design skills. Proficiency in Figma preferred.",
-    responsibilities: "Create wireframes, prototypes, conduct user research.",
-    skills: ["Figma", "UI/UX", "Prototyping", "User Research"],
-    location: "New York, NY",
-    is_remote: false,
-    is_paid: true,
-    stipend: 4200,
-    duration_weeks: 10,
-    start_date: "2025-07-01",
-    end_date: "2025-09-08",
-    vacancies: 2,
-    status: "draft",
-    created_by: "user-1",
-    created_at: "2025-02-20T10:00:00Z",
-    updated_at: "2025-02-22T10:00:00Z",
-    applicants_count: 0,
-  },
 ];
 
 const mockApplications: (InternshipApplication & {
@@ -220,7 +222,7 @@ const mockApplications: (InternshipApplication & {
     id: "app-1",
     internship_id: "int-1",
     student_id: "s-1",
-    cover_letter: "I am excited to apply for this internship opportunity. My passion for frontend development aligns perfectly with this role...",
+    cover_letter: "I am excited to apply for this internship opportunity...",
     resume_url: "#",
     status: "pending",
     applied_at: "2025-02-18T14:30:00Z",
@@ -232,7 +234,7 @@ const mockApplications: (InternshipApplication & {
     id: "app-2",
     internship_id: "int-1",
     student_id: "s-2",
-    cover_letter: "As a computer science student with experience in React, I believe I would be a great fit...",
+    cover_letter: "As a computer science student with experience in React...",
     resume_url: "#",
     status: "under_review",
     applied_at: "2025-02-17T09:15:00Z",
@@ -245,7 +247,7 @@ const mockApplications: (InternshipApplication & {
     id: "app-3",
     internship_id: "int-2",
     student_id: "s-3",
-    cover_letter: "My background in statistics and programming makes me an ideal candidate for this data science role...",
+    cover_letter: "My background in statistics makes me ideal for this role...",
     resume_url: "#",
     status: "approved",
     applied_at: "2025-02-16T16:45:00Z",
@@ -258,12 +260,12 @@ const mockApplications: (InternshipApplication & {
     id: "app-4",
     internship_id: "int-3",
     student_id: "s-4",
-    cover_letter: "I have always been passionate about product management and would love to learn from your team...",
+    cover_letter: "I have always been passionate about product management...",
     resume_url: "#",
     status: "rejected",
     applied_at: "2025-02-15T11:20:00Z",
     reviewed_at: "2025-02-17T09:00:00Z",
-    company_response: "Thank you for your interest. We have decided to proceed with other candidates at this time.",
+    company_response: "Thank you for your interest...",
     student_name: "David Brown",
     student_email: "david.b@university.edu",
     position_title: "Product Management Intern",
@@ -359,19 +361,6 @@ const mockSupervisors: Supervisor[] = [
     is_active: true,
     created_at: "2024-08-15T10:00:00Z",
   },
-  {
-    id: "ss-3",
-    university_id: "uni-1",
-    user_id: "u-3",
-    type: "site",
-    title: "Data Scientist",
-    specialization: "Machine Learning",
-    phone: "+1 (555) 345-6789",
-    email: "lisa.wang@techcorp.com",
-    max_interns: 4,
-    is_active: false,
-    created_at: "2024-09-01T10:00:00Z",
-  },
 ];
 
 const mockEvaluations: (Evaluation & {
@@ -393,8 +382,8 @@ const mockEvaluations: (Evaluation & {
     },
     total_score: 20,
     max_score: 25,
-    comments: "Emily has shown excellent progress in her technical skills. She communicates well with the team.",
-    strengths: "Strong technical foundation, quick learner, good communicator",
+    comments: "Excellent progress in technical skills...",
+    strengths: "Strong technical foundation, quick learner",
     areas_for_improvement: "Could take more initiative on complex tasks",
     status: "completed",
     submitted_at: "2025-02-15T14:00:00Z",
@@ -413,6 +402,29 @@ const mockEvaluations: (Evaluation & {
   },
 ];
 
+// New mock data for enhanced features
+const communications = [
+  { id: 1, from: "University Admin", subject: "Internship Program Update - Spring 2025", message: "Please review the new guidelines...", date: "2 hours ago", unread: true, type: "university" as const },
+  { id: 2, from: "Emily Chen", subject: "Question about project assignment", message: "Hi, I had a question regarding my current task...", date: "5 hours ago", unread: true, type: "student" as const },
+  { id: 3, from: "System", subject: "Weekly report reminder", message: "Reminder to review pending weekly reports...", date: "1 day ago", unread: false, type: "system" as const },
+];
+
+const auditTrail = [
+  { id: 1, action: "Approved Application", detail: "Carol Williams - Data Science Intern", user: "HR Manager", timestamp: "2025-02-18 14:00", type: "approval" as const },
+  { id: 2, action: "Rejected Application", detail: "David Brown - Product Management Intern", user: "HR Manager", timestamp: "2025-02-17 09:00", type: "rejection" as const },
+  { id: 3, action: "Published Internship", detail: "Product Management Intern position", user: "HR Manager", timestamp: "2025-02-18 11:30", type: "update" as const },
+  { id: 4, action: "Issued Certificate", detail: "Completion cert for James Wilson", user: "System", timestamp: "2025-01-15 16:00", type: "certificate" as const },
+  { id: 5, action: "Updated Profile", detail: "Company information updated", user: "HR Manager", timestamp: "2025-01-01 10:00", type: "update" as const },
+];
+
+const templates = [
+  { id: 1, name: "Standard Offer Letter", type: "offer_letter", lastUsed: "2025-02-18", usageCount: 48 },
+  { id: 2, name: "Premium Offer Letter", type: "offer_letter", lastUsed: "2025-02-15", usageCount: 12 },
+  { id: 3, name: "Completion Certificate", type: "certificate", lastUsed: "2025-01-15", usageCount: 23 },
+  { id: 4, name: "Internship Agreement", type: "agreement", lastUsed: "2025-02-10", usageCount: 35 },
+  { id: 5, name: "NDA Template", type: "legal", lastUsed: "2025-01-20", usageCount: 50 },
+];
+
 // ============ HELPER COMPONENTS ============
 
 const containerVariants = {
@@ -429,25 +441,37 @@ const itemVariants = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-    active: { label: "Active", variant: "default", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    published: { label: "Published", variant: "default", className: "bg-blue-100 text-blue-700 border-blue-200" },
-    draft: { label: "Draft", variant: "secondary" },
-    closed: { label: "Closed", variant: "outline" },
-    completed: { label: "Completed", variant: "default", className: "bg-purple-100 text-purple-700 border-purple-200" },
-    pending: { label: "Pending", variant: "secondary" },
-    approved: { label: "Approved", variant: "default", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    rejected: { label: "Rejected", variant: "destructive" },
-    under_review: { label: "Under Review", variant: "outline", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  const config: Record<string, { label: string; className: string }> = {
+    active: { label: "Active", className: "badge-success" },
+    published: { label: "Published", className: "badge-info" },
+    draft: { label: "Draft", className: "badge-secondary" },
+    closed: { label: "Closed", className: "badge-secondary" },
+    completed: { label: "Completed", className: "badge-success" },
+    pending: { label: "Pending", className: "badge-secondary" },
+    approved: { label: "Approved", className: "badge-success" },
+    rejected: { label: "Rejected", className: "badge-danger" },
+    under_review: { label: "Under Review", className: "badge-warning" },
   };
 
-  const configItem = config[status] || { label: status, variant: "outline" };
+  const configItem = config[status] || { label: status, className: "badge-secondary" };
 
   return (
-    <Badge variant={configItem.variant} className={configItem.className}>
+    <span className={`badge ${configItem.className}`}>
       {configItem.label}
-    </Badge>
+    </span>
   );
+}
+
+function AuditBadge({ type }: { type: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    approval: { label: "Approval", className: "badge-success" },
+    rejection: { label: "Rejection", className: "badge-danger" },
+    update: { label: "Update", className: "badge-info" },
+    certificate: { label: "Certificate", className: "badge-primary" },
+  };
+
+  const item = config[type] || { label: type, className: "badge-secondary" };
+  return <span className={`badge ${item.className}`}>{item.label}</span>;
 }
 
 // ============ MAIN DASHBOARD COMPONENT ============
@@ -466,12 +490,10 @@ export default function CompanyHRDashboard() {
 
   const handleAcceptApplication = async (id: string, comments?: string) => {
     console.log("Accepting application:", id, comments);
-    // In production: await acceptApplication(id, comments);
   };
 
   const handleRejectApplication = async (id: string, comments?: string) => {
     console.log("Rejecting application:", id, comments);
-    // In production: await rejectApplication(id, comments);
   };
 
   const handleViewApplicationDetails = (id: string) => {
@@ -480,157 +502,150 @@ export default function CompanyHRDashboard() {
 
   const handleInternshipSubmit = async (data: InternshipFormData) => {
     console.log("Submitting internship:", data);
-    // In production: await postInternship(data);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-container">
       {/* Company Profile Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
+        className="dashboard-card bg-gradient-to-r from-primary/5 via-blue-500/5 to-cyan-500/5 border-primary/20"
       >
-        <Card className="bg-gradient-to-r from-primary/5 via-blue-500/5 to-cyan-500/5 border-primary/20">
-          <CardContent className="py-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                  TC
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-bold text-foreground">{mockCompany.name}</h1>
-                    {mockCompany.is_verified && (
-                      <Badge variant="default" className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">
-                        <Shield className="mr-1 h-3 w-3" />
-                        Verified
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    {mockCompany.industry}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5" />
-                      San Francisco, CA
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Globe className="h-3.5 w-3.5" />
-                      {mockCompany.website?.replace("https://", "")}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                      {mockCompany.rating} rating
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <Button variant="outline" size="sm">
-                <Edit3 className="mr-2 h-4 w-4" />
-                Edit Profile
-              </Button>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+              TC
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-h3 font-bold text-foreground">{mockCompany.name}</h1>
+                {mockCompany.is_verified && (
+                  <span className="badge badge-success">
+                    <Shield className="mr-1 h-3 w-3" />
+                    Verified
+                  </span>
+                )}
+              </div>
+              <p className="text-body text-muted-foreground mt-1 flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                {mockCompany.industry}
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mt-2 text-small text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" />
+                  San Francisco, CA
+                </span>
+                <span className="flex items-center gap-1">
+                  <Globe className="h-3.5 w-3.5" />
+                  {mockCompany.website?.replace("https://", "")}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Star className="h-3.5 w-3.5 fill-warning text-warning" />
+                  {mockCompany.rating} rating
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="focus-ring">
+              <Edit3 className="mr-2 h-4 w-4" />
+              Edit Profile
+            </Button>
+            <Button variant="outline" size="sm" className="focus-ring">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+          </div>
+        </div>
       </motion.div>
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="internships">Internships</TabsTrigger>
           <TabsTrigger value="applications">Applications</TabsTrigger>
-          <TabsTrigger value="team">Team & Tracking</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         {/* OVERVIEW TAB */}
         <TabsContent value="overview" className="mt-6 space-y-6">
+          {/* Stats Row */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
             className="grid grid-cols-2 lg:grid-cols-5 gap-4"
           >
-            {/* Stats Cards */}
             {[
-              { label: "Active Interns", value: mockStats.activeInterns, icon: Users, color: "from-blue-500 to-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30" },
-              { label: "Open Positions", value: mockStats.openPositions, icon: Briefcase, color: "from-emerald-500 to-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950/30" },
-              { label: "Pending Applications", value: mockStats.pendingApplications, icon: Clock, color: "from-amber-500 to-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950/30" },
-              { label: "Completed", value: mockStats.completedInternships, icon: CheckCircle2, color: "from-purple-500 to-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950/30" },
-              { label: "Avg Rating", value: mockStats.averageRating.toFixed(1), icon: Star, color: "from-pink-500 to-pink-600", bgColor: "bg-pink-50 dark:bg-pink-950/30" },
+              { label: "Active Interns", value: mockStats.activeInterns, icon: Users, color: "bg-primary/10 text-primary" },
+              { label: "Open Positions", value: mockStats.openPositions, icon: Briefcase, color: "bg-success/10 text-success" },
+              { label: "Pending Applications", value: mockStats.pendingApplications, icon: Clock, color: "bg-warning/10 text-warning" },
+              { label: "Completed", value: mockStats.completedInternships, icon: CheckCircle2, color: "bg-chart-2/10 text-chart-2" },
+              { label: "Avg Rating", value: mockStats.averageRating.toFixed(1), icon: Star, color: "bg-amber-500/10 text-amber-500" },
             ].map((stat) => (
-              <motion.div key={stat.label} variants={itemVariants}>
-                <Card className={`hover:shadow-md transition-shadow ${stat.bgColor}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className={`p-2 rounded-lg bg-gradient-to-r ${stat.color}`}>
-                        <stat.icon className="h-5 w-5 text-white" />
-                      </div>
-                    </div>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  </CardContent>
-                </Card>
+              <motion.div key={stat.label} variants={itemVariants} className="stat-card">
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`stat-card-icon ${stat.color}`}>
+                    <stat.icon className="h-6 w-6" />
+                  </div>
+                </div>
+                <p className="dashboard-card-value text-2xl">{stat.value}</p>
+                <p className="dashboard-card-description">{stat.label}</p>
               </motion.div>
             ))}
           </motion.div>
 
-          {/* Recent Activity & Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Recent Applications */}
-            <motion.div variants={itemVariants} initial="hidden" animate="visible">
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-primary" />
-                      Recent Applications
-                    </CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setActiveTab("applications")}>
-                      View All
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {mockApplications.slice(0, 4).map((app) => (
-                    <div key={app.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {app.student_name?.split(" ").map(n => n[0]).join("") || "??"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{app.student_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{app.position_title}</p>
-                      </div>
-                      <StatusBadge status={app.status} />
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="lg:col-span-2 dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  Recent Applications
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setActiveTab("applications")} className="focus-ring">
+                  View All
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {mockApplications.slice(0, 4).map((app) => (
+                  <div key={app.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                        {app.student_name?.split(" ").map(n => n[0]).join("") || "??"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{app.student_name}</p>
+                      <p className="text-caption text-muted-foreground truncate">{app.position_title}</p>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
+                    <StatusBadge status={app.status} />
+                  </div>
+                ))}
+              </div>
             </motion.div>
 
-            {/* Active Interns Preview */}
-            <motion.div variants={itemVariants} initial="hidden" animate="visible">
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                      <Users className="h-5 w-5 text-primary" />
-                      Active Interns
-                    </CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setActiveTab("team")}>
-                      View All
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
+            {/* Active Interns Preview + Storage */}
+            <div className="space-y-6">
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title flex items-center gap-2">
+                    <Users className="h-5 w-5 text-success" />
+                    Active Interns
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab("team")} className="focus-ring">
+                    View All
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-3">
                   {mockActiveInterns.map((intern) => (
                     <div key={intern.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                       <Avatar className="h-9 w-9">
@@ -640,16 +655,127 @@ export default function CompanyHRDashboard() {
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{intern.student_name}</p>
-                        <p className="text-xs text-muted-foreground">{intern.position_title}</p>
+                        <p className="text-caption text-muted-foreground">{intern.position_title}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium">{intern.progress_percentage}%</p>
-                        <Progress value={intern.progress_percentage} className="w-16 h-1.5" />
+                        <p className="text-sm font-semibold">{intern.progress_percentage}%</p>
+                        <Progress value={intern.progress_percentage} className="w-14 h-1.5 mt-1" />
                       </div>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </motion.div>
+
+              {/* Storage Usage */}
+              <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title flex items-center gap-2">
+                    <HardDrive className="h-5 w-5 text-chart-2" />
+                    Storage Usage
+                  </h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{storageUsage.used} GB / {storageUsage.total} GB</span>
+                    <span className={`text-sm font-bold ${storageUsage.percentage > 80 ? 'text-danger' : 'text-muted-foreground'}`}>
+                      {storageUsage.percentage}%
+                    </span>
+                  </div>
+                  <Progress value={storageUsage.percentage} className="h-2" />
+                  <div className="space-y-2 pt-2">
+                    {storageUsage.documents.map((doc) => (
+                      <div key={doc.name} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{doc.name}</span>
+                        <span className="font-medium">{(doc.size / 1000).toFixed(2)} GB ({doc.count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Communication Panel & Audit Trail */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Communication Panel */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-info" />
+                  Messages
+                </h3>
+                <Badge variant="outline" className="badge-info">
+                  {communications.filter(c => c.unread).length} New
+                </Badge>
+              </div>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin">
+                {communications.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                      msg.unread ? "bg-primary/5 border-l-2 border-primary" : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-medium ${
+                          msg.type === "university" ? "bg-purple-100 text-purple-700" :
+                          msg.type === "student" ? "bg-primary/10 text-primary" :
+                          "bg-muted text-muted-foreground"
+                        }`}>
+                          {msg.from.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{msg.from}</p>
+                            {msg.unread && <span className="w-2 h-2 rounded-full bg-primary" />}
+                          </div>
+                          <p className="text-sm font-medium truncate mt-0.5">{msg.subject}</p>
+                          <p className="text-caption text-muted-foreground line-clamp-1">{msg.message}</p>
+                          <p className="text-caption text-muted-foreground/70 mt-1">{msg.date}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Audit Trail */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <History className="h-5 w-5 text-chart-2" />
+                  Audit Trail
+                </h3>
+                <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin">
+                {auditTrail.map((entry, index) => (
+                  <div key={entry.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${
+                        entry.type === "approval" ? "bg-success" :
+                        entry.type === "rejection" ? "bg-danger" :
+                        entry.type === "certificate" ? "bg-chart-2" : "bg-info"
+                      }`} />
+                      {index < auditTrail.length - 1 && (
+                        <div className="w-px h-full bg-border min-h-[24px]" />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <AuditBadge type={entry.type} />
+                        <span className="text-small font-medium">{entry.action}</span>
+                      </div>
+                      <p className="text-caption text-muted-foreground mt-0.5">{entry.detail}</p>
+                      <p className="text-caption text-muted-foreground/70">{entry.timestamp} • {entry.user}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           </div>
 
@@ -658,27 +784,24 @@ export default function CompanyHRDashboard() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
+              className="dashboard-card border-warning/50 bg-warning/5"
             >
-              <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
-                <CardContent className="py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/50">
-                      <AlertCircle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-amber-800 dark:text-amber-200">
-                        Pending Evaluations
-                      </p>
-                      <p className="text-sm text-amber-700 dark:text-amber-300">
-                        You have {mockEvaluations.filter(e => e.status === "pending").length} evaluation(s) that need to be submitted.
-                      </p>
-                    </div>
-                    <Button onClick={() => setActiveTab("team")}>
-                      Review Now
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-full bg-warning/20">
+                  <AlertCircle className="h-6 w-6 text-warning" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-warning-foreground">
+                    Pending Evaluations
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    You have {mockEvaluations.filter(e => e.status === "pending").length} evaluation(s) that need to be submitted.
+                  </p>
+                </div>
+                <Button onClick={() => setActiveTab("team")} className="focus-ring">
+                  Review Now
+                </Button>
+              </div>
             </motion.div>
           )}
         </TabsContent>
@@ -688,11 +811,11 @@ export default function CompanyHRDashboard() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
           >
             <div>
-              <h2 className="text-xl font-semibold">Posted Internships</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <h2 className="text-h4 font-semibold">Posted Internships</h2>
+              <p className="text-small text-muted-foreground mt-1">
                 Manage your internship postings
               </p>
             </div>
@@ -707,84 +830,75 @@ export default function CompanyHRDashboard() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
+                className="dashboard-card card-hover"
               >
-                <Card className="hover:shadow-md transition-shadow">
-                  <CardContent className="py-4">
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      <div className="flex items-start gap-4 flex-1">
-                        <div className={`h-12 w-12 rounded-lg flex items-center justify-center shrink-0 ${
-                          internship.status === "active" ? "bg-emerald-100 text-emerald-600" :
-                          internship.status === "published" ? "bg-blue-100 text-blue-600" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>
-                          <Briefcase className="h-6 w-6" />
-                        </div>
-                        
-                        <div className="space-y-1 flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold">{internship.title}</h3>
-                            <StatusBadge status={internship.status} />
-                            {internship.is_remote && (
-                              <Badge variant="outline" className="text-xs">
-                                Remote
-                              </Badge>
-                            )}
-                            {internship.is_paid && (
-                              <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300">
-                                ${internship.stipend}/mo
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {internship.location}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5" />
-                              {internship.duration_weeks} weeks
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Users className="h-3.5 w-3.5" />
-                              {internship.vacancies} positions
-                            </span>
-                            {internship.applicants_count !== undefined && (
-                              <span className="flex items-center gap-1">
-                                <UserCheck className="h-3.5 w-3.5" />
-                                {internship.applicants_count} applicants
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="text-sm line-clamp-1 mt-1">{internship.description}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 lg:flex-col">
-                        <Button variant="outline" size="sm">
-                          <Eye className="mr-1 h-3 w-3" />
-                          View
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Edit3 className="mr-1 h-3 w-3" />
-                          Edit
-                        </Button>
-                        
-                        {internship.status === "draft" && (
-                          <Button size="sm">
-                            Publish
-                          </Button>
-                        )}
-                        {(internship.status === "published" || internship.status === "active") && (
-                          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-                            Close
-                          </Button>
-                        )}
-                      </div>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4 flex-1">
+                    <div className={`h-12 w-12 rounded-lg flex items-center justify-center shrink-0 ${
+                      internship.status === "active" ? "bg-success/10 text-success" :
+                      internship.status === "published" ? "bg-primary/10 text-primary" :
+                      "bg-muted text-muted-foreground"
+                    }`}>
+                      <Briefcase className="h-6 w-6" />
                     </div>
-                  </CardContent>
-                </Card>
+                    
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-h4 font-semibold">{internship.title}</h3>
+                        <StatusBadge status={internship.status} />
+                        {internship.is_remote && (
+                          <span className="badge badge-outline">Remote</span>
+                        )}
+                        {internship.is_paid && (
+                          <span className="badge badge-success">${internship.stipend}/mo</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-small text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {internship.location}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {internship.duration_weeks} weeks
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5" />
+                          {internship.vacancies} positions
+                        </span>
+                        {internship.applicants_count !== undefined && (
+                          <span className="flex items-center gap-1">
+                            <UserCheck className="h-3.5 w-3.5" />
+                            {internship.applicants_count} applicants
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-small line-clamp-1 mt-1">{internship.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 lg:flex-col">
+                    <Button variant="outline" size="sm" className="focus-ring">
+                      <Eye className="mr-1 h-3 w-3" />
+                      View
+                    </Button>
+                    <Button variant="outline" size="sm" className="focus-ring">
+                      <Edit3 className="mr-1 h-3 w-3" />
+                      Edit
+                    </Button>
+                    
+                    {internship.status === "draft" && (
+                      <Button size="sm" className="focus-ring">Publish</Button>
+                    )}
+                    {(internship.status === "published" || internship.status === "active") && (
+                      <Button variant="outline" size="sm" className="text-danger hover:text-danger focus-ring">
+                        Close
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -798,17 +912,15 @@ export default function CompanyHRDashboard() {
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
           >
             <div>
-              <h2 className="text-xl font-semibold">Applications</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <h2 className="text-h4 font-semibold">Applications</h2>
+              <p className="text-small text-muted-foreground mt-1">
                 Review and manage incoming applications
               </p>
             </div>
             
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search applications..." className="pl-10 w-64" />
-              </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search applications..." className="pl-10 w-64 form-input" />
             </div>
           </motion.div>
 
@@ -826,7 +938,7 @@ export default function CompanyHRDashboard() {
                 variant={applicationFilter === filter.key ? "default" : "outline"}
                 size="sm"
                 onClick={() => setApplicationFilter(filter.key)}
-                className="shrink-0"
+                className="shrink-0 focus-ring"
               >
                 {filter.label}
                 <Badge variant="secondary" className="ml-2">{filter.count}</Badge>
@@ -847,12 +959,10 @@ export default function CompanyHRDashboard() {
             ))}
 
             {filteredApplications.length === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <InboxIcon className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                  <p className="mt-4 text-muted-foreground">No applications found</p>
-                </CardContent>
-              </Card>
+              <div className="dashboard-card text-center py-12">
+                <InboxIcon className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                <p className="mt-4 text-muted-foreground">No applications found</p>
+              </div>
             )}
           </div>
 
@@ -878,77 +988,75 @@ export default function CompanyHRDashboard() {
 
             {/* ACTIVE INTERNS SUB-TAB */}
             <TabsContent value="interns" className="mt-6 space-y-4">
-              <Card>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Student</TableHead>
-                        <TableHead className="hidden sm:table-cell">Position</TableHead>
-                        <TableHead className="hidden md:table-cell">Start Date</TableHead>
-                        <TableHead>Progress</TableHead>
-                        <TableHead className="hidden lg:table-cell">Supervisor</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+              <div className="data-table-container">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Student</TableHead>
+                      <TableHead className="hidden sm:table-cell">Position</TableHead>
+                      <TableHead className="hidden md:table-cell">Start Date</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead className="hidden lg:table-cell">Supervisor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {mockActiveInterns.map((intern) => (
+                      <TableRow key={intern.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700">
+                                {intern.student_name?.split(" ").map(n => n[0]).join("")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{intern.student_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <span className="truncate max-w-[150px] block">{intern.position_title}</span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">
+                          {new Date(intern.start_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Progress value={intern.progress_percentage} className="w-16 h-2" />
+                            <span className="text-sm font-medium">{intern.progress_percentage}%</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell text-muted-foreground">
+                          {intern.supervisor_name}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={intern.status} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                              <Upload className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {mockActiveInterns.map((intern) => (
-                        <TableRow key={intern.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700">
-                                  {intern.student_name?.split(" ").map(n => n[0]).join("")}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="font-medium">{intern.student_name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell">
-                            <span className="truncate max-w-[150px] block">{intern.position_title}</span>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell text-muted-foreground">
-                            {new Date(intern.start_date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Progress value={intern.progress_percentage} className="w-16 h-2" />
-                              <span className="text-sm font-medium">{intern.progress_percentage}%</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden lg:table-cell text-muted-foreground">
-                            {intern.supervisor_name}
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={intern.status} />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Upload className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <FileText className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             {/* SUPERVISORS SUB-TAB */}
             <TabsContent value="supervisors" className="mt-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Site Supervisors</h3>
-                <Button size="sm">
+                <h3 className="text-h4 font-semibold">Site Supervisors</h3>
+                <Button size="sm" className="focus-ring">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Supervisor
                 </Button>
@@ -960,55 +1068,52 @@ export default function CompanyHRDashboard() {
                     key={supervisor.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    className={`dashboard-card card-hover ${!supervisor.is_active ? "opacity-60" : ""}`}
                   >
-                    <Card className={`${!supervisor.is_active ? "opacity-60" : ""}`}>
-                      <CardContent className="py-4">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-12 w-12">
-                            <AvatarFallback className={
-                              supervisor.is_active ? "bg-primary/10 text-primary" : "bg-gray-100 text-gray-500"
-                            }>
-                              {supervisor.email.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium capitalize">
-                                {supervisor.email.split("@")[0].replace(".", " ")}
-                              </h4>
-                              <StatusBadge status={supervisor.is_active ? "active" : "draft"} />
-                            </div>
-                            <p className="text-sm text-muted-foreground">{supervisor.title}</p>
-                            <p className="text-xs text-muted-foreground">{supervisor.specialization}</p>
-                            
-                            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                {supervisor.email.split("@")[0]}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Users className="h-3 w-3" />
-                                Max {supervisor.max_interns}
-                              </span>
-                            </div>
-                          </div>
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-12 w-12">
+                        <AvatarFallback className={
+                          supervisor.is_active ? "bg-primary/10 text-primary" : "bg-gray-100 text-gray-500"
+                        }>
+                          {supervisor.email.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-h4 font-semibold capitalize">
+                            {supervisor.email.split("@")[0].replace(".", " ")}
+                          </h4>
+                          <StatusBadge status={supervisor.is_active ? "active" : "draft"} />
                         </div>
-
-                        <Separator className="my-3" />
-
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" className="flex-1">
-                            <Edit3 className="mr-1 h-3 w-3" />
-                            Edit
-                          </Button>
-                          {!supervisor.is_active && (
-                            <Button size="sm" variant="secondary" className="flex-1">
-                              Reactivate
-                            </Button>
-                          )}
+                        <p className="text-small text-muted-foreground">{supervisor.title}</p>
+                        <p className="text-caption text-muted-foreground">{supervisor.specialization}</p>
+                        
+                        <div className="flex items-center gap-3 mt-2 text-caption text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            {supervisor.email.split("@")[0]}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            Max {supervisor.max_interns}
+                          </span>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
+
+                    <Separator className="my-3" />
+
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1 focus-ring">
+                        <Edit3 className="mr-1 h-3 w-3" />
+                        Edit
+                      </Button>
+                      {!supervisor.is_active && (
+                        <Button size="sm" variant="secondary" className="flex-1 focus-ring">
+                          Reactivate
+                        </Button>
+                      )}
+                    </div>
                   </motion.div>
                 ))}
               </div>
@@ -1017,20 +1122,20 @@ export default function CompanyHRDashboard() {
             {/* EVALUATIONS SUB-TAB */}
             <TabsContent value="evaluations" className="mt-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Evaluations</h3>
+                <h3 className="text-h4 font-semibold">Evaluations</h3>
               </div>
 
               <div className="space-y-4">
                 {mockEvaluations.map((evaluation) => (
                   <Card key={evaluation.id} className={
-                    evaluation.status === "pending" ? "border-amber-200 dark:border-amber-800" : ""
+                    evaluation.status === "pending" ? "border-warning/50" : ""
                   }>
                     <CardContent className="py-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
                           <div className={`h-12 w-12 rounded-full flex items-center justify-center shrink-0 ${
-                            evaluation.status === "completed" ? "bg-emerald-100 text-emerald-600" :
-                            "bg-amber-100 text-amber-600"
+                            evaluation.status === "completed" ? "bg-success/10 text-success" :
+                            "bg-warning/10 text-warning"
                           }`}>
                             {evaluation.status === "completed" ? (
                               <CheckCircle2 className="h-6 w-6" />
@@ -1041,15 +1146,13 @@ export default function CompanyHRDashboard() {
                           
                           <div>
                             <h4 className="font-medium">{evaluation.evaluation_period}</h4>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-small text-muted-foreground">
                               {evaluation.student_name}
                             </p>
                             {evaluation.status === "completed" && (
                               <div className="flex items-center gap-2 mt-1">
-                                <div className="flex items-center gap-1">
-                                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                                  <span className="font-medium">{evaluation.total_score}/{evaluation.max_score}</span>
-                                </div>
+                                <Star className="h-4 w-4 fill-warning text-warning" />
+                                <span className="font-medium">{evaluation.total_score}/{evaluation.max_score}</span>
                               </div>
                             )}
                           </div>
@@ -1064,11 +1167,12 @@ export default function CompanyHRDashboard() {
                                 setSelectedEvaluation(evaluation);
                                 setIsEvaluationDialogOpen(true);
                               }}
+                              className="focus-ring"
                             >
                               Evaluate Now
                             </Button>
                           ) : (
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" className="focus-ring">
                               <Eye className="mr-1 h-3 w-3" />
                               View
                             </Button>
@@ -1101,97 +1205,227 @@ export default function CompanyHRDashboard() {
             {/* CERTIFICATES SUB-TAB */}
             <TabsContent value="certificates" className="mt-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Completion Certificates</h3>
+                <h3 className="text-h4 font-semibold">Completion Certificates</h3>
               </div>
 
-              <Card>
-                <CardContent className="py-8">
-                  <div className="text-center space-y-4">
-                    <div className="mx-auto h-20 w-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                      <Award className="h-10 w-10 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-semibold">Issue Completion Certificates</h4>
-                      <p className="text-muted-foreground mt-1">
-                        Generate and issue certificates for interns who have successfully completed their program.
-                      </p>
-                    </div>
+              <div className="dashboard-card">
+                <div className="py-8 text-center">
+                  <div className="mx-auto h-20 w-20 rounded-full bg-warning/10 flex items-center justify-center mb-4">
+                    <Award className="h-10 w-10 text-warning" />
+                  </div>
+                  <div>
+                    <h4 className="text-h4 font-semibold">Issue Completion Certificates</h4>
+                    <p className="text-small text-muted-foreground mt-1">
+                      Generate and issue certificates for interns who have successfully completed their program.
+                    </p>
+                  </div>
+                  
+                  <div className="max-w-md mx-auto space-y-3 pt-4">
+                    <Select defaultValue="">
+                      <SelectTrigger className="form-input">
+                        <SelectValue placeholder="Select completed intern" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockActiveInterns.filter(i => i.progress_percentage >= 80).map(intern => (
+                          <SelectItem key={intern.id} value={intern.id}>
+                            {intern.student_name} - {intern.position_title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     
-                    <div className="max-w-md mx-auto space-y-3 pt-4">
-                      <Select defaultValue="">
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select completed intern" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {mockActiveInterns.filter(i => i.progress_percentage >= 80).map(intern => (
-                            <SelectItem key={intern.id} value={intern.id}>
-                              {intern.student_name} - {intern.position_title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      
-                      <Select defaultValue="standard">
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="standard">Standard Template</SelectItem>
-                          <SelectItem value="premium">Premium Template</SelectItem>
-                          <SelectItem value="custom">Custom Template</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <Select defaultValue="standard">
+                      <SelectTrigger className="form-input">
+                        <SelectValue placeholder="Select template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="standard">Standard Template</SelectItem>
+                        <SelectItem value="premium">Premium Template</SelectItem>
+                        <SelectItem value="custom">Custom Template</SelectItem>
+                      </SelectContent>
+                    </Select>
 
-                      <div className="flex gap-2 pt-2">
-                        <Button className="flex-1">
-                          <Award className="mr-2 h-4 w-4" />
-                          Generate Certificate
-                        </Button>
-                        <Button variant="outline" className="flex-1">
-                          <Download className="mr-2 h-4 w-4" />
-                          Download All
-                        </Button>
-                      </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button className="flex-1 focus-ring">
+                        <Award className="mr-2 h-4 w-4" />
+                        Generate Certificate
+                      </Button>
+                      <Button variant="outline" className="flex-1 focus-ring">
+                        <Download className="mr-2 h-4 w-4" />
+                        Download All
+                      </Button>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Issued Certificates History */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Recently Issued Certificates</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {[
-                      { name: "James Wilson", position: "Backend Developer Intern", date: "2025-01-15", certId: "CERT-001" },
-                      { name: "Sophie Anderson", position: "Marketing Intern", date: "2025-01-10", certId: "CERT-002" },
-                    ].map(cert => (
-                      <div key={cert.certId} className="flex items-center justify-between p-3 rounded-lg border">
-                        <div className="flex items-center gap-3">
-                          <Award className="h-8 w-8 text-amber-500" />
-                          <div>
-                            <p className="font-medium">{cert.name}</p>
-                            <p className="text-sm text-muted-foreground">{cert.position}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">{cert.date}</span>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
+              <div className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title">Recently Issued Certificates</h3>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { name: "James Wilson", position: "Backend Developer Intern", date: "2025-01-15", certId: "CERT-001" },
+                    { name: "Sophie Anderson", position: "Marketing Intern", date: "2025-01-10", certId: "CERT-002" },
+                  ].map(cert => (
+                    <div key={cert.certId} className="flex items-center justify-between p-3 rounded-lg border border-border">
+                      <div className="flex items-center gap-3">
+                        <Award className="h-8 w-8 text-warning" />
+                        <div>
+                          <p className="font-medium">{cert.name}</p>
+                          <p className="text-small text-muted-foreground">{cert.position}</p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="flex items-center gap-2">
+                        <span className="text-small text-muted-foreground">{cert.date}</span>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        {/* SETTINGS TAB */}
+        <TabsContent value="settings" className="mt-6 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Notification Preferences */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-primary" />
+                  Notification Preferences
+                </h3>
+              </div>
+              <div className="space-y-4">
+                {[
+                  { label: "New Applications", description: "Get notified when students apply", enabled: true },
+                  { label: "Weekly Reports", description: "Receive weekly summary reports", enabled: true },
+                  { label: "Evaluation Reminders", description: "Remind before evaluation deadlines", enabled: false },
+                  { label: "System Updates", description: "Important platform updates", enabled: true },
+                  { label: "Marketing Emails", description: "Promotional content and tips", enabled: false },
+                ].map((pref, index) => (
+                  <div key={index} className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-sm font-medium">{pref.label}</p>
+                      <p className="text-caption text-muted-foreground">{pref.description}</p>
+                    </div>
+                    <button className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      pref.enabled ? "bg-primary" : "bg-muted"
+                    }`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        pref.enabled ? "translate-x-6" : "translate-x-1"
+                      }`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Branding Settings */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Palette className="h-5 w-5 text-chart-2" />
+                  Branding
+                </h3>
+              </div>
+              <div className="space-y-4">
+                <div className="form-group">
+                  <Label className="form-label">Company Logo</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="h-20 w-20 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white font-bold text-2xl">
+                      TC
+                    </div>
+                    <div>
+                      <Button variant="outline" size="sm" className="focus-ring">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload New Logo
+                      </Button>
+                      <p className="text-caption text-muted-foreground mt-1">PNG, JPG up to 2MB</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <Label htmlFor="brand-color" className="form-label">Brand Color</Label>
+                  <div className="flex items-center gap-2">
+                    <div className="h-10 w-10 rounded-lg bg-primary border border-border cursor-pointer" />
+                    <Input id="brand-color" defaultValue="#2563eb" className="form-input w-32" />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="form-group">
+                  <Label htmlFor="public-description" className="form-label">Public Description</Label>
+                  <Textarea
+                    id="public-description"
+                    defaultValue={mockCompany.description}
+                    className="form-input"
+                    rows={3}
+                  />
+                </div>
+
+                <Button className="focus-ring">
+                  Save Changes
+                </Button>
+              </div>
+            </motion.div>
+
+            {/* Template Library */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card lg:col-span-2">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <FileSignature className="h-5 w-5 text-success" />
+                  Document Templates
+                </h3>
+                <Button size="sm" className="focus-ring">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Template
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {templates.map((template) => (
+                  <div key={template.id} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+                          template.type === "offer_letter" ? "bg-primary/10 text-primary" :
+                          template.type === "certificate" ? "bg-warning/10 text-warning" :
+                          template.type === "agreement" ? "bg-success/10 text-success" :
+                          "bg-muted text-muted-foreground"
+                        }`}>
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{template.name}</p>
+                          <p className="text-caption text-muted-foreground capitalize">{template.type.replace("_", " ")}</p>
+                        </div>
+                      </div>
+                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                      <span className="text-caption text-muted-foreground">
+                        Used {template.usageCount} times
+                      </span>
+                      <span className="text-caption text-muted-foreground">
+                        Last: {template.lastUsed}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
@@ -1239,7 +1473,7 @@ function EvaluationFormContent({ onSubmit, onCancel }: EvaluationFormContentProp
     <div className="space-y-6 py-4">
       {/* Rating Scales */}
       <div className="space-y-4">
-        <h4 className="font-medium">Performance Criteria</h4>
+        <h4 className="text-h4 font-semibold">Performance Criteria</h4>
         
         <div className="space-y-3">
           {criteria.map(criterion => (
@@ -1253,7 +1487,7 @@ function EvaluationFormContent({ onSubmit, onCancel }: EvaluationFormContentProp
                   <button
                     key={value}
                     onClick={() => setRatings(prev => ({ ...prev, [criterion.key]: value }))}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors focus-ring ${
                       ratings[criterion.key] >= value
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -1276,7 +1510,7 @@ function EvaluationFormContent({ onSubmit, onCancel }: EvaluationFormContentProp
       <div className="p-4 rounded-lg bg-muted/50">
         <div className="flex items-center justify-between">
           <span className="font-medium">Total Score</span>
-          <span className="text-lg font-bold text-primary">
+          <span className="text-lg font-bold text-gradient-brand">
             {totalScore}/{maxScore}
           </span>
         </div>
@@ -1285,47 +1519,50 @@ function EvaluationFormContent({ onSubmit, onCancel }: EvaluationFormContentProp
 
       {/* Comments */}
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="eval-comments">Overall Comments</Label>
+        <div className="form-group">
+          <Label htmlFor="eval-comments" className="form-label">Overall Comments</Label>
           <Textarea
             id="eval-comments"
             placeholder="Provide overall feedback about the intern's performance..."
             rows={3}
             value={comments}
             onChange={(e) => setComments(e.target.value)}
+            className="form-input"
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="strengths">Key Strengths</Label>
+          <div className="form-group">
+            <Label htmlFor="strengths" className="form-label">Key Strengths</Label>
             <Textarea
               id="strengths"
               placeholder="What are the intern's main strengths?"
               rows={3}
               value={strengths}
               onChange={(e) => setStrengths(e.target.value)}
+              className="form-input"
             />
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="improvements">Areas for Improvement</Label>
+          <div className="form-group">
+            <Label htmlFor="improvements" className="form-label">Areas for Improvement</Label>
             <Textarea
               id="improvements"
               placeholder="Where can the intern improve?"
               rows={3}
               value={improvements}
               onChange={(e) => setImprovements(e.target.value)}
+              className="form-input"
             />
           </div>
         </div>
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel} className="focus-ring">
           Cancel
         </Button>
-        <Button onClick={onSubmit}>
+        <Button onClick={onSubmit} className="focus-ring">
           <Send className="mr-2 h-4 w-4" />
           Submit Evaluation
         </Button>

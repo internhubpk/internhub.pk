@@ -54,6 +54,14 @@ import {
   ExternalLink,
   RefreshCw,
   Send,
+  Bell,
+  Megaphone,
+  Activity,
+  Timer,
+  BarChart3,
+  Zap,
+  Target,
+  Flame,
 } from "lucide-react";
 import { InternshipProgressCard } from "@/components/student/internship-progress";
 import { WeeklyLogForm, type WeeklyLogFormData } from "@/components/student/weekly-log-form";
@@ -256,6 +264,27 @@ const mockInternshipDetails: StudentInternship & {
   supervisor_phone: "+1 (555) 123-4567",
 };
 
+// New mock data for enhanced sections
+const upcomingDeadlines = [
+  { id: 1, title: "Week 4 Weekly Log", dueDate: "2025-02-02", urgency: "high" as const, type: "log" },
+  { id: 2, title: "Mid-term Evaluation Form", dueDate: "2025-02-15", urgency: "medium" as const, type: "evaluation" },
+  { id: 3, title: "February Monthly Report", dueDate: "2025-02-28", urgency: "low" as const, type: "report" },
+];
+
+const recentActivities = [
+  { id: 1, action: "Weekly log approved", detail: "Week 3 log approved by supervisor", time: "2 hours ago", icon: CheckCircle2, color: "text-success" },
+  { id: 2, action: "New announcement", detail: "Company holiday on Feb 14th", time: "5 hours ago", icon: Megaphone, color: "text-info" },
+  { id: 3, action: "Report submitted", detail: "Monthly progress report for January", time: "1 day ago", icon: Send, color: "text-primary" },
+  { id: 4, action: "Feedback received", detail: "Positive feedback on Week 2 performance", time: "2 days ago", icon: Star, color: "text-warning" },
+  { id: 5, action: "Meeting scheduled", detail: "1:1 with site supervisor next Monday", time: "3 days ago", icon: CalendarIcon, color: "text-chart-2" },
+];
+
+const announcements = [
+  { id: 1, source: "University", title: "Spring Semester Internship Guidelines Updated", date: "2025-01-28", priority: "high" as const },
+  { id: 2, source: "Company", title: "Team Building Event - Feb 20th", date: "2025-01-27", priority: "medium" as const },
+  { id: 3, source: "University", title: "Internship Completion Requirements", date: "2025-01-25", priority: "low" as const },
+];
+
 // ============ HELPER COMPONENTS ============
 
 const containerVariants = {
@@ -274,21 +303,35 @@ const itemVariants = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-    draft: { label: "Draft", variant: "secondary" },
-    submitted: { label: "Submitted", variant: "outline", className: "bg-blue-50 text-blue-700 border-blue-200" },
-    approved: { label: "Approved", variant: "default", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    rejected: { label: "Rejected", variant: "destructive" },
-    under_review: { label: "Under Review", variant: "outline", className: "bg-amber-50 text-amber-700 border-amber-200" },
-    pending: { label: "Pending", variant: "secondary" },
+  const config: Record<string, { label: string; className: string }> = {
+    draft: { label: "Draft", className: "badge-secondary" },
+    submitted: { label: "Submitted", className: "badge-info" },
+    approved: { label: "Approved", className: "badge-success" },
+    rejected: { label: "Rejected", className: "badge-danger" },
+    under_review: { label: "Under Review", className: "badge-warning" },
+    pending: { label: "Pending", className: "badge-secondary" },
   };
 
-  const configItem = config[status] || { label: status, variant: "outline" };
+  const configItem = config[status] || { label: status, className: "badge-secondary" };
 
   return (
-    <Badge variant={configItem.variant} className={configItem.className}>
+    <span className={`badge ${configItem.className}`}>
       {configItem.label}
-    </Badge>
+    </span>
+  );
+}
+
+function UrgencyBadge({ urgency }: { urgency: "high" | "medium" | "low" }) {
+  const config = {
+    high: { label: "Urgent", className: "badge-danger" },
+    medium: { label: "Soon", className: "badge-warning" },
+    low: { label: "Upcoming", className: "badge-info" },
+  };
+
+  return (
+    <span className={`badge ${config[urgency].className}`}>
+      {config[urgency].label}
+    </span>
   );
 }
 
@@ -298,6 +341,25 @@ function formatFileSize(bytes: number): string {
   const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+// Star icon component
+function Star({ className }: { className?: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  );
+}
+
+// Briefcase icon component
+function BriefcaseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+    </svg>
+  );
 }
 
 // ============ MAIN DASHBOARD COMPONENT ============
@@ -311,12 +373,10 @@ export default function StudentDashboard() {
   // Form handlers
   const handleLogSubmit = useCallback(async (data: WeeklyLogFormData) => {
     console.log("Submitting log:", data);
-    // In production: await submitWeeklyLog(data);
   }, []);
 
   const handleSaveDraft = useCallback((data: WeeklyLogFormData) => {
     console.log("Saving draft:", data);
-    // In production: await saveDraft(data);
   }, []);
 
   // Calculate attendance stats
@@ -330,57 +390,130 @@ export default function StudentDashboard() {
     ),
   };
 
+  // Calculate total hours logged
+  const totalHoursLogged = mockWeeklyLogs.reduce((sum, log) => sum + log.hours_worked, 0);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-container">
       {/* Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
+        className="dashboard-card bg-gradient-to-r from-primary/5 via-purple-500/5 to-pink-500/5 border-primary/20"
       >
-        <Card className="bg-gradient-to-r from-primary/5 via-purple-500/5 to-pink-500/5 border-primary/20">
-          <CardContent className="py-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16 ring-2 ring-primary/20">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white text-xl">
-                    JD
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground">
-                    Welcome back, John! 👋
-                  </h1>
-                  <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4" />
-                    State University • Computer Science • Semester 6
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-emerald-50">
-                      <CheckCircle2 className="mr-1 h-3 w-3" />
-                      Active Internship
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      Week {mockProgress.currentWeek} of {mockProgress.totalWeeks}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  View Schedule
-                </Button>
-                <Button size="sm" onClick={() => setIsLogFormOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  New Log Entry
-                </Button>
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-16 w-16 ring-2 ring-primary/20">
+              <AvatarImage src="" />
+              <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white text-xl">
+                JD
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-h3 font-bold text-foreground">
+                Welcome back, John! 👋
+              </h1>
+              <p className="text-body text-muted-foreground mt-1 flex items-center gap-2">
+                <GraduationCap className="h-4 w-4" />
+                State University • Computer Science • Semester 6
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="badge badge-success">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Active Internship
+                </span>
+                <span className="text-small text-muted-foreground">
+                  Week {mockProgress.currentWeek} of {mockProgress.totalWeeks}
+                </span>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="focus-ring">
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              View Schedule
+            </Button>
+            <Button size="sm" onClick={() => setIsLogFormOpen(true)} className="focus-ring">
+              <Plus className="mr-2 h-4 w-4" />
+              New Log Entry
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Quick Stats Row */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        <motion.div variants={itemVariants} className="stat-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-caption text-muted-foreground">Attendance Rate</p>
+              <p className="dashboard-card-value text-2xl mt-1">{attendanceStats.percentage}%</p>
+            </div>
+            <div className="stat-card-icon bg-success/10 text-success">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-success rounded-full" style={{ width: `${attendanceStats.percentage}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground">{attendanceStats.present}/{attendanceStats.total}</span>
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="stat-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-caption text-muted-foreground">Hours Logged</p>
+              <p className="dashboard-card-value text-2xl mt-1">{totalHoursLogged}</p>
+            </div>
+            <div className="stat-card-icon bg-primary/10 text-primary">
+              <Timer className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-success flex items-center gap-1">
+              <TrendingUp className="h-3 w-3" /> +8 this week
+            </span>
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="stat-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-caption text-muted-foreground">Reports Submitted</p>
+              <p className="dashboard-card-value text-2xl mt-1">{mockProgress.reportsSubmitted}/{mockProgress.reportsRequired}</p>
+            </div>
+            <div className="stat-card-icon bg-chart-2/10 text-chart-2">
+              <FileText className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <Progress value={(mockProgress.reportsSubmitted / mockProgress.reportsRequired) * 100} className="h-1.5" />
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="stat-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-caption text-muted-foreground">Current Streak</p>
+              <p className="dashboard-card-value text-2xl mt-1">3 Weeks</p>
+            </div>
+            <div className="stat-card-icon bg-warning/10 text-warning">
+              <Flame className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Keep it going! 🔥</span>
+          </div>
+        </motion.div>
       </motion.div>
 
       {/* Main Content Tabs */}
@@ -405,214 +538,279 @@ export default function StudentDashboard() {
               <InternshipProgressCard progress={mockProgress} />
             </motion.div>
 
-            {/* Quick Stats */}
-            <motion.div variants={itemVariants}>
-              <Card className="h-full">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                    Quick Stats
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                      <p className="text-2xl font-bold text-emerald-600">{attendanceStats.percentage}%</p>
-                      <p className="text-xs text-muted-foreground mt-1">Attendance Rate</p>
-                    </div>
-                    <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                      <p className="text-2xl font-bold text-blue-600">{mockInternshipDetails.total_hours}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Total Hours</p>
-                    </div>
-                    <div className="text-center p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30">
-                      <p className="text-2xl font-bold text-purple-600">{mockWeeklyLogsSubmitted}/{mockWeeklyLogsRequired}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Logs Done</p>
-                    </div>
-                    <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
-                      <p className="text-2xl font-bold text-amber-600">{mockProgress.currentWeek}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Current Week</p>
+            {/* Upcoming Deadlines */}
+            <motion.div variants={itemVariants} className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-warning" />
+                  Upcoming Deadlines
+                </h3>
+                <Button variant="ghost" size="sm" className="text-primary focus-ring">
+                  View All
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {upcomingDeadlines.map((deadline) => (
+                  <div
+                    key={deadline.id}
+                    className={`p-3 rounded-lg border ${
+                      deadline.urgency === "high"
+                        ? "bg-danger/5 border-danger/20"
+                        : deadline.urgency === "medium"
+                        ? "bg-warning/5 border-warning/20"
+                        : "bg-info/5 border-info/20"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
+                          deadline.urgency === "high" ? "bg-danger" :
+                          deadline.urgency === "medium" ? "bg-warning" : "bg-info"
+                        }`} />
+                        <div>
+                          <p className="text-sm font-medium">{deadline.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Due {new Date(deadline.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </p>
+                        </div>
+                      </div>
+                      <UrgencyBadge urgency={deadline.urgency} />
                     </div>
                   </div>
-
-                  <Separator />
-
-                  {/* Upcoming Deadline */}
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-                    <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-red-700 dark:text-red-400">
-                        Weekly log due soon!
-                      </p>
-                      <p className="text-xs text-red-600 dark:text-red-400">
-                        Submit by Friday at 11:59 PM
-                      </p>
-                    </div>
-                    <Button size="sm" variant="destructive" onClick={() => setIsLogFormOpen(true)}>
-                      Submit Now
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                ))}
+              </div>
             </motion.div>
           </motion.div>
 
-          {/* Internship Details Card */}
-          <motion.div variants={itemVariants} initial="hidden" animate="visible">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+          {/* Second Row: Details & Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Internship Details Card */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-primary" />
                   Internship Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Company Info */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        TC
-                      </div>
-                      <div>
-                        <p className="font-semibold">{mockInternshipDetails.company_name}</p>
-                        <p className="text-sm text-muted-foreground">Technology Company</p>
-                      </div>
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Company Info */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      TC
                     </div>
-                    
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <BriefcaseIcon className="h-4 w-4" />
-                        <span>Software Engineering Intern</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        <span>San Francisco, CA (Hybrid)</span>
+                    <div>
+                      <p className="font-semibold text-sm">{mockInternshipDetails.company_name}</p>
+                      <p className="text-xs text-muted-foreground">Technology Company</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <BriefcaseIcon className="h-4 w-4" />
+                      <span>Software Engineering Intern</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>San Francisco, CA (Hybrid)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Supervisor Info */}
+                <div className="space-y-3">
+                  <h4 className="text-label text-muted-foreground uppercase tracking-wider">
+                    Site Supervisor
+                  </h4>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-purple-100 text-purple-700 text-xs">
+                        SJ
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium text-sm">{mockInternshipDetails.supervisor_name}</p>
+                      <div className="flex flex-col text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          {mockInternshipDetails.supervisor_email}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {mockInternshipDetails.supervisor_phone}
+                        </span>
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
 
-                  {/* Supervisor Info */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wider">
-                      Site Supervisor
-                    </h4>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-purple-100 text-purple-700">
-                          SJ
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{mockInternshipDetails.supervisor_name}</p>
-                        <div className="flex flex-col text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
-                            {mockInternshipDetails.supervisor_email}
+              <Separator className="my-4" />
+
+              {/* Timeline */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Start Date</p>
+                  <p className="text-sm font-semibold mt-1">
+                    {new Date(mockInternshipDetails.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">End Date</p>
+                  <p className="text-sm font-semibold mt-1">
+                    {new Date(mockInternshipDetails.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Weekly Hours</p>
+                  <p className="text-sm font-semibold mt-1">{mockInternshipDetails.weekly_hours} hrs</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Duration</p>
+                  <p className="text-sm font-semibold mt-1">{mockProgress.totalWeeks} weeks</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Recent Activity Feed */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-chart-2" />
+                  Recent Activity
+                </h3>
+                <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4 max-h-[320px] overflow-y-auto scrollbar-thin">
+                {recentActivities.map((activity, index) => (
+                  <div key={activity.id} className="flex gap-3">
+                    <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      activity.color === "text-success" ? "bg-success/10" :
+                      activity.color === "text-info" ? "bg-info/10" :
+                      activity.color === "text-primary" ? "bg-primary/10" :
+                      activity.color === "text-warning" ? "bg-warning/10" : "bg-chart-2/10"
+                    }`}>
+                      <activity.icon className={`h-4 w-4 ${activity.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{activity.action}</p>
+                      <p className="text-xs text-muted-foreground truncate">{activity.detail}</p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">{activity.time}</p>
+                    </div>
+                    {index < recentActivities.length - 1 && (
+                      <div className="absolute left-4 top-8 w-px h-full bg-border ml-2" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Third Row: Announcements & Attendance */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Announcements */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Megaphone className="h-5 w-5 text-info" />
+                  Announcements
+                </h3>
+                <Badge variant="outline" className="badge-info">
+                  {announcements.length} New
+                </Badge>
+              </div>
+              <div className="space-y-3">
+                {announcements.map((announcement) => (
+                  <div
+                    key={announcement.id}
+                    className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            announcement.priority === "high" ? "bg-danger/10 text-danger" :
+                            announcement.priority === "medium" ? "bg-warning/10 text-warning" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {announcement.source}
                           </span>
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            {mockInternshipDetails.supervisor_phone}
-                          </span>
+                          {announcement.priority === "high" && (
+                            <Bell className="h-3 w-3 text-danger" />
+                          )}
                         </div>
+                        <p className="text-sm font-medium line-clamp-2">{announcement.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(announcement.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
                       </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
                     </div>
                   </div>
+                ))}
+              </div>
+            </motion.div>
 
-                  {/* Timeline */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wider">
-                      Duration
-                    </h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Start Date</span>
-                        <span className="font-medium">
-                          {new Date(mockInternshipDetails.start_date).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">End Date</span>
-                        <span className="font-medium">
-                          {new Date(mockInternshipDetails.end_date).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <Separator />
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Weekly Hours</span>
-                        <span className="font-medium">{mockInternshipDetails.weekly_hours} hrs</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Total Duration</span>
-                        <span className="font-medium">{mockProgress.totalWeeks} weeks</span>
-                      </div>
-                    </div>
-                  </div>
+            {/* Attendance Summary */}
+            <motion.div variants={itemVariants} initial="hidden" animate="visible" className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <ClipboardList className="h-5 w-5 text-success" />
+                  Recent Attendance
+                </h3>
+                <Button variant="outline" size="sm" className="focus-ring">
+                  View Calendar
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className="text-center p-3 rounded-lg bg-success/10">
+                  <p className="text-xl font-bold text-success">{attendanceStats.present}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Present</p>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                <div className="text-center p-3 rounded-lg bg-warning/10">
+                  <p className="text-xl font-bold text-warning">{attendanceStats.late}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Late</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-danger/10">
+                  <p className="text-xl font-bold text-danger">{attendanceStats.absent}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Absent</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-primary/10">
+                  <p className="text-xl font-bold text-primary">{attendanceStats.percentage}%</p>
+                  <p className="text-xs text-muted-foreground mt-1">Rate</p>
+                </div>
+              </div>
 
-          {/* Attendance Summary */}
-          <motion.div variants={itemVariants} initial="hidden" animate="visible">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5 text-primary" />
-                    Recent Attendance
-                  </CardTitle>
-                  <Button variant="outline" size="sm">
-                    View Full Calendar
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-                  <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
-                    <p className="text-xl font-bold text-emerald-600">{attendanceStats.present}</p>
-                    <p className="text-xs text-muted-foreground">Present</p>
+              {/* Mini Calendar Grid */}
+              <div className="grid grid-cols-7 gap-1">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
+                  <div key={day} className="text-center text-xs font-medium text-muted-foreground py-1">
+                    {day}
                   </div>
-                  <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
-                    <p className="text-xl font-bold text-amber-600">{attendanceStats.late}</p>
-                    <p className="text-xs text-muted-foreground">Late</p>
+                ))}
+                {mockAttendance.slice(0, 14).map((att) => (
+                  <div
+                    key={att.id}
+                    className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium cursor-default ${
+                      att.status === "present"
+                        ? "bg-success/20 text-success dark:bg-success/30"
+                        : att.status === "late"
+                        ? "bg-warning/20 text-warning dark:bg-warning/30"
+                        : "bg-danger/20 text-danger dark:bg-danger/30"
+                    }`}
+                    title={`${att.date}: ${att.status}`}
+                  >
+                    {new Date(att.date).getDate()}
                   </div>
-                  <div className="text-center p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
-                    <p className="text-xl font-bold text-red-600">{attendanceStats.absent}</p>
-                    <p className="text-xs text-muted-foreground">Absent</p>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                    <p className="text-xl font-bold text-blue-600">{attendanceStats.percentage}%</p>
-                    <p className="text-xs text-muted-foreground">Rate</p>
-                  </div>
-                </div>
-
-                {/* Mini Calendar Grid */}
-                <div className="grid grid-cols-7 gap-1">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
-                    <div key={day} className="text-center text-xs font-medium text-muted-foreground py-1">
-                      {day}
-                    </div>
-                  ))}
-                  {mockAttendance.slice(0, 14).map((att) => (
-                    <div
-                      key={att.id}
-                      className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium ${
-                        att.status === "present"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400"
-                          : att.status === "late"
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"
-                          : "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"
-                      }`}
-                      title={`${att.date}: ${att.status}`}
-                    >
-                      {new Date(att.date).getDate()}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
         </TabsContent>
 
         {/* WEEKLY LOGS TAB */}
@@ -620,15 +818,15 @@ export default function StudentDashboard() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
           >
             <div>
-              <h2 className="text-xl font-semibold">Weekly Activity Logs</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <h2 className="text-h4 font-semibold">Weekly Activity Logs</h2>
+              <p className="text-small text-muted-foreground mt-1">
                 Track your weekly progress and activities during the internship
               </p>
             </div>
-            <Button onClick={() => setIsLogFormOpen(true)}>
+            <Button onClick={() => setIsLogFormOpen(true)} className="focus-ring">
               <Plus className="mr-2 h-4 w-4" />
               New Weekly Log
             </Button>
@@ -642,66 +840,62 @@ export default function StudentDashboard() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
+                className={`dashboard-card card-hover ${log.status === "rejected" ? "border-danger/50" : ""}`}
               >
-                <Card className={`hover:shadow-md transition-shadow ${
-                  log.status === "rejected" ? "border-red-200 dark:border-red-800" : ""
-                }`}>
-                  <CardContent className="py-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-4">
-                        <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-bold shrink-0 ${
-                          log.status === "approved" ? "bg-emerald-500" :
-                          log.status === "submitted" ? "bg-blue-500" :
-                          log.status === "rejected" ? "bg-red-500" : "bg-gray-400"
-                        }`}>
-                          W{log.week_number}
-                        </div>
-                        
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium">Week {log.week_number} Activity Log</h3>
-                            <StatusBadge status={log.status} />
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(log.week_start).toLocaleDateString()} —{" "}
-                            {new Date(log.week_end).toLocaleDateString()}
-                          </p>
-                          <p className="text-sm line-clamp-1">
-                            {log.tasks_completed}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-                        <div className="text-right">
-                          <p className="text-sm font-medium">{log.hours_worked} hours</p>
-                          {log.submitted_at && (
-                            <p className="text-xs text-muted-foreground">
-                              Submitted {new Date(log.submitted_at).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          {(log.status === "draft" || log.status === "rejected") && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setEditingLogId(log.id)}
-                            >
-                              <Edit3 className="mr-1 h-3 w-3" />
-                              Edit
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="sm">
-                            <Eye className="mr-1 h-3 w-3" />
-                            View
-                          </Button>
-                        </div>
-                      </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-bold shrink-0 ${
+                      log.status === "approved" ? "bg-success" :
+                      log.status === "submitted" ? "bg-primary" :
+                      log.status === "rejected" ? "bg-danger" : "bg-muted-foreground"
+                    }`}>
+                      W{log.week_number}
                     </div>
-                  </CardContent>
-                </Card>
+                    
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-h4 font-semibold">Week {log.week_number} Activity Log</h3>
+                        <StatusBadge status={log.status} />
+                      </div>
+                      <p className="text-small text-muted-foreground">
+                        {new Date(log.week_start).toLocaleDateString()} —{" "}
+                        {new Date(log.week_end).toLocaleDateString()}
+                      </p>
+                      <p className="text-small line-clamp-1">
+                        {log.tasks_completed}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{log.hours_worked} hours</p>
+                      {log.submitted_at && (
+                        <p className="text-caption text-muted-foreground">
+                          Submitted {new Date(log.submitted_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      {(log.status === "draft" || log.status === "rejected") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingLogId(log.id)}
+                          className="focus-ring"
+                        >
+                          <Edit3 className="mr-1 h-3 w-3" />
+                          Edit
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="focus-ring">
+                        <Eye className="mr-1 h-3 w-3" />
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -721,73 +915,69 @@ export default function StudentDashboard() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
           >
             <div>
-              <h2 className="text-xl font-semibold">Reports</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <h2 className="text-h4 font-semibold">Reports</h2>
+              <p className="text-small text-muted-foreground mt-1">
                 Submit and track your internship reports
               </p>
             </div>
-            <Button onClick={() => setIsReportDialogOpen(true)}>
+            <Button onClick={() => setIsReportDialogOpen(true)} className="focus-ring">
               <Upload className="mr-2 h-4 w-4" />
               Upload Report
             </Button>
           </motion.div>
 
           {/* Reports Table */}
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left py-3 px-4 font-medium text-sm">Title</th>
-                      <th className="text-left py-3 px-4 font-medium text-sm hidden sm:table-cell">Type</th>
-                      <th className="text-left py-3 px-4 font-medium text-sm hidden md:table-cell">Submitted</th>
-                      <th className="text-left py-3 px-4 font-medium text-sm">Status</th>
-                      <th className="text-right py-3 px-4 font-medium text-sm">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mockReports.map((report) => (
-                      <tr key={report.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{report.title}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 hidden sm:table-cell">
-                          <Badge variant="outline" capitalize>
-                            {report.report_type.replace("_", " ")}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-muted-foreground hidden md:table-cell">
-                          {report.submitted_at
-                            ? new Date(report.submitted_at).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td className="py-3 px-4">
-                          <StatusBadge status={report.status} />
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="data-table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th className="hidden sm:table-cell">Type</th>
+                  <th className="hidden md:table-cell">Submitted</th>
+                  <th>Status</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mockReports.map((report) => (
+                  <tr key={report.id}>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{report.title}</span>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell">
+                      <Badge variant="outline" capitalize>
+                        {report.report_type.replace("_", " ")}
+                      </Badge>
+                    </td>
+                    <td className="hidden md:table-cell text-muted-foreground">
+                      {report.submitted_at
+                        ? new Date(report.submitted_at).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td>
+                      <StatusBadge status={report.status} />
+                    </td>
+                    <td>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Report Upload Dialog */}
           <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
@@ -800,15 +990,15 @@ export default function StudentDashboard() {
               </DialogHeader>
 
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="report-title">Report Title</Label>
-                  <Input id="report-title" placeholder="e.g., Monthly Progress Report - February" />
+                <div className="form-group">
+                  <Label htmlFor="report-title" className="form-label">Report Title</Label>
+                  <Input id="report-title" placeholder="e.g., Monthly Progress Report - February" className="form-input" />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="report-type">Report Type</Label>
+                <div className="form-group">
+                  <Label htmlFor="report-type" className="form-label">Report Type</Label>
                   <Select defaultValue="weekly">
-                    <SelectTrigger id="report-type">
+                    <SelectTrigger id="report-type" className="form-input">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -819,28 +1009,25 @@ export default function StudentDashboard() {
                   </Select>
                 </div>
 
-                <DocumentUpload
-                  acceptedTypes={[
-                    "application/pdf",
-                    "application/msword",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                  ]}
-                  maxSizeMB={25}
-                  documentType="Report"
-                  trigger={
-                    <Button variant="outline" className="w-full">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Choose File or Drag & Drop
-                    </Button>
-                  }
-                />
+                <div className="form-group">
+                  <Label className="form-label">Document</Label>
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
+                    <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Drag & drop your file here or click to browse
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      PDF, DOC, DOCX (Max 25MB)
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsReportDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsReportDialogOpen(false)} className="focus-ring">
                   Cancel
                 </Button>
-                <Button onClick={() => setIsReportDialogOpen(false)}>
+                <Button onClick={() => setIsReportDialogOpen(false)} className="focus-ring">
                   <Send className="mr-2 h-4 w-4" />
                   Submit Report
                 </Button>
@@ -856,8 +1043,8 @@ export default function StudentDashboard() {
             animate={{ opacity: 1 }}
           >
             <div className="mb-6">
-              <h2 className="text-xl font-semibold">Documents</h2>
-              <p className="text-muted-foreground text-sm mt-1">
+              <h2 className="text-h4 font-semibold">Documents</h2>
+              <p className="text-small text-muted-foreground mt-1">
                 Manage your internship-related documents
               </p>
             </div>
@@ -870,81 +1057,78 @@ export default function StudentDashboard() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
+                  className={`dashboard-card card-hover ${!doc.file_url ? "opacity-70" : ""}`}
                 >
-                  <Card className={`hover:shadow-md transition-all ${!doc.file_url ? "opacity-70" : ""}`}>
-                    <CardContent className="py-4">
-                      <div className="flex items-start gap-4">
-                        <div className={`h-12 w-12 rounded-lg flex items-center justify-center shrink-0 ${
-                          doc.document_type === "offer_letter" ? "bg-blue-100 text-blue-600" :
-                          doc.document_type === "completion_letter" ? "bg-purple-100 text-purple-600" :
-                          doc.document_type === "internship_letter" ? "bg-emerald-100 text-emerald-600" :
-                          "bg-amber-100 text-amber-600"
-                        }`}>
-                          {doc.document_type === "offer_letter" && <FileText className="h-6 w-6" />}
-                          {doc.document_type === "completion_letter" && <Award className="h-6 w-6" />}
-                          {doc.document_type === "internship_letter" && <GraduationCap className="h-6 w-6" />}
-                          {doc.document_type === "certificate" && <Award className="h-6 w-6" />}
-                        </div>
+                  <div className="flex items-start gap-4">
+                    <div className={`h-12 w-12 rounded-lg flex items-center justify-center shrink-0 ${
+                      doc.document_type === "offer_letter" ? "bg-primary/10 text-primary" :
+                      doc.document_type === "completion_letter" ? "bg-chart-2/10 text-chart-2" :
+                      doc.document_type === "internship_letter" ? "bg-success/10 text-success" :
+                      "bg-warning/10 text-warning"
+                    }`}>
+                      {doc.document_type === "offer_letter" && <FileText className="h-6 w-6" />}
+                      {doc.document_type === "completion_letter" && <Award className="h-6 w-6" />}
+                      {doc.document_type === "internship_letter" && <GraduationCap className="h-6 w-6" />}
+                      {doc.document_type === "certificate" && <Award className="h-6 w-6" />}
+                    </div>
 
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <h3 className="font-medium capitalize">
-                            {doc.document_type.replace("_", " ")}
-                          </h3>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {doc.description || "No description"}
-                          </p>
-                          
-                          {doc.file_name ? (
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <span>{formatFileSize(doc.file_size)}</span>
-                              <span>•</span>
-                              <span>{new Date(doc.created_at).toLocaleDateString()}</span>
-                              {doc.is_verified && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-emerald-600 flex items-center gap-1">
-                                    <CheckCircle2 className="h-3 w-3" /> Verified
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground italic">
-                              Not yet available
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-1 shrink-0">
-                          {doc.file_url ? (
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h3 className="text-h4 font-semibold capitalize">
+                        {doc.document_type.replace("_", " ")}
+                      </h3>
+                      <p className="text-small text-muted-foreground truncate">
+                        {doc.description || "No description"}
+                      </p>
+                      
+                      {doc.file_name ? (
+                        <div className="flex items-center gap-3 text-caption text-muted-foreground">
+                          <span>{formatFileSize(doc.file_size)}</span>
+                          <span>•</span>
+                          <span>{new Date(doc.created_at).toLocaleDateString()}</span>
+                          {doc.is_verified && (
                             <>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Download className="h-4 w-4" />
-                              </Button>
+                              <span>•</span>
+                              <span className="text-success flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> Verified
+                              </span>
                             </>
-                          ) : (
-                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                              <XCircle className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
-                          
-                          {doc.canUpload && (
-                            <DocumentUpload
-                              trigger={
-                                <Button variant="outline" size="sm" className="mt-1">
-                                  <Upload className="mr-1 h-3 w-3" />
-                                  Upload
-                                </Button>
-                              }
-                            />
                           )}
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      ) : (
+                        <p className="text-caption text-muted-foreground italic">
+                          Not yet available
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {doc.file_url ? (
+                        <>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      )}
+                      
+                      {doc.canUpload && (
+                        <DocumentUpload
+                          trigger={
+                            <Button variant="outline" size="sm" className="mt-1 focus-ring">
+                              <Upload className="mr-1 h-3 w-3" />
+                              Upload
+                            </Button>
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -954,17 +1138,3 @@ export default function StudentDashboard() {
     </div>
   );
 }
-
-// Icon component helper
-function BriefcaseIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
-      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-    </svg>
-  );
-}
-
-// Mock values for display
-const mockWeeklyLogsSubmitted = mockWeeklyLogs.filter(l => l.status === "approved").length;
-const mockWeeklyLogsRequired = mockProgress.totalWeeks;

@@ -63,6 +63,13 @@ import {
   Download,
   Search,
   Filter,
+  BarChart3,
+  Shield,
+  MessageSquare,
+  PenTool,
+  ThumbsUp,
+  Zap,
+  Target,
 } from "lucide-react";
 
 // Mock data
@@ -164,6 +171,41 @@ const mockEvaluationHistory = [
   },
 ];
 
+// Comments template library
+const commentTemplates = [
+  {
+    id: "t1",
+    name: "Excellent Performance",
+    template: "Demonstrated exceptional skills throughout the internship. Technical proficiency is outstanding and work quality consistently exceeded expectations. Highly recommended for future opportunities."
+  },
+  {
+    id: "t2",
+    name: "Good Foundation",
+    template: "Shows solid foundational knowledge and a willingness to learn. Would benefit from additional exposure to [specific area]. Good potential for growth."
+  },
+  {
+    id: "t3",
+    name: "Needs Improvement",
+    template: "While showing effort in some areas, improvement is needed in [specific areas]. Recommend focusing on [suggestions] to enhance industry readiness."
+  },
+  {
+    id: "t4",
+    name: "Professional Demeanor",
+    template: "Maintained professional conduct throughout the internship. Communication skills are strong and collaboration with team members was effective."
+  },
+];
+
+// Evaluation statistics
+const evaluationStats = {
+  totalCompleted: 47,
+  avgScore: 42.5,
+  avgIndustryReadiness: 8.2,
+  stronglyRecommended: 35,
+  recommended: 10,
+  recommendWithReservations: 2,
+  notRecommended: 0,
+};
+
 const externalEvaluatorCriteria: EvaluationCriteria[] = [
   { id: "ec1", name: "Industry Knowledge", description: "Understanding of current industry practices and trends", max_score: 10, weight: 0.15 },
   { id: "ec2", name: "Technical Proficiency", description: "Demonstrated technical skills relevant to the field", max_score: 10, weight: 0.20 },
@@ -189,27 +231,27 @@ const itemVariants = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-    pending: { label: "Pending", variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-    in_progress: { label: "In Progress", variant: "secondary", className: "bg-blue-100 text-blue-800 border-blue-200" },
-    completed: { label: "Completed", variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
-    overdue: { label: "Overdue!", variant: "destructive", className: "bg-red-100 text-red-800 border-red-200 animate-pulse" },
+  const config: Record<string, { label: string; className: string }> = {
+    pending: { label: "Pending", className: "badge-warning" },
+    in_progress: { label: "In Progress", className: "badge-primary" },
+    completed: { label: "Completed", className: "badge-success" },
+    overdue: { label: "Overdue!", className: "badge-danger" },
   };
 
-  const { label, variant, className } = config[status] || { label: status, variant: "outline" as const };
-  return <Badge variant={variant} className={className}>{label}</Badge>;
+  const item = config[status] || { label: status, className: "badge-secondary" };
+  return <span className={`badge ${item.className}`}>{item.label}</span>;
 }
 
 function RecommendationBadge({ recommendation }: { recommendation: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-    "Strongly Recommend": { label: "Strongly Recommend", variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
-    "Recommend": { label: "Recommend", variant: "default", className: "bg-blue-100 text-blue-800 border-blue-200" },
-    "Recommend with Reservations": { label: "Recommend w/ Reservations", variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-    "Do Not Recommend": { label: "Do Not Recommend", variant: "destructive" },
+  const config: Record<string, { label: string; className: string }> = {
+    "Strongly Recommend": { label: "Strongly Recommend", className: "badge-success" },
+    "Recommend": { label: "Recommend", className: "badge-info" },
+    "Recommend with Reservations": { label: "Recommend w/ Reservations", className: "badge-warning" },
+    "Do Not Recommend": { label: "Do Not Recommend", className: "badge-danger" },
   };
 
-  const { label, variant, className } = config[recommendation] || { label: recommendation, variant: "outline" as const };
-  return <Badge variant={variant} className={className}>{label}</Badge>;
+  const item = config[recommendation] || { label: recommendation, className: "badge-secondary" };
+  return <span className={`badge ${item.className}`}>{item.label}</span>;
 }
 
 export default function ExternalEvaluatorDashboard() {
@@ -217,6 +259,7 @@ export default function ExternalEvaluatorDashboard() {
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
   const [selectedEvalStudent, setSelectedEvalStudent] = useState("");
   const [viewingHistory, setViewingHistory] = useState<typeof mockEvaluationHistory[0] | null>(null);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
 
   // Stats
   const pendingCount = mockAssignedEvaluations.filter(e => e.status === "pending").length;
@@ -230,86 +273,90 @@ export default function ExternalEvaluatorDashboard() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-container">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">External Evaluator Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Industry expert evaluation portal</p>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="dashboard-card bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-pink-500/5 border-chart-2/20"
+      >
+        <h1 className="text-h2 font-bold text-foreground">External Evaluator Dashboard</h1>
+        <p className="text-body text-muted-foreground mt-1 flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          Industry expert evaluation portal
+        </p>
+      </motion.div>
 
-      {/* Profile Section */}
+      {/* Profile Section - Professional Evaluator Profile Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="dashboard-card overflow-hidden"
       >
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="flex flex-col md:flex-row">
-              {/* Profile Info */}
-              <div className="flex-1 p-6 bg-gradient-to-br from-primary/5 to-primary/10">
-                <div className="flex flex-col sm:flex-row items-start gap-6">
-                  <Avatar className="h-24 w-24 border-4 border-background shadow-lg">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
-                      {evaluatorProfile.name.split(" ").map(n => n[0]).join("")}
-                    </AvatarFallback>
-                  </Avatar>
+        <div className="flex flex-col lg:flex-row">
+          {/* Profile Info */}
+          <div className="flex-1 p-6 bg-gradient-to-br from-primary/5 via-purple-500/5 to-pink-500/5">
+            <div className="flex flex-col sm:flex-row items-start gap-6">
+              <Avatar className="h-24 w-24 ring-4 ring-background shadow-lg">
+                <AvatarFallback className="bg-gradient-to-br from-indigo-600 to-purple-600 text-white text-2xl font-bold">
+                  AT
+                </AvatarFallback>
+              </Avatar>
 
-                  <div className="space-y-3 flex-1">
-                    <div>
-                      <h2 className="text-2xl font-bold">{evaluatorProfile.name}</h2>
-                      <p className="text-lg text-muted-foreground">{evaluatorProfile.organization}</p>
-                    </div>
-
-                    <p className="text-sm max-w-2xl">{evaluatorProfile.bio}</p>
-
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {evaluatorProfile.expertise.map((skill) => (
-                        <Badge key={skill} variant="secondary" className="font-normal">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contact & Quick Stats */}
-              <div className="md:w-80 p-6 bg-muted/30 space-y-4">
-                <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Contact Information</h3>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>{evaluatorProfile.email}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>{evaluatorProfile.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>{evaluatorProfile.assignedUniversity}</span>
-                  </div>
+              <div className="space-y-3 flex-1">
+                <div>
+                  <h2 className="text-h3 font-bold">{evaluatorProfile.name}</h2>
+                  <p className="text-h4 text-muted-foreground font-normal">{evaluatorProfile.organization}</p>
                 </div>
 
-                <Separator />
+                <p className="text-body max-w-2xl">{evaluatorProfile.bio}</p>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-3 bg-background rounded-lg">
-                    <Award className="h-5 w-5 mx-auto text-primary mb-1" />
-                    <p className="text-xl font-bold">{evaluatorProfile.totalEvaluationsCompleted}</p>
-                    <p className="text-xs text-muted-foreground">Evaluations</p>
-                  </div>
-                  <div className="text-center p-3 bg-background rounded-lg">
-                    <Star className="h-5 w-5 mx-auto text-yellow-500 mb-1" />
-                    <p className="text-xl font-bold">{evaluatorProfile.averageRatingGiven}</p>
-                    <p className="text-xs text-muted-foreground">Avg Rating</p>
-                  </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {evaluatorProfile.expertise.map((skill) => (
+                    <span key={skill} className="badge badge-secondary">{skill}</span>
+                  ))}
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Contact & Quick Stats */}
+          <div className="lg:w-80 p-6 bg-muted/30 space-y-4 border-l border-border">
+            <h3 className="text-label uppercase tracking-wider text-muted-foreground px-1">Contact Information</h3>
+            
+            <div className="space-y-3 px-1">
+              <div className="flex items-center gap-3 text-sm">
+                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>{evaluatorProfile.email}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>{evaluatorProfile.phone}</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>{evaluatorProfile.assignedUniversity}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-2 gap-4 px-1">
+              <div className="stat-card !p-3">
+                <Award className="h-5 w-5 mx-auto text-primary mb-1" />
+                <p className="dashboard-card-value text-xl">{evaluatorProfile.totalEvaluationsCompleted}</p>
+                <p className="dashboard-card-description !mt-1">Evaluations</p>
+              </div>
+              <div className="stat-card !p-3">
+                <Star className="h-5 w-5 mx-auto text-warning mb-1" />
+                <p className="dashboard-card-value text-xl">{evaluatorProfile.averageRatingGiven}</p>
+                <p className="dashboard-card-description !mt-1">Avg Rating</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </motion.div>
 
       {/* Overview Stats */}
@@ -320,345 +367,528 @@ export default function ExternalEvaluatorDashboard() {
         className="grid grid-cols-1 sm:grid-cols-3 gap-4"
       >
         {[
-          { title: "Pending Evaluations", value: pendingCount, icon: Clock, color: "text-yellow-600", bgColor: "bg-yellow-100" },
-          { title: "In Progress", value: inProgressCount, icon: ClipboardCheck, color: "text-blue-600", bgColor: "bg-blue-100" },
-          { title: "Overdue", value: overdueCount, icon: AlertCircle, color: "text-red-600", bgColor: "bg-red-100" },
+          { title: "Pending Evaluations", value: pendingCount, icon: Clock, color: "bg-warning/10 text-warning" },
+          { title: "In Progress", value: inProgressCount, icon: ClipboardCheck, color: "bg-primary/10 text-primary" },
+          { title: "Overdue", value: overdueCount, icon: AlertCircle, color: "bg-danger/10 text-danger" },
         ].map((stat) => (
-          <motion.div key={stat.title} variants={itemVariants}>
-            <Card className={`hover:shadow-md transition-shadow ${stat.title === "Overdue" && stat.value > 0 ? "border-red-300" : ""}`}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-3xl font-bold mt-1">{stat.value}</p>
-                  </div>
-                  <div className={`p-3 rounded-xl ${stat.bgColor}`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <motion.div key={stat.title} variants={itemVariants} className={`stat-card ${stat.title === "Overdue" && stat.value > 0 ? "border-danger/50" : ""}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className={`stat-card-icon ${stat.color}`}>
+                <stat.icon className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="dashboard-card-value text-2xl">{stat.value}</p>
+            <p className="dashboard-card-title">{stat.title}</p>
           </motion.div>
         ))}
       </motion.div>
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="assigned" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
           <TabsTrigger value="assigned" className="flex items-center gap-2">
             <ClipboardCheck className="h-4 w-4 hidden sm:inline" />
             Assigned Evaluations
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <FileText className="h-4 w-4 hidden sm:inline" />
-            History
+            History & Stats
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 hidden sm:inline" />
+            Comment Templates
           </TabsTrigger>
         </TabsList>
 
         {/* Assigned Evaluations Tab */}
-        <TabsContent value="assigned" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Assigned Evaluations</CardTitle>
-                  <CardDescription>Evaluations assigned to you for completion</CardDescription>
-                </div>
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search evaluations..." className="pl-9" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>University</TableHead>
-                    <TableHead>Internship</TableHead>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+        <TabsContent value="assigned" className="mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-h4 font-semibold">Assigned Evaluations</h2>
+              <p className="text-small text-muted-foreground mt-1">Evaluations assigned to you for completion</p>
+            </div>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search evaluations..." className="pl-10 form-input" />
+            </div>
+          </div>
+
+          <div className="data-table-container">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Internship</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockAssignedEvaluations.map((evaluation) => (
+                  <TableRow key={evaluation.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-medium">
+                            {evaluation.studentName.split(" ").map(n => n[0]).join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium text-sm">{evaluation.studentName}</p>
+                          <p className="text-caption text-muted-foreground">{evaluation.program}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{evaluation.internshipTitle}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{evaluation.company}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`text-sm ${
+                        evaluation.status === "overdue" ? "text-danger font-medium" : ""
+                      }`}>
+                        {new Date(evaluation.dueDate).toLocaleDateString()}
+                      </span>
+                    </TableCell>
+                    <TableCell><StatusBadge status={evaluation.status} /></TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedEvaluation(evaluation.id);
+                          setSelectedEvalStudent(evaluation.studentName);
+                          setShowEvaluationForm(true);
+                        }}
+                        className="focus-ring"
+                      >
+                        {evaluation.status === "in_progress" ? "Continue" : "Start"}
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockAssignedEvaluations.map((evaluation) => (
-                    <TableRow key={evaluation.id}>
-                      <TableCell className="font-medium">{evaluation.studentName}</TableCell>
-                      <TableCell>
-                        <span className="text-sm">{evaluation.university}</span>
-                        <br />
-                        <span className="text-xs text-muted-foreground">{evaluation.program}</span>
-                      </TableCell>
-                      <TableCell>{evaluation.internshipTitle}</TableCell>
-                      <TableCell>{evaluation.company}</TableCell>
-                      <TableCell>
-                        <span className={`${
-                          evaluation.status === "overdue" ? "text-red-600 font-medium" : ""
-                        }`}>
-                          {new Date(evaluation.dueDate).toLocaleDateString()}
-                        </span>
-                      </TableCell>
-                      <TableCell><StatusBadge status={evaluation.status} /></TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setSelectedEvaluation(evaluation.id);
-                            setSelectedEvalStudent(evaluation.studentName);
-                            setShowEvaluationForm(true);
-                          }}
-                        >
-                          {evaluation.status === "in_progress" ? "Continue" : "Start"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
 
           {/* Evaluation Form Modal */}
           {showEvaluationForm && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>
-                    External Evaluation - {selectedEvalStudent}
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowEvaluationForm(false);
-                      setSelectedEvaluation(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <div>
+                  <h3 className="dashboard-card-title">External Evaluation</h3>
+                  <p className="text-small text-muted-foreground">Evaluating: {selectedEvalStudent}</p>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <EvaluationForm
-                  criteria={externalEvaluatorCriteria}
-                  onSubmit={handleEvaluationSubmit}
-                  showStudentSelector={false}
-                  showSignature={true}
-                  ratingType="scale"
-                  title="External Evaluator Assessment"
-                  subtitle="Evaluate this student's readiness for the industry based on your expertise"
-                  submitLabel="Submit Evaluation"
-                  onCancel={() => {
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
                     setShowEvaluationForm(false);
                     setSelectedEvaluation(null);
                   }}
-                />
+                  className="focus-ring"
+                >
+                  Cancel
+                </Button>
+              </div>
+              
+              <EvaluationForm
+                criteria={externalEvaluatorCriteria}
+                onSubmit={handleEvaluationSubmit}
+                showStudentSelector={false}
+                showSignature={true}
+                ratingType="scale"
+                title="External Evaluator Assessment"
+                subtitle="Evaluate this student's readiness for the industry based on your expertise"
+                submitLabel="Submit Evaluation"
+                onCancel={() => {
+                  setShowEvaluationForm(false);
+                  setSelectedEvaluation(null);
+                }}
+              />
 
-                {/* Additional Industry Expert Fields */}
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle className="text-base">Industry Expert Assessment</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Industry Readiness Score */}
-                    <div className="space-y-2">
-                      <Label htmlFor="readiness-score">Industry Readiness Score (1-10)</Label>
-                      <Select defaultValue="">
-                        <SelectTrigger id="readiness-score">
-                          <SelectValue placeholder="Select score" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[...Array(10)].map((_, i) => (
-                            <SelectItem key={i + 1} value={String(i + 1)}>
-                              {i + 1}/10
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+              {/* Additional Industry Expert Fields */}
+              <div className="dashboard-card mt-6">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-chart-2" />
+                    Industry Expert Assessment
+                  </h3>
+                </div>
+                
+                <div className="space-y-4 p-6">
+                  {/* Industry Readiness Score */}
+                  <div className="form-group">
+                    <Label className="form-label">Industry Readiness Score (1-10)</Label>
+                    <Select defaultValue="">
+                      <SelectTrigger className="form-input">
+                        <SelectValue placeholder="Select score" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[...Array(10)].map((_, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>
+                            {i + 1}/10
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    {/* Recommendation */}
-                    <div className="space-y-2">
-                      <Label htmlFor="recommendation">Overall Recommendation</Label>
-                      <Select defaultValue="">
-                        <SelectTrigger id="recommendation">
-                          <SelectValue placeholder="Select recommendation" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="strongly_recommend">Strongly Recommend</SelectItem>
-                          <SelectItem value="recommend">Recommend</SelectItem>
-                          <SelectItem value="recommend_reservations">Recommend with Reservations</SelectItem>
-                          <SelectItem value="not_recommend">Do Not Recommend</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Recommendation */}
+                  <div className="form-group">
+                    <Label className="form-label">Overall Recommendation</Label>
+                    <Select defaultValue="">
+                      <SelectTrigger className="form-input">
+                        <SelectValue placeholder="Select recommendation" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="strongly_recommend">Strongly Recommend</SelectItem>
+                        <SelectItem value="recommend">Recommend</SelectItem>
+                        <SelectItem value="recommend_reservations">Recommend with Reservations</SelectItem>
+                        <SelectItem value="not_recommend">Do Not Recommend</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    {/* Detailed Comments */}
-                    <div className="space-y-2">
-                      <Label htmlFor="detailed-comments">Detailed Comments for University</Label>
-                      <Textarea
-                        id="detailed-comments"
-                        placeholder="Provide detailed feedback that will be shared with the university..."
-                        rows={5}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
+                  {/* Detailed Comments */}
+                  <div className="form-group">
+                    <Label className="form-label">Detailed Comments for University</Label>
+                    <Textarea
+                      placeholder="Provide detailed feedback that will be shared with the university..."
+                      rows={5}
+                      className="form-input"
+                    />
+                  </div>
+
+                  {/* Template Library Button */}
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowTemplateLibrary(true)}
+                    className="focus-ring"
+                  >
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    Use Comment Template
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
         </TabsContent>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Evaluation History</CardTitle>
-                  <CardDescription>Your past completed evaluations</CardDescription>
+        {/* History Tab with Statistics */}
+        <TabsContent value="history" className="mt-6 space-y-6">
+          {/* Statistics Overview */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  Total Completed
+                </h3>
+              </div>
+              <div className="pt-2">
+                <p className="dashboard-card-value text-3xl">{evaluationStats.totalCompleted}</p>
+                <p className="dashboard-card-description">All time</p>
+              </div>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Star className="h-5 w-5 text-warning" />
+                  Avg Score
+                </h3>
+              </div>
+              <div className="pt-2">
+                <p className="dashboard-card-value text-3xl">{evaluationStats.avgScore}<span className="text-lg text-muted-foreground">/50</span></p>
+                <p className="dashboard-card-description">out of {evaluationStats.maxScore || 50}</p>
+              </div>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Target className="h-5 w-5 text-success" />
+                  Industry Ready
+                </h3>
+              </div>
+              <div className="pt-2">
+                <p className="dashboard-card-value text-3xl">{evaluationStats.avgIndustryReadiness}<span className="text-lg text-muted-foreground">/10</span></p>
+                <p className="dashboard-card-description">Avg readiness</p>
+              </div>
+            </div>
+
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <ThumbsUp className="h-5 w-5 text-chart-2" />
+                  Top Rating
+                </h3>
+              </div>
+              <div className="pt-2 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Strongly Rec.</span>
+                  <span className="font-semibold text-success">{evaluationStats.stronglyRecommended}</span>
                 </div>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Download className="h-4 w-4" />
+                <Progress 
+                  value={(evaluationStats.stronglyRecommended / evaluationStats.totalCompleted) * 100} 
+                  className="h-2 mt-1" 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Evaluation History List */}
+          <div className="dashboard-card">
+            <div className="dashboard-card-header">
+              <h3 className="dashboard-card-title">Evaluation History</h3>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="focus-ring">
+                  <Download className="mr-2 h-4 w-4" />
                   Export All
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockEvaluationHistory.map((history) => (
-                  <div
-                    key={history.id}
-                    className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                      <div className="space-y-3 flex-1">
-                        {/* Student & Internship Info */}
-                        <div className="flex items-start gap-4">
-                          <Avatar className="h-12 w-12">
-                            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                              {history.studentName.split(" ").map(n => n[0]).join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <h3 className="font-semibold text-lg">{history.studentName}</h3>
-                            <p className="text-sm text-muted-foreground">{history.university}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-sm">{history.internshipTitle}</span>
-                              <span className="text-muted-foreground">@</span>
-                              <span className="text-sm">{history.company}</span>
-                            </div>
+            </div>
+            
+            <div className="space-y-4">
+              {mockEvaluationHistory.map((history) => (
+                <div
+                  key={history.id}
+                  className="p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => setViewingHistory(history)}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                    <div className="space-y-3 flex-1">
+                      {/* Student & Internship Info */}
+                      <div className="flex items-start gap-4">
+                        <Avatar className="h-12 w-12 ring-2 ring-primary/20">
+                          <AvatarFallback className="bg-gradient-to-br from-primary to-chart-2 text-white font-semibold">
+                            {history.studentName.split(" ").map(n => n[0]).join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h4 className="font-semibold">{history.studentName}</h4>
+                          <p className="text-small text-muted-foreground">{history.university}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm">{history.internshipTitle}</span>
+                            <span className="text-muted-foreground">@</span>
+                            <span className="text-sm">{history.company}</span>
                           </div>
-                        </div>
-
-                        {/* Scores & Recommendation */}
-                        <div className="flex flex-wrap items-center gap-6 ml-16">
-                          <div className="text-center">
-                            <p className="text-2xl font-bold text-primary">
-                              {history.score}/{history.maxScore}
-                            </p>
-                            <p className="text-xs text-muted-foreground">Total Score</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-2xl font-bold text-green-600">
-                              {history.industryReadinessScore}/10
-                            </p>
-                            <p className="text-xs text-muted-foreground">Industry Readiness</p>
-                          </div>
-                          <RecommendationBadge recommendation={history.recommendation} />
-                        </div>
-
-                        {/* Comments Preview */}
-                        <div className="ml-16 p-3 bg-muted/50 rounded-lg max-w-2xl">
-                          <p className="text-sm text-muted-foreground italic line-clamp-2">
-                            &ldquo;{history.comments}&rdquo;
-                          </p>
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <span className="text-xs text-muted-foreground">
-                          Completed {new Date(history.completedAt).toLocaleDateString()}
-                        </span>
-                        
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setViewingHistory(history)}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View Full
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>Evaluation Details</DialogTitle>
-                              <DialogDescription>
-                                {history.studentName} - {history.internshipTitle}
-                              </DialogDescription>
-                            </DialogHeader>
+                      {/* Scores & Recommendation */}
+                      <div className="flex flex-wrap items-center gap-6 ml-16">
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-gradient-brand">{history.score}/{history.maxScore}</p>
+                          <p className="text-caption text-muted-foreground">Total Score</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-success">{history.industryReadinessScore}/10</p>
+                          <p className="text-caption text-muted-foreground">Industry Ready</p>
+                        </div>
+                        <RecommendationBadge recommendation={history.recommendation} />
+                      </div>
 
-                            <div className="py-4 space-y-6">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <Label className="text-muted-foreground">Student</Label>
-                                  <p className="font-medium">{history.studentName}</p>
-                                </div>
-                                <div>
-                                  <Label className="text-muted-foreground">Company</Label>
-                                  <p className="font-medium">{history.company}</p>
-                                </div>
-                                <div>
-                                  <Label className="text-muted-foreground">Total Score</Label>
-                                  <p className="font-medium text-lg">{history.score}/{history.maxScore}</p>
-                                </div>
-                                <div>
-                                  <Label className="text-muted-foreground">Industry Readiness</Label>
-                                  <p className="font-medium text-lg text-green-600">{history.industryReadinessScore}/10</p>
-                                </div>
-                              </div>
-
-                              <Separator />
-
-                              <div className="space-y-2">
-                                <Label>Recommendation</Label>
-                                <RecommendationBadge recommendation={history.recommendation} />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label>Detailed Comments</Label>
-                                <div className="p-4 bg-muted/50 rounded-lg">
-                                  <p className="text-sm">{history.comments}</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setViewingHistory(null)}>
-                                Close
-                              </Button>
-                              <Button variant="outline" className="flex items-center gap-2">
-                                <Download className="h-4 w-4" />
-                                Download PDF
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                      {/* Comments Preview */}
+                      <div className="ml-16 p-3 rounded-lg bg-muted/30 max-w-2xl">
+                        <p className="text-sm text-muted-foreground italic line-clamp-2">
+                          "{history.comments}"
+                        </p>
                       </div>
                     </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="text-caption text-muted-foreground">
+                        {new Date(history.completedAt).toLocaleDateString()}
+                      </span>
+                      
+                      <Button variant="outline" size="sm" className="focus-ring">
+                        <Eye className="h-4 w-4 mr-1" />
+                        View Full
+                      </Button>
+                    </div>
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Comment Templates Tab */}
+        <TabsContent value="templates" className="mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-h4 font-semibold flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-chart-2" />
+                Comments Template Library
+              </h2>
+              <p className="text-small text-muted-foreground mt-1">Save time with pre-written comment templates</p>
+            </div>
+            <Button onClick={() => setShowNewTemplateDialog(true)} className="focus-ring">
+              <PenTool className="mr-2 h-4 w-4" />
+              New Template
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {commentTemplates.map((template) => (
+              <div key={template.id} className="dashboard-card card-hover">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title">{template.name}</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 focus-ring"
+                    onClick={() => navigator.clipboard.writeText(template.template)}
+                  >
+                    <CopyIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30 max-h-[150px] overflow-y-auto scrollbar-thin">
+                  <p className="text-sm text-muted-foreground line-clamp-4">
+                    {template.template}
+                  </p>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 focus-ring"
+                    onClick={() => {
+                      navigator.clipboard.writeText(template.template);
+                    }}
+                  >
+                    Copy
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 focus-ring"
+                    onClick={() => setShowTemplateLibrary(false)}
+                  >
+                    Use This
+                  </Button>
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+
+            {/* Create New Template Dialog */}
+            {showTemplateLibrary && (
+              <div className="dashboard-card md:col-span-2">
+                <div className="dashboard-card-header">
+                  <h3 className="dashboard-card-title">Create New Template</h3>
+                </div>
+                
+                <div className="space-y-4 p-6">
+                  <div className="form-group">
+                    <Label htmlFor="template-name" className="form-label">Template Name</Label>
+                    <Input id="template-name" placeholder="e.g., Excellent Performance" className="form-input" />
+                  </div>
+
+                  <div className="form-group">
+                    <Label htmlFor="template-content" className="form-label">Template Content</Label>
+                    <Textarea
+                      id="template-content"
+                      placeholder="Write your comment template here..."
+                      rows={6}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setShowTemplateLibrary(false)} className="focus-ring">
+                      Cancel
+                    </Button>
+                    <Button onClick={() => setShowTemplateLibrary(false)} className="focus-ring">
+                      Save Template
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
+
+      {/* Evaluation Details Dialog */}
+      <Dialog open={!!viewingHistory} onOpenChange={(open) => !open && setViewingHistory(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Evaluation Details</DialogTitle>
+            <DialogDescription>
+              {viewingHistory?.studentName} - {viewingHistory?.internshipTitle}
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingHistory && (
+            <div className="py-4 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground text-sm">Student</Label>
+                  <p className="font-medium">{viewingHistory.studentName}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-sm">Company</Label>
+                  <p className="font-medium">{viewingHistory.company}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-sm">Total Score</Label>
+                  <p className="font-medium text-lg">{viewingHistory.score}/{viewingHistory.maxScore}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-sm">Industry Readiness</Label>
+                  <p className="font-medium text-lg text-success">{viewingHistory.industryReadinessScore}/10</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label>Recommendation</Label>
+                <RecommendationBadge recommendation={viewingHistory.recommendation} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Detailed Comments</Label>
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <p className="text-sm">{viewingHistory.comments}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setViewingHistory(null)} className="focus-ring">
+              Close
+            </Button>
+            <Button variant="outline" className="focus-ring">
+              <Download className="h-4 w-4 mr-2" />
+              Download PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+      <path d="M16 8L8 16L2 10"/>
+    </svg>
+  );
+}
+
+function Zap({ className }: { className?: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14.5 13 22 11 22 17 21 19 16 13 12 2 11 2 9.5 2S7 5 3Z"/>
+    </svg>
   );
 }

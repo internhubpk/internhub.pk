@@ -24,7 +24,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -61,6 +60,17 @@ import {
   Filter,
   Download,
   RefreshCw,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  BarChart3,
+  Zap,
+  Award,
+  Video,
+  ThumbsUp,
+  Bell,
+  ChevronRight,
 } from "lucide-react";
 
 // Mock data for demonstration
@@ -76,6 +86,7 @@ const mockStudents = [
     id: "1",
     name: "Sarah Johnson",
     avatar: null,
+    initials: "SJ",
     program: "Computer Science",
     internshipTitle: "Software Engineering Intern",
     company: "TechCorp Inc.",
@@ -83,11 +94,17 @@ const mockStudents = [
     status: "active" as const,
     lastActivity: "2 hours ago",
     weeklyLogStatus: "submitted",
+    email: "sarah.j@university.edu",
+    phone: "+1 (555) 123-4567",
+    startDate: "2025-01-06",
+    endDate: "2025-03-28",
+    supervisor: "John Smith (Site)",
   },
   {
     id: "2",
     name: "Michael Chen",
     avatar: null,
+    initials: "MC",
     program: "Information Technology",
     internshipTitle: "IT Support Specialist",
     company: "Global Systems LLC",
@@ -95,11 +112,17 @@ const mockStudents = [
     status: "active" as const,
     lastActivity: "5 hours ago",
     weeklyLogStatus: "pending",
+    email: "michael.c@university.edu",
+    phone: "+1 (555) 234-5678",
+    startDate: "2025-01-13",
+    endDate: "2025-04-04",
+    supervisor: "Jane Doe (Site)",
   },
   {
     id: "3",
     name: "Emily Rodriguez",
     avatar: null,
+    initials: "ER",
     program: "Data Science",
     internshipTitle: "Data Analyst Intern",
     company: "DataDriven Co.",
@@ -107,11 +130,17 @@ const mockStudents = [
     status: "active" as const,
     lastActivity: "1 day ago",
     weeklyLogStatus: "approved",
+    email: "emily.r@university.edu",
+    phone: "+1 (555) 345-6789",
+    startDate: "2024-12-01",
+    endDate: "2025-02-28",
+    supervisor: "Bob Wilson (Site)",
   },
   {
     id: "4",
     name: "James Wilson",
     avatar: null,
+    initials: "JW",
     program: "Computer Science",
     internshipTitle: "Frontend Developer Intern",
     company: "WebStudio Pro",
@@ -119,11 +148,17 @@ const mockStudents = [
     status: "active" as const,
     lastActivity: "3 days ago",
     weeklyLogStatus: "overdue",
+    email: "james.w@university.edu",
+    phone: "+1 (555) 456-7890",
+    startDate: "2025-02-01",
+    endDate: "2025-05-17",
+    supervisor: "Alice Brown (Site)",
   },
   {
     id: "5",
     name: "Aisha Patel",
     avatar: null,
+    initials: "AP",
     program: "Cybersecurity",
     internshipTitle: "Security Analyst Intern",
     company: "SecureNet Solutions",
@@ -131,6 +166,11 @@ const mockStudents = [
     status: "active" as const,
     lastActivity: "1 week ago",
     weeklyLogStatus: "draft",
+    email: "aisha.p@university.edu",
+    phone: "+1 (555) 567-8901",
+    startDate: "2025-02-15",
+    endDate: "2025-05-31",
+    supervisor: "Carol Davis (Site)",
   },
 ];
 
@@ -138,46 +178,56 @@ const mockReports = [
   {
     id: "r1",
     studentName: "Sarah Johnson",
+    studentId: "1",
     title: "Weekly Report - Week 8",
     type: "weekly" as const,
     submittedAt: "2024-01-15T10:30:00Z",
     status: "pending_review" as const,
+    priority: "high" as const,
     preview: "This week I focused on implementing the new authentication system...",
   },
   {
     id: "r2",
     studentName: "Michael Chen",
+    studentId: "2",
     title: "Monthly Progress Report - January",
     type: "monthly" as const,
     submittedAt: "2024-01-14T14:20:00Z",
     status: "pending_review" as const,
+    priority: "medium" as const,
     preview: "During January, I completed the network infrastructure audit...",
   },
   {
     id: "r3",
     studentName: "Emily Rodriguez",
+    studentId: "3",
     title: "Final Internship Report",
     type: "final" as const,
     submittedAt: "2024-01-13T09:00:00Z",
     status: "under_review" as const,
+    priority: "high" as const,
     preview: "This report summarizes my experience and learnings during my internship...",
   },
   {
     id: "r4",
     studentName: "James Wilson",
+    studentId: "4",
     title: "Weekly Report - Week 6",
     type: "weekly" as const,
     submittedAt: "2024-01-12T16:45:00Z",
     status: "pending_review" as const,
+    priority: "low" as const,
     preview: "I continued working on the React component library this week...",
   },
   {
     id: "r5",
     studentName: "Aisha Patel",
+    studentId: "5",
     title: "Weekly Report - Week 4",
     type: "weekly" as const,
     submittedAt: "2024-01-11T11:15:00Z",
     status: "pending_review" as const,
+    priority: "medium" as const,
     preview: "This week's focus was on vulnerability assessment training...",
   },
 ];
@@ -186,29 +236,41 @@ const mockEvaluations = [
   {
     id: "e1",
     studentName: "Sarah Johnson",
+    studentId: "1",
     period: "Mid-term Evaluation",
     dueDate: "2024-01-20",
     status: "completed" as const,
     score: 42,
     maxScore: 50,
+    criteria: {
+      technical: 8,
+      problem_solving: 7,
+      communication: 9,
+      professionalism: 9,
+      initiative: 9,
+    },
   },
   {
     id: "e2",
     studentName: "Michael Chen",
+    studentId: "2",
     period: "Mid-term Evaluation",
     dueDate: "2024-01-22",
     status: "in_progress" as const,
     score: null,
     maxScore: 50,
+    criteria: null,
   },
   {
     id: "e3",
     studentName: "Emily Rodriguez",
+    studentId: "3",
     period: "Final Evaluation",
     dueDate: "2024-01-25",
     status: "pending" as const,
     score: null,
     maxScore: 50,
+    criteria: null,
   },
 ];
 
@@ -219,6 +281,7 @@ const mockActivityFeed = [
     message: 'Sarah Johnson submitted "Weekly Report - Week 8"',
     timestamp: "2 hours ago",
     icon: FileCheck,
+    color: "text-primary",
   },
   {
     id: "a2",
@@ -226,6 +289,7 @@ const mockActivityFeed = [
     message: 'You approved Michael Chen\'s Weekly Log for Week 7',
     timestamp: "5 hours ago",
     icon: CheckCircle2,
+    color: "text-success",
   },
   {
     id: "a3",
@@ -233,6 +297,7 @@ const mockActivityFeed = [
     message: "James Wilson has an overdue weekly log submission",
     timestamp: "1 day ago",
     icon: AlertCircle,
+    color: "text-danger",
   },
   {
     id: "a4",
@@ -240,6 +305,7 @@ const mockActivityFeed = [
     message: "You completed mid-term evaluation for Emily Rodriguez",
     timestamp: "2 days ago",
     icon: Star,
+    color: "text-warning",
   },
   {
     id: "a5",
@@ -247,7 +313,40 @@ const mockActivityFeed = [
     message: "You sent feedback to Aisha Patel regarding her progress",
     timestamp: "3 days ago",
     icon: MessageSquare,
+    color: "text-chart-2",
   },
+];
+
+// Communication threads mock data
+const communicationThreads = [
+  {
+    studentId: "1",
+    studentName: "Sarah Johnson",
+    messages: [
+      { id: 1, from: "student", text: "Hi Professor, I have a question about the final report requirements.", time: "10:30 AM" },
+      { id: 2, from: "faculty", text: "Sure Sarah, what would you like to know?", time: "11:15 AM" },
+      { id: 3, from: "student", text: "Should I include code samples in the appendix?", time: "11:20 AM" },
+    ],
+    unreadCount: 1,
+  },
+  {
+    studentId: "3",
+    studentName: "Emily Rodriguez",
+    messages: [
+      { id: 1, from: "student", text: "Thank you for the positive feedback on my mid-term evaluation!", time: "Yesterday" },
+      ],
+    unreadCount: 0,
+  },
+];
+
+// Meeting slots mock data
+const meetingSlots = [
+  { date: "Mon, Jan 20", time: "10:00 AM", available: true },
+  { date: "Mon, Jan 20", time: "2:00 PM", available: true },
+  { date: "Tue, Jan 21", time: "11:00 AM", available: false },
+  { date: "Tue, Jan 21", time: "3:00 PM", available: true },
+  { date: "Wed, Jan 22", time: "9:00 AM", available: true },
+  { date: "Wed, Jan 22", time: "1:00 PM", available: true },
 ];
 
 const evaluationCriteria: EvaluationCriteria[] = [
@@ -275,23 +374,35 @@ const itemVariants = {
 
 // Status badge component
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-    active: { label: "Active", variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
-    pending: { label: "Pending", variant: "secondary" },
-    submitted: { label: "Submitted", variant: "secondary", className: "bg-blue-100 text-blue-800 border-blue-200" },
-    approved: { label: "Approved", variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
-    rejected: { label: "Rejected", variant: "destructive" },
-    overdue: { label: "Overdue", variant: "destructive", className: "bg-red-100 text-red-800 border-red-200" },
-    draft: { label: "Draft", variant: "outline" },
-    pending_review: { label: "Pending Review", variant: "secondary", className: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-    under_review: { label: "Under Review", variant: "secondary", className: "bg-purple-100 text-purple-800 border-purple-200" },
-    in_progress: { label: "In Progress", variant: "secondary", className: "bg-blue-100 text-blue-800 border-blue-200" },
-    completed: { label: "Completed", variant: "default", className: "bg-green-100 text-green-800 border-green-200" },
+  const config: Record<string, { label: string; className: string }> = {
+    active: { label: "Active", className: "badge-success" },
+    pending: { label: "Pending", className: "badge-secondary" },
+    submitted: { label: "Submitted", className: "badge-info" },
+    approved: { label: "Approved", className: "badge-success" },
+    rejected: { label: "Rejected", className: "badge-danger" },
+    overdue: { label: "Overdue", className: "badge-danger" },
+    draft: { label: "Draft", className: "badge-secondary" },
+    pending_review: { label: "Pending Review", className: "badge-warning" },
+    under_review: { label: "Under Review", className: "badge-info" },
+    in_progress: { label: "In Progress", className: "badge-primary" },
+    completed: { label: "Completed", className: "badge-success" },
+    high: { label: "High Priority", className: "badge-danger" },
+    medium: { label: "Medium", className: "badge-warning" },
+    low: { label: "Low", className: "badge-info" },
   };
 
-  const { label, variant, className } = config[status] || { label: status, variant: "outline" as const };
+  const item = config[status] || { label: status, className: "badge-secondary" };
   
-  return <Badge variant={variant} className={className}>{label}</Badge>;
+  return <span className={`badge ${item.className}`}>{item.label}</span>;
+}
+
+function PriorityIndicator({ priority }: { priority: "high" | "medium" | "low" }) {
+  return (
+    <div className={`w-1 h-full rounded-full ${
+      priority === "high" ? "bg-danger" :
+      priority === "medium" ? "bg-warning" : "bg-info"
+    }`} />
+  );
 }
 
 export default function FacultySupervisorDashboard() {
@@ -300,45 +411,23 @@ export default function FacultySupervisorDashboard() {
   const [reportAction, setReportAction] = useState<"approve" | "reject" | null>(null);
   const [reportComment, setReportComment] = useState("");
   const [selectedReports, setSelectedReports] = useState<string[]>([]);
-  const [feedbackStudent, setFeedbackStudent] = useState<string>("");
+  const [feedbackStudent, setFeedbackStudent] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState(4);
   const [showEvaluationForm, setShowEvaluationForm] = useState(false);
+  const [showMeetingScheduler, setShowMeetingScheduler] = useState(false);
+  const [selectedStudentForChat, setSelectedStudentForChat] = useState<string | null>(null);
 
   // Stats cards
   const statsCards = [
-    {
-      title: "Assigned Students",
-      value: mockStats.assignedStudents,
-      icon: Users,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
-    },
-    {
-      title: "Pending Reviews",
-      value: mockStats.pendingReviews,
-      icon: FileCheck,
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-100",
-    },
-    {
-      title: "Completed Evaluations",
-      value: mockStats.completedEvaluations,
-      icon: ClipboardCheck,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
-    },
-    {
-      title: "Average Rating Given",
-      value: mockStats.averageRating.toFixed(1),
-      icon: Star,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
-    },
+    { title: "Assigned Students", value: mockStats.assignedStudents, icon: Users, color: "bg-primary/10 text-primary" },
+    { title: "Pending Reviews", value: mockStats.pendingReviews, icon: FileCheck, color: "bg-warning/10 text-warning" },
+    { title: "Completed Evaluations", value: mockStats.completedEvaluations, icon: ClipboardCheck, color: "bg-success/10 text-success" },
+    { title: "Average Rating Given", value: mockStats.averageRating.toFixed(1), icon: Star, color: "bg-chart-2/10 text-chart-2" },
   ];
 
   const handleReportAction = useCallback((action: "approve" | "reject") => {
     setReportAction(action);
-    // In real app, this would call API
     console.log(`Report ${selectedReport?.id} ${action}ed with comment:`, reportComment);
     setSelectedReport(null);
     setReportAction(null);
@@ -351,10 +440,11 @@ export default function FacultySupervisorDashboard() {
   }, [selectedReports]);
 
   const handleSendFeedback = useCallback(() => {
-    console.log("Sending feedback to", feedbackStudent, ":", feedbackMessage);
+    console.log("Sending feedback to", feedbackStudent, ":", feedbackMessage, "Rating:", feedbackRating);
     setFeedbackMessage("");
     setFeedbackStudent("");
-  }, [feedbackStudent, feedbackMessage]);
+    setFeedbackRating(4);
+  }, [feedbackStudent, feedbackMessage, feedbackRating]);
 
   const handleEvaluationSubmit = useCallback(async (data: EvaluationFormData) => {
     console.log("Submitting evaluation:", data);
@@ -362,35 +452,48 @@ export default function FacultySupervisorDashboard() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-container">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Faculty Supervisor Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Manage your students, reviews, and evaluations</p>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="dashboard-card bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 border-chart-2/20"
+      >
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-h2 font-bold text-foreground">Faculty Supervisor Dashboard</h1>
+            <p className="text-body text-muted-foreground mt-1">Manage your students, reviews, and evaluations</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowMeetingScheduler(true)} className="focus-ring">
+              <Video className="mr-2 h-4 w-4" />
+              Schedule Meeting
+            </Button>
+            <Button size="sm" className="focus-ring">
+              <Plus className="mr-2 h-4 w-4" />
+              New Evaluation
+            </Button>
+          </div>
+        </div>
+      </motion.div>
 
       {/* Overview Stats */}
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-4"
       >
         {statsCards.map((stat) => (
-          <motion.div key={stat.title} variants={itemVariants}>
-            <Card className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-3xl font-bold mt-1">{stat.value}</p>
-                  </div>
-                  <div className={`p-3 rounded-xl ${stat.bgColor}`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <motion.div key={stat.title} variants={itemVariants} className="stat-card">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`stat-card-icon ${stat.color}`}>
+                <stat.icon className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="dashboard-card-value text-2xl">{stat.value}</p>
+            <p className="dashboard-card-description">{stat.title}</p>
           </motion.div>
         ))}
       </motion.div>
@@ -406,7 +509,7 @@ export default function FacultySupervisorDashboard() {
             <FileCheck className="h-4 w-4 hidden sm:inline" />
             Reports
             {mockStats.pendingReviews > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 h-4 w-4 bg-danger text-white text-[10px] rounded-full flex items-center justify-center">
                 {mockStats.pendingReviews}
               </span>
             )}
@@ -426,557 +529,639 @@ export default function FacultySupervisorDashboard() {
         </TabsList>
 
         {/* My Students Tab */}
-        <TabsContent value="students" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>My Students</CardTitle>
-                  <CardDescription>{mockStudents.length} students under your supervision</CardDescription>
-                </div>
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search students..." className="pl-9" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {mockStudents.map((student) => (
-                  <motion.div
-                    key={student.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
-                  >
-                    <div
-                      className="flex items-start gap-4 cursor-pointer"
-                      onClick={() =>
-                        setExpandedStudent(
-                          expandedStudent === student.id ? null : student.id
-                        )
-                      }
-                    >
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={student.avatar || undefined} />
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {student.name.split(" ").map(n => n[0]).join("")}
-                        </AvatarFallback>
-                      </Avatar>
+        <TabsContent value="students" className="mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-h4 font-semibold">Assigned Students</h2>
+              <p className="text-small text-muted-foreground mt-1">{mockStudents.length} students under your supervision</p>
+            </div>
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search students..." className="pl-10 form-input" />
+            </div>
+          </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className="font-semibold">{student.name}</h3>
-                          <StatusBadge status={student.status} />
-                          <StatusBadge status={student.weeklyLogStatus} />
-                        </div>
-                        <p className="text-sm text-muted-foreground">{student.program}</p>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
-                          <span className="font-medium">{student.internshipTitle}</span>
-                          <span className="text-muted-foreground">@ {student.company}</span>
-                        </div>
-
-                        {/* Progress bar */}
-                        <div className="mt-3 space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Progress</span>
-                            <span className="font-medium">{student.progress}%</span>
-                          </div>
-                          <Progress value={student.progress} className="h-2" />
-                        </div>
-                      </div>
-
-                      <div className="shrink-0">
-                        {expandedStudent === student.id ? (
-                          <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                        )}
-                      </div>
+          {/* Student Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mockStudents.map((student, index) => (
+              <motion.div
+                key={student.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className={`dashboard-card card-hover cursor-pointer ${expandedStudent === student.id ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
+              >
+                <div className="flex items-start gap-4">
+                  <Avatar className="h-14 w-14 ring-2 ring-primary/20">
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white font-medium">
+                      {student.initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-h4 font-semibold truncate">{student.name}</h3>
+                      <StatusBadge status={student.status} />
                     </div>
+                    <p className="text-small text-muted-foreground truncate">{student.internshipTitle}</p>
+                    <p className="text-caption text-muted-foreground">{student.company}</p>
+                  </div>
+                </div>
 
-                    {/* Expanded Details */}
-                    {expandedStudent === student.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        transition={{ duration: 0.2 }}
-                        className="mt-4 pt-4 border-t"
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Last Activity</Label>
-                            <p className="text-sm font-medium">{student.lastActivity}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Weekly Log</Label>
-                            <StatusBadge status={student.weeklyLogStatus} />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Current Phase</Label>
-                            <p className="text-sm font-medium">
-                              {student.progress > 80 ? "Final Phase" : student.progress > 50 ? "Mid-term" : "Initial"}
-                            </p>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Actions</Label>
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline">
-                                View Profile
-                              </Button>
-                              <Button size="sm" variant="outline">
-                                Send Message
-                              </Button>
-                            </div>
-                          </div>
+                <Separator className="my-4" />
+
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-caption text-muted-foreground">Progress</span>
+                      <span className="text-sm font-semibold text-gradient-brand">{student.progress}%</span>
+                    </div>
+                    <Progress value={student.progress} className="h-2" />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-caption text-muted-foreground">Weekly Log</span>
+                    <StatusBadge status={student.weeklyLogStatus} />
+                  </div>
+
+                  <div className="flex items-center justify-between text-caption text-muted-foreground">
+                    <span>Last activity</span>
+                    <span>{student.lastActivity}</span>
+                  </div>
+
+                  {expandedStudent === student.id && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="pt-4 border-t border-border mt-4 space-y-3"
+                    >
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-caption text-muted-foreground">Program</p>
+                          <p className="font-medium">{student.program}</p>
                         </div>
-                      </motion.div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                        <div>
+                          <p className="text-caption text-muted-foreground">Site Supervisor</p>
+                          <p className="font-medium">{student.supervisor}</p>
+                        </div>
+                        <div>
+                          <p className="text-caption text-muted-foreground">Start Date</p>
+                          <p className="font-medium">{student.startDate}</p>
+                        </div>
+                        <div>
+                          <p className="text-caption text-muted-foreground">End Date</p>
+                          <p className="font-medium">{student.endDate}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <Button variant="outline" size="sm" className="flex-1 focus-ring" onClick={(e) => { e.stopPropagation(); setSelectedStudentForChat(student.id); }}>
+                          <MessageSquare className="mr-1 h-3 w-3" />
+                          Message
+                        </Button>
+                        <Button variant="outline" size="sm" className="flex-1 focus-ring" onClick={(e) => e.stopPropagation()}>
+                          <Eye className="mr-1 h-3 w-3" />
+                          View Profile
+                        </Button>
+                        <Button size="sm" className="focus-ring" onClick={(e) => { e.stopPropagation(); setShowEvaluationForm(true); }}>
+                          <ClipboardCheck className="mr-1 h-3 w-3" />
+                          Evaluate
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </TabsContent>
 
-        {/* Reports Review Tab */}
-        <TabsContent value="reports" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Reports Review Queue</CardTitle>
-                  <CardDescription>{mockReports.length} reports awaiting your review</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  {selectedReports.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleBatchApprove}
-                      className="flex items-center gap-2"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Approve Selected ({selectedReports.length})
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px]">
-                      <Checkbox
-                        checked={selectedReports.length === mockReports.length}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedReports(mockReports.map(r => r.id));
-                          } else {
-                            setSelectedReports([]);
-                          }
-                        }}
-                      />
-                    </TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Report Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockReports.map((report) => (
-                    <TableRow key={report.id}>
-                      <TableCell>
-                        <Checkbox
+        {/* Reports Tab - Pending Reviews Queue */}
+        <TabsContent value="reports" className="mt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-h4 font-semibold">Pending Reviews</h2>
+              <p className="text-small text-muted-foreground mt-1">{mockReports.filter(r => r.status === "pending_review").length} reports awaiting your review</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedReports.length > 0 && (
+                <Button onClick={handleBatchApprove} size="sm" className="focus-ring">
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Approve Selected ({selectedReports.length})
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="focus-ring">
+                <Filter className="mr-2 h-4 w-4" />
+                Filter
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {mockReports.map((report, index) => (
+              <motion.div
+                key={report.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className={`dashboard-card hover:shadow-md transition-all ${report.priority === "high" ? "border-l-4 border-l-danger" : ""}`}
+              >
+                <div className="flex gap-4">
+                  <PriorityIndicator priority={report.priority} />
+                  
+                  <div className="flex-1 min-w-0 py-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
                           checked={selectedReports.includes(report.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
+                          onChange={(e) => {
+                            if (e.target.checked) {
                               setSelectedReports([...selectedReports, report.id]);
                             } else {
                               setSelectedReports(selectedReports.filter(id => id !== report.id));
                             }
                           }}
+                          className="rounded border-border focus-ring"
                         />
-                      </TableCell>
-                      <TableCell className="font-medium">{report.studentName}</TableCell>
-                      <TableCell>{report.title}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" capitalize>
-                          {report.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(report.submittedAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold">{report.title}</h3>
+                            <StatusBadge status={report.type} />
+                            <StatusBadge status={report.priority} />
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-small text-muted-foreground">
+                            <span>{report.studentName}</span>
+                            <span>•</span>
+                            <span>Submitted {new Date(report.submittedAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
                         <StatusBadge status={report.status} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedReport(report)}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Review
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>{report.title}</DialogTitle>
-                              <DialogDescription>
-                                Submitted by {report.studentName} on{" "}
-                                {new Date(report.submittedAt).toLocaleDateString()}
-                              </DialogDescription>
-                            </DialogHeader>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedReport(report)}
+                          className="focus-ring"
+                        >
+                          Review
+                        </Button>
+                      </div>
+                    </div>
 
-                            <div className="py-4 space-y-4">
-                              {/* Report Preview */}
-                              <div className="p-4 bg-muted/50 rounded-lg">
-                                <Label className="text-sm font-medium mb-2 block">Report Preview</Label>
-                                <p className="text-sm whitespace-pre-wrap">{report.preview}</p>
-                                <p className="text-sm text-muted-foreground mt-2 italic">
-                                  ... (full content would be displayed here)
-                                </p>
-                              </div>
-
-                              {/* Review Comment */}
-                                      <div className="space-y-2">
-                                        <Label htmlFor="review-comment">Review Comment</Label>
-                                        <Textarea
-                                          id="review-comment"
-                                          placeholder="Add your comments or feedback..."
-                                          value={reportComment}
-                                          onChange={(e) => setReportComment(e.target.value)}
-                                          rows={4}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <DialogFooter className="gap-2">
-                                      <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                          setSelectedReport(null);
-                                          setReportComment("");
-                                        }}
-                                      >
-                                        Cancel
-                                      </Button>
-                                      <Button
-                                        variant="destructive"
-                                        onClick={() => handleReportAction("reject")}
-                                        className="flex items-center gap-2"
-                                      >
-                                        <XCircle className="h-4 w-4" />
-                                        Reject
-                                      </Button>
-                                      <Button
-                                        onClick={() => handleReportAction("approve")}
-                                        className="flex items-center gap-2"
-                                      >
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        Approve
-                                      </Button>
-                                    </DialogFooter>
-                                  </DialogContent>
-                                </Dialog>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2 pl-6">
+                      {report.preview}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </TabsContent>
 
         {/* Evaluations Tab */}
-        <TabsContent value="evaluations" className="space-y-4">
+        <TabsContent value="evaluations" className="mt-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold">Evaluations Panel</h2>
-              <p className="text-muted-foreground">Create and manage student evaluations</p>
+              <h2 className="text-h4 font-semibold">Evaluations</h2>
+              <p className="text-small text-muted-foreground mt-1">Track and complete student evaluations</p>
             </div>
-            <Button
-              onClick={() => setShowEvaluationForm(true)}
-              className="flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
+            <Button onClick={() => setShowEvaluationForm(true)} className="focus-ring">
+              <Plus className="mr-2 h-4 w-4" />
               New Evaluation
             </Button>
           </div>
 
-          {/* Evaluation Form Modal */}
-          {showEvaluationForm && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Create New Evaluation</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowEvaluationForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <EvaluationForm
-                  criteria={evaluationCriteria}
-                  onSubmit={handleEvaluationSubmit}
-                  students={mockStudents.map(s => ({ id: s.id, name: s.name, program: s.program }))}
-                  showStudentSelector={true}
-                  showSignature={true}
-                  ratingType="scale"
-                  submitLabel="Submit Evaluation"
-                  onCancel={() => setShowEvaluationForm(false)}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Evaluations List */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Evaluation History</CardTitle>
-              <CardDescription>Your past and upcoming evaluations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockEvaluations.map((evaluation) => (
-                  <div
-                    key={evaluation.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4"
-                  >
-                    <div className="space-y-1">
-                      <h4 className="font-semibold">{evaluation.studentName}</h4>
-                      <p className="text-sm text-muted-foreground">{evaluation.period}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          Due: {new Date(evaluation.dueDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      {evaluation.score !== null ? (
-                        <div className="text-right">
-                          <p className="text-2xl font-bold text-primary">
-                            {evaluation.score}/{evaluation.maxScore}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Score</p>
-                        </div>
-                      ) : (
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Not started</p>
-                        </div>
-                      )}
-                      <StatusBadge status={evaluation.status} />
-                      
-                      {evaluation.status !== "completed" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setShowEvaluationForm(true)}
-                        >
-                          {evaluation.status === "in_progress" ? "Continue" : "Start"}
-                        </Button>
-                      )}
+          {/* Evaluation History Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mockEvaluations.map((evaluation, index) => (
+              <motion.div
+                key={evaluation.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className={`dashboard-card card-hover ${evaluation.status === "pending" ? "border-warning/50" : ""}`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white text-xs">
+                        {evaluation.studentName.split(" ").map(n => n[0]).join("")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium text-sm">{evaluation.studentName}</p>
+                      <p className="text-caption text-muted-foreground">{evaluation.period}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  <StatusBadge status={evaluation.status} />
+                </div>
+
+                {evaluation.status === "completed" && evaluation.criteria ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <span className="text-sm font-medium">Total Score</span>
+                      <span className="text-lg font-bold text-gradient-brand">{evaluation.score}/{evaluation.maxScore}</span>
+                    </div>
+                    
+                    {/* Mini criteria chart */}
+                    <div className="space-y-2">
+                      {Object.entries(evaluation.criteria).map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground capitalize w-24 truncate">{key.replace("_", " ")}</span>
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-primary rounded-full" 
+                              style={{ width: `${(value / 10) * 100}%` }} 
+                            />
+                          </div>
+                          <span className="text-xs font-medium w-4">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <Clock className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Due: {new Date(evaluation.dueDate).toLocaleDateString()}
+                    </p>
+                    <Button 
+                      size="sm" 
+                      className="mt-3 focus-ring"
+                      onClick={() => setShowEvaluationForm(true)}
+                    >
+                      Start Evaluation
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
         </TabsContent>
 
-        {/* Feedback Tab */}
-        <TabsContent value="feedback" className="space-y-4">
+        {/* Feedback Tab - Quick Feedback Form */}
+        <TabsContent value="feedback" className="mt-6 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Send Feedback */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Send className="h-5 w-5" />
-                  Send Feedback
-                </CardTitle>
-                <CardDescription>Provide feedback to your students</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="student-select">Select Student</Label>
+            {/* Quick Feedback Form */}
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <Send className="h-5 w-5 text-primary" />
+                  Send Quick Feedback
+                </h3>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="form-group">
+                  <Label className="form-label">Select Student</Label>
                   <Select value={feedbackStudent} onValueChange={setFeedbackStudent}>
-                    <SelectTrigger id="student-select">
-                      <SelectValue placeholder="Choose a student" />
+                    <SelectTrigger className="form-input">
+                      <SelectValue placeholder="Choose a student..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockStudents.map((student) => (
-                        <SelectItem key={student.id} value={student.id}>
-                          {student.name}
-                        </SelectItem>
+                      {mockStudents.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="feedback-message">Feedback Message</Label>
+                <div className="form-group">
+                  <Label className="form-label">Rating</Label>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setFeedbackRating(star)}
+                        className={`p-1 rounded transition-colors focus-ring ${
+                          star <= feedbackRating ? "text-warning" : "text-muted-foreground"
+                        }`}
+                      >
+                        <Star className={`h-6 w-6 ${star <= feedbackRating ? "fill-current" : ""}`} />
+                      </button>
+                    ))}
+                    <span className="ml-2 text-sm text-muted-foreground">{feedbackRating}/5</span>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <Label className="form-label">Feedback Message</Label>
                   <Textarea
-                    id="feedback-message"
-                    placeholder="Type your feedback here..."
+                    placeholder="Write your feedback here..."
+                    rows={4}
                     value={feedbackMessage}
                     onChange={(e) => setFeedbackMessage(e.target.value)}
-                    rows={5}
+                    className="form-input"
                   />
                 </div>
 
-                <Button
-                  onClick={handleSendFeedback}
-                  disabled={!feedbackStudent || !feedbackMessage.trim()}
-                  className="w-full"
+                <Button 
+                  onClick={handleSendFeedback} 
+                  disabled={!feedbackStudent || !feedbackMessage}
+                  className="w-full focus-ring"
                 >
+                  <Send className="mr-2 h-4 w-4" />
                   Send Feedback
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Meeting Scheduler Placeholder */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Schedule Meeting
-                </CardTitle>
-                <CardDescription>Set up a meeting with a student</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-8 border-2 border-dashed rounded-lg text-center">
-                  <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-semibold mb-2">Meeting Scheduler</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Integration with calendar coming soon. You can schedule meetings directly through email or your preferred calendar app.
-                  </p>
-                  <Button variant="outline" disabled>
-                    Open Calendar (Coming Soon)
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Feedback History */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Feedback History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {[
-                  { student: "Sarah Johnson", message: "Great progress on the authentication module. Keep up the good work!", date: "2 days ago" },
-                  { student: "Michael Chen", message: "Please ensure you document all network configurations properly.", date: "5 days ago" },
-                  { student: "Emily Rodriguez", message: "Excellent analysis on the Q4 data. Your insights were valuable.", date: "1 week ago" },
-                ].map((fb, i) => (
-                  <div key={i} className="p-4 border rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{fb.student}</span>
-                      <span className="text-xs text-muted-foreground">{fb.date}</span>
+            {/* Communication Threads */}
+            <div className="dashboard-card">
+              <div className="dashboard-card-header">
+                <h3 className="dashboard-card-title flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-chart-2" />
+                  Recent Conversations
+                </h3>
+              </div>
+              
+              <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-thin">
+                {communicationThreads.map((thread) => (
+                  <div
+                    key={thread.studentId}
+                    className="p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedStudentForChat(thread.studentId)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                            {thread.studentName.split(" ").map(n => n[0]).join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium text-sm">{thread.studentName}</span>
+                      </div>
+                      {thread.unreadCount > 0 && (
+                        <span className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                          {thread.unreadCount}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-muted-foreground">{fb.message}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 pl-10">
+                      {thread.messages[thread.messages.length - 1].text}
+                    </p>
                   </div>
                 ))}
+
+                {communicationThreads.length === 0 && (
+                  <div className="text-center py-8">
+                    <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+                    <p className="text-sm text-muted-foreground">No conversations yet</p>
+                  </div>
+                )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Activity Feed Tab */}
-        <TabsContent value="activity" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Activity Feed</CardTitle>
-                  <CardDescription>Recent actions and notifications</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="max-h-[500px]">
-                <div className="space-y-4">
-                  {mockActivityFeed.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex gap-4 p-3 rounded-lg hover:bg-muted/30 transition-colors"
-                    >
-                      <div className="shrink-0 mt-0.5">
-                        <div className={`p-2 rounded-full ${
-                          activity.type === "submission" ? "bg-blue-100" :
-                          activity.type === "review" ? "bg-green-100" :
-                          activity.type === "alert" ? "bg-red-100" :
-                          activity.type === "evaluation" ? "bg-purple-100" :
-                          "bg-gray-100"
-                        }`}>
-                          <activity.icon className={`h-4 w-4 ${
-                            activity.type === "submission" ? "text-blue-600" :
-                            activity.type === "review" ? "text-green-600" :
-                            activity.type === "alert" ? "text-red-600" :
-                            activity.type === "evaluation" ? "text-purple-600" :
-                            "text-gray-600"
-                          }`} />
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm">{activity.message}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{activity.timestamp}</p>
-                      </div>
+        <TabsContent value="activity" className="mt-6 space-y-4">
+          <div className="dashboard-card">
+            <div className="dashboard-card-header">
+              <h3 className="dashboard-card-title flex items-center gap-2">
+                <Clock className="h-5 w-5 text-info" />
+                Recent Activity
+              </h3>
+              <Button variant="ghost" size="icon" className="h-8 w-8 focus-ring">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4 max-h-[500px] overflow-y-auto scrollbar-thin p-2">
+              {mockActivityFeed.map((activity, index) => (
+                <div key={activity.id} className="flex gap-4">
+                  <div className="relative">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      activity.color === "text-primary" ? "bg-primary/10" :
+                      activity.color === "text-success" ? "bg-success/10" :
+                      activity.color === "text-danger" ? "bg-danger/10" :
+                      activity.color === "text-warning" ? "bg-warning/10" : "bg-chart-2/10"
+                    }`}>
+                      <activity.icon className={`h-5 w-5 ${activity.color}`} />
                     </div>
-                  ))}
+                    {index < mockActivityFeed.length - 1 && (
+                      <div className="absolute left-5 top-10 w-px h-[calc(100%+16px)] bg-border" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1 pb-4">
+                    <p className="text-sm">{activity.message}</p>
+                    <p className="text-caption text-muted-foreground mt-1">{activity.timestamp}</p>
+                  </div>
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+              ))}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
 
-// Checkbox component for table selection
-function Checkbox({ 
-  checked, 
-  onCheckedChange,
-  className 
-}: { 
-  checked?: boolean; 
-  onCheckedChange?: (checked: boolean) => void;
-  className?: string;
-}) {
-  return (
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={(e) => onCheckedChange?.(e.target.checked)}
-      className={`rounded border-input h-4 w-4 ${className || ""}`}
-    />
+      {/* Report Review Dialog */}
+      <Dialog open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Review Report</DialogTitle>
+            <DialogDescription>
+              {selectedReport?.title} - {selectedReport?.studentName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedReport && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 rounded-lg bg-muted/50">
+                <p className="text-sm">{selectedReport.preview}</p>
+              </div>
+              
+              <div className="form-group">
+                <Label className="form-label">Review Comments</Label>
+                <Textarea
+                  placeholder="Add your comments..."
+                  rows={3}
+                  value={reportComment}
+                  onChange={(e) => setReportComment(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSelectedReport(null)} className="focus-ring">
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => handleReportAction("reject")}
+              className="focus-ring"
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Reject
+            </Button>
+            <Button onClick={() => handleReportAction("approve")} className="focus-ring">
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Evaluation Form Dialog */}
+      <Dialog open={showEvaluationForm} onOpenChange={setShowEvaluationForm}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Submit Evaluation</DialogTitle>
+            <DialogDescription>
+              Complete the evaluation form for the selected student
+            </DialogDescription>
+          </DialogHeader>
+          
+          <EvaluationForm
+            criteria={evaluationCriteria}
+            onSubmit={handleEvaluationSubmit}
+            onCancel={() => setShowEvaluationForm(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Meeting Scheduler Dialog */}
+      <Dialog open={showMeetingScheduler} onOpenChange={setShowMeetingScheduler}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Schedule Meeting</DialogTitle>
+            <DialogDescription>
+              Set up a video call or in-person meeting with a student
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="form-group">
+              <Label className="form-label">Select Student</Label>
+              <Select>
+                <SelectTrigger className="form-input">
+                  <SelectValue placeholder="Choose a student..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockStudents.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-group">
+              <Label className="form-label">Meeting Type</Label>
+              <Select defaultValue="video">
+                <SelectTrigger className="form-input">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Video Call</SelectItem>
+                  <SelectItem value="in-person">In-Person</SelectItem>
+                  <SelectItem value="phone">Phone Call</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="form-group">
+              <Label className="form-label">Available Slots</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {meetingSlots.map((slot, index) => (
+                  <button
+                    key={index}
+                    disabled={!slot.available}
+                    className={`p-3 rounded-lg border text-left text-sm transition-colors focus-ring ${
+                      slot.available 
+                        ? "border-border hover:border-primary/50 hover:bg-primary/5" 
+                        : "border-border bg-muted/50 opacity-50 cursor-not-allowed"
+                    }`}
+                  >
+                    <p className="font-medium">{slot.date}</p>
+                    <p className="text-muted-foreground">{slot.time}</p>
+                    {!slot.available && <p className="text-danger text-xs mt-1">Booked</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <Label className="form-label">Agenda (Optional)</Label>
+              <Textarea
+                placeholder="What would you like to discuss?"
+                rows={3}
+                className="form-input"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMeetingScheduler(false)} className="focus-ring">
+              Cancel
+            </Button>
+            <Button onClick={() => setShowMeetingScheduler(false)} className="focus-ring">
+              <Video className="mr-2 h-4 w-4" />
+              Schedule Meeting
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Chat Dialog */}
+      <Dialog open={!!selectedStudentForChat} onOpenChange={() => setSelectedStudentForChat(null)}>
+        <DialogContent className="sm:max-w-[500px] h-[600px] flex flex-col p-0">
+          {/* Chat Header */}
+          <div className="p-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {mockStudents.find(s => s.id === selectedStudentForChat)?.initials || "?"}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{mockStudents.find(s => s.id === selectedStudentForChat)?.name}</p>
+                <p className="text-xs text-success flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-success" /> Online
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <ScrollArea className="flex-1 p-4">
+            <div className="space-y-4">
+              {(communicationThreads.find(t => t.studentId === selectedStudentForChat)?.messages || []).map((msg) => (
+                <div key={msg.id} className={`flex ${msg.from === "faculty" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[75%] p-3 rounded-lg ${
+                    msg.from === "faculty" 
+                      ? "bg-primary text-primary-foreground" 
+                      : "bg-muted"
+                  }`}>
+                    <p className="text-sm">{msg.text}</p>
+                    <p className={`text-xs mt-1 ${msg.from === "faculty" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      {msg.time}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          {/* Chat Input */}
+          <div className="p-4 border-t border-border">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Type your message..."
+                className="form-input flex-1"
+              />
+              <Button className="focus-ring">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

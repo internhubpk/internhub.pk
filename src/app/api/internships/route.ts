@@ -6,6 +6,16 @@ import {
   PaginationSchema,
   FilterSchema,
 } from "@/lib/validations";
+import {
+  requireAuth,
+  requireRole,
+  hasPermission,
+  authorizationError,
+  authenticationError,
+} from "@/lib/authorization";
+import { validateTenantOwnership, buildTenantQuery } from "@/lib/tenant";
+import { audit } from "@/lib/audit";
+import { sanitizeInput, extractClientInfo, validatePaginationParams } from "@/lib/api-security";
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -26,9 +36,37 @@ const VIEW_ROLES: UserRole[] = [
 // Roles that can create internships
 const CREATE_ROLES: UserRole[] = ["company_hr", "super_admin", "university_admin"];
 
+// Allowed sort fields to prevent SQL injection
+const ALLOWED_SORT_FIELDS = [
+  "created_at",
+  "updated_at",
+  "title",
+  "status",
+  "application_deadline",
+  "start_date",
+] as const;
+
+/**
+ * Validate and sanitize sort parameters
+ */
+function validateSortParam(sortBy: string | null, sortOrder: string | null): {
+  sortBy: typeof ALLOWED_SORT_FIELDS[number];
+  ascending: boolean;
+} {
+  const validSort = ALLOWED_SORT_FIELDS.includes(sortBy as any)
+    ? (sortBy as typeof ALLOWED_SORT_FIELDS[number])
+    : "created_at";
+  
+  return {
+    sortBy: validSort,
+    ascending: sortOrder === "asc",
+  };
+}
+
 /**
  * GET /api/internships
  * List internships - public for marketplace, filtered for dashboards
+ * SECURITY: University-scoped queries, company HR restrictions
  */
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +79,7 @@ export async function GET(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // Parse query parameters
+    // Parse query parameters with validation
     const { searchParams } = new URL(request.url);
     const paginationResult = PaginationSchema.safeParse(
       Object.fromEntries(searchParams)
@@ -50,14 +88,22 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(searchParams)
     );
 
-    const page = paginationResult.success ? paginationResult.data.page : 1;
-    const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
+    // Validate pagination bounds
+    const validatedPagination = validatePaginationParams(searchParams);
+    const page = paginationResult.success ? paginationResult.data.page : validatedPagination.page;
+    const pageSize = paginationResult.success ? paginationResult.data.pageSize : validatedPagination.pageSize;
     const filters = filterResult.success ? filterResult.data : {};
-    const search = searchParams.get("search");
+    
+    // Sanitize inputs
+    const search = searchParams.get("search") ? sanitizeInput(searchParams.get("search")!) : null;
     const status = searchParams.get("status");
     const isMarketplace = searchParams.get("marketplace") === "true";
-    const sortBy = searchParams.get("sort_by") || "created_at";
-    const sortOrder = searchParams.get("sort_order") === "asc" ? true : false;
+    
+    // Validate sort parameters
+    const { sortBy, ascending } = validateSortParam(
+      searchParams.get("sort_by"),
+      searchParams.get("sort_order")
+    );
 
     // Build query - select with company info for display
     let query = supabase
@@ -73,7 +119,7 @@ export async function GET(request: NextRequest) {
       query = query.in("status", ["published", "active"]);
     }
 
-    // Authenticated users get role-based filtering
+    // Authenticated users get role-based filtering with security enforcement
     if (user) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -82,46 +128,102 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (profile) {
-        // Company HR sees their company's internships
-        if (profile.role === "company_hr") {
+        const userRole = profile.role as UserRole;
+
+        // SECURITY: Company HR sees ONLY their company's internships
+        if (userRole === "company_hr") {
           // Get company ID for this user
           const { data: companyUser } = await supabase
             .from("company_users")
-            .select("company_id")
+            .select("company_id, role")
             .eq("user_id", user.id)
             .single();
 
           if (companyUser) {
             query = query.eq("company_id", companyUser.company_id);
+          } else {
+            // Company user record not found - return empty results
+            return NextResponse.json<ApiResponse<PaginatedResponse<Internship>>>({
+              success: true,
+              data: {
+                data: [],
+                total: 0,
+                page,
+                pageSize,
+                totalPages: 0,
+              },
+            });
           }
         }
 
-        // University staff see their university's internships
+        // SECURITY: University staff see their university's internships only
         if (
           ["university_admin", "department_coordinator", "faculty_supervisor"].includes(
-            profile.role
+            userRole
           ) &&
           profile.university_id &&
           !isMarketplace
         ) {
           query = query.eq("university_id", profile.university_id);
+          
+          // Security: Log if someone tries to filter by different university
+          if (filters.university_id && filters.university_id !== profile.university_id) {
+            console.warn(`User ${user.id} attempted cross-university internship access`);
+          }
         }
 
-        // Department coordinators filter by their department
+        // Department coordinators further filter by their department
         if (
-          profile.role === "department_coordinator" &&
+          userRole === "department_coordinator" &&
           profile.department_id &&
           !isMarketplace
         ) {
           query = query.contains("department_ids", [profile.department_id]);
         }
+
+        // Students see all published internships in marketplace mode
+        // In dashboard mode, they see internships they've applied to
+        if (userRole === "student" && !isMarketplace) {
+          // Get student's applications to show relevant internships
+          const { data: studentRecord } = await supabase
+            .from("students")
+            .select("id")
+            .eq("user_id", user.id)
+            .single();
+          
+          if (studentRecord) {
+            const { data: studentApplications } = await supabase
+              .from("internship_applications")
+              .select("internship_id")
+              .eq("student_id", studentRecord.id);
+            
+            if (studentApplications && studentApplications.length > 0) {
+              const appliedInternshipIds = studentApplications.map((a) => a.internship_id);
+              query = query.in("id", appliedInternshipIds);
+            } else {
+              // No applications yet - return empty
+              return NextResponse.json<ApiResponse<PaginatedResponse<Internship>>>({
+                success: true,
+                data: {
+                  data: [],
+                  total: 0,
+                  page,
+                  pageSize,
+                  totalPages: 0,
+                },
+              });
+            }
+          }
+        }
+
+        // Super admins can see everything but respect explicit filters
+        if (userRole === "super_admin" && filters.university_id) {
+          query = query.eq("university_id", filters.university_id);
+        }
       }
     }
 
-    // Apply additional filters
-    if (filters.university_id) {
-      query = query.eq("university_id", filters.university_id);
-    }
+    // Apply additional filters with validation
     if (filters.company_id) {
       query = query.eq("company_id", filters.company_id);
     }
@@ -129,37 +231,35 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    // Apply search filter on title and description
+    // Apply sanitized search filter on title and description
     if (search) {
       query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
-    // Filter by skills
+    // Filter by skills (sanitize input)
     const skillsFilter = searchParams.get("skills");
     if (skillsFilter) {
-      const skillsArray = skillsFilter.split(",").map((s) => s.trim());
-      query = query.overlaps("skills", skillsArray);
+      const skillsArray = skillsFilter.split(",").map((s) => sanitizeInput(s.trim())).filter(Boolean);
+      if (skillsArray.length > 0) {
+        query = query.overlaps("skills", skillsArray);
+      }
     }
 
-    // Filter by location
+    // Filter by location (sanitize)
     const location = searchParams.get("location");
     if (location) {
-      query = query.ilike("location", `%${location}%`);
+      query = query.ilike("location", `%${sanitizeInput(location)}%`);
     }
 
-    // Filter by remote/paid options
+    // Filter by remote/paid options (boolean validation)
     const isRemote = searchParams.get("is_remote");
-    if (isRemote === "true") {
-      query = query.eq("is_remote", true);
-    } else if (isRemote === "false") {
-      query = query.eq("is_remote", false);
+    if (isRemote === "true" || isRemote === "false") {
+      query = query.eq("is_remote", isRemote === "true");
     }
 
     const isPaid = searchParams.get("is_paid");
-    if (isPaid === "true") {
-      query = query.eq("is_paid", true);
-    } else if (isPaid === "false") {
-      query = query.eq("is_paid", false);
+    if (isPaid === "true" || isPaid === "false") {
+      query = query.eq("is_paid", isPaid === "true");
     }
 
     // Get total count
@@ -170,7 +270,7 @@ export async function GET(request: NextRequest) {
     const end = page * pageSize - 1;
 
     const { data: internships, error } = await query
-      .order(sortBy, { ascending: sortOrder })
+      .order(sortBy, { ascending })
       .range(start, end);
 
     if (error) {
@@ -195,6 +295,11 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in GET /api/internships:", error);
+    
+    if (error instanceof Error && error.message.includes("Authentication")) {
+      return authenticationError(error.message);
+    }
+    
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }
@@ -205,36 +310,15 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/internships
  * Create internship - Company HR primarily
+ * SECURITY: Company ownership verification, audit logging
  */
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication and appropriate role
+    const authContext = await requireRole(CREATE_ROLES);
+    
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-
-    // Authenticate user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // Check user role
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, university_id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!profile || !CREATE_ROLES.includes(profile.role as UserRole)) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Insufficient permissions to create internships" },
-        { status: 403 }
-      );
-    }
 
     // Parse and validate request body
     const body = await request.json();
@@ -253,27 +337,51 @@ export async function POST(request: NextRequest) {
 
     const internshipData = validation.data;
 
-    // If user is company HR, verify they belong to the specified company
-    if (profile.role === "company_hr") {
+    // SECURITY: If user is company HR, verify they belong to the specified company
+    const userRole = authContext.profile?.role;
+    
+    if (userRole === "company_hr") {
       const { data: companyUser } = await supabase
         .from("company_users")
-        .select("company_id, role")
-        .eq("user_id", user.id)
+        .select("company_id, role, status")
+        .eq("user_id", authContext.user!.id)
         .eq("company_id", internshipData.company_id)
         .single();
 
-      if (!companyUser || !["admin", "hr"].includes(companyUser.role)) {
-        return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "You don't have permission to create internships for this company" },
-          { status: 403 }
-        );
+      if (!companyUser) {
+        console.warn(`Company HR user ${authContext.user!.id} attempted to create internship for non-associated company`);
+        return authorizationError("You don't have permission to create internships for this company");
+      }
+
+      // Check if user has admin/hr role in this company
+      if (!["admin", "hr"].includes(companyUser.role)) {
+        return authorizationError("Insufficient company privileges to create internships");
+      }
+
+      // Check if company user is active
+      if (companyUser.status !== "active") {
+        return authorizationError("Your company account is not active");
+      }
+    }
+
+    // SECURITY: University admin creating internship - verify university ownership
+    if (userRole === "university_admin") {
+      const userUniversityId = authContext.profile?.university_id;
+      
+      if (!userUniversityId) {
+        return authorizationError("No university assigned to your account");
+      }
+      
+      if (internshipData.university_id !== userUniversityId) {
+        console.warn(`Uni Admin ${authContext.user!.id} attempted cross-university internship creation`);
+        return authorizationError("Can only create internships for your university");
       }
     }
 
     // Verify referenced entities exist
     const [companyCheck, universityCheck] = await Promise.all([
-      supabase.from("companies").select("id").eq("id", internshipData.company_id).single(),
-      supabase.from("universities").select("id").eq("id", internshipData.university_id).single(),
+      supabase.from("companies").select("id, status").eq("id", internshipData.company_id).single(),
+      supabase.from("universities").select("id, status").eq("id", internshipData.university_id).single(),
     ]);
 
     if (!companyCheck.data) {
@@ -282,6 +390,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Verify company is active/verified
+    if (companyCheck.data.status === "suspended") {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "This company is currently suspended" },
+        { status: 403 }
+      );
+    }
+
     if (!universityCheck.data) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Referenced university does not exist" },
@@ -293,20 +410,54 @@ export async function POST(request: NextRequest) {
     if (internshipData.start_date && internshipData.end_date) {
       const start = new Date(internshipData.start_date);
       const end = new Date(internshipData.end_date);
+      
       if (end <= start) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "End date must be after start date" },
           { status: 400 }
         );
       }
+
+      // Validate dates are in the future or reasonable range
+      const now = new Date();
+      const maxFutureDate = new Date();
+      maxFutureDate.setFullYear(maxFutureDate.getFullYear() + 2);
+
+      if (start < now && !internshipData.id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Start date cannot be in the past" },
+          { status: 400 }
+        );
+      }
+
+      if (end > maxFutureDate) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Internship duration cannot exceed 2 years" },
+          { status: 400 }
+        );
+      }
     }
+
+    // Sanitize text fields to prevent XSS
+    if (internshipData.title) {
+      internshipData.title = sanitizeInput(internshipData.title);
+    }
+    if (internshipData.description) {
+      internshipData.description = sanitizeInput(internshipData.description);
+    }
+    if (internshipData.location) {
+      internshipData.location = sanitizeInput(internshipData.location);
+    }
+
+    // Get client info for audit logging
+    const clientInfo = extractClientInfo(request);
 
     // Create internship
     const { data: internship, error } = await supabase
       .from("internships")
       .insert({
         ...internshipData,
-        created_by: user.id,
+        created_by: authContext.user!.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -321,6 +472,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // AUDIT LOG: Log internship creation for compliance
+    await audit.internshipCreate(internship!.id, internshipData.university_id);
+
     return NextResponse.json<ApiResponse<Internship>>({
       success: true,
       data: internship as Internship,
@@ -328,6 +482,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in POST /api/internships:", error);
+    
+    if (error instanceof Error && error.message.includes("Authentication")) {
+      return authenticationError(error.message);
+    }
+    if (error instanceof Error && (error.message.includes("role") || error.message.includes("Access"))) {
+      return authorizationError(error.message);
+    }
+    
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }
