@@ -213,7 +213,7 @@ export default function RegisterPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Account</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Join InternHub today — it only takes a minute</p>
+          <p className="mt-2 text-sm text-muted-foreground">Enter your details to get started</p>
         </div>
 
         {/* Progress Indicator */}

@@ -150,15 +150,19 @@ export function ChartSkeleton({ className }: { className?: string }) {
             ))}
           </div>
           <div className="flex-1 space-y-2">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                className="h-[120px] w-full rounded-t-md"
-                style={{
-                  height: `${Math.random() * 80 + 20}%`,
-                }}
-              />
-            ))}
+            {Array.from({ length: 12 }).map((_, i) => {
+              // Use deterministic heights based on index to avoid hydration mismatch
+              const heights = [65, 45, 80, 55, 70, 50, 85, 60, 75, 55, 90, 65];
+              return (
+                <Skeleton
+                  key={i}
+                  className="h-[120px] w-full rounded-t-md"
+                  style={{
+                    height: `${heights[i] || 60}%`,
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
         {/* X-axis labels */}

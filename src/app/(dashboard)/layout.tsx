@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header, HeaderSkeleton } from "@/components/layout/header";
@@ -33,6 +33,12 @@ function DashboardLoading() {
 // ============================================
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = React.useState(true);
+  const [pathname, setPathname] = useState("dashboard");
+
+  // Get pathname only on client side to avoid hydration mismatch
+  useEffect(() => {
+    setPathname(window.location.pathname);
+  }, []);
 
   // Simulate initial loading - in production this would be based on auth state
   React.useEffect(() => {
@@ -64,9 +70,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-auto">
           <AnimatePresence mode="wait">
             <motion.div
-              key={
-                typeof window !== "undefined" ? window.location.pathname : "dashboard"
-              }
+              key={pathname}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}

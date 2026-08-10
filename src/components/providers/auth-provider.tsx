@@ -25,6 +25,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [university, setUniversity] = useState<University | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = React.useRef(true);
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Lazy initialize Supabase client to avoid build-time issues
   const [supabase] = useState<SupabaseClient | null>(() => {
@@ -39,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const fetchProfile = useCallback(async (userId: string, client: SupabaseClient | null) => {
-    if (!client) return;
+    if (!client || !isMountedRef.current) return;
     
     try {
       // Check if profiles table exists and is accessible
@@ -49,38 +59,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq("user_id", userId)
         .single();
 
-      // Handle case where profile doesn't exist yet (new user)
+      // Handle case where profile doesn't exist yet (new user) or table doesn't exist
       if (profileError) {
         // Table might not exist or other error - don't crash
         console.log("Profile fetch info:", profileError.code || profileError.message);
-        setProfile(null);
+        if (isMountedRef.current) {
+          setProfile(null);
+        }
         return;
       }
       
-      setProfile(profileData as Profile);
+      if (isMountedRef.current) {
+        setProfile(profileData as Profile);
 
-      // Fetch university if profile has university_id
-      if (profileData?.university_id) {
-        try {
-          const { data: uniData, error: uniError } = await client
-            .from("universities")
-            .select("*")
-            .eq("id", profileData.university_id)
-            .single();
+        // Fetch university if profile has university_id
+        if (profileData?.university_id) {
+          try {
+            const { data: uniData, error: uniError } = await client
+              .from("universities")
+              .select("*")
+              .eq("id", profileData.university_id)
+              .single();
 
-          if (!uniError && uniData) {
-            setUniversity(uniData as University);
+            if (!uniError && uniData && isMountedRef.current) {
+              setUniversity(uniData as University);
+            }
+          } catch (uniErr) {
+            // University table might not exist - that's ok
+            console.log("University fetch skipped:", uniErr instanceof Error ? uniErr.message : "Unknown error");
           }
-        } catch (uniErr) {
-          // University table might not exist - that's ok
-          console.log("University fetch skipped:", uniErr instanceof Error ? uniErr.message : "Unknown error");
         }
       }
     } catch (error) {
       // Catch any unexpected errors gracefully
       console.log("Profile fetch error:", error instanceof Error ? error.message : "Unknown error");
-      setProfile(null);
-      setUniversity(null);
+      if (isMountedRef.current) {
+        setProfile(null);
+        setUniversity(null);
+      }
     }
   }, []);
 
@@ -91,11 +107,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Prevent duplicate initializations
+    let isInitialized = false;
+
     // Get initial session
     const initializeAuth = async () => {
+      if (isInitialized) return;
+      isInitialized = true;
+      
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
+        if (!isMountedRef.current) return;
+
         if (error) {
           console.error("Session error:", error.message);
           setIsLoading(false);
@@ -109,7 +133,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error("Error initializing auth:", error instanceof Error ? error.message : error);
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -118,6 +144,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMountedRef.current) return;
+        
         try {
           if (event === "SIGNED_IN" && session?.user) {
             setUser(session.user);
@@ -127,10 +155,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null);
             setUniversity(null);
           }
+          // Ignore TOKEN_REFRESHED and other events to avoid unnecessary re-renders
         } catch (error) {
           console.error("Auth state change error:", error instanceof Error ? error.message : error);
         } finally {
-          setIsLoading(false);
+          if (isMountedRef.current) {
+            setIsLoading(false);
+          }
         }
       }
     );
