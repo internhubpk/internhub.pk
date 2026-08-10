@@ -44,15 +44,18 @@ import { createClient } from "@/utils/supabase/client";
 interface University {
   id: string;
   name: string;
-  slug: string;
-  description?: string;
+  slug?: string;              // Added by migration
+  description?: string;       // Added by migration
   logo_url?: string;
-  website?: string;
+  website?: string;           // Added by migration
   domain?: string;
-  primary_color?: string;
-  secondary_color?: string;
-  status: "active" | "inactive" | "suspended";
+  subdomain?: string;         // In original schema
+  primary_color?: string;     // Added by migration
+  secondary_color?: string;   // Added by migration
+  status?: "active" | "inactive" | "suspended";  // Added by migration
   created_at: string;
+  updated_at?: string;        // Added by migration
+  created_by?: string;        // Added by migration
   student_count?: number;
 }
 
@@ -175,11 +178,11 @@ export default function SuperAdminUniversitiesPage() {
     setEditingUniversity(university);
     setFormData({
       name: university.name,
-      slug: university.slug,
+      slug: university.slug || "",
       description: university.description || "",
       website: university.website || "",
       domain: university.domain || "",
-      status: university.status === "suspended" ? "inactive" : university.status,
+      status: (university.status === "suspended" ? "inactive" : university.status) || "active",
     });
     setIsDialogOpen(true);
   }
@@ -197,50 +200,86 @@ export default function SuperAdminUniversitiesPage() {
       const supabase = createClient();
 
       if (editingUniversity) {
-        // Update existing university
-        const { error } = await supabase
-          .from("universities")
-          .update({
-            name: formData.name.trim(),
-            slug: formData.slug.trim(),
-            description: formData.description.trim() || null,
-            website: formData.website.trim() || null,
-            domain: formData.domain.trim() || null,
-            status: formData.status,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", editingUniversity.id);
-
-        if (error) throw error;
+        // Update existing university - build update object dynamically
+        // to handle schemas with or without extended columns
+        const updateData: Record<string, any> = {
+          name: formData.name.trim(),
+          domain: formData.domain.trim() || null,
+        };
+        
+        // Only add these fields if they might exist (after migration)
+        // Supabase will ignore unknown columns in some cases, but let's be safe
+        try {
+          await supabase
+            .from("universities")
+            .update({
+              ...updateData,
+              slug: formData.slug.trim(),
+              description: formData.description.trim() || null,
+              website: formData.website.trim() || null,
+              status: formData.status,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", editingUniversity.id);
+        } catch (e) {
+          // Fallback: try without the extra columns (for pre-migration schema)
+          const { error } = await supabase
+            .from("universities")
+            .update(updateData)
+            .eq("id", editingUniversity.id);
+          if (error) throw error;
+        }
 
         setMessage({ type: "success", text: "University updated successfully!" });
       } else {
-        // Create new university
-        const { data, error } = await supabase
+        // Create new university - start with base fields that always exist
+        const baseData = {
+          name: formData.name.trim(),
+          domain: formData.domain.trim() || null,
+        };
+        
+        let data: any;
+        let error: any;
+        
+        // Try full insert first (post-migration schema)
+        ({ data, error } = await supabase
           .from("universities")
           .insert({
-            name: formData.name.trim(),
+            ...baseData,
             slug: formData.slug.trim(),
             description: formData.description.trim() || null,
             website: formData.website.trim() || null,
-            domain: formData.domain.trim() || null,
             status: formData.status,
             created_by: user?.id,
           })
           .select()
-          .single();
+          .single());
 
+        // If error about unknown column, try minimal insert (pre-migration schema)
+        if (error && (error.code === '42703' || error.message?.includes('column')?.includes('does not exist'))) {
+          console.log("Extended columns not found, trying minimal insert...");
+          ({ data, error } = await supabase
+            .from("universities")
+            .insert(baseData)
+            .select()
+            .single());
+        }
+        
         if (error) throw error;
 
         // Create a default admin profile for this university
         if (data?.id) {
-          await supabase.from("profiles").insert({
-            university_id: data.id,
-            role: "university_admin",
-            full_name: `${data.name} Admin`,
-            email: `admin@${data.domain || data.slug + ".edu"}`,
-            status: "pending_setup",
-          }).ignoreDuplicates();
+          try {
+            await supabase.from("profiles").insert({
+              user_id: crypto.randomUUID(), // Will be updated when admin registers
+              university_id: data.id,
+              role: "university_admin",
+              full_name: `${data.name} Admin`,
+            }).ignoreDuplicates();
+          } catch (profileError) {
+            console.log("Could not create default admin profile:", profileError);
+            // Non-critical - continue anyway
+          }
         }
 
         setMessage({ type: "success", text: "University created successfully!" });
@@ -295,7 +334,8 @@ export default function SuperAdminUniversitiesPage() {
 
   const filteredUniversities = universities.filter(uni =>
     uni.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    uni.slug.toLowerCase().includes(searchTerm.toLowerCase())
+    (uni.slug && uni.slug.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (uni.domain && uni.domain.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const totalStudents = universities.reduce((acc, uni) => acc + (uni.student_count || 0), 0);
@@ -408,7 +448,7 @@ export default function SuperAdminUniversitiesPage() {
             <div>
               <p className="text-sm text-muted-foreground">Active</p>
               <p className="text-3xl font-bold">
-                {universities.filter(u => u.status === "active").length}
+                {universities.filter(u => !u.status || u.status === "active").length}
               </p>
             </div>
           </CardContent>
@@ -477,8 +517,9 @@ export default function SuperAdminUniversitiesPage() {
                       <div>
                         <h3 className="font-semibold text-lg">{university.name}</h3>
                         <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
-                          <span>Slug: {university.slug}</span>
+                          {university.slug && <span>Slug: {university.slug}</span>}
                           {university.domain && <span>Domain: {university.domain}</span>}
+                          {university.subdomain && <span>Subdomain: {university.subdomain}</span>}
                           <span>{university.student_count || 0} students</span>
                         </div>
                         {university.description && (
@@ -493,7 +534,7 @@ export default function SuperAdminUniversitiesPage() {
                         university.status === "active" ? "default" :
                         university.status === "suspended" ? "destructive" : "secondary"
                       }>
-                        {university.status}
+                        {university.status || "active"}
                       </Badge>
                       <Button
                         variant="ghost"

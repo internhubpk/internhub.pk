@@ -45,8 +45,8 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 interface UserProfile {
-  id: string;
-  user_id: string;
+  id?: string;           // New surrogate key (may not exist in older schemas)
+  user_id: string;       // Primary key - references auth.users
   email?: string;
   full_name: string | null;
   first_name: string | null;
@@ -162,7 +162,7 @@ export default function SuperAdminUsersPage() {
           status: newStatus,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", userId);
+        .eq("user_id", userId);
 
       if (error) throw error;
 
@@ -417,7 +417,7 @@ export default function SuperAdminUsersPage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
+                  <TableRow key={user.user_id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
@@ -455,7 +455,7 @@ export default function SuperAdminUsersPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleToggleUserStatus(user.id, user.status)}
+                          onClick={() => handleToggleUserStatus(user.user_id, user.status)}
                           title={user.status === "active" ? "Suspend user" : "Activate user"}
                         >
                           {user.status === "active" ? (
