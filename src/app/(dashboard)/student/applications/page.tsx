@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,60 +33,79 @@ import {
   Briefcase,
   Calendar,
   ExternalLink,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 
-// Mock data for applications
-const mockApplications = [
-  {
-    id: "1",
-    internshipTitle: "Software Engineering Intern",
-    company: "Tech Corp",
-    status: "under_review" as const,
-    appliedDate: "2024-02-01",
-    lastUpdated: "2024-02-05",
-    coverLetter: "I am excited to apply for this position...",
-    resume: "resume_john_doe.pdf",
-  },
-  {
-    id: "2",
-    internshipTitle: "Marketing Intern",
-    company: "Growth Agency",
-    status: "accepted" as const,
-    appliedDate: "2024-01-28",
-    lastUpdated: "2024-02-03",
-    coverLetter: "With my background in digital marketing...",
-    resume: "resume_john_doe.pdf",
-  },
-  {
-    id: "3",
-    internshipTitle: "Data Science Intern",
-    company: "AI Solutions",
-    status: "rejected" as const,
-    appliedDate: "2024-01-25",
-    lastUpdated: "2024-01-30",
-    coverLetter: "My passion for data analysis...",
-    resume: "resume_john_doe.pdf",
-  },
-  {
-    id: "4",
-    internshipTitle: "UI/UX Design Intern",
-    company: "Design Studio",
-    status: "pending" as const,
-    appliedDate: "2024-02-08",
-    lastUpdated: "2024-02-08",
-    coverLetter: "Design has always been my passion...",
-    resume: "resume_john_doe.pdf",
-  },
-];
+interface Application {
+  id: string;
+  internship_id: string;
+  internship_title?: string;
+  company_name?: string;
+  status: "pending" | "under_review" | "accepted" | "rejected" | "withdrawn";
+  created_at: string;
+  updated_at: string;
+  cover_letter?: string;
+}
 
 export default function StudentApplicationsPage() {
+  const { user } = useAuth();
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
-  const filteredApplications = mockApplications.filter((app) => {
-    const matchesSearch = app.internshipTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         app.company.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    fetchApplications();
+  }, []);
+
+  async function fetchApplications() {
+    if (!user) return;
+
+    try {
+      const supabase = createClient();
+      
+      // Fetch applications with internship details
+      const { data, error } = await supabase
+        .from("applications")
+        .select(`
+          *,
+          internships:internship_id (
+            title,
+            companies:company_id (name)
+          )
+        `)
+        .eq("student_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        // Transform data to flat structure
+        const transformedData: Application[] = data.map((app: any) => ({
+          id: app.id,
+          internship_id: app.internship_id,
+          internship_title: app.internships?.title || "Unknown Position",
+          company_name: app.internships?.companies?.name || "Unknown Company",
+          status: app.status,
+          created_at: app.created_at,
+          updated_at: app.updated_at,
+          cover_letter: app.cover_letter,
+        }));
+        
+        setApplications(transformedData);
+      }
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const filteredApplications = applications.filter((app) => {
+    const matchesSearch =
+      app.internship_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.company_name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || app.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -98,58 +117,55 @@ export default function StudentApplicationsPage() {
       case "rejected":
         return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
       case "under_review":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><Clock className="mr-1 h-3 w-3" />Under Review</Badge>;
-      case "pending":
-        return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Pending</Badge>;
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><Eye className="mr-1 h-3 w-3" />Under Review</Badge>;
+      case "withdrawn":
+        return <Badge variant="secondary">Withdrawn</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="mr-1 h-3 w-3" />Pending</Badge>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              My Applications
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              Track the status of your internship applications
-            </p>
-          </motion.div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">My Applications</h1>
+          <p className="text-muted-foreground mt-1">
+            Track your internship applications
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchApplications} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button asChild>
+            <a href="/marketplace">
+              <Plus className="h-4 w-4 mr-2" />
+              Apply for More
+            </a>
+          </Button>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 lg:px-8">
-        {/* Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-          className="mb-6 space-y-4"
-        >
-          {/* Search and Filter Row */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search applications..."
+                placeholder="Search by position or company..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px]">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Status" />
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
@@ -157,120 +173,81 @@ export default function StudentApplicationsPage() {
                 <SelectItem value="under_review">Under Review</SelectItem>
                 <SelectItem value="accepted">Accepted</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="withdrawn">Withdrawn</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
 
-            <div className="flex gap-2 border rounded-lg p-1">
-              <Button
-                variant={viewMode === "cards" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("cards")}
-                className="flex-1 sm:flex-none"
-              >
-                Cards
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="flex-1 sm:flex-none"
-              >
-                Table
-              </Button>
+      {/* Content */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex items-center justify-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Loading applications...</span>
             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="flex gap-4 text-sm text-muted-foreground">
-            <span>Total: <strong className="text-foreground">{filteredApplications.length}</strong></span>
-            <span>Accepted: <strong className="text-emerald-600">{filteredApplications.filter(a => a.status === "accepted").length}</strong></span>
-            <span>Pending: <strong className="text-amber-600">{filteredApplications.filter(a => a.status === "pending" || a.status === "under_review").length}</strong></span>
-          </div>
-        </motion.div>
-
-        {/* Content */}
-        {viewMode === "cards" ? (
-          /* Card View */
-          <div className="grid gap-4 md:grid-cols-2">
-            {filteredApplications.map((application, index) => (
-              <motion.div
-                key={application.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05, duration: 0.3 }}
-              >
-                <Card className="transition-all hover:shadow-md h-full flex flex-col">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg line-clamp-1">
-                          {application.internshipTitle}
-                        </CardTitle>
-                        <CardDescription className="flex items-center gap-1">
-                          <Briefcase className="h-3 w-3" />
-                          {application.company}
-                        </CardDescription>
-                      </div>
-                      {getStatusBadge(application.status)}
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="flex-1 space-y-3">
-                    <p className="text-sm line-clamp-2 text-muted-foreground">
-                      {application.coverLetter}
-                    </p>
-
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground pt-2 border-t">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Applied: {new Date(application.appliedDate).toLocaleDateString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        Updated: {new Date(application.lastUpdated).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-end pt-2">
-                      <Button variant="outline" size="sm" className="gap-1">
-                        <Eye className="h-3 w-3" />
-                        View Details
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          /* Table View */
-          <div className="rounded-md border overflow-x-auto">
+          </CardContent>
+        </Card>
+      ) : filteredApplications.length === 0 ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center text-center">
+              <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">
+                {searchTerm || statusFilter !== "all" ? "No Matching Applications" : "No Applications Yet"}
+              </h3>
+              <p className="text-muted-foreground max-w-md mb-4">
+                {searchTerm || statusFilter !== "all"
+                  ? "Try adjusting your search or filter criteria."
+                  : "You haven't applied to any internships yet. Start browsing the marketplace and apply to positions that interest you."}
+              </p>
+              {!searchTerm && statusFilter === "all" && (
+                <Button asChild>
+                  <a href="/marketplace">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Browse Internships
+                  </a>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        /* Table View */
+        <Card>
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[200px]">Position</TableHead>
-                  <TableHead className="hidden sm:table-cell">Company</TableHead>
+                  <TableHead>Position</TableHead>
+                  <TableHead className="hidden md:table-cell">Company</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Applied Date</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead className="hidden lg:table-cell">Applied Date</TableHead>
+                  <TableHead className="w-[70px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredApplications.map((application) => (
-                  <TableRow key={application.id}>
+                  <TableRow key={application.id} className="cursor-pointer hover:bg-muted/50">
                     <TableCell>
                       <div>
-                        <p className="font-medium">{application.internshipTitle}</p>
-                        <p className="text-sm text-muted-foreground sm:hidden">{application.company}</p>
+                        <p className="font-medium">{application.internship_title}</p>
+                        <p className="text-sm text-muted-foreground md:hidden">{application.company_name}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell">{application.company}</TableCell>
-                    <TableCell>{getStatusBadge(application.status)}</TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {new Date(application.appliedDate).toLocaleDateString()}
+                      <span>{application.company_name}</span>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(application.status)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(application.created_at).toLocaleDateString()}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button variant="ghost" size="icon">
                         <ExternalLink className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -278,30 +255,9 @@ export default function StudentApplicationsPage() {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {filteredApplications.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="py-12 text-center"
-          >
-            <FileText className="mx-auto h-12 w-12 text-muted-foreground/50" />
-            <h3 className="mt-4 text-lg font-semibold">No applications found</h3>
-            <p className="mt-2 text-muted-foreground">
-              Start applying to internships to see them here
-            </p>
-            <Link href="/student/internships">
-              <Button className="mt-4 gap-2">
-                <Briefcase className="h-4 w-4" />
-                Browse Internships
-              </Button>
-            </Link>
-          </motion.div>
-        )}
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
