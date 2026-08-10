@@ -203,7 +203,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4 overflow-x-hidden">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -227,7 +227,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
           <Form {...accountForm}>
             <form onSubmit={accountForm.handleSubmit(onSubmitAccount)} className="space-y-5">
               {/* Step 1: Account Information */}
@@ -380,7 +380,7 @@ export default function RegisterPage() {
                   <p className="text-sm font-medium text-foreground">Select your role</p>
 
                   {/* Role Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] sm:max-h-[300px] overflow-y-auto pr-1">
                     {roleOptions.map((role) => (
                       <Card
                         key={role.value}

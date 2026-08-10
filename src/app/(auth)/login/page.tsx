@@ -232,14 +232,17 @@ export default function LoginPage() {
             </form>
           </Form>
 
-          {/* Divider */}
+          {/* 
+            Demo Accounts Section - Hidden for production
+            Uncomment below for development/testing purposes
+          */}
+          {/*
           <div className="my-6 flex items-center">
             <div className="flex-1 border-t border-border" />
             <span className="px-3 text-xs text-muted-foreground uppercase">Demo Accounts</span>
             <div className="flex-1 border-t border-border" />
           </div>
 
-          {/* Demo Quick Access */}
           <div className="grid grid-cols-2 gap-3">
             <Button
               type="button"
@@ -266,6 +269,7 @@ export default function LoginPage() {
               Company HR
             </Button>
           </div>
+          */}
         </div>
 
         {/* Footer */}

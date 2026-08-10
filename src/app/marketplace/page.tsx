@@ -647,7 +647,7 @@ export default function MarketplacePage() {
     filters.industries.length > 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       {/* ============ HERO / SEARCH SECTION ============ */}
       <section className="relative bg-gradient-to-br from-primary/5 via-background to-primary/3 overflow-hidden">
         {/* Background decoration */}
@@ -696,7 +696,7 @@ export default function MarketplacePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="max-w-3xl mx-auto"
+              className="max-w-3xl mx-auto w-full px-4 sm:px-0"
             >
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -705,9 +705,9 @@ export default function MarketplacePage() {
                   placeholder="Search internships by title, company, or skills..."
                   value={filters.search}
                   onChange={(e) => updateFilter("search", e.target.value)}
-                  className="pl-12 pr-[140px] h-14 text-base rounded-2xl border-2 shadow-lg shadow-black/5 focus-visible:ring-primary/20 focus-visible:border-primary/50 bg-white/80 backdrop-blur-sm"
+                  className="pl-12 pr-[100px] sm:pr-[140px] h-12 sm:h-14 text-base rounded-xl sm:rounded-2xl border-2 shadow-lg shadow-black/5 focus-visible:ring-primary/20 focus-visible:border-primary/50 bg-white/80 backdrop-blur-sm w-full"
                 />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 sm:gap-2">
                   <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground bg-muted border rounded-md">
                     <Command className="h-3 w-3" />
                     K
@@ -774,7 +774,7 @@ export default function MarketplacePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="flex flex-wrap justify-center gap-8 pt-8"
+              className="grid grid-cols-2 sm:flex sm:flex-wrap justify-center gap-4 sm:gap-6 lg:gap-8 pt-8 max-w-full"
             >
               {[
                 { value: `${mockInternships.length}`, label: "Active Internships", icon: Briefcase },
@@ -782,11 +782,11 @@ export default function MarketplacePage() {
                 { value: "12", label: "Universities", icon: Star },
                 { value: "95%", label: "Satisfaction Rate", icon: TrendingUp },
               ].map((stat) => (
-                <div key={stat.label} className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/50 backdrop-blur-sm border border-border/50">
-                  <stat.icon className="h-5 w-5 text-primary" />
-                  <div className="text-left">
-                    <p className="text-xl md:text-2xl font-bold">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <div key={stat.label} className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-white/50 backdrop-blur-sm border border-border/50 justify-center sm:justify-start">
+                  <stat.icon className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
+                  <div className="text-left min-w-0">
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold">{stat.value}</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
                   </div>
                 </div>
               ))}
@@ -796,8 +796,8 @@ export default function MarketplacePage() {
       </section>
 
       {/* ============ MAIN CONTENT AREA ============ */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
           {/* ============ FILTER SIDEBAR (Desktop) ============ */}
           <aside className="hidden lg:block w-72 shrink-0">
             <div className="sticky top-24 space-y-6">
@@ -829,7 +829,7 @@ export default function MarketplacePage() {
           </aside>
 
           {/* ============ LISTINGS AREA ============ */}
-          <div className="flex-1 min-w-0 space-y-6">
+          <div className="flex-1 min-w-0 w-full space-y-6 overflow-x-hidden">
             {/* Results Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
