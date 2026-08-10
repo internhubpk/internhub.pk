@@ -30,36 +30,53 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (NEVER commit secrets)
+.env
+.env.*
+.env.local
+.env.production
+!env.example
 
 # vercel
 .vercel
-
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 local-*
+
+# AI Assistant Files (NOT part of InternHub)
 .claude
 .z-ai-config
+skills/
+.zscripts/
+examples/
+mini-services/
+download/
+db/*.db
+Caddyfile
+
+# Logs & Debug
 *.log
 dev.log
 dev.out.log
 test
 prompt
-
 server.log
-# Skills directory
-/skills/# Additional Security - Never commit secrets
+
+# Security - Never commit secrets
 *.key
-*.pem
 credentials*
 secrets*
-.env.production
-.env.local
+
+# Supabase local config
 /supabase/
+
 # Upload directory (user files)
 upload/
+
 # Tool results (auto-generated)
 tool-results/
+
+# Work logs
+worklog.md
