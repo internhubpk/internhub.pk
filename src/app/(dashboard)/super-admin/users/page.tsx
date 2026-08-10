@@ -39,6 +39,7 @@ import {
   ClipboardCheck,
   HardHat,
   Award,
+  Database,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
@@ -76,6 +77,7 @@ export default function SuperAdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [tablesExist, setTablesExist] = useState(true);
 
   useEffect(() => {
     fetchUsers();
@@ -97,7 +99,18 @@ export default function SuperAdminUsersPage() {
 
       const { data, error } = await query;
 
+      // Check if table doesn't exist
+      if (error?.code === "42P01" || error?.message?.includes("does not exist")) {
+        setTablesExist(false);
+        setUsers([]);
+        setMessage({ type: "error", text: "Database tables not found. Please run the setup script." });
+        setIsLoading(false);
+        return;
+      }
+
       if (error) throw error;
+
+      setTablesExist(true);
 
       // Enrich with university names
       const enrichedData = await Promise.all(
@@ -119,7 +132,15 @@ export default function SuperAdminUsersPage() {
       setUsers(enrichedData);
     } catch (error) {
       console.error("Error fetching users:", error);
-      setMessage({ type: "error", text: "Failed to load users" });
+      
+      // Check if it's a "table does not exist" error
+      const err = error as any;
+      if (err?.code === "42P01" || err?.message?.includes("does not exist")) {
+        setTablesExist(false);
+        setMessage({ type: "error", text: "Database tables not found. Run the SQL setup script first." });
+      } else {
+        setMessage({ type: "error", text: "Failed to load users" });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -232,6 +253,26 @@ export default function SuperAdminUsersPage() {
             ×
           </button>
         </div>
+      )}
+
+      {/* Database Setup Required */}
+      {!tablesExist && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <Database className="h-6 w-6 text-amber-600 mt-1 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 mb-2">
+                  ⚠️ Database Tables Not Found
+                </h3>
+                <p className="text-amber-700 text-sm">
+                  The <code className="bg-amber-100 px-1 rounded">profiles</code> table doesn&apos;t exist yet.
+                  Run the setup SQL script in Supabase to create all required tables.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Stats Cards */}

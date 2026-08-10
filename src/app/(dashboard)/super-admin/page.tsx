@@ -12,6 +12,8 @@ import {
   TrendingUp,
   AlertCircle,
   RefreshCw,
+  Database,
+  CheckCircle2,
 } from "lucide-react";
 import {
   Card,
@@ -30,10 +32,14 @@ interface PlatformStats {
   revenue: number;
 }
 
+type DataState = "loading" | "ready" | "error" | "no_tables";
+
 export default function SuperAdminDashboard() {
   const { user, profile } = useAuth();
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [dataState, setDataState] = useState<DataState>("loading");
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     fetchStats();
@@ -43,12 +49,44 @@ export default function SuperAdminDashboard() {
     try {
       const supabase = createClient();
       
-      // Fetch real stats from database
+      // Try to fetch stats - this will fail if tables don't exist
       const [uniRes, userRes, internRes] = await Promise.all([
-        supabase.from("universities").select("id", { count: "exact" }),
-        supabase.from("profiles").select("id", { count: "exact" }),
-        supabase.from("internships").select("id", { count: "exact" }).eq("status", "active"),
+        supabase.from("universities").select("id", { count: "exact", head: true }).catch(e => {
+          console.log("Universities table error:", e);
+          return { count: 0, error: e };
+        }),
+        supabase.from("profiles").select("id", { count: "exact", head: true }).catch(e => {
+          console.log("Profiles table error:", e);
+          return { count: 0, error: e };
+        }),
+        supabase.from("internships").select("id", { count: "exact", head: true }).eq("status", "active").catch(e => {
+          console.log("Internships table error:", e);
+          return { count: 0, error: e };
+        }),
       ]);
+
+      // Check if we got actual errors (table doesn't exist)
+      const hasTableErrors = [uniRes, userRes, internRes].some(
+        (res: any) => res.error?.code === "42P01" || res.error?.message?.includes("does not exist")
+      );
+
+      if (hasTableErrors) {
+        setDataState("no_tables");
+        setStats(null);
+        return;
+      }
+
+      // Check for other errors
+      const hasOtherErrors = [uniRes, userRes, internRes].some(
+        (res: any) => res.error && !res.count
+      );
+
+      if (hasOtherErrors) {
+        setDataState("error");
+        const firstError = [uniRes, userRes, internRes].find((res: any) => res.error);
+        setErrorMessage(firstError?.error?.message || "Failed to load data");
+        return;
+      }
 
       setStats({
         totalUniversities: uniRes.count || 0,
@@ -56,8 +94,18 @@ export default function SuperAdminDashboard() {
         activeInternships: internRes.count || 0,
         revenue: 0,
       });
-    } catch (error) {
+      
+      setDataState("ready");
+    } catch (error: any) {
       console.error("Error fetching stats:", error);
+      
+      // Check if it's a "table does not exist" error
+      if (error?.code === "42P01" || error?.message?.includes("does not exist")) {
+        setDataState("no_tables");
+      } else {
+        setDataState("error");
+        setErrorMessage(error?.message || "An unexpected error occurred");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -66,28 +114,28 @@ export default function SuperAdminDashboard() {
   const statCards = [
     {
       title: "Universities",
-      value: stats?.totalUniversities.toString() || "0",
+      value: dataState === "ready" ? (stats?.totalUniversities.toString() || "0") : "-",
       icon: Building2,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
     },
     {
       title: "Total Users",
-      value: stats?.totalUsers.toString() || "0",
+      value: dataState === "ready" ? (stats?.totalUsers.toString() || "0") : "-",
       icon: Users,
       color: "text-green-600",
       bgColor: "bg-green-50",
     },
     {
       title: "Active Internships",
-      value: stats?.activeInternships.toString() || "0",
+      value: dataState === "ready" ? (stats?.activeInternships.toString() || "0") : "-",
       icon: Activity,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
     },
     {
       title: "Revenue",
-      value: `$${stats?.revenue.toLocaleString() || "0"}`,
+      value: "$0",
       icon: DollarSign,
       color: "text-amber-600",
       bgColor: "bg-amber-50",
@@ -104,19 +152,77 @@ export default function SuperAdminDashboard() {
             Welcome back, {profile?.full_name || user?.email || "Admin"}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchStats} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <a href="/super-admin/universities">
-              <Plus className="h-4 w-4 mr-2" />
-              Add University
-            </a>
-          </Button>
-        </div>
+        <Button variant="outline" onClick={fetchStats} disabled={isLoading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
+
+      {/* Database Setup Required Alert */}
+      {dataState === "no_tables" && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <Database className="h-6 w-6 text-amber-600 mt-1 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 mb-2">
+                  Database Setup Required
+                </h3>
+                <p className="text-amber-700 text-sm mb-4">
+                  The required database tables haven&apos;t been created yet. You need to run the 
+                  setup SQL script in your Supabase dashboard.
+                </p>
+                
+                <div className="bg-white rounded-lg p-4 border border-amber-200 space-y-3">
+                  <p className="font-medium text-sm text-amber-800">📋 Setup Steps:</p>
+                  <ol className="list-decimal list-inside text-sm text-amber-700 space-y-1 ml-2">
+                    <li>Go to your Supabase project dashboard</li>
+                    <li>Navigate to <strong>SQL Editor</strong> (left sidebar)</li>
+                    <li>Click <strong>New Query</strong></li>
+                    <li>Copy and paste the contents of <code className="bg-amber-100 px-1 rounded">supabase-schema.sql</code> file</li>
+                    <li>Click <strong>Run</strong> to execute</li>
+                  </ol>
+                  
+                  <div className="flex items-center gap-2 pt-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => window.open('/supabase-schema.sql', '_blank')}
+                    >
+                      View Schema File
+                    </Button>
+                    <Button 
+                      size="sm"
+                      onClick={fetchStats}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Retry After Setup
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error State */}
+      {dataState === "error" && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="h-6 w-6 text-red-600 mt-1 flex-shrink-0" />
+              <div>
+                <h3 className="font-semibold text-red-800 mb-1">Error Loading Data</h3>
+                <p className="text-red-700 text-sm">{errorMessage}</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={fetchStats}>
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -146,7 +252,7 @@ export default function SuperAdminDashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <Card className={`cursor-pointer hover:shadow-md transition-shadow ${dataState !== "ready" ? "opacity-50 pointer-events-none" : ""}`}>
           <a href="/super-admin/users" className="block p-6">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-lg bg-blue-50">
@@ -160,7 +266,7 @@ export default function SuperAdminDashboard() {
           </a>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <Card className={`cursor-pointer hover:shadow-md transition-shadow ${dataState !== "ready" ? "opacity-50 pointer-events-none" : ""}`}>
           <a href="/super-admin/universities" className="block p-6">
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-lg bg-green-50">
@@ -189,7 +295,7 @@ export default function SuperAdminDashboard() {
         </Card>
       </div>
 
-      {/* Recent Activity */}
+      {/* Overview */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -198,19 +304,37 @@ export default function SuperAdminDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!stats ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <Activity className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                <p className="text-muted-foreground">Loading platform data...</p>
-              </div>
+          {!stats || dataState !== "ready" ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              {dataState === "loading" ? (
+                <>
+                  <Activity className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4 animate-pulse" />
+                  <p className="text-muted-foreground">Loading platform data...</p>
+                </>
+              ) : dataState === "no_tables" ? (
+                <>
+                  <Database className="h-12 w-12 mx-auto text-amber-500/50 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Awaiting Database Setup</h3>
+                  <p className="text-muted-foreground text-center max-w-md">
+                    Run the schema SQL script to enable all features.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-12 w-12 mx-auto text-red-500/50 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Unable to Load Data</h3>
+                  <p className="text-muted-foreground text-center max-w-md">
+                    There was an error connecting to the database.
+                  </p>
+                </>
+              )}
             </div>
           ) : stats.totalUniversities === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <AlertCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Data Yet</h3>
+              <CheckCircle2 className="h-12 w-12 text-green-500/50 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Database Ready!</h3>
               <p className="text-muted-foreground text-center max-w-md">
-                Your platform is ready! Start by adding your first university to begin managing internships.
+                Your platform is ready! Start by adding your first university.
               </p>
               <Button className="mt-4" asChild>
                 <a href="/super-admin/universities">

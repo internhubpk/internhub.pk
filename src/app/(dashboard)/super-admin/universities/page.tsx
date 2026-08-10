@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Database,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ export default function SuperAdminUniversitiesPage() {
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [tablesExist, setTablesExist] = useState(true);
 
   useEffect(() => {
     fetchUniversities();
@@ -98,25 +100,51 @@ export default function SuperAdminUniversitiesPage() {
         .select("*")
         .order("created_at", { ascending: false });
 
+      // Check if table doesn't exist
+      if (error?.code === "42P01" || error?.message?.includes("does not exist")) {
+        setTablesExist(false);
+        setUniversities([]);
+        setMessage({ type: "error", text: "Database tables not found. Please run the setup script." });
+        setIsLoading(false);
+        return;
+      }
+
       if (error) throw error;
+
+      setTablesExist(true);
 
       // Get student counts for each university
       const universitiesWithCounts = await Promise.all(
         (data || []).map(async (uni: University) => {
-          const { count } = await supabase
-            .from("profiles")
-            .select("id", { count: "exact", head: true })
-            .eq("university_id", uni.id)
-            .eq("role", "student");
+          let count = 0;
+          try {
+            const { count: studentCount } = await supabase
+              .from("profiles")
+              .select("id", { count: "exact", head: true })
+              .eq("university_id", uni.id)
+              .eq("role", "student");
+            count = studentCount || 0;
+          } catch (e) {
+            // Profiles table might not exist yet
+            console.log("Could not fetch student count:", e);
+          }
           
-          return { ...uni, student_count: count || 0 };
+          return { ...uni, student_count: count };
         })
       );
 
       setUniversities(universitiesWithCounts);
     } catch (error) {
       console.error("Error fetching universities:", error);
-      setMessage({ type: "error", text: "Failed to load universities" });
+      
+      // Check if it's a "table does not exist" error
+      const err = error as any;
+      if (err?.code === "42P01" || err?.message?.includes("does not exist")) {
+        setTablesExist(false);
+        setMessage({ type: "error", text: "Database tables not found. Run the SQL setup script first." });
+      } else {
+        setMessage({ type: "error", text: "Failed to load universities" });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -280,7 +308,7 @@ export default function SuperAdminUniversitiesPage() {
           <h1 className="text-3xl font-bold">Universities</h1>
           <p className="text-muted-foreground mt-1">Manage all registered universities</p>
         </div>
-        <Button onClick={openCreateDialog}>
+        <Button onClick={openCreateDialog} disabled={!tablesExist}>
           <Plus className="h-4 w-4 mr-2" />
           Add University
         </Button>
@@ -303,6 +331,47 @@ export default function SuperAdminUniversitiesPage() {
             <X className="h-4 w-4" />
           </button>
         </div>
+      )}
+
+      {/* Database Setup Required */}
+      {!tablesExist && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <Database className="h-6 w-6 text-amber-600 mt-1 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 mb-2">
+                  ⚠️ Database Tables Not Found
+                </h3>
+                <p className="text-amber-700 text-sm mb-4">
+                  The <code className="bg-amber-100 px-1 rounded">universities</code> table doesn&apos;t exist yet. 
+                  You need to run the setup SQL script first.
+                </p>
+                
+                <div className="bg-white rounded-lg p-4 border border-amber-200 space-y-2">
+                  <p className="font-medium text-sm text-amber-800">Quick Setup:</p>
+                  <ol className="list-decimal list-inside text-sm text-amber-700 space-y-1 ml-2">
+                    <li>Open Supabase Dashboard → SQL Editor</li>
+                    <li>Copy contents of <code className="bg-amber-100 px-1 rounded">supabase-schema.sql</code></li>
+                    <li>Click Run to create all tables</li>
+                    <li>Return here and click Refresh</li>
+                  </ol>
+                  
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => window.open('https://supabase.com/dashboard/project/' + 
+                      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0] : '') + 
+                      '/sql/new', '_blank')}
+                  >
+                Open Supabase SQL Editor
+              </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Stats Cards */}
