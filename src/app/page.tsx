@@ -12,6 +12,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SiteNav } from "@/components/layout/site-nav";
+import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
 import {
   GraduationCap,
   Briefcase,
@@ -125,46 +127,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <GraduationCap className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold">InternHub</span>
-          </Link>
-
-          <div className="hidden md:flex items-center gap-6">
-            <Link
-              href="/marketplace"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Browse Internships
-            </Link>
-            <Link
-              href="#features"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Features
-            </Link>
-            <Link
-              href="#how-it-works"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              How It Works
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild className="hidden sm:flex">
-              <Link href="/login">Sign In</Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link href="/register">Get Started</Link>
-            </Button>
-          </div>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-12 md:py-20 lg:py-28">
@@ -213,6 +176,7 @@ export default function LandingPage() {
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
+              <QuickTourDialog />
             </div>
           </motion.div>
 
@@ -516,20 +480,47 @@ export default function LandingPage() {
             </div>
             <div>
               <h4 className="font-semibold mb-4">Platform</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/marketplace" className="hover:text-foreground transition-colors">Browse Internships</Link></li>
-                <li><Link href="/register" className="hover:text-foreground transition-colors">For Students</Link></li>
-                <li><Link href="/register?role=company_hr" className="hover:text-foreground transition-colors">For Companies</Link></li>
-                <li><Link href="/register?role=university_admin" className="hover:text-foreground transition-colors">For Universities</Link></li>
+              <ul className="space-y-2.5 text-sm text-muted-foreground">
+                <li>
+                  <Link href="/marketplace" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <Briefcase className="h-3.5 w-3.5" /> Browse Internships
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/register" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <GraduationCap className="h-3.5 w-3.5" /> For Students
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/register?role=company_hr" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <Building2 className="h-3.5 w-3.5" /> For Companies
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/register?role=university_admin" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <Users className="h-3.5 w-3.5" /> For Universities
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Contact Us</a></li>
+              <ul className="space-y-2.5 text-sm text-muted-foreground">
+                <li>
+                  <Link href="/privacy" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <Shield className="h-3.5 w-3.5" /> Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/terms" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <FileText className="h-3.5 w-3.5" /> Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/support" className="flex items-center gap-2 hover:text-foreground transition-colors">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Support
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>

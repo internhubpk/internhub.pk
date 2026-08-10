@@ -37,6 +37,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Sidebar } from "./sidebar";
+import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -247,6 +248,9 @@ export function Header({ className }: HeaderProps) {
           >
             <Search className="h-4 w-4" />
           </Button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle />
 
           {/* Notifications */}
           <DropdownMenu>
