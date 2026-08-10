@@ -109,10 +109,33 @@ CREATE TYPE public.document_type AS ENUM (
 
 -- ============================================================
 -- PHASE 4: CORE TABLES
+-- NOTE: Order matters for foreign keys!
 -- ============================================================
 
 -- ----------------------------------------------------------
--- 4.1 UNIVERSITIES (Tenants)
+-- 4.1 PROFILES FIRST (other tables reference it)
+-- Created before universities to avoid circular dependency
+-- ----------------------------------------------------------
+CREATE TABLE public.profiles (
+    user_id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    role            public.user_role NOT NULL,
+    university_id   uuid, -- Will add FK after universities table exists
+    department_id   uuid,
+    company_id      uuid,
+    full_name       text,
+    email           text,
+    first_name      text,
+    last_name       text,
+    phone           text,
+    bio             text,
+    avatar_url      text,
+    status          text NOT NULL DEFAULT 'active', -- active, inactive, suspended, pending_setup
+    created_at      timestamptz DEFAULT now(),
+    updated_at      timestamptz
+);
+
+-- ----------------------------------------------------------
+-- 4.2 UNIVERSITIES (Tenants) - Now can reference profiles
 -- ----------------------------------------------------------
 CREATE TABLE public.universities (
     id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -131,26 +154,10 @@ CREATE TABLE public.universities (
     updated_at      timestamptz
 );
 
--- ----------------------------------------------------------
--- 4.2 PROFILES (All Users)
--- ----------------------------------------------------------
-CREATE TABLE public.profiles (
-    user_id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    role            public.user_role NOT NULL,
-    university_id   uuid REFERENCES public.universities(id) ON DELETE SET NULL,
-    department_id   uuid,
-    company_id      uuid,
-    full_name       text,
-    email           text,
-    first_name      text,
-    last_name       text,
-    phone           text,
-    bio             text,
-    avatar_url      text,
-    status          text NOT NULL DEFAULT 'active', -- active, inactive, suspended, pending_setup
-    created_at      timestamptz DEFAULT now(),
-    updated_at      timestamptz
-);
+-- Add FK from profiles.university_id -> universities.id (circular dependency resolved)
+ALTER TABLE public.profiles 
+ADD CONSTRAINT fk_profiles_university 
+FOREIGN KEY (university_id) REFERENCES public.universities(id) ON DELETE SET NULL;
 
 -- ----------------------------------------------------------
 -- 4.3 PLATFORM SETTINGS (Key-Value Store for Super Admin)
