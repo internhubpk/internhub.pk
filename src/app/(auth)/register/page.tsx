@@ -20,18 +20,15 @@ import {
   GraduationCap,
   Building2,
   CheckCircle2,
-  Sparkles,
   School,
   UserCog,
   ShieldCheck,
   Users,
-  Zap,
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
@@ -80,24 +77,13 @@ const baseSchema = z.object({
 
 type BaseFormValues = z.infer<typeof baseSchema>;
 
-// Animation variants
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: "easeOut" },
-  },
-};
-
-// Role options
+// Role options - only the essential ones
 const roleOptions = [
   {
     value: "student" as const,
     label: "Student",
     description: "Looking for internship opportunities",
     icon: GraduationCap,
-    color: "blue",
     gradient: "from-blue-500 to-cyan-500",
   },
   {
@@ -105,7 +91,6 @@ const roleOptions = [
     label: "Company HR",
     description: "Hiring and managing interns",
     icon: Building2,
-    color: "purple",
     gradient: "from-purple-500 to-pink-500",
   },
   {
@@ -113,7 +98,6 @@ const roleOptions = [
     label: "University Admin",
     description: "Managing institutional programs",
     icon: School,
-    color: "indigo",
     gradient: "from-indigo-500 to-violet-500",
   },
   {
@@ -121,7 +105,6 @@ const roleOptions = [
     label: "Faculty Supervisor",
     description: "Mentoring student internships",
     icon: UserCog,
-    color: "emerald",
     gradient: "from-emerald-500 to-teal-500",
   },
   {
@@ -129,7 +112,6 @@ const roleOptions = [
     label: "Department Coordinator",
     description: "Coordinating department internships",
     icon: Users,
-    color: "orange",
     gradient: "from-orange-500 to-amber-500",
   },
   {
@@ -137,7 +119,6 @@ const roleOptions = [
     label: "Site Supervisor",
     description: "Supervising interns on-site",
     icon: ShieldCheck,
-    color: "rose",
     gradient: "from-rose-500 to-red-500",
   },
   {
@@ -145,7 +126,6 @@ const roleOptions = [
     label: "External Evaluator",
     description: "Evaluating internship programs",
     icon: CheckCircle2,
-    color: "cyan",
     gradient: "from-cyan-500 to-blue-500",
   },
 ];
@@ -158,7 +138,7 @@ export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [agreeTerms, setAgreeTerms] = useState(false);
 
-  // Step 1 form - Account info
+  // Step 1 form
   const accountForm = useForm<BaseFormValues>({
     resolver: zodResolver(baseSchema),
     defaultValues: {
@@ -208,7 +188,6 @@ export default function RegisterPage() {
         description: "Please check your email to verify your account.",
       });
 
-      // Redirect to login after successful registration
       setTimeout(() => {
         router.push("/login");
       }, 1500);
@@ -224,161 +203,31 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row" style={{ minHeight: '100vh' }}>
-      {/* Left Panel - Branding */}
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
       >
-        {/* Background Pattern */}
-        <div className="absolute inset-0">
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{
-              backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-              backgroundSize: '50px 50px'
-            }}
-          />
-          
-          <div className="absolute top-20 right-20 w-72 h-72 bg-purple-500/30 rounded-full blur-[100px]" />
-          <div className="absolute bottom-32 left-10 w-96 h-96 bg-blue-500/20 rounded-full blur-[120px]" />
-          <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px]" />
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Account</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Join InternHub today — it only takes a minute</p>
         </div>
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-between p-12 xl:p-16 w-full">
-          {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="flex items-center gap-3"
-          >
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 p-[2px] shadow-lg shadow-blue-500/30">
-              <div className="w-full h-full rounded-xl bg-slate-900 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <span className="text-2xl font-bold text-white tracking-tight">
-              InternHub
-            </span>
-          </motion.div>
-
-          {/* Center Content - Role Preview */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="max-w-md"
-          >
-            <h2 className="text-2xl font-bold text-white mb-3">
-              Join the Platform
-            </h2>
-            <p className="text-blue-200/70 mb-8 leading-relaxed">
-              Create your account and join thousands of universities and companies 
-              managing internships efficiently.
-            </p>
-
-            {/* Benefits List */}
-            <div className="space-y-4">
-              {[
-                { icon: ShieldCheck, text: "Secure & Compliant with HEC standards" },
-                { icon: Zap, text: "Real-time progress tracking & reporting" },
-                { icon: Users, text: "Connect with 500+ partner companies" },
-              ].map((item, index) => (
-                <motion.div
-                  key={item.text}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.6 + index * 0.1 }}
-                  className="flex items-start gap-3 group"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-white/10 backdrop-blur flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
-                    <item.icon className="w-4 h-4 text-blue-300" />
-                  </div>
-                  <p className="font-medium text-white text-sm pt-2">{item.text}</p>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Bottom Stats */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.9 }}
-            className="flex items-center gap-8 pt-8 border-t border-white/10"
-          >
-            <div>
-              <p className="text-2xl font-bold text-white">200+</p>
-              <p className="text-xs text-blue-200/60">Universities</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">50K+</p>
-              <p className="text-xs text-blue-200/60">Students</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">24/7</p>
-              <p className="text-xs text-blue-200/60">Support</p>
-            </div>
-          </motion.div>
+        {/* Progress Indicator */}
+        <div className="flex items-center gap-2 mb-6">
+          <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-border"}`} />
+          <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-border"}`} />
         </div>
-      </motion.div>
+        <div className="flex justify-between mb-6 text-xs text-muted-foreground">
+          <span>Account Info</span>
+          <span>Select Role</span>
+        </div>
 
-      {/* Right Panel - Form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-8 lg:p-12 bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-            },
-          }}
-          className="w-full max-w-md"
-        >
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <Link href="/" className="inline-flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-lg shadow-blue-500/25">
-                <div className="w-full h-full rounded-xl bg-white dark:bg-gray-900 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-blue-600" />
-                </div>
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                InternHub
-              </span>
-            </Link>
-          </div>
-
-          {/* Header */}
-          <motion.div variants={fadeInUp}>
-            <h1 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
-              Create your account
-            </h1>
-            <p className="mt-2 text-muted-foreground text-sm">
-              Join InternHub today — it only takes a minute
-            </p>
-          </motion.div>
-
-          {/* Progress Indicator */}
-          <motion.div variants={fadeInUp} className="mt-6 mb-8">
-            <div className="flex items-center gap-2">
-              <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-border"}`} />
-              <div className={`flex-1 h-1.5 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-border"}`} />
-            </div>
-            <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-              <span>Account Info</span>
-              <span>Select Role</span>
-            </div>
-          </motion.div>
-
-          {/* Form */}
+        {/* Form Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
           <Form {...accountForm}>
             <form onSubmit={accountForm.handleSubmit(onSubmitAccount)} className="space-y-5">
               {/* Step 1: Account Information */}
@@ -397,14 +246,14 @@ export default function RegisterPage() {
                     name="fullName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm font-medium">Full name</FormLabel>
+                        <FormLabel className="text-sm font-medium">Full Name</FormLabel>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="text"
                               placeholder="John Doe"
-                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg"
                               {...field}
                             />
                           </div>
@@ -420,14 +269,14 @@ export default function RegisterPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm font-medium">Email address</FormLabel>
+                        <FormLabel className="text-sm font-medium">Email Address</FormLabel>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="email"
                               placeholder="name@university.edu"
-                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg"
                               {...field}
                             />
                           </div>
@@ -446,24 +295,20 @@ export default function RegisterPage() {
                         <FormLabel className="text-sm font-medium">Password</FormLabel>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Create a strong password"
-                              className="h-12 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 pr-11 rounded-lg"
                               {...field}
                             />
                             <button
                               type="button"
                               onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 cursor-pointer"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 cursor-pointer"
                               tabIndex={-1}
                             >
-                              {showPassword ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </button>
                           </div>
                         </FormControl>
@@ -481,14 +326,14 @@ export default function RegisterPage() {
                     name="confirmPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm font-medium">Confirm password</FormLabel>
+                        <FormLabel className="text-sm font-medium">Confirm Password</FormLabel>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Confirm your password"
-                              className="h-12 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+                              className="h-12 pl-10 rounded-lg"
                               {...field}
                             />
                           </div>
@@ -502,7 +347,7 @@ export default function RegisterPage() {
                   <Button
                     type="button"
                     onClick={() => setStep(2)}
-                    className="w-full h-12 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
+                    className="w-full h-12 cursor-pointer rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg hover:shadow-xl transition-all"
                   >
                     Continue
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -532,16 +377,14 @@ export default function RegisterPage() {
                     Back
                   </Button>
 
-                  <p className="text-sm font-medium text-foreground">
-                    Select your role
-                  </p>
+                  <p className="text-sm font-medium text-foreground">Select your role</p>
 
                   {/* Role Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1">
                     {roleOptions.map((role) => (
                       <Card
                         key={role.value}
-                        className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                        className={`cursor-pointer transition-all hover:shadow-md ${
                           selectedRole === role.value
                             ? "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20"
                             : "border-border hover:border-primary/50"
@@ -555,13 +398,10 @@ export default function RegisterPage() {
                             </div>
                             <div className="min-w-0">
                               <p className="font-medium text-sm">{role.label}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {role.description}
-                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{role.description}</p>
                             </div>
                           </div>
                           
-                          {/* Selected indicator */}
                           {selectedRole === role.value && (
                             <div className="mt-2 flex items-center gap-1.5 text-primary">
                               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -581,18 +421,11 @@ export default function RegisterPage() {
                       onCheckedChange={(checked) => setAgreeTerms(checked as boolean)}
                       className="mt-0.5 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                     />
-                    <label
-                      htmlFor="agree-terms"
-                      className="text-sm text-muted-foreground cursor-pointer select-none leading-relaxed"
-                    >
+                    <label htmlFor="agree-terms" className="text-sm text-muted-foreground cursor-pointer leading-relaxed">
                       I agree to the{" "}
-                      <Link href="/terms" className="text-primary hover:underline underline-offset-2">
-                        Terms of Service
-                      </Link>{" "}
+                      <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link>{" "}
                       and{" "}
-                      <Link href="/privacy" className="text-primary hover:underline underline-offset-2">
-                        Privacy Policy
-                      </Link>
+                      <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
                     </label>
                   </div>
 
@@ -600,7 +433,7 @@ export default function RegisterPage() {
                   <Button
                     type="submit"
                     disabled={isLoading || !selectedRole || !agreeTerms}
-                    className="w-full h-12 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
+                    className="w-full h-12 cursor-pointer rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg hover:shadow-xl transition-all"
                   >
                     {isLoading ? (
                       <>
@@ -618,25 +451,16 @@ export default function RegisterPage() {
               )}
             </form>
           </Form>
+        </div>
 
-          {/* Footer */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-8 text-center text-sm text-muted-foreground"
-          >
-            Already have an account?{" "}
-            <Link
-              href="/login"
-              className="font-semibold text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1 group"
-            >
-              Sign in
-              <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
-          </motion.p>
-        </motion.div>
-      </div>
+        {/* Footer */}
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link href="/login" className="font-semibold text-primary hover:underline">
+            Sign in
+          </Link>
+        </p>
+      </motion.div>
     </div>
   );
 }

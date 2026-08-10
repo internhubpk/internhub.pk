@@ -19,19 +19,30 @@ export const ROLE_DASHBOARD_PATHS: Record<UserRole, string> = {
  * Get the current authenticated user from Supabase
  */
 export async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  try {
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    
+    // Handle case where Supabase client couldn't be initialized
+    if (!supabase) {
+      console.warn("Supabase client not initialized - check environment variables");
+      return null;
+    }
+    
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-  if (error || !user) {
+    if (error || !user) {
+      return null;
+    }
+
+    return user;
+  } catch (error) {
+    console.error("Error getting current user:", error);
     return null;
   }
-
-  return user;
 }
 
 /**
@@ -39,52 +50,70 @@ export async function getCurrentUser() {
  * Queries the profiles table to get user profile data
  */
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const user = await getCurrentUser();
-  
-  if (!user) {
+  try {
+    const user = await getCurrentUser();
+    
+    if (!user) {
+      return null;
+    }
+
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+
+    if (!supabase) {
+      return null;
+    }
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    if (error || !profile) {
+      return null;
+    }
+
+    return profile as Profile;
+  } catch (error) {
+    console.error("Error getting current profile:", error);
     return null;
   }
-
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
-
-  if (error || !profile) {
-    return null;
-  }
-
-  return profile as Profile;
 }
 
 /**
  * Get the user's university information
  */
 export async function getCurrentUniversity(): Promise<University | null> {
-  const profile = await getCurrentProfile();
-  
-  if (!profile?.university_id) {
+  try {
+    const profile = await getCurrentProfile();
+    
+    if (!profile?.university_id) {
+      return null;
+    }
+
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+
+    if (!supabase) {
+      return null;
+    }
+
+    const { data: university, error } = await supabase
+      .from("universities")
+      .select("*")
+      .eq("id", profile.university_id)
+      .single();
+
+    if (error || !university) {
+      return null;
+    }
+
+    return university as University;
+  } catch (error) {
+    console.error("Error getting university:", error);
     return null;
   }
-
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data: university, error } = await supabase
-    .from("universities")
-    .select("*")
-    .eq("id", profile.university_id)
-    .single();
-
-  if (error || !university) {
-    return null;
-  }
-
-  return university as University;
 }
 
 /**

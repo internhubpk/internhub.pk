@@ -17,7 +17,6 @@ import {
   ArrowRight,
   GraduationCap,
   Building2,
-  Sparkles,
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
@@ -135,15 +134,9 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        {/* Logo & Header */}
+        {/* Header */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">InternHub</span>
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sign in</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sign In</h1>
           <p className="mt-2 text-sm text-muted-foreground">Enter your credentials to access your account</p>
         </div>
 

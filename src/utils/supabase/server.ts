@@ -5,9 +5,23 @@ import type { CookieOptions } from "@supabase/ssr";
 export async function createClient(cookieStore?: Awaited<ReturnType<typeof cookies>>) {
   const store = cookieStore || await cookies();
 
+  // Check if required environment variables exist
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("Missing Supabase environment variables:", {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseKey,
+    });
+    // Return a null client that won't crash but also won't work
+    // This helps with development when env vars aren't set
+    return null as any;
+  }
+
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {
