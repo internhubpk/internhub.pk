@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/middleware";
+import { NextResponse } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { supabase, supabaseResponse } = createClient(request);
 
   // Refresh session to keep auth state in sync
@@ -61,4 +62,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/).*)",
   ],
 };
-import { NextResponse } from "next/server";
