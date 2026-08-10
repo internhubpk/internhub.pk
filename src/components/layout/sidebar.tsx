@@ -65,7 +65,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAuth } from "@/components/providers/auth-provider";
-import { getNavigationForRole, roleLabels, type NavItem } from "@/config/navigation";
+import { getNavigationForRole, roleLabels, navigationConfig, type NavItem } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
 // Context for sidebar state management
@@ -110,6 +110,23 @@ interface SidebarContentProps {
   onClose?: () => void;
 }
 
+// Fallback navigation based on current pathname (for demo/no-DB mode)
+// This allows navigation to work even when profile.role is null (e.g., DB unavailable)
+function getFallbackNavigation(path: string): NavItem[] {
+  // Detect role from current path and return appropriate navigation
+  if (path.startsWith("/super-admin")) return navigationConfig.super_admin || [];
+  if (path.startsWith("/university-admin")) return navigationConfig.university_admin || [];
+  if (path.startsWith("/department-coordinator")) return navigationConfig.department_coordinator || [];
+  if (path.startsWith("/faculty-supervisor")) return navigationConfig.faculty_supervisor || [];
+  if (path.startsWith("/student")) return navigationConfig.student || [];
+  if (path.startsWith("/company-hr")) return navigationConfig.company_hr || [];
+  if (path.startsWith("/site-supervisor")) return navigationConfig.site_supervisor || [];
+  if (path.startsWith("/external-evaluator")) return navigationConfig.external_evaluator || [];
+  
+  // Default: return student navigation as fallback
+  return navigationConfig.student || [];
+}
+
 // Sidebar content component for reuse in both desktop and mobile
 function SidebarContent({
   collapsed = false,
@@ -121,9 +138,10 @@ function SidebarContent({
   const router = useRouter();
   const { profile, university, logout } = useAuth();
 
+  // Get navigation based on role, or fallback to path-based navigation for demo mode
   const navItems: NavItem[] = profile?.role
     ? getNavigationForRole(profile.role)
-    : [];
+    : getFallbackNavigation(pathname);
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
