@@ -136,7 +136,7 @@ function SidebarContent({
 }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, university, logout } = useAuth();
+  const { user, profile, university, logout } = useAuth();
 
   // Get navigation based on role, or fallback to path-based navigation for demo mode
   const navItems: NavItem[] = profile?.role
