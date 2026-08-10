@@ -11,12 +11,21 @@
 -- PHASE 1: DROP EVERYTHING (Fresh Start)
 -- ============================================================
 
--- Drop triggers first (they depend on functions/tables)
-DROP TRIGGER IF EXISTS update_universities_updated_at ON public.universities;
-DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
-DROP TRIGGER IF EXISTS sync_profile_fields ON public.profiles;
+-- Use a DO block to safely drop triggers (handles missing tables)
+DO $$
+BEGIN
+    -- Drop triggers only if both trigger AND table exist
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'universities' AND table_schema = 'public') THEN
+        DROP TRIGGER IF EXISTS update_universities_updated_at ON public.universities;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles' AND table_schema = 'public') THEN
+        DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+        DROP TRIGGER IF EXISTS sync_profile_fields ON public.profiles;
+    END IF;
+END $$;
 
--- Drop all tables in reverse dependency order
+-- Drop all tables in reverse dependency order (CASCADE handles dependencies)
 DROP TABLE IF EXISTS public.chat_messages CASCADE;
 DROP TABLE IF EXISTS public.online_meetings CASCADE;
 DROP TABLE IF EXISTS public.attendance CASCADE;
