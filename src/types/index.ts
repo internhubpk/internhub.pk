@@ -1,10 +1,13 @@
-// InternHub Type Definitions
+// ===================================================
+// INTERNHUB - Type Definitions
+// Multi-tenant University Internship Management Platform
+// ===================================================
 
-// ============ ENUMS ============
+// ============ USER & AUTH TYPES ============
 
-export type UserRole =
+export type UserRole = 
   | "super_admin"
-  | "university_admin"
+  | "university_admin" 
   | "department_coordinator"
   | "faculty_supervisor"
   | "student"
@@ -12,71 +15,50 @@ export type UserRole =
   | "site_supervisor"
   | "external_evaluator";
 
-export type InternshipStatus =
-  | "draft"
-  | "published"
-  | "closed"
-  | "active"
-  | "completed"
-  | "cancelled";
+export interface Profile {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  avatar_url: string | null;
+  phone: string | null;
+  university_id: string | null;
+  department_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // Role-specific fields
+  student_id?: string | null;
+  company_name?: string | null;
+  job_title?: string | null;
+  organization?: string | null;
+  is_active: boolean;
+}
 
-export type ApplicationStatus =
-  | "pending"
-  | "under_review"
-  | "approved"
-  | "rejected"
-  | "withdrawn";
+export interface User {
+  id: string;
+  email: string;
+  email_confirmed_at: string | null;
+  raw_user_meta_data?: Record<string, unknown>;
+  created_at: string;
+}
 
-export type EvaluationStatus =
-  | "pending"
-  | "in_progress"
-  | "completed"
-  | "approved";
-
-export type CertificateStatus =
-  | "not_issued"
-  | "pending"
-  | "issued"
-  | "revoked";
-
-export type DocumentType =
-  | "weekly_log"
-  | "report"
-  | "certificate"
-  | "attendance"
-  | "offer_letter"
-  | "completion_letter"
-  | "internship_letter"
-  | "remarks"
-  | "digital_signature";
-
-// ============ CORE ENTITIES ============
+// ============ UNIVERSITY TYPES ============
 
 export interface University {
   id: string;
   name: string;
   slug: string;
-  logo_url?: string;
-  domain?: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-  description?: string;
+  logo_url: string | null;
+  domain: string | null;
+  address: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Profile {
-  id: string;
-  user_id: string;
-  university_id?: string;
-  role: UserRole;
-  first_name: string;
-  last_name: string;
-  avatar_url?: string;
-  phone?: string;
-  is_active: boolean;
+  license_tier: "free" | "professional" | "enterprise";
+  license_expires_at: string | null;
+  max_students: number | null;
+  settings: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -85,354 +67,427 @@ export interface Department {
   id: string;
   university_id: string;
   name: string;
-  code: string;
-  description?: string;
-  head_id?: string;
+  code: string | null;
+  head_id: string | null;
   is_active: boolean;
   created_at: string;
 }
 
-export interface Program {
-  id: string;
-  department_id: string;
-  name: string;
-  code: string;
-  duration_years: number;
-  description?: string;
-  is_active: boolean;
-  created_at: string;
-}
+// ============ INTERNSHIP TYPES ============
 
-export interface Student {
-  id: string;
-  user_id: string;
-  university_id: string;
-  department_id: string;
-  program_id: string;
-  enrollment_number: string;
-  semester: number;
-  cgpa?: number;
-  status: "active" | "graduated" | "suspended" | "withdrawn";
-  created_at: string;
-  updated_at: string;
-}
+export type InternshipStatus = 
+  | "draft"
+  | "open"
+  | "active"
+  | "completed"
+  | "cancelled"
+  | "expired";
 
-export interface Company {
-  id: string;
-  university_id: string;
-  name: string;
-  logo_url?: string;
-  industry?: string;
-  website?: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-  description?: string;
-  is_verified: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CompanyUser {
-  id: string;
-  company_id: string;
-  user_id: string;
-  role: "admin" | "hr" | "manager";
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  is_active: boolean;
-  created_at: string;
-}
-
-// ============ INTERNSHIP ENTITIES ============
+export type ApplicationStatus = 
+  | "pending"
+  | "reviewing"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
 
 export interface Internship {
   id: string;
-  company_id: string;
-  university_id: string;
   title: string;
   description: string;
-  department_ids?: string[];
-  program_ids?: string[];
-  requirements?: string;
-  responsibilities?: string;
-  skills?: string[];
-  location?: string;
-  is_remote: boolean;
+  company_id: string;
+  company_name: string;
+  department_id: string | null;
+  location: string | null;
+  remote: boolean;
   is_paid: boolean;
-  stipend?: number;
+  stipend: number | null;
+  stipend_currency: string;
   duration_weeks: number;
-  start_date?: string;
-  end_date?: string;
-  vacancies: number;
   status: InternshipStatus;
+  required_skills: string[];
+  requirements: string[];
+  benefits: string[];
+  max_applicants: number | null;
+  current_applicants: number;
+  start_date: string | null;
+  end_date: string null;
+  application_deadline: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface InternshipApplication {
+export interface Application {
   id: string;
   internship_id: string;
   student_id: string;
-  cover_letter?: string;
-  resume_url?: string;
+  student_name: string;
+  student_email: string;
+  cover_letter: string | null;
+  resume_url: string | null;
   status: ApplicationStatus;
   applied_at: string;
-  reviewed_at?: string;
-  reviewed_by?: string;
-  company_response?: string;
-  university_response?: string;
-}
-
-export interface StudentInternship {
-  id: string;
-  student_id: string;
-  internship_id: string;
-  application_id: string;
-  faculty_supervisor_id?: string;
-  site_supervisor_id?: string;
-  external_evaluator_id?: string;
-  start_date: string;
-  end_date: string;
-  status: InternshipStatus;
-  weekly_hours?: number;
-  total_hours?: number;
-  progress_percentage: number;
-  created_at: string;
   updated_at: string;
+  // Joined data
+  internship?: Internship;
 }
 
-// ============ SUPERVISION ENTITIES ============
+// ============ EVALUATION TYPES ============
 
-export interface Supervisor {
-  id: string;
-  university_id: string;
-  user_id: string;
-  type: "faculty" | "site" | "external";
-  department_id?: string;
-  title?: string;
-  specialization?: string;
-  phone?: string;
-  email?: string;
-  max_interns: number;
-  is_active: boolean;
-  created_at: string;
-}
+export type EvaluationType = 
+  | "weekly_log"
+  | "midterm"
+  | "final"
+  | "company_evaluation"
+  | "supervisor_evaluation";
 
-export interface Faculty extends Supervisor {
-  type: "faculty";
-}
-
-export interface SiteSupervisor extends Supervisor {
-  type: "site";
-  company_id?: string;
-}
-
-export interface ExternalEvaluator {
-  id: string;
-  university_id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  organization?: string;
-  expertise?: string;
-  is_active: boolean;
-  created_at: string;
-}
-
-// ============ TRACKING ENTITIES ============
-
-export interface WeeklyLog {
-  id: string;
-  student_internship_id: string;
-  week_number: number;
-  week_start: string;
-  week_end: string;
-  tasks_completed?: string;
-  challenges?: string;
-  learnings?: string;
-  next_week_goals?: string;
-  hours_worked: number;
-  status: "draft" | "submitted" | "approved" | "rejected";
-  submitted_at?: string;
-  reviewed_at?: string;
-  reviewer_comments?: string;
-}
-
-export interface Report {
-  id: string;
-  student_internship_id: string;
-  title: string;
-  content?: string;
-  file_url?: string;
-  report_type: "weekly" | "monthly" | "final";
-  status: "draft" | "submitted" | "under_review" | "approved" | "rejected";
-  submitted_at?: string;
-  reviewed_at?: string;
-  reviewed_by?: string;
-  reviewer_comments?: string;
-}
-
-export interface Attendance {
-  id: string;
-  student_internship_id: string;
-  date: string;
-  check_in?: string;
-  check_out?: string;
-  hours_worked: number;
-  status: "present" | "absent" | "late" | "half_day" | "leave";
-  notes?: string;
-  verified_by?: string;
-  verified_at?: string;
-}
-
-export interface Document {
-  id: string;
-  entity_type: "student" | "internship" | "evaluation" | "company";
-  entity_id: string;
-  document_type: DocumentType;
-  file_name: string;
-  file_url: string;
-  file_size: number;
-  mime_type: string;
-  uploaded_by: string;
-  is_verified: boolean;
-  created_at: string;
-}
+export type EvaluationStatus = 
+  | "pending"
+  | "in_progress"
+  | "submitted"
+  | "approved"
+  | "rejected";
 
 export interface Evaluation {
   id: string;
-  student_internship_id: string;
+  type: EvaluationType;
+  student_id: string;
+  internship_id: string;
   evaluator_id: string;
-  evaluator_type: "faculty" | "site" | "external" | "company";
-  evaluation_period: string;
-  criteria_scores?: Record<string, number>;
-  total_score?: number;
-  max_score?: number;
-  comments?: string;
-  strengths?: string;
-  areas_for_improvement?: string;
+  evaluator_role: UserRole;
   status: EvaluationStatus;
-  submitted_at?: string;
-  approved_at?: string;
-}
-
-// ============ CONFIGURATION ENTITIES ============
-
-export interface Policy {
-  id: string;
-  university_id: string;
-  title: string;
-  description: string;
-  category: string;
-  content?: string;
-  is_active: boolean;
-  effective_date: string;
+  scores: Record<string, number> | null;
+  comments: string | null;
+  submitted_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface EvaluationRule {
-  id: string;
-  university_id: string;
-  name: string;
-  description?: string;
-  criteria: EvaluationCriteria[];
-  weightings: Record<string, number>;
-  passing_score: number;
-  is_active: boolean;
-  created_at: string;
-}
+// ============ WEEKLY LOG TYPES ============
 
-export interface EvaluationCriteria {
-  id: string;
-  name: string;
-  description: string;
-  max_score: number;
-  weight: number;
-}
+export type WeeklyLogStatus = 
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "revision_required";
 
-export interface Subscription {
+export interface WeeklyLog {
   id: string;
-  university_id: string;
-  plan: "free" | "basic" | "professional" | "enterprise";
-  status: "active" | "trial" | "expired" | "cancelled";
-  start_date: string;
-  end_date: string;
-  student_limit: number;
-  storage_limit_mb: number;
-  price: number;
+  student_id: string;
+  internship_id: string;
+  week_number: number;
+  week_start_date: string;
+  week_end_date: string;
+  tasks_completed: string[];
+  challenges: string | null;
+  learnings: string | null;
+  next_week_goals: string | null;
+  hours_worked: number | null;
+  status: WeeklyLogStatus;
+  supervisor_feedback: string | null;
+  supervisor_id: string | null;
+  reviewed_at: string | null;
+  submitted_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface StorageAllocation {
+// ============ DOCUMENT TYPES ============
+
+export type DocumentType = 
+  | "resume"
+  | "cover_letter"
+  | "transcript"
+  | "offer_letter"
+  | "weekly_report"
+  | "evaluation_form"
+  | "certificate"
+  | "other";
+
+export type DocumentStatus = 
+  | "pending"
+  | "verified"
+  | "rejected"
+  | "expired";
+
+export interface Document {
   id: string;
-  university_id: string;
-  used_bytes: number;
-  allocated_bytes: number;
-  last_calculated: string;
+  name: string;
+  type: DocumentType;
+  url: string;
+  size: number;
+  mime_type: string;
+  uploaded_by: string;
+  entity_type: "student" | "internship" | "application" | "evaluation";
+  entity_id: string;
+  status: DocumentStatus;
+  verified_by: string | null;
+  verified_at: string | null;
+  expires_at: string | null;
+  created_at: string;
 }
 
-// ============ DASHBOARD TYPES ============
+// ============ COMPANY / HOST ORGANIZATION TYPES ============
 
-export interface LicenseInfo {
-  status: "active" | "expired" | "trial" | "cancelled" | null;
-  plan: string | null;
-  daysRemaining: number | null;
-  expiresAt: string | null;
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  industry: string | null;
+  website: string | null;
+  size: string | null; // "small", "medium", "large", "enterprise"
+  description: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  contact_person: string | null;
+  contact_email: string;
+  contact_phone: string | null;
+  is_verified: boolean;
+  is_active: boolean;
+  university_id: string | null; // For university-partnered companies
+  created_at: string;
+  updated_at: string;
+}
+
+// ============ ATTENDANCE TYPES ============
+
+export type AttendanceStatus = 
+  | "present"
+  | "absent"
+  | "late"
+  | "half_day"
+  | "leave"
+  | "holiday";
+
+export interface AttendanceRecord {
+  id: string;
+  student_id: string;
+  internship_id: string;
+  date: string;
+  check_in: string | null;
+  check_out: string | null;
+  status: AttendanceStatus;
+  notes: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  verified: boolean;
+  created_at: string;
+}
+
+// ============ COMMUNICATION TYPES ============
+
+export type MessageType = 
+  | "direct"
+  | "announcement"
+  | "notification"
+  | "system";
+
+export interface Message {
+  id: string;
+  sender_id: string;
+  receiver_id: string | null; // Null for announcements
+  subject: string;
+  content: string;
+  type: MessageType;
+  is_read: boolean;
+  thread_id: string | null;
+  attachments: string[]; // URLs
+  created_at: string;
+}
+
+// ============ REPORT & ANALYTICS TYPES ============
+
+export interface ReportConfig {
+  id: string;
+  name: string;
+  type: "summary" | "detailed" | "analytics" | "custom";
+  format: "pdf" | "csv" | "excel";
+  parameters: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
 }
 
 export interface DashboardStats {
-  totalStudents?: number;
-  activeInternships?: number;
-  pendingApplications?: number;
-  completedInternships?: number;
-  totalCompanies?: number;
-  totalSupervisors?: number;
-  averageRating?: number;
-  storageUsed?: number;
-  storageLimit?: number;
-  // Enhanced stats
-  storageUsagePercentage?: number;
-  licenseInfo?: LicenseInfo;
-  recentAuditLogCount?: number;
-  unreadMessagesCount?: number;
-  hostOrganizationsCount?: number;
+  totalStudents: number;
+  activeInternships: number;
+  completedInternships: number;
+  totalCompanies: number;
+  pendingApplications: number;
+  averageCompletionRate: number;
+  weeklyLogsPending: number;
+  evaluationsDue: number;
+  // Time-series data for charts
+  monthlyData: MonthlyDataPoint[];
+  statusDistribution: StatusBreakdown[];
 }
 
-export interface InternshipProgress {
-  currentWeek: number;
-  totalWeeks: number;
+export interface MonthlyDataPoint {
+  month: string;
+  internshipsStarted: number;
+  internshipsCompleted: number;
+  applicationsSubmitted: number;
+}
+
+export interface StatusBreakdown {
+  status: string;
+  count: number;
   percentage: number;
-  weeklyLogsSubmitted: number;
-  weeklyLogsRequired: number;
-  reportsSubmitted: number;
-  reportsRequired: number;
-  evaluationsCompleted: number;
-  evaluationsRequired: number;
-  nextDeadline?: string;
-  certificateStatus: CertificateStatus;
-  transcriptStatus: "pending" | "processing" | "complete" | "not_available";
+}
+
+// ============ NOTIFICATION TYPES ============
+
+export type NotificationCategory = 
+  | "auth"
+  | "application"
+  | "evaluation"
+  | "deadline"
+  | "system"
+  | "announcement";
+
+export type NotificationPriority = "low" | "medium" | "high" | "urgent";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: message: string;
+  category: NotificationCategory;
+  priority: NotificationPriority;
+  is_read: boolean;
+  action_url: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+// ============ AUDIT LOG TYPES ============
+
+export interface AuditLogEntry {
+  id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
+// ============ SETTINGS & CONFIGURATION ============
+
+export interface PlatformSettings {
+  id: string;
+  key: string;
+  value: unknown;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface LicenseInfo {
+  tier: "free" | "professional" | "enterprise";
+  features: string[];
+  limits: {
+    maxUniversities: number;
+    maxStudentsPerUniversity: number;
+    maxAdmins: number;
+    storageGB: number;
+    apiCallsPerMonth: number;
+  };
+  pricing: {
+    monthly: number | null;
+    annually: number | null;
+  };
+  expiresAt: string | null;
+  isActive: boolean;
+}
+
+// ============ NAVIGATION TYPES ============
+
+export interface NavItem {
+  title: string;
+  href: string;
+  icon?: string;
+  badge?: string | number;
+  children?: NavItem[];
+  roles?: UserRole[];
+  requiresAuth?: boolean;
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  href?: string;
 }
 
 // ============ API RESPONSE TYPES ============
 
 export interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-  message?: string;
   success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
+  items: T[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+// ============ FORM TYPES ============
+
+export interface FormFieldError {
+  field: string;
+  message: string;
+}
+
+export interface ValidationError {
+  errors: FormFieldError[];
+  message: string;
+}
+
+// ============ TENANT/MULTI-TENANCY TYPES ============
+
+export interface TenantContext {
+  universityId: string;
+  universitySlug: string;
+  roleName: string;
+  permissions: string[];
+}
+
+export interface TenantConfig {
+  id: string;
+  primaryColor: string;
+  secondaryColor: string;
+  logoUrl: string | null;
+  customDomain: string | null;
+  branding: {
+    loginBackgroundImage?: string;
+    faviconUrl?: string;
+    supportEmail?: string;
+    supportPhone?: string;
+  };
+  features: {
+    enableMarketplace: boolean;
+    enableEvaluations: boolean;
+    enableCertificates: boolean;
+    enableAttendance: boolean;
+    customWorkflow: boolean;
+  };
 }

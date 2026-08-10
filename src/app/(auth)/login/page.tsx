@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Mail,
   Lock,
@@ -17,7 +17,6 @@ import {
   ArrowRight,
   GraduationCap,
   Building2,
-  CheckCircle2,
   Sparkles,
   Shield,
   Zap,
@@ -33,6 +32,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import {
   Form,
@@ -58,15 +60,12 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 // Animation variants
-const slideUpVariants = {
-  hidden: { opacity: 0, y: 30 },
+const fadeInUp = {
+  hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      duration: 0.6,
-      ease: [0.25, 0.46, 0.45, 0.94],
-    },
+    transition: { duration: 0.5, ease: "easeOut" },
   },
 };
 
@@ -74,22 +73,7 @@ const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.15,
-    },
-  },
-};
-
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.5,
-      ease: [0.25, 0.46, 0.45, 0.94],
-    },
+    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
   },
 };
 
@@ -112,20 +96,12 @@ const features = [
   },
 ];
 
-// Testimonial data
-const testimonial = {
-  quote: "InternHub transformed how we manage our internship program. The efficiency gains have been remarkable.",
-  author: "Dr. Sarah Chen",
-  role: "Dean of Engineering, Stanford University",
-};
-
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Initialize form with react-hook-form and zod validation
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -146,7 +122,6 @@ export default function LoginPage() {
       });
 
       if (error) {
-        // Handle specific error messages
         if (error.message.includes("Invalid login credentials")) {
           toast.error("Invalid credentials", {
             description: "The email or password you entered is incorrect.",
@@ -163,7 +138,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Successful login - show success message
       toast.success("Welcome back!", {
         description: "You have been successfully logged in.",
       });
@@ -175,7 +149,6 @@ export default function LoginPage() {
         .eq("user_id", data.user.id)
         .single();
 
-      // Redirect based on role or to dashboard
       const rolePaths: Record<string, string> = {
         super_admin: "/super-admin",
         university_admin: "/university-admin",
@@ -189,7 +162,6 @@ export default function LoginPage() {
 
       const redirectPath = profile?.role ? rolePaths[profile.role] : "/dashboard";
 
-      // Small delay for better UX
       setTimeout(() => {
         router.push(redirectPath);
         router.refresh();
@@ -216,7 +188,6 @@ export default function LoginPage() {
       >
         {/* Background Pattern */}
         <div className="absolute inset-0">
-          {/* Grid pattern */}
           <div
             className="absolute inset-0 opacity-[0.03]"
             style={{
@@ -226,7 +197,6 @@ export default function LoginPage() {
             }}
           />
           
-          {/* Gradient orbs */}
           <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500/30 rounded-full blur-[100px]" />
           <div className="absolute bottom-32 right-10 w-96 h-96 bg-indigo-500/20 rounded-full blur-[120px]" />
           <div className="absolute top-1/2 left-1/3 w-64 h-64 bg-purple-500/20 rounded-full blur-[80px]" />
@@ -235,54 +205,51 @@ export default function LoginPage() {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-between p-12 xl:p-16 w-full">
           {/* Logo */}
-          <div>
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="flex items-center gap-3"
-            >
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 p-[2px] shadow-lg shadow-blue-500/30">
-                <div className="w-full h-full rounded-xl bg-slate-900 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="flex items-center gap-3"
+          >
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 p-[2px] shadow-lg shadow-blue-500/30">
+              <div className="w-full h-full rounded-xl bg-slate-900 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
               </div>
-              <span className="text-2xl font-bold text-white tracking-tight">
-                InternHub
-              </span>
-            </motion.div>
+            </div>
+            <span className="text-2xl font-bold text-white tracking-tight">
+              InternHub
+            </span>
+          </motion.div>
 
-            {/* Tagline */}
-            <motion.p
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="mt-4 text-lg text-blue-200/80 font-medium"
-            >
-              Enterprise Internship Management
-            </motion.p>
-          </div>
+          {/* Tagline */}
+          <motion.p
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="mt-4 text-lg text-blue-200/80 font-medium"
+          >
+            Enterprise Internship Management
+          </motion.p>
 
-          {/* Center Content - Features or Testimonial */}
+          {/* Center Content */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
             className="max-w-md"
           >
-            {/* Testimonial Card */}
             <Card className="bg-white/10 backdrop-blur-xl border-white/10 text-white p-8">
               <CardContent className="p-0">
                 <blockquote className="text-base leading-relaxed text-blue-100/90 mb-6">
-                  &ldquo;{testimonial.quote}&rdquo;
+                  &ldquo;InternHub transformed how we manage our internship program. The efficiency gains have been remarkable.&rdquo;
                 </blockquote>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-sm font-semibold text-white">
                     SC
                   </div>
                   <div>
-                    <p className="font-medium text-white">{testimonial.author}</p>
-                    <p className="text-sm text-blue-200/70">{testimonial.role}</p>
+                    <p className="font-medium text-white">Dr. Sarah Chen</p>
+                    <p className="text-sm text-blue-200/70">Dean of Engineering</p>
                   </div>
                 </div>
               </CardContent>
@@ -336,7 +303,7 @@ export default function LoginPage() {
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-8 lg:p-12 bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
         <motion.div
-          variants={slideUpVariants}
+          variants={staggerContainer}
           initial="hidden"
           animate="visible"
           className="w-full max-w-md"
@@ -360,7 +327,7 @@ export default function LoginPage() {
             <h1 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">
               Welcome back
             </h1>
-            <p className="mt-2 text-muted-foreground">
+            <p className="mt-2 text-muted-foreground text-sm">
               Sign in to your account to continue
             </p>
           </motion.div>
@@ -379,11 +346,11 @@ export default function LoginPage() {
                         <FormLabel className="text-sm font-medium">Email address</FormLabel>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors peer-focus:text-primary" />
+                            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="email"
                               placeholder="name@university.edu"
-                              className="h-11 px-4 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all duration-200"
+                              className="h-11 pl-10 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                           </div>
@@ -412,17 +379,18 @@ export default function LoginPage() {
                         </div>
                         <FormControl>
                           <div className="relative mt-1.5">
-                            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
+                            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Enter your password"
-                              className="h-11 px-4 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all duration-200"
+                              className="h-11 pl-10 pr-11 rounded-lg border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all"
                               {...field}
                             />
                             <button
                               type="button"
                               onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 cursor-pointer"
+                              tabIndex={-1}
                             >
                               {showPassword ? (
                                 <EyeOff className="h-4 w-4" />
@@ -459,7 +427,7 @@ export default function LoginPage() {
                   <Button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full h-11 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]"
+                    className="w-full h-12 cursor-pointer transition-all duration-200 rounded-lg bg-primary hover:bg-primary/90 text-white font-medium shadow-lg shadow-primary/25 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99]"
                   >
                     {isLoading ? (
                       <>
@@ -475,37 +443,45 @@ export default function LoginPage() {
                   </Button>
                 </motion.div>
 
-
-
                 {/* Demo Quick Access */}
-                <motion.div variants={fadeInUp} className="pt-2">
-                  <p className="text-xs text-center text-muted-foreground mb-3">Quick demo access:</p>
-                  <div className="grid grid-cols-2 gap-3">
+                <motion.div variants={fadeInUp} className="pt-3">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border/60" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Demo Access
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 mt-4">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-auto py-2.5 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+                      className="h-11 py-2.5 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
                       onClick={() => {
                         form.setValue("email", "student@demo.internhub.edu");
                         form.setValue("password", "demo123456");
                       }}
                     >
                       <GraduationCap className="mr-2 h-4 w-4 text-blue-600" />
-                      <span className="text-xs">Student</span>
+                      Student
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-auto py-2.5 cursor-pointer transition-all duration-200 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+                      className="h-11 py-2.5 cursor-pointer transition-all duration-200 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
                       onClick={() => {
                         form.setValue("email", "hr@company.internhub.edu");
                         form.setValue("password", "demo123456");
                       }}
                     >
                       <Building2 className="mr-2 h-4 w-4 text-purple-600" />
-                      <span className="text-xs">Company HR</span>
+                      Company HR
                     </Button>
                   </div>
                 </motion.div>

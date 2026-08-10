@@ -38,9 +38,9 @@ import {
   Users,
   TrendingUp,
   Heart,
-  Github,
   Twitter,
   Linkedin,
+  Github,
   Mail,
 } from "lucide-react";
 
@@ -55,12 +55,7 @@ const container = {
 
 const item = {
   hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
-
-const fadeInUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
 // Features data
@@ -252,7 +247,7 @@ function RocketIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-// Animated Section wrapper component
+// Animated Section wrapper component - Fixed to ensure visibility
 function AnimatedSection({
   children,
   className = "",
@@ -261,18 +256,19 @@ function AnimatedSection({
   className?: string;
 }) {
   const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const isInView = useInView(ref, { once: true, margin: "-80px" });
 
   return (
-    <motion.section
-      ref={ref}
-      initial="hidden"
-      animate={isInView ? "visible" : "hidden"}
-      variants={container}
-      className={className}
-    >
-      {children}
-    </motion.section>
+    <section ref={ref} className={`py-20 md:py-28 relative ${className}`}>
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+        transition={{ duration: 0.7, ease: "easeOut" }}
+        className="container mx-auto px-4 md:px-6 lg:px-8"
+      >
+        {children}
+      </motion.div>
+    </section>
   );
 }
 
@@ -359,14 +355,14 @@ export default function LandingPage() {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background overflow-hidden">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       {/* Navigation */}
       <SiteNav />
 
       {/* ========================================== */}
       {/* HERO SECTION - Full Viewport Height */}
       {/* ========================================== */}
-      <section className="relative min-h-screen flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30">
+      <section className="relative min-h-[90vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30">
         {/* Background decorative elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl" />
@@ -382,7 +378,7 @@ export default function LandingPage() {
           />
         </div>
 
-        <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16">
+        <div className="container mx-auto px-4 md:px-6 lg:px-8 pt-20 pb-16 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* Left Content */}
             <motion.div
@@ -486,202 +482,176 @@ export default function LandingPage() {
       {/* ========================================== */}
       {/* FEATURES SECTION - Icon Cards Grid */}
       {/* ========================================== */}
-      <AnimatedSection className="py-20 md:py-28 bg-background relative">
-        <div className="container mx-auto px-4 md:px-6 lg:px-8">
-          {/* Section Header */}
-          <motion.div variants={item} className="text-center max-w-3xl mx-auto mb-16">
-            <Badge variant="outline" className="mb-4 px-3 py-1">
-              <Zap className="mr-1 h-3 w-3" />
-              Powerful Features
-            </Badge>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
-              Everything You Need to{" "}
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Manage Internships
-              </span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A comprehensive suite of tools designed specifically for modern university 
-              internship programs. Enterprise-grade features, intuitive design.
-            </p>
-          </motion.div>
+      <AnimatedSection className="bg-background">
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <Badge variant="outline" className="mb-4 px-3 py-1">
+            <Zap className="mr-1 h-3 w-3" />
+            Powerful Features
+          </Badge>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
+            Everything You Need to{" "}
+            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Manage Internships
+            </span>
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            A comprehensive suite of tools designed specifically for modern university 
+            internship programs. Enterprise-grade features, intuitive design.
+          </p>
+        </div>
 
-          {/* Features Grid - 3 columns responsive */}
-          <motion.div
-            variants={container}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
-          >
-            {features.map((feature) => (
-              <motion.div key={feature.title} variants={item}>
-                <Card className="group h-full border-border/50 hover:border-primary/20 bg-card/50 backdrop-blur-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 cursor-pointer hover:-translate-y-1">
-                  <CardHeader className="pb-4">
-                    <div
-                      className={`inline-flex p-4 rounded-2xl ${feature.bgColor} mb-4 group-hover:scale-110 transition-transform duration-300`}
-                    >
-                      <feature.icon className={`h-7 w-7 ${feature.color}`} />
-                    </div>
-                    <CardTitle className="text-xl font-semibold group-hover:text-primary transition-colors">
-                      {feature.title}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="text-base leading-relaxed">
-                      {feature.description}
-                    </CardDescription>
-                    
-                    {/* Hover link indicator */}
-                    <div className="mt-4 flex items-center text-sm font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      Learn more
-                      <ChevronRight className="ml-1 h-4 w-4" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </motion.div>
+        {/* Features Grid - 3 columns responsive */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+          {features.map((feature) => (
+            <Card
+              key={feature.title}
+              className="group h-full border-border/50 hover:border-primary/20 bg-card/50 backdrop-blur-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 cursor-pointer hover:-translate-y-1"
+            >
+              <CardHeader className="pb-4">
+                <div
+                  className={`inline-flex p-4 rounded-2xl ${feature.bgColor} mb-4 group-hover:scale-110 transition-transform duration-300`}
+                >
+                  <feature.icon className={`h-7 w-7 ${feature.color}`} />
+                </div>
+                <CardTitle className="text-xl font-semibold group-hover:text-primary transition-colors">
+                  {feature.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-base leading-relaxed">
+                  {feature.description}
+                </CardDescription>
+                
+                {/* Hover link indicator */}
+                <div className="mt-4 flex items-center text-sm font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                  Learn more
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </AnimatedSection>
 
       {/* ========================================== */}
       {/* HOW IT WORKS SECTION */}
       {/* ========================================== */}
-      <AnimatedSection className="py-20 md:py-28 bg-muted/30 relative overflow-hidden">
+      <AnimatedSection className="bg-muted/30">
         {/* Background decoration */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
 
-        <div className="container mx-auto px-4 md:px-6 lg:px-8 relative">
-          {/* Section Header */}
-          <motion.div variants={item} className="text-center max-w-3xl mx-auto mb-16">
-            <Badge variant="outline" className="mb-4 px-3 py-1">
-              Simple Process
-            </Badge>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
-              Up and Running in{" "}
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Three Steps
-              </span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get your university's internship program online in minutes, not months.
-            </p>
-          </motion.div>
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-16 relative z-10">
+          <Badge variant="outline" className="mb-4 px-3 py-1">
+            Simple Process
+          </Badge>
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
+            Up and Running in{" "}
+            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Three Steps
+            </span>
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Get your university's internship program online in minutes, not months.
+          </p>
+        </div>
 
-          {/* Steps Grid */}
-          <motion.div
-            variants={container}
-            className="grid md:grid-cols-3 gap-8 lg:gap-12 max-w-5xl mx-auto"
-          >
-            {howItWorks.map((step, index) => (
-              <motion.div
-                key={step.step}
-                variants={item}
-                className="relative text-center"
-              >
-                {/* Connector line (hidden on mobile) */}
-                {index < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary/30 to-transparent" />
-                )}
+        {/* Steps Grid */}
+        <div className="grid md:grid-cols-3 gap-8 lg:gap-12 max-w-5xl mx-auto relative z-10">
+          {howItWorks.map((step, index) => (
+            <div key={step.step} className="relative text-center">
+              {/* Connector line (hidden on mobile) */}
+              {index < howItWorks.length - 1 && (
+                <div className="hidden md:block absolute top-12 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary/30 to-transparent" />
+              )}
 
-                {/* Step number circle */}
-                <div className="relative inline-flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-2xl font-bold mb-6 shadow-lg shadow-primary/25 ring-4 ring-primary/10">
-                  {step.step}
-                  <step.icon className="absolute -bottom-1 -right-1 h-8 w-8 bg-background rounded-full p-1.5 text-primary border-2 border-background" />
-                </div>
+              {/* Step number circle */}
+              <div className="relative inline-flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-2xl font-bold mb-6 shadow-lg shadow-primary/25 ring-4 ring-primary/10">
+                {step.step}
+                <step.icon className="absolute -bottom-1 -right-1 h-8 w-8 bg-background rounded-full p-1.5 text-primary border-2 border-background" />
+              </div>
 
-                <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  {step.description}
-                </p>
-              </motion.div>
-            ))}
-          </motion.div>
+              <h3 className="text-xl font-semibold mb-3">{step.title}</h3>
+              <p className="text-muted-foreground leading-relaxed">
+                {step.description}
+              </p>
+            </div>
+          ))}
         </div>
       </AnimatedSection>
 
       {/* ========================================== */}
       {/* SOCIAL PROOF SECTION */}
       {/* ========================================== */}
-      <AnimatedSection className="py-20 md:py-28 bg-background">
-        <div className="container mx-auto px-4 md:px-6 lg:px-8">
-          {/* Stats Row */}
-          <motion.div
-            variants={container}
-            className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 mb-20"
-          >
-            {stats.map((stat) => (
-              <motion.div
-                key={stat.label}
-                variants={item}
-                className="text-center p-6 rounded-2xl bg-muted/50 hover:bg-muted transition-colors"
-              >
-                <stat.icon className="mx-auto h-8 w-8 text-primary mb-3" />
-                <div className="text-3xl sm:text-4xl font-bold tracking-tight mb-1">
-                  {stat.value}
-                </div>
-                <div className="text-sm text-muted-foreground font-medium">
-                  {stat.label}
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-
-          {/* Testimonials */}
-          <motion.div variants={item}>
-            <div className="text-center max-w-3xl mx-auto mb-12">
-              <Badge variant="outline" className="mb-4 px-3 py-1">
-                <Star className="mr-1 h-3 w-3 text-yellow-500" />
-                Loved by Users
-              </Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-                What Our Customers Say
-              </h2>
-              <p className="text-lg text-muted-foreground">
-                Join thousands of satisfied universities and companies worldwide.
-              </p>
+      <AnimatedSection className="bg-background">
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 mb-20">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className="text-center p-6 rounded-2xl bg-muted/50 hover:bg-muted transition-colors"
+            >
+              <stat.icon className="mx-auto h-8 w-8 text-primary mb-3" />
+              <div className="text-3xl sm:text-4xl font-bold tracking-tight mb-1">
+                {stat.value}
+              </div>
+              <div className="text-sm text-muted-foreground font-medium">
+                {stat.label}
+              </div>
             </div>
-          </motion.div>
+          ))}
+        </div>
 
-          <motion.div
-            variants={container}
-            className="grid md:grid-cols-3 gap-6 lg:gap-8"
-          >
-            {testimonials.map((testimonial) => (
-              <motion.div key={testimonial.name} variants={item}>
-                <Card className="h-full border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-300 bg-card/50">
-                  <CardContent className="pt-6 pb-6">
-                    {/* Stars */}
-                    <div className="flex items-center gap-1 mb-4">
-                      {[...Array(testimonial.rating)].map((_, i) => (
-                        <Star
-                          key={i}
-                          className="h-4 w-4 fill-yellow-400 text-yellow-400"
-                        />
-                      ))}
-                    </div>
+        {/* Testimonials */}
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <Badge variant="outline" className="mb-4 px-3 py-1">
+            <Star className="mr-1 h-3 w-3 text-yellow-500" />
+            Loved by Users
+          </Badge>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+            What Our Customers Say
+          </h2>
+          <p className="text-lg text-muted-foreground">
+            Join thousands of satisfied universities and companies worldwide.
+          </p>
+        </div>
 
-                    {/* Quote */}
-                    <blockquote className="text-muted-foreground leading-relaxed mb-6 italic">
-                      &ldquo;{testimonial.content}&rdquo;
-                    </blockquote>
+        <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
+          {testimonials.map((testimonial) => (
+            <Card key={testimonial.name} className="h-full border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-300 bg-card/50">
+              <CardContent className="pt-6 pb-6">
+                {/* Stars */}
+                <div className="flex items-center gap-1 mb-4">
+                  {[...Array(testimonial.rating)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className="h-4 w-4 fill-yellow-400 text-yellow-400"
+                    />
+                  ))}
+                </div>
 
-                    {/* Author */}
-                    <div className="flex items-center gap-4 pt-4 border-t border-border/50">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-semibold text-sm ring-2 ring-primary/10">
-                        {testimonial.avatar}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">{testimonial.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {testimonial.role}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </motion.div>
+                {/* Quote */}
+                <blockquote className="text-muted-foreground leading-relaxed mb-6 italic">
+                  &ldquo;{testimonial.content}&rdquo;
+                </blockquote>
+
+                {/* Author */}
+                <div className="flex items-center gap-4 pt-4 border-t border-border/50">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-semibold text-sm ring-2 ring-primary/10">
+                    {testimonial.avatar}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">{testimonial.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {testimonial.role}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </AnimatedSection>
 
@@ -699,10 +669,10 @@ export default function LandingPage() {
         />
         
         {/* Decorative blobs */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-black/10 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-black/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="container mx-auto px-4 md:px-6 lg:px-8 relative">
+        <div className="container mx-auto px-4 md:px-6 lg:px-8 relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -755,7 +725,7 @@ export default function LandingPage() {
             {/* Brand column */}
             <div className="col-span-2">
               <Link href="/" className="flex items-center gap-3 mb-6 group">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 group-hover:shadow-primary/40 transition-shadow cursor-pointer">
                   <GraduationCap className="h-5 w-5" />
                 </div>
                 <span className="text-xl font-bold tracking-tight">InternHub</span>
@@ -885,3 +855,5 @@ export default function LandingPage() {
     </div>
   );
 }
+
+
