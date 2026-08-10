@@ -55,16 +55,8 @@ DROP TYPE IF EXISTS public.document_type;
 DROP TYPE IF EXISTS public.application_status;
 DROP TYPE IF EXISTS public.user_role;
 
--- Drop functions
+-- Drop only the functions that this schema actually creates
 DROP FUNCTION IF EXISTS public.get_user_university_id();
-DROP FUNCTION IF EXISTS public.internship_application_university_id(app public.internship_applications);
-DROP FUNCTION IF EXISTS public.student_internship_university_id(si public.student_internships);
-DROP FUNCTION IF EXISTS public.weekly_log_university_id(wl public.weekly_logs);
-DROP FUNCTION IF EXISTS public.report_university_id(r public.reports);
-DROP FUNCTION IF EXISTS public.attendance_university_id(a public.attendance);
-DROP FUNCTION IF EXISTS public.evaluation_university_id(e public.evaluations);
-DROP FUNCTION IF EXISTS public.chat_university_id(msg public.chat_messages);
-DROP FUNCTION IF EXISTS public.meeting_university_id(m public.online_meetings);
 DROP FUNCTION IF EXISTS public.update_updated_at_column();
 DROP FUNCTION IF EXISTS public.sync_profile_email();
 
@@ -804,7 +796,7 @@ CREATE POLICY "Super admin full access companies" ON public.companies
 CREATE POLICY "University isolation internships" ON public.internships
     FOR ALL USING (university_id = public.get_user_university_id());
 
-CREATE POLICY "Super admin full access internships" ON public.internhips
+CREATE POLICY "Super admin full access internships" ON public.internships
     FOR ALL USING (EXISTS (
         SELECT 1 FROM public.profiles
         WHERE user_id = auth.uid() AND role = 'super_admin'
@@ -999,7 +991,91 @@ CREATE POLICY "Super admin only storage" ON public.storage_allocations
     ));
 
 -- ============================================================
--- PHASE 11: SEED DATA (Optional Default Admin)
+-- PHASE 11: DATA API PERMISSIONS (GRANTs)
+-- ============================================================
+-- Supabase Data API (PostgREST) needs GRANT privileges in addition to RLS
+-- Without these, you'll get "permission denied" errors (42501)
+-- ============================================================
+
+-- ----------------------------------------------------------
+-- 11.1 GRANT USAGE on schemas
+-- ----------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+
+-- ----------------------------------------------------------
+-- 11.2 GRANT table permissions to AUTHENTICATED users
+-- Authenticated users can perform CRUD operations
+-- (RLS policies control WHICH rows they can access)
+-- ----------------------------------------------------------
+
+-- Core tables - full CRUD for authenticated
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.universities TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.platform_settings TO authenticated;
+
+-- University-scoped tables - full CRUD for authenticated
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.departments TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.programs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.faculty TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.students TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.companies TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.internships TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.internship_applications TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.student_internships TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.weekly_logs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reports TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.evaluations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.documents TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.chat_messages TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.online_meetings TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.university_policies TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.evaluation_rules TO authenticated;
+
+-- Super admin tables - only super_admin role should write via app logic
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscriptions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.billing_invoices TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.storage_allocations TO authenticated;
+
+-- ----------------------------------------------------------
+-- 11.3 GRANT read permissions to ANON (public/marketplace)
+-- Anonymous users can view public data only
+-- ----------------------------------------------------------
+
+-- Universities - visible in marketplace
+GRANT SELECT ON public.universities TO anon;
+
+-- Active internships - visible in marketplace
+GRANT SELECT ON public.internships TO anon;
+
+-- Companies - visible in marketplace  
+GRANT SELECT ON public.companies TO anon;
+
+-- Profiles - limited access (needed for user lookup)
+GRANT SELECT ON public.profiles TO anon;
+
+-- ----------------------------------------------------------
+-- 11.4 GRANT EXECUTE on functions
+-- Allow authenticated users to call helper functions used by RLS
+-- ----------------------------------------------------------
+GRANT EXECUTE ON FUNCTION public.get_user_university_id() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_updated_at_column() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_profile_email() TO authenticated;
+
+-- Revoke execute from anon for security (they don't need these)
+REVOKE EXECUTE ON FUNCTION public.get_user_university_id() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.sync_profile_email() FROM anon;
+
+-- ----------------------------------------------------------
+-- 11.5 GRANT usage on custom types
+-- Required for inserting rows with enum types
+-- ----------------------------------------------------------
+GRANT USAGE ON TYPE public.user_role TO authenticated, anon;
+GRANT USAGE ON TYPE public.application_status TO authenticated, anon;
+GRANT USAGE ON TYPE public.document_type TO authenticated, anon;
+
+-- ============================================================
+-- PHASE 12: SEED DATA (Optional Default Admin)
 -- ============================================================
 
 -- Note: Uncomment below to create a default super admin after first auth user registers
@@ -1033,4 +1109,10 @@ ON CONFLICT (user_id) DO NOTHING;
 -- programs, profiles, reports, storage_allocations, 
 -- student_internships, students, subscriptions, universities, 
 -- university_policies, evaluation_rules, weekly_logs
+--
+-- Verify GRANTs with:
+-- SELECT grantee, privilege_type, table_name 
+-- FROM information_schema.table_privileges 
+-- WHERE grantee IN ('authenticated', 'anon')
+-- ORDER BY table_name, grantee;
 -- ============================================================
