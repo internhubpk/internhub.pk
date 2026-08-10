@@ -109,17 +109,37 @@ CREATE TYPE public.document_type AS ENUM (
 
 -- ============================================================
 -- PHASE 4: CORE TABLES
--- NOTE: Order matters for foreign keys!
+-- NOTE: Order matters! Breaking circular FK dependencies
 -- ============================================================
 
 -- ----------------------------------------------------------
--- 4.1 PROFILES FIRST (other tables reference it)
--- Created before universities to avoid circular dependency
+-- 4.1 UNIVERSITIES FIRST (without created_by FK initially)
+-- Created first because profiles.university_id references it
+-- ----------------------------------------------------------
+CREATE TABLE public.universities (
+    id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name            text NOT NULL,
+    slug            text UNIQUE,
+    description     text,
+    logo_url        text,
+    website         text,
+    domain          text UNIQUE,
+    subdomain       text UNIQUE,
+    status          text NOT NULL DEFAULT 'active', -- active, inactive, suspended
+    primary_color   text DEFAULT '#3B82F6',
+    secondary_color text DEFAULT '#10B981',
+    created_by      uuid, -- FK added AFTER profiles table is created
+    created_at      timestamptz DEFAULT now(),
+    updated_at      timestamptz
+);
+
+-- ----------------------------------------------------------
+-- 4.2 PROFILES (All Users) - Can now reference universities
 -- ----------------------------------------------------------
 CREATE TABLE public.profiles (
     user_id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     role            public.user_role NOT NULL,
-    university_id   uuid, -- Will add FK after universities table exists
+    university_id   uuid REFERENCES public.universities(id) ON DELETE SET NULL,
     department_id   uuid,
     company_id      uuid,
     full_name       text,
@@ -135,32 +155,19 @@ CREATE TABLE public.profiles (
 );
 
 -- ----------------------------------------------------------
--- 4.2 UNIVERSITIES (Tenants) - Now can reference profiles
+-- 4.3 ADD DEFERRED FOREIGN KEYS (circular dependency resolved)
+-- Now that BOTH tables exist, add the missing FK
 -- ----------------------------------------------------------
-CREATE TABLE public.universities (
-    id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name            text NOT NULL,
-    slug            text UNIQUE,
-    description     text,
-    logo_url        text,
-    website         text,
-    domain          text UNIQUE,
-    subdomain       text UNIQUE,
-    status          text NOT NULL DEFAULT 'active', -- active, inactive, suspended
-    primary_color   text DEFAULT '#3B82F6',
-    secondary_color text DEFAULT '#10B981',
-    created_by      uuid REFERENCES public.profiles(user_id) ON DELETE SET NULL,
-    created_at      timestamptz DEFAULT now(),
-    updated_at      timestamptz
-);
 
--- Add FK from profiles.university_id -> universities.id (circular dependency resolved)
-ALTER TABLE public.profiles 
-ADD CONSTRAINT fk_profiles_university 
-FOREIGN KEY (university_id) REFERENCES public.universities(id) ON DELETE SET NULL;
+-- Add FK: universities.created_by -> profiles.user_id
+ALTER TABLE public.universities
+ADD CONSTRAINT universities_created_by_fkey
+FOREIGN KEY (created_by)
+REFERENCES public.profiles(user_id)
+ON DELETE SET NULL;
 
 -- ----------------------------------------------------------
--- 4.3 PLATFORM SETTINGS (Key-Value Store for Super Admin)
+-- 4.4 PLATFORM SETTINGS (Key-Value Store for Super Admin)
 -- ----------------------------------------------------------
 CREATE TABLE public.platform_settings (
     key             text PRIMARY KEY,
