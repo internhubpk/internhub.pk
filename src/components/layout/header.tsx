@@ -40,6 +40,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/utils/supabase/client";
 
 interface HeaderProps {
   className?: string;
@@ -394,38 +395,35 @@ export function Header({ className }: HeaderProps) {
   
   // Fetch actual notification count from database
   useEffect(() => {
+    // Skip on server-side
+    if (typeof window === "undefined") return;
+    
     async function fetchNotificationCount() {
       try {
-        if (!user) return;
+        if (!user?.id) return;
         
-        const supabase = await import("@supabase/supabase-js").then(mod => {
-          // Dynamic import to avoid SSR issues
-          if (typeof window !== 'undefined') {
-            const { createClient } = require("@/utils/supabase/client");
-            return createClient();
-          }
-          return null;
-        });
+        const supabase = createClient();
+        if (!supabase) return;
+
+        const { count, error } = await supabase
+          .from("notifications")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("is_read", false);
         
-        if (supabase) {
-          const { count, error } = await supabase
-            .from("notifications")
-            .select("*", { count: "exact", head: true })
-            .eq("user_id", user.id)
-            .eq("is_read", false);
-          
-          if (!error && count !== null) {
-            setNotificationCount(count);
-          }
+        // Only update if successful - 403/permission errors are silently ignored
+        if (!error && count !== null) {
+          setNotificationCount(count);
         }
       } catch (error) {
         // Silently fail - notification count is not critical
-        console.log("Could not fetch notification count:", error instanceof Error ? error.message : error);
+        // This handles RLS permission issues gracefully
+        console.debug("Notifications unavailable:", error instanceof Error ? error.message : "unknown error");
       }
     }
     
     fetchNotificationCount();
-  }, [user]);
+  }, [user?.id]);
   const [breadcrumbs, setBreadcrumbs] = useState<
     { label: string; href?: string }[]
   >([]);
