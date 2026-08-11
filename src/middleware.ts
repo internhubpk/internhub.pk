@@ -43,6 +43,7 @@ const PUBLIC_ROUTES: string[] = [
   "/internships",
   "/marketplace",
   "/onboarding",
+  "/dashboard",  // Dashboard is a redirector - let it pass through
 ];
 
 /** Role-based route access matrix */
@@ -231,11 +232,12 @@ export async function middleware(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    // Handle profile fetch errors
+    // Handle profile fetch errors - redirect to student dashboard as safe default
     if (profileError) {
       console.error("Middleware Profile Error:", profileError.message, "for user:", user.id);
-      // If we can't get the profile, redirect to dashboard which will handle it
-      return NextResponse.redirect(new URL("/dashboard", origin));
+      // Don't redirect to /dashboard here - that causes infinite loops!
+      // Instead, redirect to a concrete page that won't loop
+      return NextResponse.redirect(new URL("/student", origin));
     }
 
     const userRole = profile?.role as UserRole | null;
@@ -256,7 +258,8 @@ export async function middleware(request: NextRequest) {
         }
       }
       
-      return NextResponse.redirect(new URL("/dashboard", origin));
+      // Safe fallback - don't use /dashboard to avoid loops
+      return NextResponse.redirect(new URL("/student", origin));
     }
 
     // ==========================================
