@@ -386,7 +386,7 @@ function SettingsIcon(props: React.SVGProps<SVGSVGElement>) {
 export function Header({ className }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, university, logout } = useAuth();
+  const { user, profile, university, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);

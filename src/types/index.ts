@@ -16,15 +16,19 @@ export type UserRole =
   | "external_evaluator";
 
 export interface Profile {
-  id: string;
   user_id: string;
   email: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   role: UserRole;
   avatar_url: string | null;
   phone: string | null;
+  bio?: string | null;
   university_id: string | null;
   department_id: string | null;
+  company_id?: string | null;
+  status?: string;
   created_at: string;
   updated_at: string;
   // Role-specific fields

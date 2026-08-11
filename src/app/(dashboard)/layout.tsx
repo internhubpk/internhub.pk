@@ -1,10 +1,11 @@
 "use client";
 
 import React, { Suspense, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header, HeaderSkeleton } from "@/components/layout/header";
-import { AuthProvider } from "@/components/providers/auth-provider";
+import { AuthProvider, useAuth } from "@/components/providers/auth-provider";
 import { PageLoader, ContentLoader } from "@/components/layout/loading-state";
 import { cn } from "@/lib/utils";
 
@@ -32,23 +33,30 @@ function DashboardLoading() {
 // DASHBOARD SHELL WITH SIDEBAR AND HEADER
 // ============================================
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [isLoading, setIsLoading] = React.useState(true);
+  const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [pathname, setPathname] = useState("dashboard");
+  const [redirecting, setRedirecting] = useState(false);
 
   // Get pathname only on client side to avoid hydration mismatch
   useEffect(() => {
     setPathname(window.location.pathname);
   }, []);
 
-  // Simulate initial loading - in production this would be based on auth state
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+  // Once we know for sure there's no signed-in user, send them to /login
+  // instead of ever rendering the dashboard shell or its children.
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      setRedirecting(true);
+      router.replace("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
 
-  if (isLoading) {
+  // Show the loading skeleton while the session is resolving, and keep
+  // showing it while we redirect an unauthenticated visitor away — the
+  // dashboard shell (and any page-specific data fetching) must never
+  // mount for a user that doesn't exist.
+  if (authLoading || !isAuthenticated || redirecting) {
     return <DashboardLoading />;
   }
 
