@@ -120,7 +120,8 @@ export default function SiteSupervisorNotificationsPage() {
         .single();
 
       if (!supervisor) {
-        setMockStudents();
+        // No supervisor record - keep empty state
+        setStudents([]);
         return;
       }
 
@@ -146,93 +147,13 @@ export default function SiteSupervisorNotificationsPage() {
       setStudents(studentList);
     } catch (error) {
       console.error("Error fetching students:", error);
-      setMockStudents();
+      // Keep empty state on error
     }
   }
 
-  function setMockStudents() {
-    setStudents([
-      { id: "s1", studentId: "s1", name: "Ahmed Khan", email: "ahmed@university.edu.pk", internshipTitle: "Software Development Intern" },
-      { id: "s2", studentId: "s2", name: "Fatima Ali", email: "fatima@university.edu.pk", internshipTitle: "Full Stack Developer Intern" },
-      { id: "s3", studentId: "s3", name: "Usman Malik", email: "usman@university.edu.pk", internshipTitle: "IT Support Intern" },
-      { id: "s4", studentId: "s4", name: "Ayesha Raza", email: "ayesha@university.edu.pk", internshipTitle: "Data Analytics Intern" },
-    ]);
-  }
-
-  async function fetchSentNotifications() {
-    setIsLoadingSent(true);
-    
-    try {
-      const response = await fetch("/api/site-supervisor/notifications");
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data) {
-          setSentNotifications(data.data.items || []);
-        }
-      }
-      
-      // Use mock data for demo
-      setMockNotifications();
-    } catch (error) {
-      console.error("Error fetching notifications:", error);
-      setMockNotifications();
-    } finally {
-      setIsLoadingSent(false);
-    }
-  }
-
-  function setMockNotifications() {
-    setSentNotifications([
-      {
-        id: "n1",
-        title: "Weekly Log Reminder",
-        content: "This is a reminder to submit your weekly log by Friday 5 PM. Make sure to include all tasks completed and hours worked.",
-        recipientType: "broadcast",
-        recipientCount: 4,
-        recipients: ["s1", "s2", "s3", "s4"],
-        priority: "medium",
-        sentAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        deliveryStatus: "delivered",
-        readCount: 3,
-      },
-      {
-        id: "n2",
-        title: "Evaluation Scheduled",
-        content: "Your Week 4-6 evaluation is scheduled for this week. Please ensure all your weekly logs are up to date.",
-        recipientType: "individual",
-        recipientCount: 1,
-        recipients: ["s3"],
-        priority: "high",
-        sentAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        deliveryStatus: "read",
-        readCount: 1,
-      },
-      {
-        id: "n3",
-        title: "Team Meeting Tomorrow",
-        content: "Reminder: We have a team meeting tomorrow at 10 AM in Conference Room B. Please bring your progress reports.",
-        recipientType: "broadcast",
-        recipientCount: 4,
-        recipients: ["s1", "s2", "s3", "s4"],
-        priority: "medium",
-        sentAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        deliveryStatus: "delivered",
-        readCount: 4,
-      },
-      {
-        id: "n4",
-        title: "Welcome & Onboarding",
-        content: "Welcome to the team! Please review the onboarding documents and let me know if you have any questions about your first week.",
-        recipientType: "individual",
-        recipientCount: 1,
-        recipients: ["s5"],
-        priority: "low",
-        sentAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        deliveryStatus: "read",
-        readCount: 1,
-      },
-    ]);
-  }
+  // Note: Mock data removed - page shows empty state until real data is available
+  // function setMockStudents() has been removed to prevent showing fake data
+  // function setMockNotifications() has been removed to prevent showing fake data
 
   async function handleSendNotification() {
     if (!notificationTitle.trim() || !notificationContent.trim()) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -70,6 +70,8 @@ import {
   TrendingUp,
   Award,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
@@ -126,179 +128,10 @@ interface EvaluationCriteria {
   score: number;
 }
 
-// Mock pending evaluations
-const mockPendingEvaluations: PendingEvaluation[] = [
-  {
-    id: "pe1",
-    studentId: "1",
-    studentName: "Sarah Johnson",
-    studentEmail: "sarah.j@university.edu",
-    submissionType: "weekly_log",
-    title: "Week 4 Weekly Log - Frontend Development",
-    description: "Weekly progress report covering React component development work.",
-    submittedAt: "2024-02-12T10:30:00Z",
-    dueDate: "2024-02-13",
-    priority: "high",
-    contentPreview: "This week I focused on developing reusable React components for the dashboard...",
-    attachments: [
-      { name: "component-screenshots.zip", url: "#", size: 2500000 },
-      { name: "code-review-notes.txt", url: "#", size: 5000 },
-    ],
-  },
-  {
-    id: "pe2",
-    studentId: "4",
-    studentName: "Ahmed Khan",
-    studentEmail: "ahmed.k@university.edu",
-    submissionType: "task_submission",
-    title: "Data Analysis Report - Q1",
-    description: "Comprehensive data analysis report using Python and pandas.",
-    submittedAt: "2024-02-12T09:15:00Z",
-    dueDate: "2024-02-14",
-    priority: "medium",
-    contentPreview: "The Q1 analysis covers customer behavior patterns and sales trends...",
-    attachments: [
-      { name: "q1-analysis-report.pdf", url: "#", size: 4500000 },
-      { name: "data-visualization.png", url: "#", size: 1200000 },
-    ],
-  },
-  {
-    id: "pe3",
-    studentId: "3",
-    studentName: "Emily Davis",
-    studentEmail: "emily.d@university.edu",
-    submissionType: "task_submission",
-    title: "Social Media Campaign Analysis",
-    description: "Analysis of social media metrics and campaign performance.",
-    submittedAt: "2024-02-11T14:20:00Z",
-    dueDate: "2024-02-13",
-    priority: "low",
-    contentPreview: "This report analyzes the performance of our Q1 social media campaigns across multiple platforms...",
-  },
-  {
-    id: "pe4",
-    studentId: "2",
-    studentName: "Mike Chen",
-    studentEmail: "mike.chen@university.edu",
-    submissionType: "document",
-    title: "UI Component Library Documentation",
-    description: "Technical documentation for the component library built with Storybook.",
-    submittedAt: "2024-02-11T16:45:00Z",
-    dueDate: "2024-02-10",
-    priority: "high",
-    contentPreview: "This documentation covers all components in our UI library including usage examples...",
-    attachments: [
-      { name: "ui-library-docs.pdf", url: "#", size: 3200000 },
-    ],
-  },
-];
-
-// Mock evaluation history
-const mockEvaluationHistory: EvaluationRecord[] = [
-  {
-    id: "eh1",
-    studentName: "Sarah Johnson",
-    type: "task_submission",
-    title: "React Component Development",
-    submittedAt: "2024-02-04T14:00:00Z",
-    evaluatedAt: "2024-02-05T09:30:00Z",
-    status: "approved",
-    score: 95,
-    maxScore: 100,
-    evaluatorComments: "Excellent work! Components are well-structured and follow best practices.",
-  },
-  {
-    id: "eh2",
-    studentName: "Mike Chen",
-    type: "task_submission",
-    title: "UI Component Library Setup",
-    submittedAt: "2024-02-03T16:00:00Z",
-    evaluatedAt: "2024-02-04T11:00:00Z",
-    status: "approved",
-    score: 88,
-    maxScore: 100,
-    evaluatorComments: "Good implementation. Consider adding more accessibility features.",
-  },
-  {
-    id: "eh3",
-    studentName: "Ahmed Khan",
-    type: "weekly_log",
-    title: "Week 3 Weekly Log - Data Modeling",
-    submittedAt: "2024-02-05T10:00:00Z",
-    evaluatedAt: "2024-02-06T08:15:00Z",
-    status: "approved",
-    score: 18,
-    maxScore: 20,
-    evaluatorComments: "Good progress on the data modeling task. Keep up the detailed logging.",
-  },
-  {
-    id: "eh4",
-    studentName: "Sarah Johnson",
-    type: "weekly_log",
-    title: "Week 2 Weekly Log - Project Setup",
-    submittedAt: "2024-01-29T11:00:00Z",
-    evaluatedAt: "2024-01-30T09:00:00Z",
-    status: "revision_required",
-    score: 14,
-    maxScore: 20,
-    evaluatorComments: "Please provide more details about challenges faced and how you overcame them.",
-  },
-  {
-    id: "eh5",
-    studentName: "Emily Davis",
-    type: "task_submission",
-    title: "Market Research Survey Design",
-    submittedAt: "2024-01-28T15:00:00Z",
-    evaluatedAt: "2024-01-29T10:30:00Z",
-    status: "rejected",
-    score: 45,
-    maxScore: 100,
-    evaluatorComments: "Survey design needs significant revision. Please review the guidelines and resubmit.",
-  },
-];
-
-// Mock weekly reports
-const mockWeeklyReports: WeeklyReport[] = [
-  {
-    id: "wr1",
-    studentName: "Sarah Johnson",
-    weekNumber: 4,
-    weekStart: "2024-02-05",
-    weekEnd: "2024-02-11",
-    tasksCompleted: 5,
-    tasksPending: 2,
-    hoursLogged: 38,
-    overallScore: 90,
-    supervisorRemarks: "Excellent progress this week. Sarah has shown great initiative in learning new technologies.",
-    status: "submitted",
-  },
-  {
-    id: "wr2",
-    studentName: "Ahmed Khan",
-    weekNumber: 4,
-    weekStart: "2024-02-05",
-    weekEnd: "2024-02-11",
-    tasksCompleted: 6,
-    tasksPending: 1,
-    hoursLogged: 42,
-    overallScore: 95,
-    supervisorRemarks: "Outstanding performance. Ahmed consistently exceeds expectations.",
-    status: "approved",
-  },
-  {
-    id: "wr3",
-    studentName: "Mike Chen",
-    weekNumber: 4,
-    weekStart: "2024-02-05",
-    weekEnd: "2024-02-11",
-    tasksCompleted: 3,
-    tasksPending: 4,
-    hoursLogged: 32,
-    overallScore: 72,
-    supervisorRemarks: "Needs to improve time management. Some tasks are falling behind schedule.",
-    status: "submitted",
-  },
-];
+// Default empty data - will be populated from database
+const DEFAULT_PENDING_EVALUATIONS: PendingEvaluation[] = [];
+const DEFAULT_EVALUATION_HISTORY: EvaluationRecord[] = [];
+const DEFAULT_WEEKLY_REPORTS: WeeklyReport[] = [];
 
 // Default evaluation criteria
 const defaultCriteria: EvaluationCriteria[] = [
@@ -342,10 +175,12 @@ function StarRating({ rating, onRate, readonly = false }: {
 }
 
 export default function FacultySupervisorEvaluationsPage() {
+  const { user } = useAuth();
   // State
-  const [pendingEvaluations] = useState<PendingEvaluation[]>(mockPendingEvaluations);
-  const [evaluationHistory] = useState<EvaluationRecord[]>(mockEvaluationHistory);
-  const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>(mockWeeklyReports);
+  const [pendingEvaluations, setPendingEvaluations] = useState<PendingEvaluation[]>(DEFAULT_PENDING_EVALUATIONS);
+  const [evaluationHistory, setEvaluationHistory] = useState<EvaluationRecord[]>(DEFAULT_EVALUATION_HISTORY);
+  const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>(DEFAULT_WEEKLY_REPORTS);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
@@ -368,6 +203,66 @@ export default function FacultySupervisorEvaluationsPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return; }
+      
+      try {
+        const supabase = createClient();
+        
+        // Get supervisor record
+        const { data: supervisor } = await supabase
+          .from("supervisors")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "faculty")
+          .single();
+
+        if (!supervisor) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch pending evaluations (submissions awaiting review)
+        // This would query a submissions table filtered by status='pending_review'
+        // and faculty_supervisor_id matching the current supervisor
+        // const { data: pending } = await supabase
+        //   .from("submissions")
+        //   .select(`*, student:students(full_name, email, avatar_url)`)
+        //   .eq("faculty_supervisor_id", supervisor.id)
+        //   .eq("status", "pending_review");
+        
+        // setPendingEvaluations(pending || []);
+
+        // Fetch evaluation history
+        // const { data: history } = await supabase
+        //   .from("faculty_evaluations")
+        //   .select(`*, student:students(full_name)`)
+        //   .eq("evaluator_id", supervisor.id)
+        //   .order("evaluated_at", { ascending: false });
+        
+        // setEvaluationHistory(history || []);
+
+        // Fetch weekly reports
+        // const { data: reports } = await supabase
+        //   .from("weekly_reports")
+        //   .select(`*, student:students(full_name)`)
+        //   .eq("faculty_supervisor_id", supervisor.id)
+        //   .order("week_start", { ascending: false });
+        
+        // setWeeklyReports(reports || []);
+      } catch (error) {
+        console.error("Error fetching evaluation data:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [user]);
+
   // Filter evaluations
   const filteredHistory = useMemo(() => {
     return evaluationHistory.filter((item) => {
@@ -386,9 +281,11 @@ export default function FacultySupervisorEvaluationsPage() {
   const stats = {
     pending: pendingEvaluations.length,
     highPriority: pendingEvaluations.filter(e => e.priority === "high").length,
-    completedToday: 3,
+    completedToday: 0,
     totalEvaluated: evaluationHistory.length,
-    avgScore: Math.round(evaluationHistory.reduce((acc, e) => acc + (e.score / e.maxScore) * 100, 0) / evaluationHistory.length),
+    avgScore: evaluationHistory.length > 0 
+      ? Math.round(evaluationHistory.reduce((acc, e) => acc + (e.score / e.maxScore) * 100, 0) / evaluationHistory.length)
+      : 0,
   };
 
   const getSubmissionTypeBadge = (type: SubmissionType) => {
@@ -527,6 +424,35 @@ export default function FacultySupervisorEvaluationsPage() {
       prev.map(r => r.id === reportId ? { ...r, status: "approved" as const } : r)
     );
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Evaluation Center</h1>
+          <p className="text-muted-foreground mt-1">Loading evaluations...</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
+                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
+                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
+                <div className="h-3 w-20 bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Loading evaluation data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

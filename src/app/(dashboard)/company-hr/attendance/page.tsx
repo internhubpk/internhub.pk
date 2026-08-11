@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,6 +68,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 
 // Types
@@ -101,150 +102,60 @@ interface AttendanceSummary {
   attendance_rate: number;
 }
 
-// Mock data
-const mockAttendanceRecords: AttendanceRecord[] = [
-  {
-    id: "att_001",
-    intern_id: "stu_005",
-    intern_name: "Emily Davis",
-    intern_email: "emily.d@business.edu",
-    program: "Marketing Intern",
-    date: "2024-02-12",
-    check_in: "09:05",
-    check_out: "18:02",
-    status: "present",
-    notes: null,
-    location: "Office - Floor 3",
-    verified: true,
-  },
-  {
-    id: "att_002",
-    intern_id: "stu_006",
-    intern_name: "James Miller",
-    intern_email: "james.m@tech.edu",
-    program: "Software Engineering Intern",
-    date: "2024-02-12",
-    check_in: "09:25",
-    check_out: "18:30",
-    status: "late",
-    notes: null,
-    location: "Office - Tech Hub",
-    verified: true,
-  },
-  {
-    id: "att_003",
-    intern_id: "stu_007",
-    intern_name: "Sophie Turner",
-    intern_email: "sophie.t@state.edu",
-    program: "Data Science Intern",
-    date: "2024-02-12",
-    check_in: null,
-    check_out: null,
-    status: "leave",
-    notes: "Medical leave - doctor appointment",
-    location: null,
-    verified: true,
-  },
-  {
-    id: "att_004",
-    intern_id: "stu_008",
-    intern_name: "David Kim",
-    intern_email: "david.k@design.edu",
-    program: "UI/UX Design Intern",
-    date: "2024-02-12",
-    check_in: "09:00",
-    check_out: "13:00",
-    status: "half_day",
-    notes: "Personal work - morning only",
-    location: "Office - Design Studio",
-    verified: true,
-  },
-  {
-    id: "att_005",
-    intern_id: "stu_005",
-    intern_name: "Emily Davis",
-    intern_email: "emily.d@business.edu",
-    program: "Marketing Intern",
-    date: "2024-02-11",
-    check_in: "08:55",
-    check_out: "18:10",
-    status: "present",
-    notes: null,
-    location: "Office - Floor 3",
-    verified: true,
-  },
-  {
-    id: "att_006",
-    intern_id: "stu_006",
-    intern_name: "James Miller",
-    intern_email: "james.m@tech.edu",
-    program: "Software Engineering Intern",
-    date: "2024-02-11",
-    check_in: null,
-    check_out: null,
-    status: "absent",
-    notes: null,
-    location: null,
-    verified: true,
-  },
-];
-
-const mockSummaries: AttendanceSummary[] = [
-  {
-    intern_id: "stu_005",
-    intern_name: "Emily Davis",
-    program: "Marketing Intern",
-    total_days: 45,
-    present_days: 42,
-    absent_days: 1,
-    late_days: 2,
-    leave_days: 0,
-    half_day_days: 0,
-    attendance_rate: 96,
-  },
-  {
-    intern_id: "stu_006",
-    intern_name: "James Miller",
-    program: "Software Engineering Intern",
-    total_days: 52,
-    present_days: 46,
-    absent_days: 3,
-    late_days: 3,
-    leave_days: 0,
-    half_day_days: 0,
-    attendance_rate: 92,
-  },
-  {
-    intern_id: "stu_007",
-    intern_name: "Sophie Turner",
-    program: "Data Science Intern",
-    total_days: 32,
-    present_days: 28,
-    absent_days: 0,
-    late_days: 1,
-    leave_days: 3,
-    half_day_days: 0,
-    attendance_rate: 88,
-  },
-  {
-    intern_id: "stu_008",
-    intern_name: "David Kim",
-    program: "UI/UX Design Intern",
-    total_days: 40,
-    present_days: 39,
-    absent_days: 0,
-    late_days: 0,
-    leave_days: 0,
-    half_day_days: 1,
-    attendance_rate: 100,
-  },
-];
+// Default empty states - data will be fetched from database
+const DEFAULT_RECORDS: AttendanceRecord[] = [];
+const DEFAULT_SUMMARIES: AttendanceSummary[] = [];
 
 const programs = ["All Programs", "Marketing Intern", "Software Engineering Intern", "Data Science Intern", "UI/UX Design Intern"];
 
 export default function CompanyHRAttendancePage() {
-  const [records] = useState<AttendanceRecord[]>(mockAttendanceRecords);
-  const [summaries] = useState<AttendanceSummary[]>(mockSummaries);
+  const [records, setRecords] = useState<AttendanceRecord[]>(DEFAULT_RECORDS);
+  const [summaries, setSummaries] = useState<AttendanceSummary[]>(DEFAULT_SUMMARIES);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAttendance();
+  }, []);
+
+  async function fetchAttendance() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          students!inner(student_name, email),
+          internships!inner(title)
+        `)
+        .order('date', { ascending: false })
+        .limit(50);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const recs: AttendanceRecord[] = data.map((rec: any) => ({
+          id: rec.id,
+          intern_id: rec.student_id,
+          intern_name: rec.students?.student_name || 'Unknown',
+          intern_email: rec.students?.email || '',
+          program: rec.internships?.title || 'Unknown Program',
+          date: rec.date,
+          check_in: rec.check_in,
+          check_out: rec.check_out,
+          status: rec.status || 'present',
+          notes: rec.notes,
+          location: rec.location,
+          verified: rec.verified ?? true,
+        }));
+        setRecords(recs);
+      }
+    } catch (error) {
+      console.error("Error fetching attendance:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [programFilter, setProgramFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");

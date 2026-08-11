@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +69,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface ActiveIntern {
@@ -94,119 +95,8 @@ interface ActiveIntern {
   total_weeks: number;
 }
 
-// Mock data
-const mockInterns: ActiveIntern[] = [
-  {
-    id: "1",
-    student_id: "stu_001",
-    student_name: "Emily Davis",
-    student_email: "emily.d@business.edu",
-    phone: "+92-332-4567890",
-    university: "Business School",
-    department: "Marketing",
-    internship_id: "int_002",
-    internship_title: "Marketing Intern",
-    supervisor_id: "sup_002",
-    supervisor_name: "Fatima Ali",
-    start_date: "2024-06-15",
-    end_date: "2024-08-10",
-    status: "active",
-    attendance_rate: 96,
-    overall_rating: null,
-    offer_letter_uploaded: true,
-    certificate_issued: false,
-    weekly_logs_submitted: 4,
-    total_weeks: 8,
-  },
-  {
-    id: "2",
-    student_id: "stu_006",
-    student_name: "James Miller",
-    student_email: "james.m@tech.edu",
-    phone: "+92-305-8901234",
-    university: "Tech University",
-    department: "Computer Science",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    supervisor_id: "sup_001",
-    supervisor_name: "Ahmed Khan",
-    start_date: "2024-06-01",
-    end_date: "2024-08-31",
-    status: "active",
-    attendance_rate: 92,
-    overall_rating: null,
-    offer_letter_uploaded: true,
-    certificate_issued: false,
-    weekly_logs_submitted: 5,
-    total_weeks: 12,
-  },
-  {
-    id: "3",
-    student_id: "stu_007",
-    student_name: "Sophie Turner",
-    student_email: "sophie.t@state.edu",
-    phone: null,
-    university: "State University",
-    department: "Data Science",
-    internship_id: "int_003",
-    internship_title: "Data Science Intern",
-    supervisor_id: "sup_003",
-    supervisor_name: "Omar Hassan",
-    start_date: "2024-07-01",
-    end_date: "2024-10-19",
-    status: "on_leave",
-    attendance_rate: 88,
-    overall_rating: null,
-    offer_letter_uploaded: true,
-    certificate_issued: false,
-    weekly_logs_submitted: 3,
-    total_weeks: 16,
-  },
-  {
-    id: "4",
-    student_id: "stu_008",
-    student_name: "David Kim",
-    student_email: "david.k@design.edu",
-    phone: "+92-333-2345678",
-    university: "Design Institute",
-    department: "UI/UX Design",
-    internship_id: "int_004",
-    internship_title: "UI/UX Design Intern",
-    supervisor_id: null,
-    supervisor_name: null,
-    start_date: "2024-06-15",
-    end_date: "2024-08-30",
-    status: "active",
-    attendance_rate: 100,
-    overall_rating: null,
-    offer_letter_uploaded: false,
-    certificate_issued: false,
-    weekly_logs_submitted: 6,
-    total_weeks: 10,
-  },
-  {
-    id: "5",
-    student_id: "stu_009",
-    student_name: "Rachel Green",
-    student_email: "rachel.g@business.edu",
-    phone: "+92-344-5678901",
-    university: "Business School",
-    department: "Marketing",
-    internship_id: "int_002",
-    internship_title: "Marketing Intern",
-    supervisor_id: "sup_002",
-    supervisor_name: "Fatima Ali",
-    start_date: "2024-02-01",
-    end_date: "2024-04-12",
-    status: "completed",
-    attendance_rate: 98,
-    overall_rating: 4.9,
-    offer_letter_uploaded: true,
-    certificate_issued: true,
-    weekly_logs_submitted: 10,
-    total_weeks: 10,
-  },
-];
+// Default empty state - interns will be fetched from database
+const DEFAULT_INTERNS: ActiveIntern[] = [];
 
 const availableSupervisors = [
   { id: "sup_001", name: "Ahmed Khan", department: "Software Engineering", intern_count: 6 },
@@ -223,7 +113,62 @@ const programs = [
 ];
 
 export default function CompanyHRInternsPage() {
-  const [interns, setInterns] = useState<ActiveIntern[]>(mockInterns);
+  const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchInterns();
+  }, []);
+
+  async function fetchInterns() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('internships')
+        .select(`
+          *,
+          students!inner(student_name, email, phone, university, department),
+          site_supervisors(first_name, last_name)
+        `)
+        .in('status', ['active', 'on_leave', 'completed'])
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const internList: ActiveIntern[] = data.map((intern: any) => ({
+          id: intern.id,
+          student_id: intern.student_id,
+          student_name: intern.students?.student_name || 'Unknown',
+          student_email: intern.students?.email || '',
+          phone: intern.students?.phone,
+          university: intern.students?.university,
+          department: intern.students?.department,
+          internship_id: intern.id,
+          internship_title: intern.title || 'Unknown Program',
+          supervisor_id: intern.supervisor_id,
+          supervisor_name: intern.site_supervisors 
+            ? `${intern.site_supervisors.first_name} ${intern.site_supervisors.last_name}` 
+            : null,
+          start_date: intern.start_date,
+          end_date: intern.end_date,
+          status: intern.status || 'active',
+          attendance_rate: intern.attendance_rate || 0,
+          overall_rating: intern.overall_rating,
+          offer_letter_uploaded: intern.offer_letter_uploaded || false,
+          certificate_issued: intern.certificate_issued || false,
+          weekly_logs_submitted: intern.weekly_logs_submitted || 0,
+          total_weeks: intern.total_weeks || 0,
+        }));
+        setInterns(internList);
+      }
+    } catch (error) {
+      console.error("Error fetching interns:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");

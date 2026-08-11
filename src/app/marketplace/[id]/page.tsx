@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { createClient } from "@/utils/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,8 +57,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-// Mock internship data (in real app, this would be fetched based on ID)
-const mockInternships: Record<string, Internship & {
+// Default empty internship - will be populated from database
+const DEFAULT_INTERNSHIP: Internship & {
   company_name: string;
   company_logo_url?: string;
   company_description?: string;
@@ -68,112 +69,32 @@ const mockInternships: Record<string, Internship & {
   responsibilities?: string;
   benefits?: string[];
   about_team?: string;
-}> = {
-  "1": {
-    id: "1",
-    company_id: "c1",
-    university_id: "u1",
-    title: "Software Engineering Intern",
-    description: "Join our dynamic engineering team to build cutting-edge software solutions. You'll work on real projects that impact millions of users worldwide. Perfect opportunity to learn modern development practices and contribute to meaningful products.",
-    department_ids: ["d1"],
-    program_ids: ["p1", "p2"],
-    requirements: "Currently pursuing a degree in Computer Science or related field. Proficiency in at least one programming language (Python, Java, JavaScript). Understanding of data structures and algorithms. Familiarity with version control (Git). Strong problem-solving skills and eagerness to learn.",
-    responsibilities: "• Develop and maintain software applications using modern frameworks\n• Participate in code reviews and contribute to technical discussions\n• Collaborate with cross-functional teams including design and product\n• Write unit and integration tests to ensure code quality\n• Attend daily standups and participate in sprint planning\n• Document code and technical processes",
-    skills: ["Python", "JavaScript", "React", "SQL", "Git", "REST APIs"],
-    location: "San Francisco, CA",
-    is_remote: false,
-    is_paid: true,
-    stipend: 5000,
-    duration_weeks: 12,
-    start_date: "2024-06-01",
-    end_date: "2024-08-24",
-    vacancies: 3,
-    status: "published",
-    created_by: "hr1",
-    created_at: "2024-01-15T10:00:00Z",
-    updated_at: "2024-01-15T10:00:00Z",
-    company_name: "TechCorp Inc.",
-    company_description: "TechCorp is a leading technology company building innovative solutions for enterprises worldwide. We're passionate about creating products that make a difference.",
-    company_website: "https://techcorp.example.com",
-    company_size: "1000+ employees",
-    company_industry: "Technology",
-    benefits: ["Competitive stipend", "Mentorship program", "Free meals", "Gym access", "Transit benefits", "Learning budget"],
-    about_team: "You'll join our Platform Engineering team, a group of 15 talented engineers working on our core product. The team values collaboration, continuous learning, and work-life balance.",
-  },
+} = {
+  id: "",
+  company_id: "",
+  university_id: "",
+  title: "Loading...",
+  description: "Please wait while we load the internship details.",
+  department_ids: [],
+  program_ids: [],
+  skills: [],
+  location: null,
+  is_remote: false,
+  is_paid: false,
+  stipend: null,
+  duration_weeks: 0,
+  start_date: "",
+  end_date: "",
+  vacancies: 0,
+  status: "published" as const,
+  created_by: "",
+  created_at: "",
+  updated_at: "",
+  company_name: "Loading...",
 };
 
-// Similar internships for recommendation
-const similarInternships = [
-  {
-    id: "2",
-    company_id: "c2",
-    university_id: "u1",
-    title: "Full Stack Developer Intern",
-    description: "Work on both frontend and backend development for our SaaS platform.",
-    department_ids: ["d1"],
-    program_ids: ["p1"],
-    skills: ["React", "Node.js", "PostgreSQL", "TypeScript"],
-    location: "San Francisco, CA",
-    is_remote: false,
-    is_paid: true,
-    stipend: 4800,
-    duration_weeks: 12,
-    start_date: "2024-06-15",
-    end_date: "2024-09-07",
-    vacancies: 2,
-    status: "published" as const,
-    created_by: "hr2",
-    created_at: "2024-01-14T10:00:00Z",
-    updated_at: "2024-01-14T10:00:00Z",
-    company_name: "StartupXYZ",
-  },
-  {
-    id: "3",
-    company_id: "c3",
-    university_id: "u1",
-    title: "Backend Engineering Intern",
-    description: "Build scalable backend services and APIs for millions of users.",
-    department_ids: ["d1"],
-    program_ids: ["p1", "p2"],
-    skills: ["Python", "Django", "AWS", "Docker", "Redis"],
-    location: null,
-    is_remote: true,
-    is_paid: true,
-    stipend: 5200,
-    duration_weeks: 16,
-    start_date: "2024-05-20",
-    end_date: "2024-09-06",
-    vacancies: 4,
-    status: "published" as const,
-    created_by: "hr3",
-    created_at: "2024-01-13T10:00:00Z",
-    updated_at: "2024-01-13T10:00:00Z",
-    company_name: "CloudScale Inc.",
-  },
-  {
-    id: "4",
-    company_id: "c4",
-    university_id: "u1",
-    title: "Mobile Developer Intern",
-    description: "Develop iOS/Android apps using React Native or native technologies.",
-    department_ids: ["d1"],
-    program_ids: ["p1"],
-    skills: ["React Native", "Swift", "Kotlin", "TypeScript"],
-    location: "New York, NY",
-    is_remote: true,
-    is_paid: true,
-    stipend: 4500,
-    duration_weeks: 10,
-    start_date: "2024-07-01",
-    end_date: "2024-09-09",
-    vacancies: 3,
-    status: "published" as const,
-    created_by: "hr4",
-    created_at: "2024-01-12T10:00:00Z",
-    updated_at: "2024-01-12T10:00:00Z",
-    company_name: "AppWorks Studio",
-  },
-];
+// Default similar internships
+const DEFAULT_SIMILAR: (Internship & { company_name: string })[] = [];
 
 // Animation variants
 const fadeInUp = {
@@ -184,6 +105,20 @@ const fadeInUp = {
 export default function InternshipDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const [internship, setInternship] = useState<Internship & {
+    company_name: string;
+    company_logo_url?: string;
+    company_description?: string;
+    company_website?: string;
+    company_size?: string;
+    company_industry?: string;
+    requirements?: string;
+    responsibilities?: string;
+    benefits?: string[];
+    about_team?: string;
+  }>(DEFAULT_INTERNSHIP);
+  const [similarInternships, setSimilarInternships] = useState<(Internship & { company_name: string })[]>(DEFAULT_SIMILAR);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applicationData, setApplicationData] = useState({
@@ -195,9 +130,66 @@ export default function InternshipDetailPage() {
 
   // Get internship ID from URL params
   const internshipId = params.id as string;
-  
-  // In real app, fetch data based on ID
-  const internship = mockInternships[internshipId] || mockInternships["1"];
+
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchInternship() {
+      if (!internshipId) return;
+      
+      setIsLoading(true);
+      try {
+        const supabase = createClient();
+        
+        // Fetch internship with company details
+        const { data: internshipData, error } = await supabase
+          .from("internships")
+          .select(`
+            *,
+            company:companies(name, logo_url, description, website, size, industry)
+          `)
+          .eq("id", internshipId)
+          .eq("status", "published")
+          .single();
+
+        if (error || !internshipData) {
+          console.error("Error fetching internship:", error);
+          return; // Keep default/empty state
+        }
+
+        const formattedData: typeof internship = {
+          ...internshipData,
+          company_name: internshipData.company?.name || "Unknown Company",
+          company_logo_url: internshipData.company?.logo_url,
+          company_description: internshipData.company?.description,
+          company_website: internshipData.company?.website,
+          company_size: internshipData.company?.size,
+          company_industry: internshipData.company?.industry,
+        };
+
+        setInternship(formattedData);
+
+        // Fetch similar internships (same category or company)
+        const { data: similarData } = await supabase
+          .from("internships")
+          .select(`id, title, company:companies(name), location, is_remote, is_paid, stipend, duration_weeks, skills`)
+          .neq("id", internshipId)
+          .eq("status", "published")
+          .limit(4);
+
+        setSimilarInternships((similarData || []).map((s: any) => ({
+          ...s,
+          company_name: s.company?.name || "Unknown Company",
+        })));
+      } catch (error) {
+        console.error("Error fetching internship:", error);
+        // Keep default state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchInternship();
+  }, [internshipId]);
 
   const handleSave = useCallback(() => {
     setIsSaved((prev) => !prev);
@@ -230,7 +222,39 @@ export default function InternshipDetailPage() {
     alert("Application submitted successfully! You can track its status from your dashboard.");
   };
 
-  if (!internship) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => router.back()} className="flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Marketplace
+            </Button>
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-6 animate-pulse">
+            <div className="h-8 w-64 bg-muted rounded"></div>
+            <div className="h-4 w-96 bg-muted rounded"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-4">
+                <div className="h-48 bg-muted rounded-lg"></div>
+                <div className="h-32 bg-muted rounded-lg"></div>
+                <div className="h-40 bg-muted rounded-lg"></div>
+              </div>
+              <div className="space-y-4">
+                <div className="h-64 bg-muted rounded-lg"></div>
+                <div className="h-48 bg-muted rounded-lg"></div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!internship || !internship.id) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">

@@ -120,7 +120,16 @@ export default function SiteSupervisorWeeklyLogsPage() {
         .single();
 
       if (!supervisor) {
-        setMockData();
+        // No supervisor record - keep empty state
+        setLogs([]);
+        setStats({
+          totalLogs: 0,
+          pendingReview: 0,
+          approved: 0,
+          rejected: 0,
+          lateSubmissions: 0,
+          averageHours: 0,
+        });
         setIsLoading(false);
         return;
       }
@@ -204,131 +213,14 @@ export default function SiteSupervisorWeeklyLogsPage() {
 
     } catch (error) {
       console.error("Error fetching weekly logs:", error);
-      setMockData();
+      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
 
-  function setMockData() {
-    const mockLogs: WeeklyLogEntry[] = [
-      {
-        id: "log1",
-        studentId: "s1",
-        studentName: "Ahmed Khan",
-        studentEmail: "ahmed@university.edu.pk",
-        avatarUrl: null,
-        weekNumber: 6,
-        weekStart: "2024-07-08",
-        weekEnd: "2024-07-14",
-        status: "submitted",
-        tasksCompleted: ["Fixed login authentication bug", "Implemented password reset feature", "Wrote unit tests for auth module"],
-        challenges: "Had some difficulty with OAuth integration documentation",
-        learnings: "Learned about JWT token management and refresh token rotation",
-        nextWeekGoals: "Complete OAuth integration, start working on user profile API",
-        hoursWorked: 38,
-        submittedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewedAt: null,
-        supervisorFeedback: null,
-        isLate: false,
-        daysLate: 0,
-      },
-      {
-        id: "log2",
-        studentId: "s2",
-        studentName: "Fatima Ali",
-        studentEmail: "fatima@university.edu.pk",
-        avatarUrl: null,
-        weekNumber: 6,
-        weekStart: "2024-07-08",
-        weekEnd: "2024-07-14",
-        status: "approved",
-        tasksCompleted: ["Built responsive dashboard UI", "Integrated charts library", "Created data visualization components"],
-        challenges: "Performance optimization for large datasets took longer than expected",
-        learnings: "Mastered React Query for server state management",
-        nextWeekGoals: "Add export functionality, implement dark mode",
-        hoursWorked: 42,
-        submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        supervisorFeedback: "Excellent work on the dashboard! The visualizations look great.",
-        isLate: false,
-        daysLate: 0,
-      },
-      {
-        id: "log3",
-        studentId: "s3",
-        studentName: "Usman Malik",
-        studentEmail: "usman@university.edu.pk",
-        avatarUrl: null,
-        weekNumber: 5,
-        weekStart: "2024-07-01",
-        weekEnd: "2024-07-07",
-        status: "submitted",
-        tasksCompleted: ["Set up development environment", "Configured CI/CD pipeline", "Documented deployment process"],
-        challenges: "CI/CD configuration had some issues with environment variables",
-        learnings: "GitHub Actions workflow configuration",
-        nextWeekGoals: "Start working on monitoring setup, create runbooks",
-        hoursWorked: 35,
-        submittedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewedAt: null,
-        supervisorFeedback: null,
-        isLate: true,
-        daysLate: 2,
-      },
-      {
-        id: "log4",
-        studentId: "s1",
-        studentName: "Ahmed Khan",
-        studentEmail: "ahmed@university.edu.pk",
-        avatarUrl: null,
-        weekNumber: 5,
-        weekStart: "2024-07-01",
-        weekEnd: "2024-07-07",
-        status: "approved",
-        tasksCompleted: ["Database schema design", "API endpoint implementation", "Code review participation"],
-        challenges: "None significant this week",
-        learnings: "PostgreSQL indexing strategies",
-        nextWeekGoals: "Focus on authentication features",
-        hoursWorked: 40,
-        submittedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
-        supervisorFeedback: "Good progress on the backend work. Keep it up!",
-        isLate: false,
-        daysLate: 0,
-      },
-      {
-        id: "log5",
-        studentId: "s4",
-        studentName: "Ayesha Raza",
-        studentEmail: "ayesha@university.edu.pk",
-        avatarUrl: null,
-        weekNumber: 6,
-        weekStart: "2024-07-08",
-        weekEnd: "2024-07-14",
-        status: "rejected",
-        tasksCompleted: ["Data cleaning scripts", "Exploratory analysis"],
-        challenges: "Missing data required manual intervention",
-        learnings: "Pandas advanced techniques",
-        nextWeekGoals: "Build prediction model",
-        hoursWorked: 36,
-        submittedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-        supervisorFeedback: "Please provide more details on the methodology used. Also include visualization of results.",
-        isLate: false,
-        daysLate: 0,
-      },
-    ];
-
-    setLogs(mockLogs);
-    setStats({
-      totalLogs: mockLogs.length,
-      pendingReview: mockLogs.filter(l => l.status === "submitted").length,
-      approved: mockLogs.filter(l => l.status === "approved").length,
-      rejected: mockLogs.filter(l => l.status === "rejected").length,
-      lateSubmissions: mockLogs.filter(l => l.isLate).length,
-      averageHours: Math.round(mockLogs.reduce((sum, l) => sum + (l.hoursWorked || 0), 0) / mockLogs.length),
-    });
-  }
+  // Note: Mock data removed - page shows empty state until real data is available
+  // function setMockData() has been removed to prevent showing fake data
 
   // Filter logs
   const filteredLogs = useMemo(() => {

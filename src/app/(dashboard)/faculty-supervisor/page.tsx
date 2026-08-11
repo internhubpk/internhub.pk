@@ -80,137 +80,28 @@ interface TaskNeedingAttention {
   priority: "high" | "medium" | "low";
 }
 
-// Mock data for demonstration (will be replaced with API calls)
-const mockStudents: StudentOverview[] = [
-  {
-    id: "1",
-    name: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    program: "BSc Computer Science",
-    company: "Tech Corp",
-    progress: 75,
-    status: "active",
-    lastActivity: "2024-02-12",
-  },
-  {
-    id: "2",
-    name: "Mike Chen",
-    email: "mike.chen@university.edu",
-    program: "BSc Software Engineering",
-    company: "Web Agency",
-    progress: 60,
-    status: "active",
-    lastActivity: "2024-02-10",
-  },
-  {
-    id: "3",
-    name: "Emily Davis",
-    email: "emily.d@university.edu",
-    program: "BBA Marketing",
-    company: "Growth Co",
-    progress: 45,
-    status: "active",
-    lastActivity: "2024-02-11",
-  },
-  {
-    id: "4",
-    name: "Ahmed Khan",
-    email: "ahmed.k@university.edu",
-    program: "MSc Data Science",
-    company: "Data Insights Ltd",
-    progress: 88,
-    status: "active",
-    lastActivity: "2024-02-12",
-  },
-  {
-    id: "5",
-    name: "Fatima Ali",
-    email: "fatima.a@university.edu",
-    program: "BSc Information Technology",
-    company: "Cloud Systems",
-    progress: 32,
-    status: "on_leave",
-    lastActivity: "2024-02-01",
-  },
-];
-
-const mockRecentSubmissions: RecentSubmission[] = [
-  {
-    id: "1",
-    studentName: "Sarah Johnson",
-    taskTitle: "Week 4 Weekly Log - Frontend Development",
-    submittedAt: "2024-02-12T10:30:00Z",
-    status: "pending",
-    type: "weekly_log",
-  },
-  {
-    id: "2",
-    studentName: "Ahmed Khan",
-    taskTitle: "Data Analysis Report - Q1",
-    submittedAt: "2024-02-12T09:15:00Z",
-    status: "pending",
-    type: "task",
-  },
-  {
-    id: "3",
-    studentName: "Mike Chen",
-    taskTitle: "UI Component Library Documentation",
-    submittedAt: "2024-02-11T16:45:00Z",
-    status: "approved",
-    type: "document",
-  },
-  {
-    id: "4",
-    studentName: "Emily Davis",
-    taskTitle: "Social Media Campaign Analysis",
-    submittedAt: "2024-02-11T14:20:00Z",
-    status: "pending",
-    type: "task",
-  },
-  {
-    id: "5",
-    studentName: "Sarah Johnson",
-    taskTitle: "React Component Testing Suite",
-    submittedAt: "2024-02-10T11:00:00Z",
-    status: "approved",
-    type: "task",
-  },
-];
-
-const mockTasksNeedingAttention: TaskNeedingAttention[] = [
-  {
-    id: "1",
-    title: "Database Design Documentation",
-    assignedTo: "Mike Chen",
-    dueDate: "2024-02-10",
-    status: "overdue",
-    priority: "high",
-  },
-  {
-    id: "2",
-    title: "API Integration Testing",
-    assignedTo: "Sarah Johnson",
-    dueDate: "2024-02-13",
-    status: "pending_review",
-    priority: "medium",
-  },
-  {
-    id: "3",
-    title: "Market Research Survey",
-    assignedTo: "Emily Davis",
-    dueDate: "2024-02-14",
-    status: "not_started",
-    priority: "low",
-  },
-];
+// Default empty states - data will be fetched from database
+const DEFAULT_STUDENTS: StudentOverview[] = [];
+const DEFAULT_SUBMISSIONS: RecentSubmission[] = [];
+const DEFAULT_TASKS: TaskNeedingAttention[] = [];
+const DEFAULT_STATS: FacultyStats = {
+  supervisedStudents: 0,
+  activeInternships: 0,
+  pendingReviews: 0,
+  evaluationsCompleted: 0,
+  tasksPending: 0,
+  tasksCompleted: 0,
+  tasksOverdue: 0,
+  avgProgress: 0,
+};
 
 export default function FacultySupervisorDashboard() {
   const { user, profile } = useAuth();
-  const [stats, setStats] = useState<FacultyStats | null>(null);
+  const [stats, setStats] = useState<FacultyStats>(DEFAULT_STATS);
   const [isLoading, setIsLoading] = useState(true);
-  const [students, setStudents] = useState<StudentOverview[]>(mockStudents);
-  const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>(mockRecentSubmissions);
-  const [tasksNeedingAttention, setTasksNeedingAttention] = useState<TaskNeedingAttention[]>(mockTasksNeedingAttention);
+  const [students, setStudents] = useState<StudentOverview[]>(DEFAULT_STUDENTS);
+  const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>(DEFAULT_SUBMISSIONS);
+  const [tasksNeedingAttention, setTasksNeedingAttention] = useState<TaskNeedingAttention[]>(DEFAULT_TASKS);
 
   useEffect(() => {
     fetchFacultyData();
@@ -244,34 +135,21 @@ export default function FacultySupervisorDashboard() {
           .eq("status", "completed"),
       ]);
 
-      // Calculate additional stats from mock data for demo
-      const totalProgress = mockStudents.reduce((acc, s) => acc + s.progress, 0);
-      const avgProgress = Math.round(totalProgress / mockStudents.length);
-
+      // Set stats from actual database counts
       setStats({
-        supervisedStudents: studentsRes.count || mockStudents.length,
-        activeInternships: activeRes.count || mockStudents.filter(s => s.status === "active").length,
-        pendingReviews: pendingRes.count || recentSubmissions.filter(s => s.status === "pending").length,
-        evaluationsCompleted: completedRes.count || 12,
-        tasksPending: 8,
-        tasksCompleted: 24,
-        tasksOverdue: 2,
-        avgProgress,
+        supervisedStudents: studentsRes.count || 0,
+        activeInternships: activeRes.count || 0,
+        pendingReviews: pendingRes.count || 0,
+        evaluationsCompleted: completedRes.count || 0,
+        tasksPending: 0,
+        tasksCompleted: 0,
+        tasksOverdue: 0,
+        avgProgress: 0,
       });
     } catch (error) {
       console.error("Error fetching faculty stats:", error);
-      // Set fallback stats from mock data
-      const totalProgress = mockStudents.reduce((acc, s) => acc + s.progress, 0);
-      setStats({
-        supervisedStudents: mockStudents.length,
-        activeInternships: mockStudents.filter(s => s.status === "active").length,
-        pendingReviews: recentSubmissions.filter(s => s.status === "pending").length,
-        evaluationsCompleted: 12,
-        tasksPending: 8,
-        tasksCompleted: 24,
-        tasksOverdue: 2,
-        avgProgress: Math.round(totalProgress / mockStudents.length),
-      });
+      // Keep default empty state on error
+      setStats(DEFAULT_STATS);
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 
 // Types
@@ -99,106 +100,66 @@ interface FinalEvaluation {
   created_at: string;
 }
 
-// Mock data
-const mockEvaluations: FinalEvaluation[] = [
-  {
-    id: "eval_001",
-    intern_id: "stu_009",
-    intern_name: "Rachel Green",
-    intern_email: "rachel.g@business.edu",
-    internship_id: "int_002",
-    internship_title: "Marketing Intern",
-    supervisor_name: "Fatima Ali",
-    status: "approved",
-    overall_rating: 4.9,
-    skills_rating: 5,
-    attitude_rating: 5,
-    punctuality_rating: 4.8,
-    quality_rating: 4.9,
-    comments: "Rachel has been an exceptional intern throughout her tenure. She consistently delivered high-quality work and showed great initiative in taking on new challenges.",
-    strengths: ["Creative problem-solving", "Strong communication", "Quick learner"],
-    areas_for_improvement: ["Could benefit from more data analysis training"],
-    recommendation: "strong_hire",
-    certificate_issued: true,
-    submitted_at: "2024-04-14T10:00:00Z",
-    evaluated_by: "HR Admin",
-    created_at: "2024-04-12T09:00:00Z",
-  },
-  {
-    id: "eval_002",
-    intern_id: "stu_010",
-    intern_name: "Michael Brown",
-    intern_email: "michael.b@tech.edu",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    supervisor_name: "Ahmed Khan",
-    status: "submitted",
-    overall_rating: 4.2,
-    skills_rating: 4.5,
-    attitude_rating: 4,
-    punctuality_rating: 3.8,
-    quality_rating: 4.3,
-    comments: "Michael is a solid developer with good technical skills. He would benefit from more proactive communication.",
-    strengths: ["Technical proficiency", "Code quality", "Problem solving"],
-    areas_for_improvement: ["Communication", "Time management"],
-    recommendation: "hire",
-    certificate_issued: false,
-    submitted_at: "2024-04-15T14:30:00Z",
-    evaluated_by: "Ahmed Khan",
-    created_at: "2024-04-13T11:00:00Z",
-  },
-  {
-    id: "eval_003",
-    intern_id: "stu_011",
-    intern_name: "Sarah Johnson",
-    intern_email: "sarah.j@university.edu",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    supervisor_name: "Ahmed Khan",
-    status: "in_progress",
-    overall_rating: null,
-    skills_rating: null,
-    attitude_rating: null,
-    punctuality_rating: null,
-    quality_rating: null,
-    comments: null,
-    strengths: null,
-    areas_for_improvement: null,
-    recommendation: null,
-    certificate_issued: false,
-    submitted_at: null,
-    evaluated_by: null,
-    created_at: "2024-04-16T08:00:00Z",
-  },
-  {
-    id: "eval_004",
-    intern_id: "stu_012",
-    intern_name: "David Lee",
-    intern_email: "david.l@design.edu",
-    internship_id: "int_004",
-    internship_title: "UI/UX Design Intern",
-    supervisor_name: null,
-    status: "pending",
-    overall_rating: null,
-    skills_rating: null,
-    attitude_rating: null,
-    punctuality_rating: null,
-    quality_rating: null,
-    comments: null,
-    strengths: null,
-    areas_for_improvement: null,
-    recommendation: null,
-    certificate_issued: false,
-    submitted_at: null,
-    evaluated_by: null,
-    created_at: "2024-04-17T10:30:00Z",
-  },
-];
+// Default empty state - evaluations will be fetched from database
+const DEFAULT_EVALUATIONS: FinalEvaluation[] = [];
 
 const programs = ["All Programs", "Software Engineering Intern", "Marketing Intern", "Data Science Intern", "UI/UX Design Intern"];
 
 export default function CompanyHREvaluationsPage() {
-  const [evaluations] = useState<FinalEvaluation[]>(mockEvaluations);
+  const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchEvaluations();
+  }, []);
+
+  async function fetchEvaluations() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select(`
+          *,
+          students!inner(student_name, email),
+          internships!inner(title)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const evals: FinalEvaluation[] = data.map((ev: any) => ({
+          id: ev.id,
+          intern_id: ev.intern_id,
+          intern_name: ev.students?.student_name || 'Unknown',
+          intern_email: ev.students?.email || '',
+          internship_id: ev.internship_id,
+          internship_title: ev.internships?.title || 'Unknown Program',
+          supervisor_name: ev.supervisor_name,
+          status: ev.status || 'pending',
+          overall_rating: ev.overall_rating,
+          skills_rating: ev.skills_rating,
+          attitude_rating: ev.attitude_rating,
+          punctuality_rating: ev.punctuality_rating,
+          quality_rating: ev.quality_rating,
+          comments: ev.comments,
+          strengths: ev.strengths,
+          areas_for_improvement: ev.areas_for_improvement,
+          recommendation: ev.recommendation,
+          certificate_issued: ev.certificate_issued || false,
+          submitted_at: ev.submitted_at,
+          evaluated_by: ev.evaluated_by,
+          created_at: ev.created_at,
+        }));
+        setEvaluations(evals);
+      }
+    } catch (error) {
+      console.error("Error fetching evaluations:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");

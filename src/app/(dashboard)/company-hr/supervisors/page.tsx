@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface SiteSupervisor {
@@ -89,69 +90,8 @@ interface SiteSupervisor {
   last_login?: string | null;
 }
 
-// Mock data
-const mockSupervisors: SiteSupervisor[] = [
-  {
-    id: "1",
-    user_id: "user_001",
-    first_name: "Ahmed",
-    last_name: "Khan",
-    email: "ahmed.khan@company.com",
-    phone: "+92-300-1234567",
-    department_focus: "Software Engineering",
-    specialization: "Full-Stack Development",
-    assigned_programs: ["Software Engineering Internship - Summer 2024"],
-    is_active: true,
-    assigned_interns_count: 6,
-    created_at: "2024-01-15T10:00:00Z",
-    last_login: "2024-02-10T08:30:00Z",
-  },
-  {
-    id: "2",
-    user_id: "user_002",
-    first_name: "Fatima",
-    last_name: "Ali",
-    email: "fatima.ali@company.com",
-    phone: "+92-301-9876543",
-    department_focus: "Marketing & Design",
-    specialization: "Digital Marketing",
-    assigned_programs: ["Digital Marketing & Social Media Intern"],
-    is_active: true,
-    assigned_interns_count: 4,
-    created_at: "2024-01-20T14:00:00Z",
-    last_login: "2024-02-09T16:45:00Z",
-  },
-  {
-    id: "3",
-    user_id: "user_003",
-    first_name: "Omar",
-    last_name: "Hassan",
-    email: "omar.hassan@company.com",
-    phone: null,
-    department_focus: "Data Science",
-    specialization: "Machine Learning & Analytics",
-    assigned_programs: ["Data Analytics Research Program", "Software Engineering Internship - Summer 2024"],
-    is_active: true,
-    assigned_interns_count: 8,
-    created_at: "2024-02-01T09:00:00Z",
-    last_login: "2024-02-11T07:15:00Z",
-  },
-  {
-    id: "4",
-    user_id: "user_004",
-    first_name: "Ayesha",
-    last_name: "Malik",
-    email: "ayesha.malik@company.com",
-    phone: "+92-332-4567890",
-    department_focus: "UI/UX Design",
-    specialization: "User Experience Research",
-    assigned_programs: ["UI/UX Design Internship"],
-    is_active: false,
-    assigned_interns_count: 0,
-    created_at: "2023-12-10T11:30:00Z",
-    last_login: "2024-01-20T12:00:00Z",
-  },
-];
+// Default empty state - supervisors will be fetched from database
+const DEFAULT_SUPERVISORS: SiteSupervisor[] = [];
 
 const availablePrograms = [
   "Software Engineering Internship - Summer 2024",
@@ -171,7 +111,48 @@ const departments = [
 ];
 
 export default function CompanyHRSupervisorsPage() {
-  const [supervisors, setSupervisors] = useState<SiteSupervisor[]>(mockSupervisors);
+  const [supervisors, setSupervisors] = useState<SiteSupervisor[]>(DEFAULT_SUPERVISORS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchSupervisors();
+  }, []);
+
+  async function fetchSupervisors() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('site_supervisors')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const sups: SiteSupervisor[] = data.map((sup: any) => ({
+          id: sup.id,
+          user_id: sup.user_id,
+          first_name: sup.first_name || '',
+          last_name: sup.last_name || '',
+          email: sup.email || '',
+          phone: sup.phone,
+          department_focus: sup.department_focus,
+          specialization: sup.specialization,
+          assigned_programs: sup.assigned_programs || [],
+          is_active: sup.is_active ?? true,
+          assigned_interns_count: sup.assigned_interns_count || 0,
+          created_at: sup.created_at,
+          last_login: sup.last_login,
+        }));
+        setSupervisors(sups);
+      }
+    } catch (error) {
+      console.error("Error fetching supervisors:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);

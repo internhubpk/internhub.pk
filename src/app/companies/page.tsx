@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { SiteNav } from "@/components/layout/site-nav";
@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   TrendingUp,
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 // ============ TYPES ============
 interface CompanyData {
@@ -50,268 +51,8 @@ interface CompanyData {
   website?: string;
 }
 
-// ============ MOCK DATA ============
-const mockCompanies: CompanyData[] = [
-  {
-    id: "1",
-    name: "Systems Limited",
-    slug: "systems-limited",
-    logo_url: null,
-    industry: "Software & IT Services",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 24,
-    rating: 4.5,
-    review_count: 128,
-    employee_count: "5000+",
-    is_verified: true,
-    is_featured: true,
-    description:
-      "Pakistan's largest software export company providing digital transformation solutions globally.",
-    website: "https://systemslimited.com",
-  },
-  {
-    id: "2",
-    name: "10Pearls",
-    slug: "10pearls",
-    logo_url: null,
-    industry: "Software Development",
-    city: "Islamabad",
-    province: "Federal",
-    open_positions: 18,
-    rating: 4.3,
-    review_count: 95,
-    employee_count: "1000+",
-    is_verified: true,
-    is_featured: true,
-    description:
-      "End-to-end digital product development company with offices in multiple countries.",
-    website: "https://10pearls.com",
-  },
-  {
-    id: "3",
-    name: "Arbisoft",
-    slug: "arbisoft",
-    logo_url: null,
-    industry: "AI & Machine Learning",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 15,
-    rating: 4.4,
-    review_count: 87,
-    employee_count: "800+",
-    is_verified: true,
-    description:
-      "Innovative technology company specializing in AI/ML solutions and data engineering.",
-    website: "https://arbisoft.com",
-  },
-  {
-    id: "4",
-    name: "NetSol Technologies",
-    slug: "netsol",
-    logo_url: null,
-    industry: "FinTech & Enterprise Software",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 12,
-    rating: 4.1,
-    review_count: 156,
-    employee_count: "2000+",
-    is_verified: true,
-    is_featured: true,
-    description:
-      "Global leader in leasing and finance software solutions with presence in 30+ countries.",
-    website: "https://netsoltech.com",
-  },
-  {
-    id: "5",
-    name: "PitBull Labs",
-    slug: "pitbull-labs",
-    logo_url: null,
-    industry: "Mobile & Web Development",
-    city: "Karachi",
-    province: "Sindh",
-    open_positions: 9,
-    rating: 4.6,
-    review_count: 64,
-    employee_count: "200+",
-    is_verified: true,
-    description:
-      "Fast-growing startup specializing in mobile apps and web platforms for global clients.",
-    website: "https://pitbulllabs.pk",
-  },
-  {
-    id: "6",
-    name: "Contour Software",
-    slug: "contour-software",
-    logo_url: null,
-    industry: "Enterprise Software",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 20,
-    rating: 4.0,
-    review_count: 112,
-    employee_count: "1500+",
-    is_verified: true,
-    description:
-      "Offshore software development center for North American technology companies.",
-    website: "https://contoursoftware.com",
-  },
-  {
-    id: "7",
-    name: "Techlogix",
-    slug: "techlogix",
-    logo_url: null,
-    industry: "IT Consulting & Services",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 14,
-    rating: 4.2,
-    review_count: 78,
-    employee_count: "1200+",
-    is_verified: true,
-    description:
-      "Full-service IT consulting firm delivering enterprise solutions to Fortune 500 companies.",
-    website: "https://techlogix.com",
-  },
-  {
-    id: "8",
-    name: "TRG Pakistan",
-    slug: "trg-pakistan",
-    logo_url: null,
-    industry: "IT Services & Outsourcing",
-    city: "Karachi",
-    province: "Sindh",
-    open_positions: 16,
-    rating: 3.9,
-    review_count: 203,
-    employee_count: "3000+",
-    is_verified: true,
-    description:
-      "One of Pakistan's largest IT outsourcing companies serving global clients.",
-    website: "https://trgpakistan.com",
-  },
-  {
-    id: "9",
-    name: "DPL (Data Processing Ltd)",
-    slug: "dpl",
-    logo_url: null,
-    industry: "Cloud & DevOps",
-    city: "Islamabad",
-    province: "Federal",
-    open_positions: 11,
-    rating: 4.4,
-    review_count: 52,
-    employee_count: "600+",
-    is_verified: true,
-    description:
-      "Specialized in cloud infrastructure, DevOps automation, and platform engineering.",
-    website: "https://dpl.com.pk",
-  },
-  {
-    id: "10",
-    name: "OZI Technology",
-    slug: "ozi-technology",
-    logo_url: null,
-    industry: "E-commerce & Retail Tech",
-    city: "Karachi",
-    province: "Sindh",
-    open_positions: 7,
-    rating: 4.3,
-    review_count: 41,
-    employee_count: "150+",
-    is_verified: false,
-    description:
-      "E-commerce solutions provider helping businesses establish and grow online presence.",
-    website: "https://ozi.tech",
-  },
-  {
-    id: "11",
-    name: "VrooTek",
-    slug: "vrootek",
-    logo_url: null,
-    industry: "Healthcare IT",
-    city: "Islamabad",
-    province: "Federal",
-    open_positions: 8,
-    rating: 4.5,
-    review_count: 38,
-    employee_count: "180+",
-    is_verified: true,
-    description:
-      "Healthcare technology company building innovative solutions for medical providers.",
-    website: "https://vrootek.com",
-  },
-  {
-    id: "12",
-    name: "Motifz (Pvt) Ltd",
-    slug: "motifz",
-    logo_url: null,
-    industry: "Digital Agency & Design",
-    city: "Lahore",
-    province: "Punjab",
-    open_positions: 6,
-    rating: 4.7,
-    review_count: 29,
-    employee_count: "80+",
-    is_verified: true,
-    description:
-      "Award-winning digital agency specializing in UI/UX design and brand experiences.",
-    website: "https://motifz.com",
-  },
-  {
-    id: "13",
-    name: "Jazz (VEON Group)",
-    slug: "jazz",
-    logo_url: null,
-    industry: "Telecommunications",
-    city: "Islamabad",
-    province: "Federal",
-    open_positions: 22,
-    rating: 3.8,
-    review_count: 287,
-    employee_count: "2500+",
-    is_verified: true,
-    is_featured: true,
-    description:
-      "Pakistan's leading telecommunications company driving digital innovation.",
-    website: "https://jazz.com.pk",
-  },
-  {
-    id: "14",
-    name: "SadaPay",
-    slug: "sadapay",
-    logo_url: null,
-    industry: "FinTech & Digital Banking",
-    city: "Karachi",
-    province: "Sindh",
-    open_positions: 10,
-    rating: 4.8,
-    review_count: 45,
-    employee_count: "200+",
-    is_verified: true,
-    description:
-      "Fast-growing neobank revolutionizing digital payments and financial services in Pakistan.",
-    website: "https://sadapay.pk",
-  },
-  {
-    id: "15",
-    name: "Zameen.com",
-    slug: "zameen",
-    logo_url: null,
-    industry: "PropTech & Real Estate",
-    city: "Karachi",
-    province: "Sindh",
-    open_positions: 13,
-    rating: 4.0,
-    review_count: 98,
-    employee_count: "800+",
-    is_verified: true,
-    description:
-      "South Asia's largest property portal transforming real estate through technology.",
-    website: "https://zameen.com",
-  },
-];
+// Default empty state - companies will be fetched from database
+const DEFAULT_COMPANIES: CompanyData[] = [];
 
 const industries = [
   "all",
@@ -349,13 +90,58 @@ const itemVariants = {
 
 // ============ COMPONENT ============
 export default function CompaniesPage() {
+  const [companies, setCompanies] = useState<CompanyData[]>(DEFAULT_COMPANIES);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndustry, setSelectedIndustry] = useState("all");
   const [selectedProvince, setSelectedProvince] = useState("all");
 
+  useEffect(() => {
+    fetchCompanies();
+  }, []);
+
+  async function fetchCompanies() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('is_verified', true)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const companyList: CompanyData[] = data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug || c.name.toLowerCase().replace(/\s+/g, '-'),
+          logo_url: c.logo_url,
+          industry: c.industry || 'Technology',
+          city: c.city || '',
+          province: c.province || '',
+          open_positions: c.open_positions || 0,
+          rating: c.rating || 0,
+          review_count: c.review_count || 0,
+          employee_count: c.employee_count || '0',
+          is_verified: c.is_verified ?? true,
+          is_featured: c.is_featured ?? false,
+          description: c.description || '',
+          website: c.website,
+        }));
+        setCompanies(companyList);
+      }
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   // Filter companies
   const filteredCompanies = useMemo(() => {
-    return mockCompanies.filter((company) => {
+    return companies.filter((company) => {
       const matchesSearch =
         company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         company.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -401,14 +187,14 @@ export default function CompaniesPage() {
               <p className="text-muted-foreground text-lg max-w-2xl">
                 Discover{" "}
                 <span className="font-semibold text-foreground">
-                  {mockCompanies.length}+
+                  {companies.length}+
                 </span>{" "}
                 leading Pakistani companies hiring interns through InternHub.
               </p>
             </div>
             <Badge variant="secondary" className="w-fit text-sm py-1.5 px-4">
               <TrendingUp className="h-4 w-4 mr-2" />
-              {mockCompanies.reduce((acc, c) => acc + c.open_positions, 0)}+
+              {companies.reduce((acc, c) => acc + c.open_positions, 0)}+
               Open Positions
             </Badge>
           </div>
@@ -482,7 +268,7 @@ export default function CompaniesPage() {
             <span className="font-semibold text-foreground">
               {filteredCompanies.length}
             </span>{" "}
-            of {mockCompanies.length} companies
+            of {companies.length} companies
           </p>
           <Filter className="h-4 w-4 text-muted-foreground hidden sm:block" />
         </motion.div>

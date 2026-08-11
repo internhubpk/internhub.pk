@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion } from "framer-motion"; 
 import { 
   Shield, 
   GraduationCap, 
@@ -20,7 +20,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 interface RoleOption {
@@ -90,9 +89,60 @@ const ROLE_OPTIONS: RoleOption[] = [
   },
 ];
 
+// Safe auth hook that works with/without provider
+function useSafeAuth() {
+  const [authState, setAuthState] = useState({
+    user: null as any,
+    profile: null as any,
+    isLoading: true,
+    logout: async () => {},
+  });
+
+  useEffect(() => {
+    async function getAuth() {
+      try {
+        const supabase = createClient();
+        if (!supabase) {
+          setAuthState(prev => ({ ...prev, isLoading: false }));
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        let profile = null;
+        if (user) {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("user_id", user.id)
+            .single();
+          
+          profile = profileData;
+        }
+
+        setAuthState({
+          user,
+          profile,
+          isLoading: false,
+          logout: async () => {
+            await supabase.auth.signOut();
+          },
+        });
+      } catch (error) {
+        console.error("Auth error:", error);
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+      }
+    }
+    
+    getAuth();
+  }, []);
+
+  return authState;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, profile, isLoading: authLoading } = useAuth();
+  const { user, profile, isLoading: authLoading, logout } = useSafeAuth();
   const [isDetecting, setIsDetecting] = useState(true);
   const [detectedRole, setDetectedRole] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<Record<string, any>>({});
@@ -102,7 +152,7 @@ export default function OnboardingPage() {
     const detectRole = async () => {
       const info: Record<string, any> = {};
 
-      // Check 1: Auth context profile
+      // Check 1: Profile from DB
       if (profile?.role) {
         info.profileRole = profile.role;
         setDetectedRole(profile.role);
@@ -153,27 +203,48 @@ export default function OnboardingPage() {
     if (!authLoading && user) {
       // Small delay to show we're working on it
       setTimeout(detectRole, 500);
+    } else if (!authLoading && !user) {
+      setIsDetecting(false);
     }
-  }, [authLoading, user, profile, detectedRole]);
+  }, [authLoading, user, profile]);
 
   const handleSelectRole = (path: string) => {
     router.push(path);
   };
 
   const handleLogout = async () => {
-    const { logout } = useAuth();
     await logout();
     router.push("/login");
   };
 
   // Still loading auth
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Loading your account...</p>
         </div>
+      </div>
+    );
+  }
+
+  // No user - redirect to login
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
+            <h2 className="text-xl font-semibold mb-2">Not Signed In</h2>
+            <p className="text-muted-foreground mb-4">
+              Please sign in to access this page.
+            </p>
+            <Button onClick={() => router.push("/login")}>
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

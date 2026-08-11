@@ -178,7 +178,7 @@ export default function SiteSupervisorEvaluationsPage() {
         .single();
 
       if (!supervisor) {
-        setMockData();
+        // No supervisor record - keep empty state
         setIsLoading(false);
         return;
       }
@@ -259,101 +259,14 @@ export default function SiteSupervisorEvaluationsPage() {
 
     } catch (error) {
       console.error("Error fetching evaluation data:", error);
-      setMockData();
+      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
 
-  function setMockData() {
-    setStudents([
-      {
-        id: "1",
-        studentId: "s1",
-        name: "Ahmed Khan",
-        email: "ahmed@university.edu.pk",
-        internshipTitle: "Software Development Intern",
-        lastEvaluationDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 15,
-        evaluationStatus: "current",
-      },
-      {
-        id: "2",
-        studentId: "s2",
-        name: "Fatima Ali",
-        email: "fatima@university.edu.pk",
-        internshipTitle: "Full Stack Developer Intern",
-        lastEvaluationDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 8,
-        evaluationStatus: "current",
-      },
-      {
-        id: "3",
-        studentId: "s3",
-        name: "Usman Malik",
-        email: "usman@university.edu.pk",
-        internshipTitle: "IT Support Intern",
-        lastEvaluationDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 25,
-        evaluationStatus: "overdue",
-      },
-      {
-        id: "4",
-        studentId: "s4",
-        name: "Ayesha Raza",
-        email: "ayesha@university.edu.pk",
-        internshipTitle: "Data Analytics Intern",
-        lastEvaluationDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 20,
-        evaluationStatus: "due",
-      },
-    ]);
-
-    setEvaluations([
-      {
-        id: "e1",
-        studentId: "s2",
-        studentName: "Fatima Ali",
-        periodStart: "2024-07-01",
-        periodEnd: "2024-07-21",
-        overallRating: 8.9,
-        decision: "satisfactory",
-        submittedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-        signedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-        technicalScore: 9.0,
-        professionalScore: 9.0,
-        workQualityScore: 8.75,
-      },
-      {
-        id: "e2",
-        studentId: "s1",
-        studentName: "Ahmed Khan",
-        periodStart: "2024-07-01",
-        periodEnd: "2024-07-21",
-        overallRating: 7.6,
-        decision: "satisfactory",
-        submittedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        signedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        technicalScore: 7.5,
-        professionalScore: 7.75,
-        workQualityScore: 7.5,
-      },
-      {
-        id: "e3",
-        studentId: "s3",
-        studentName: "Usman Malik",
-        periodStart: "2024-06-10",
-        periodEnd: "2024-06-30",
-        overallRating: 5.5,
-        decision: "needs_improvement",
-        submittedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        signedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        technicalScore: 5.25,
-        professionalScore: 5.5,
-        workQualityScore: 5.75,
-      },
-    ]);
-  }
+  // Note: Mock data removed - page shows empty state until real data is available
+  // function setMockData() has been removed to prevent showing fake data
 
   // Calculate computed values
   const calculatedScores = useMemo(() => {

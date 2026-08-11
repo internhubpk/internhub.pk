@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
 
 // Types
@@ -87,102 +88,62 @@ interface DocumentTemplate {
   preview_url?: string;
 }
 
-// Mock data
-const mockDocuments: InternDocument[] = [
-  {
-    id: "doc_001",
-    intern_id: "stu_005",
-    intern_name: "Emily Davis",
-    intern_email: "emily.d@business.edu",
-    document_type: "offer_letter",
-    file_name: "Offer_Letter_Emily_Davis.pdf",
-    file_url: "#",
-    file_size: 245000,
-    uploaded_at: "2024-06-10T09:30:00Z",
-    uploaded_by: "HR Admin",
-    status: "verified",
-  },
-  {
-    id: "doc_002",
-    intern_id: "stu_006",
-    intern_name: "James Miller",
-    intern_email: "james.m@tech.edu",
-    document_type: "offer_letter",
-    file_name: "Offer_Letter_James_Miller.pdf",
-    file_url: "#",
-    file_size: 238000,
-    uploaded_at: "2024-06-05T14:20:00Z",
-    uploaded_by: "HR Admin",
-    status: "verified",
-  },
-  {
-    id: "doc_003",
-    intern_id: "stu_007",
-    intern_name: "Sophie Turner",
-    intern_email: "sophie.t@state.edu",
-    document_type: "offer_letter",
-    file_name: "Offer_Letter_Sophie_Turner.pdf",
-    file_url: "#",
-    file_size: 251000,
-    uploaded_at: "2024-07-02T11:15:00Z",
-    uploaded_by: "HR Admin",
-    status: "verified",
-  },
-  {
-    id: "doc_004",
-    intern_id: "stu_010",
-    intern_name: "Rachel Green",
-    intern_email: "rachel.g@business.edu",
-    document_type: "certificate",
-    file_name: "Completion_Certificate_Rachel_Green.pdf",
-    file_url: "#",
-    file_size: 512000,
-    uploaded_at: "2024-04-15T16:45:00Z",
-    uploaded_by: "HR Admin",
-    status: "verified",
-  },
-];
-
-const mockInterns = [
-  { id: "stu_005", name: "Emily Davis", email: "emily.d@business.edu", program: "Marketing Intern", has_offer_letter: true, has_certificate: false },
-  { id: "stu_006", name: "James Miller", email: "james.m@tech.edu", program: "Software Engineering Intern", has_offer_letter: true, has_certificate: false },
-  { id: "stu_007", name: "Sophie Turner", email: "sophie.t@state.edu", program: "Data Science Intern", has_offer_letter: true, has_certificate: false },
-  { id: "stu_008", name: "David Kim", email: "david.k@design.edu", program: "UI/UX Design Intern", has_offer_letter: false, has_certificate: false },
-  { id: "stu_009", name: "Rachel Green", email: "rachel.g@business.edu", program: "Marketing Intern", has_offer_letter: true, has_certificate: true },
-  { id: "stu_011", name: "Michael Brown", email: "michael.b@tech.edu", program: "Software Engineering Intern", has_offer_letter: true, has_certificate: true },
-];
-
-const mockTemplates: DocumentTemplate[] = [
-  {
-    id: "tpl_001",
-    name: "Standard Offer Letter Template",
-    type: "offer_letter",
-    description: "Professional offer letter template for all internship positions",
-  },
-  {
-    id: "tpl_002",
-    name: "Technical Internship Offer Letter",
-    type: "offer_letter",
-    description: "Specialized template for technical/engineering roles",
-  },
-  {
-    id: "tpl_003",
-    name: "Internship Completion Certificate",
-    type: "certificate",
-    description: "Official certificate template for completed internships",
-  },
-  {
-    id: "tpl_004",
-    name: "Certificate of Excellence",
-    type: "certificate",
-    description: "Premium certificate template for outstanding performers",
-  },
+// Default empty states - data will be fetched from database
+const DEFAULT_DOCUMENTS: InternDocument[] = [];
+const DEFAULT_INTERNS: Array<{id: string; name: string; email: string; program: string; has_offer_letter: boolean; has_certificate: boolean}> = [];
+const DEFAULT_TEMPLATES: DocumentTemplate[] = [
+  { id: "tpl_001", name: "Standard Offer Letter Template", type: "offer_letter", description: "Professional offer letter template for all internship positions" },
+  { id: "tpl_002", name: "Technical Internship Offer Letter", type: "offer_letter", description: "Specialized template for technical/engineering roles" },
+  { id: "tpl_003", name: "Internship Completion Certificate", type: "certificate", description: "Official certificate template for completed internships" },
+  { id: "tpl_004", name: "Certificate of Excellence", type: "certificate", description: "Premium certificate template for outstanding performers" },
 ];
 
 export default function CompanyHRDocumentsPage() {
-  const [documents] = useState<InternDocument[]>(mockDocuments);
-  const [interns] = useState(mockInterns);
-  const [templates] = useState<DocumentTemplate[]>(mockTemplates);
+  const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
+  const [interns, setInterns] = useState(DEFAULT_INTERNS);
+  const [templates] = useState<DocumentTemplate[]>(DEFAULT_TEMPLATES);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  async function fetchDocuments() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('documents')
+        .select(`
+          *,
+          students!inner(student_name, email)
+        `)
+        .order('uploaded_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const docs: InternDocument[] = data.map((doc: any) => ({
+          id: doc.id,
+          intern_id: doc.student_id,
+          intern_name: doc.students?.student_name || 'Unknown',
+          intern_email: doc.students?.email || '',
+          document_type: doc.document_type || 'offer_letter',
+          file_name: doc.file_name || 'document.pdf',
+          file_url: doc.file_url,
+          file_size: doc.file_size || 0,
+          uploaded_at: doc.uploaded_at || doc.created_at,
+          uploaded_by: doc.uploaded_by,
+          status: doc.status || 'pending',
+        }));
+        setDocuments(docs);
+      }
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
   const [isUploadOpen, setIsUploadOpen] = useState(false);

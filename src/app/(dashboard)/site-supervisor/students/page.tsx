@@ -130,8 +130,8 @@ export default function SiteSupervisorStudentsPage() {
         .single();
 
       if (!supervisor) {
-        // Use mock data for demo
-        setMockStudents();
+        // No supervisor record - keep empty state
+        setStudents([]);
         setIsLoading(false);
         return;
       }
@@ -204,126 +204,14 @@ export default function SiteSupervisorStudentsPage() {
       setStudents(studentData);
     } catch (error) {
       console.error("Error fetching students:", error);
-      setMockStudents();
+      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
 
-  function setMockStudents() {
-    setStudents([
-      {
-        id: "1",
-        studentId: "s1",
-        name: "Ahmed Khan",
-        email: "ahmed.khan@university.edu.pk",
-        phone: "+92-300-1234567",
-        avatarUrl: null,
-        enrollmentNumber: "CS-2021-001",
-        university: "NUST",
-        department: "Computer Science",
-        program: "BS Computer Science",
-        internshipTitle: "Software Development Intern",
-        company: "Tech Solutions Pvt Ltd",
-        status: "active",
-        startDate: "2024-06-01",
-        endDate: "2024-08-30",
-        progress: 72,
-        lastEvaluationDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 15,
-        performanceRating: "good",
-        overallRating: 7.8,
-      },
-      {
-        id: "2",
-        studentId: "s2",
-        name: "Fatima Ali",
-        email: "fatima.ali@university.edu.pk",
-        phone: "+92-301-7654321",
-        avatarUrl: null,
-        enrollmentNumber: "SE-2021-015",
-        university: "NUST",
-        department: "Software Engineering",
-        program: "BS Software Engineering",
-        internshipTitle: "Full Stack Developer Intern",
-        company: "InnovateTech",
-        status: "active",
-        startDate: "2024-06-01",
-        endDate: "2024-08-30",
-        progress: 85,
-        lastEvaluationDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 10,
-        performanceRating: "excellent",
-        overallRating: 8.9,
-      },
-      {
-        id: "3",
-        studentId: "s3",
-        name: "Usman Malik",
-        email: "usman.malik@university.edu.pk",
-        phone: "+92-322-9876543",
-        avatarUrl: null,
-        enrollmentNumber: "IT-2021-023",
-        university: "NUST",
-        department: "Information Technology",
-        program: "BS Information Technology",
-        internshipTitle: "IT Support Intern",
-        company: "Digital Systems Inc",
-        status: "active",
-        startDate: "2024-06-15",
-        endDate: "2024-09-13",
-        progress: 45,
-        lastEvaluationDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 25,
-        performanceRating: "needs_attention",
-        overallRating: 5.5,
-      },
-      {
-        id: "4",
-        studentId: "s4",
-        name: "Ayesha Raza",
-        email: "ayesha.raza@university.edu.pk",
-        phone: "+92-333-4567890",
-        avatarUrl: null,
-        enrollmentNumber: "DS-2021-008",
-        university: "NUST",
-        department: "Data Science",
-        program: "BS Data Science",
-        internshipTitle: "Data Analytics Intern",
-        company: "Analytics Pro",
-        status: "completed",
-        startDate: "2024-05-01",
-        endDate: "2024-07-31",
-        progress: 100,
-        lastEvaluationDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 30,
-        performanceRating: "excellent",
-        overallRating: 9.2,
-      },
-      {
-        id: "5",
-        studentId: "s5",
-        name: "Hassan Shah",
-        email: "hassan.shah@university.edu.pk",
-        phone: "+92-345-1112233",
-        avatarUrl: null,
-        enrollmentNumber: "CS-2021-042",
-        university: "NUST",
-        department: "Computer Science",
-        program: "BS Computer Science",
-        internshipTitle: "Web Development Intern",
-        company: "WebCraft Agency",
-        status: "on_leave",
-        startDate: "2024-07-01",
-        endDate: "2024-09-30",
-        progress: 35,
-        lastEvaluationDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 5,
-        performanceRating: "satisfactory",
-        overallRating: 6.5,
-      },
-    ]);
-  }
+  // Note: Mock data removed - page shows empty state until real data is available
+  // function setMockStudents() has been removed to prevent showing fake data
 
   async function openStudentDetail(student: StudentDetail) {
     setSelectedStudent(student);

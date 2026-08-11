@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { SiteNav } from "@/components/layout/site-nav";
+import { createClient } from "@/utils/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -68,261 +69,8 @@ interface InternshipListing {
   type: string; // full-time, part-time
 }
 
-// ============ MOCK DATA ============
-const mockInternships: InternshipListing[] = [
-  {
-    id: "1",
-    title: "Frontend Developer Intern",
-    company_name: "Systems Limited",
-    company_slug: "systems-limited",
-    location: "Lahore",
-    is_remote: false,
-    is_paid: true,
-    stipend: 35000,
-    duration_weeks: 12,
-    required_skills: ["React", "TypeScript", "Tailwind CSS", "Git"],
-    description:
-      "Join our frontend team to build scalable web applications using modern technologies. You'll work on real projects and learn from senior developers.",
-    posted_date: "2024-01-15",
-    deadline: "2024-02-28",
-    applicant_count: 45,
-    rating: 4.5,
-    review_count: 128,
-    category: "Software Development",
-    type: "Full-time",
-  },
-  {
-    id: "2",
-    title: "Data Science Intern",
-    company_name: "10Pearls",
-    company_slug: "10pearls",
-    location: "Islamabad",
-    is_remote: true,
-    is_paid: true,
-    stipend: 40000,
-    duration_weeks: 16,
-    required_skills: ["Python", "Machine Learning", "SQL", "Pandas"],
-    description:
-      "Work on cutting-edge ML projects and data analysis. Perfect opportunity to apply your academic knowledge in a professional setting.",
-    posted_date: "2024-01-18",
-    deadline: "2024-03-05",
-    applicant_count: 32,
-    rating: 4.3,
-    review_count: 95,
-    category: "Data Science & AI",
-    type: "Full-time",
-  },
-  {
-    id: "3",
-    title: "Mobile App Developer (Flutter)",
-    company_name: "PitBull Labs",
-    company_slug: "pitbull-labs",
-    location: "Karachi",
-    is_remote: false,
-    is_paid: true,
-    stipend: 30000,
-    duration_weeks: 8,
-    required_skills: ["Flutter", "Dart", "Firebase", "REST APIs"],
-    description:
-      "Build cross-platform mobile applications for our diverse client base. Great opportunity for those passionate about mobile development.",
-    posted_date: "2024-01-20",
-    deadline: "2024-02-20",
-    applicant_count: 28,
-    rating: 4.6,
-    review_count: 64,
-    category: "Mobile Development",
-    type: "Full-time",
-  },
-  {
-    id: "4",
-    title: "UI/UX Design Intern",
-    company_name: "Motifz (Pvt) Ltd",
-    company_slug: "motifz",
-    location: "Lahore",
-    is_remote: true,
-    is_paid: true,
-    stipend: 25000,
-    duration_weeks: 10,
-    required_skills: ["Figma", "Adobe XD", "Prototyping", "User Research"],
-    description:
-      "Create beautiful and intuitive user interfaces for web and mobile applications. Work directly with clients and design leads.",
-    posted_date: "2024-01-22",
-    deadline: "2024-03-15",
-    applicant_count: 19,
-    rating: 4.7,
-    review_count: 29,
-    category: "Design",
-    type: "Part-time",
-  },
-  {
-    id: "5",
-    title: "Cloud DevOps Engineer Intern",
-    company_name: "DPL (Data Processing Ltd)",
-    company_slug: "dpl",
-    location: "Islamabad",
-    is_remote: false,
-    is_paid: true,
-    stipend: 45000,
-    duration_weeks: 12,
-    required_skills: ["AWS", "Docker", "Kubernetes", "Terraform"],
-    description:
-      "Learn cloud infrastructure management and DevOps best practices. Work with enterprise-scale deployments.",
-    posted_date: "2024-01-25",
-    deadline: "2024-03-10",
-    applicant_count: 24,
-    rating: 4.4,
-    review_count: 52,
-    category: "DevOps & Cloud",
-    type: "Full-time",
-  },
-  {
-    id: "6",
-    title: "Business Analyst Intern",
-    company_name: "Techlogix",
-    company_slug: "techlogix",
-    location: "Lahore",
-    is_remote: false,
-    is_paid: true,
-    stipend: 28000,
-    duration_weeks: 8,
-    required_skills: ["SQL", "Excel", "Requirements Gathering", "Documentation"],
-    description:
-      "Bridge the gap between business needs and technical solutions. Analyze requirements and create detailed specifications.",
-    posted_date: "2024-01-26",
-    deadline: "2024-02-25",
-    applicant_count: 36,
-    rating: 4.2,
-    review_count: 78,
-    category: "Business Analysis",
-    type: "Full-time",
-  },
-  {
-    id: "7",
-    title: "Full Stack Web Developer",
-    company_name: "Arbisoft",
-    company_slug: "arbisoft",
-    location: "Lahore",
-    is_remote: true,
-    is_paid: true,
-    stipend: 38000,
-    duration_weeks: 16,
-    required_skills: ["Node.js", "React", "PostgreSQL", "GraphQL"],
-    description:
-      "End-to-end development experience working on AI-powered applications. Mentorship from experienced engineers.",
-    posted_date: "2024-01-28",
-    deadline: "2024-03-20",
-    applicant_count: 51,
-    rating: 4.4,
-    review_count: 87,
-    category: "Software Development",
-    type: "Full-time",
-  },
-  {
-    id: "8",
-    title: "Digital Marketing Intern",
-    company_name: "OZI Technology",
-    company_slug: "ozi-technology",
-    location: "Karachi",
-    is_remote: false,
-    is_paid: false,
-    stipend: null,
-    duration_weeks: 6,
-    required_skills: ["SEO", "Social Media", "Google Analytics", "Content Writing"],
-    description:
-      "Learn digital marketing hands-on by managing campaigns for e-commerce clients. Potential for full-time role based on performance.",
-    posted_date: "2024-02-01",
-    deadline: "2024-02-28",
-    applicant_count: 42,
-    rating: 4.3,
-    review_count: 41,
-    category: "Marketing",
-    type: "Part-time",
-  },
-  {
-    id: "9",
-    title: "Cybersecurity Analyst Intern",
-    company_name: "NetSol Technologies",
-    company_slug: "netsol",
-    location: "Lahore",
-    is_remote: false,
-    is_paid: true,
-    stipend: 42000,
-    duration_weeks: 12,
-    required_skills: ["Network Security", "Penetration Testing", "SIEM", "Linux"],
-    description:
-      "Join our security operations center and learn about enterprise security practices. Work with cutting-edge security tools.",
-    posted_date: "2024-02-02",
-    deadline: "2024-04-01",
-    applicant_count: 18,
-    rating: 4.1,
-    review_count: 156,
-    category: "Cybersecurity",
-    type: "Full-time",
-  },
-  {
-    id: "10",
-    title: "Product Management Intern",
-    company_name: "SadaPay",
-    company_slug: "sadapay",
-    location: "Karachi",
-    is_remote: true,
-    is_paid: true,
-    stipend: 32000,
-    duration_weeks: 10,
-    required_skills: ["Agile", "Jira", "Data Analysis", "User Stories"],
-    description:
-      "Work with product teams at Pakistan's fastest-growing neobank. Learn fintech product development from ideation to launch.",
-    posted_date: "2024-02-03",
-    deadline: "2024-03-08",
-    applicant_count: 67,
-    rating: 4.8,
-    review_count: 45,
-    category: "Product Management",
-    type: "Full-time",
-  },
-  {
-    id: "11",
-    title: "QA Automation Engineer Intern",
-    company_name: "Contour Software",
-    company_slug: "contour-software",
-    location: "Lahore",
-    is_remote: false,
-    is_paid: true,
-    stipend: 33000,
-    duration_weeks: 14,
-    required_skills: ["Selenium", "Java", "TestNG", "API Testing"],
-    description:
-      "Build automated test frameworks and ensure quality across complex software products. Learn industry-standard testing methodologies.",
-    posted_date: "2024-02-05",
-    deadline: "2024-03-25",
-    applicant_count: 23,
-    rating: 4.0,
-    review_count: 112,
-    category: "Quality Assurance",
-    type: "Full-time",
-  },
-  {
-    id: "12",
-    title: "Healthcare IT Solutions Intern",
-    company_name: "VrooTek",
-    company_slug: "vrootek",
-    location: "Islamabad",
-    is_remote: true,
-    is_paid: true,
-    stipend: 36000,
-    duration_weeks: 12,
-    required_skills: ["C#", ".NET Core", "Angular", "HL7 FHIR"],
-    description:
-      "Develop healthcare technology solutions that make a real difference. Work on electronic health records and telemedicine platforms.",
-    posted_date: "2024-02-06",
-    deadline: "2024-04-05",
-    applicant_count: 15,
-    rating: 4.5,
-    review_count: 38,
-    category: "Healthcare IT",
-    type: "Full-time",
-  },
-];
+// Default empty data - will be populated from database
+const DEFAULT_INTERNSHIPS: InternshipListing[] = [];
 
 const categories = [
   "all",
@@ -391,6 +139,8 @@ const formatDate = (dateString: string) => {
 
 // ============ COMPONENT ============
 export default function InternshipsPage() {
+  const [internships, setInternships] = useState<InternshipListing[]>(DEFAULT_INTERNSHIPS);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedLocation, setSelectedLocation] = useState("all");
@@ -400,9 +150,75 @@ export default function InternshipsPage() {
   const [selectedInternship, setSelectedInternship] =
     useState<InternshipListing | null>(null);
 
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchInternships() {
+      try {
+        const supabase = createClient();
+        
+        // Fetch published internships with company info
+        const { data, error } = await supabase
+          .from("internships")
+          .select(`
+            id,
+            title,
+            company:companies(name),
+            location,
+            is_remote,
+            is_paid,
+            stipend,
+            duration_weeks,
+            skills,
+            description,
+            created_at,
+            application_deadline,
+            applicant_count,
+            category:categories(name)
+          `)
+          .eq("status", "published")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error fetching internships:", error);
+          return; // Keep empty state on error
+        }
+
+        const formattedData: InternshipListing[] = (data || []).map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          company_name: item.company?.name || "Unknown Company",
+          company_slug: item.company?.name?.toLowerCase().replace(/\s+/g, '-') || '',
+          location: item.location,
+          is_remote: item.is_remote,
+          is_paid: item.is_paid,
+          stipend: item.stipend,
+          duration_weeks: item.duration_weeks,
+          required_skills: item.skills || [],
+          description: item.description || '',
+          posted_date: item.created_at,
+          deadline: item.application_deadline,
+          applicant_count: item.applicant_count || 0,
+          rating: 0, // Would come from reviews aggregation
+          review_count: 0, // Would come from reviews count
+          category: item.category?.name || 'Other',
+          type: item.is_full_time === false ? 'Part-time' : 'Full-time',
+        }));
+
+        setInternships(formattedData);
+      } catch (error) {
+        console.error("Error fetching internships:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchInternships();
+  }, []);
+
   // Filter internships
   const filteredInternships = useMemo(() => {
-    return mockInternships.filter((internship) => {
+    return internships.filter((internship) => {
       const matchesSearch =
         searchQuery === "" ||
         internship.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -448,6 +264,43 @@ export default function InternshipsPage() {
     });
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteNav />
+        <main className="container mx-auto px-4 md:px-6 py-8 md:py-12">
+          <div className="mb-8 md:mb-12">
+            <div className="h-10 w-64 bg-muted rounded mb-4 animate-pulse"></div>
+            <div className="h-6 w-96 bg-muted rounded animate-pulse"></div>
+          </div>
+          {/* Filters skeleton */}
+          <div className="flex flex-wrap gap-4 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-10 w-40 bg-muted rounded-lg animate-pulse"></div>
+            ))}
+          </div>
+          {/* Grid skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-6 space-y-4">
+                  <div className="h-5 w-3/4 bg-muted rounded"></div>
+                  <div className="h-4 w-1/2 bg-muted rounded"></div>
+                  <div className="h-20 w-full bg-muted rounded"></div>
+                  <div className="flex gap-2">
+                    <div className="h-6 w-16 bg-muted rounded-full"></div>
+                    <div className="h-6 w-20 bg-muted rounded-full"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <SiteNav />
@@ -468,7 +321,7 @@ export default function InternshipsPage() {
               <p className="text-muted-foreground text-lg max-w-2xl">
                 Discover{" "}
                 <span className="font-semibold text-foreground">
-                  {mockInternships.length}+
+                  {internships.length}+
                 </span>{" "}
                 internship opportunities from top companies in Pakistan.
               </p>
@@ -567,7 +420,7 @@ export default function InternshipsPage() {
             <span className="font-semibold text-foreground">
               {filteredInternships.length}
             </span>{" "}
-            of {mockInternships.length} internships
+            of {internships.length} internships
           </p>
 
           {/* View Mode Toggle */}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -57,6 +57,8 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import {
   Plus,
   Search,
@@ -82,7 +84,6 @@ import {
   MoreVertical,
   Loader2,
 } from "lucide-react";
-import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 type TaskStatus = "draft" | "assigned" | "in_progress" | "completed" | "overdue" | "cancelled";
@@ -119,15 +120,9 @@ interface Task {
   totalAssigned: number;
 }
 
-// Mock students for assignment
-const mockStudents: StudentOption[] = [
-  { id: "1", name: "Sarah Johnson", email: "sarah.j@university.edu", program: "BSc Computer Science" },
-  { id: "2", name: "Mike Chen", email: "mike.chen@university.edu", program: "BSc Software Engineering" },
-  { id: "3", name: "Emily Davis", email: "emily.d@university.edu", program: "BBA Marketing" },
-  { id: "4", name: "Ahmed Khan", email: "ahmed.k@university.edu", program: "MSc Data Science" },
-  { id: "5", name: "Fatima Ali", email: "fatima.a@university.edu", program: "BSc Information Technology" },
-  { id: "6", name: "Omar Hassan", email: "omar.h@university.edu", program: "BSc Computer Science" },
-];
+// Default empty data - will be populated from database
+const DEFAULT_STUDENTS: StudentOption[] = [];
+const DEFAULT_TASKS: Task[] = [];
 
 // Interface for task form props
 interface TaskFormProps {
@@ -138,6 +133,7 @@ interface TaskFormProps {
     dueDate: string;
     assignedStudentIds: string[];
   };
+  students: StudentOption[];
   onFormDataChange: (data: {
     title: string;
     description: string;
@@ -153,6 +149,7 @@ interface TaskFormProps {
 // Task Form Component (defined outside to avoid re-creation on each render)
 function TaskForm({ 
   formData, 
+  students,
   onFormDataChange, 
   onSelectAllStudents, 
   onDeselectAllStudents,
@@ -244,7 +241,12 @@ function TaskForm({
         </div>
         
         <div className="border rounded-lg max-h-[180px] overflow-y-auto">
-          {mockStudents.map((student) => (
+          {students.length === 0 ? (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              No students available. Students will appear once they are assigned to your supervision.
+            </div>
+          ) : (
+            students.map((student) => (
             <label
               key={student.id}
               className={`flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0 ${
@@ -260,7 +262,8 @@ function TaskForm({
                 <p className="text-xs text-muted-foreground">{student.program}</p>
               </div>
             </label>
-          ))}
+          ))
+          )}
         </div>
         
         <p className="text-xs text-muted-foreground">
@@ -271,106 +274,13 @@ function TaskForm({
   );
 }
 
-// Mock tasks
-const mockTasks: Task[] = [
-  {
-    id: "1",
-    title: "React Component Development",
-    description: "Develop reusable React components following best practices and design system guidelines. Components should include:\n\n- Button component with variants\n- Form input components\n- Card layout component\n- Modal/Dialog wrapper\n- Navigation components\n\nAll components must be properly typed with TypeScript and include documentation.",
-    status: "in_progress",
-    priority: "high",
-    dueDate: "2024-02-15",
-    createdAt: "2024-01-20",
-    updatedAt: "2024-02-10",
-    assignedStudents: [mockStudents[0], mockStudents[5]],
-    completedBy: [],
-    attachments: [
-      { id: "a1", name: "design-spec.pdf", url: "#", size: 2450000, type: "application/pdf" },
-      { id: "a2", name: "component-guidelines.docx", url: "#", size: 890000, type: "application/docx" },
-    ],
-    submissionCount: 1,
-    totalAssigned: 2,
-  },
-  {
-    id: "2",
-    title: "API Integration Testing",
-    description: "Write comprehensive integration tests for REST API endpoints using Jest and Supertest.",
-    status: "assigned",
-    priority: "medium",
-    dueDate: "2024-02-18",
-    createdAt: "2024-02-01",
-    updatedAt: "2024-02-05",
-    assignedStudents: [mockStudents[0]],
-    completedBy: [],
-    attachments: [],
-    submissionCount: 0,
-    totalAssigned: 1,
-  },
-  {
-    id: "3",
-    title: "Database Design Documentation",
-    description: "Create detailed ER diagrams and documentation for the database schema.",
-    status: "overdue",
-    priority: "high",
-    dueDate: "2024-02-10",
-    createdAt: "2024-01-25",
-    updatedAt: "2024-02-09",
-    assignedStudents: [mockStudents[1]],
-    completedBy: [],
-    attachments: [{ id: "a3", name: "schema-template.pptx", url: "#", size: 1200000, type: "application/pptx" }],
-    submissionCount: 0,
-    totalAssigned: 1,
-  },
-  {
-    id: "4",
-    title: "UI Component Library Setup",
-    description: "Set up a component library using Storybook with theming support.",
-    status: "completed",
-    priority: "medium",
-    dueDate: "2024-02-03",
-    createdAt: "2024-01-15",
-    updatedAt: "2024-02-04",
-    assignedStudents: [mockStudents[1]],
-    completedBy: ["2"],
-    attachments: [],
-    submissionCount: 1,
-    totalAssigned: 1,
-  },
-  {
-    id: "5",
-    title: "Weekly Status Report - Week 4",
-    description: "Submit your weekly progress report including:\n1. Tasks completed this week\n2. Challenges faced\n3. Learnings\n4. Next week goals",
-    status: "assigned",
-    priority: "low",
-    dueDate: "2024-02-14",
-    createdAt: "2024-02-08",
-    updatedAt: "2024-02-08",
-    assignedStudents: mockStudents.filter(s => ["1", "2", "3", "4"].includes(s.id)),
-    completedBy: [],
-    attachments: [{ id: "a4", name: "report-template.md", url: "#", size: 5000, type: "text/markdown" }],
-    submissionCount: 2,
-    totalAssigned: 4,
-  },
-  {
-    id: "6",
-    title: "Security Audit Report",
-    description: "Perform a security audit of the application and document findings.",
-    status: "draft",
-    priority: "urgent",
-    dueDate: "2024-02-20",
-    createdAt: "2024-02-12",
-    updatedAt: "2024-02-12",
-    assignedStudents: [mockStudents[5]],
-    completedBy: [],
-    attachments: [],
-    submissionCount: 0,
-    totalAssigned: 1,
-  },
-];
+// Note: Mock data removed - page shows empty state until real data is available
 
 export default function FacultySupervisorTasksPage() {
   const { user, profile } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
+  const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -381,6 +291,69 @@ export default function FacultySupervisorTasksPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return; }
+      
+      try {
+        const supabase = createClient();
+        
+        // Get supervisor record
+        const { data: supervisor } = await supabase
+          .from("supervisors")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "faculty")
+          .single();
+
+        if (!supervisor) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch supervised students
+        const { data: studentData } = await supabase
+          .from("student_internships")
+          .select(`
+            student_id,
+            student:students(
+              id,
+              full_name,
+              email,
+              program:programs(id, name)
+            )
+          `)
+          .eq("faculty_supervisor_id", supervisor.id)
+          .in("status", ["active", "in_progress"]);
+
+        const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
+          id: s.student?.id || s.student_id,
+          name: s.student?.full_name || `Student ${s.student_id?.slice(0, 6)}`,
+          email: s.student?.email || "",
+          program: s.student?.program?.name || "Unknown Program",
+        }));
+
+        setStudents(studentList);
+
+        // Fetch tasks (when API is ready)
+        // const { data: taskData } = await supabase
+        //   .from("tasks")
+        //   .select("*")
+        //   .eq("supervisor_id", supervisor.id);
+        
+        // setTasks(taskData || []);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [user]);
+
   // Form state
   const [formData, setFormData] = useState({
     title: "",
@@ -498,7 +471,7 @@ export default function FacultySupervisorTasksPage() {
       dueDate: formData.dueDate,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      assignedStudents: mockStudents.filter(s => formData.assignedStudentIds.includes(s.id)),
+      assignedStudents: students.filter(s => formData.assignedStudentIds.includes(s.id)),
       completedBy: [],
       attachments: [],
       submissionCount: 0,
@@ -525,7 +498,7 @@ export default function FacultySupervisorTasksPage() {
             description: formData.description,
             priority: formData.priority,
             dueDate: formData.dueDate,
-            assignedStudents: mockStudents.filter(s => formData.assignedStudentIds.includes(s.id)),
+            assignedStudents: students.filter(s => formData.assignedStudentIds.includes(s.id)),
             totalAssigned: formData.assignedStudentIds.length,
             updatedAt: new Date().toISOString(),
           }
@@ -571,7 +544,7 @@ export default function FacultySupervisorTasksPage() {
   const selectAllStudents = () => {
     setFormData(prev => ({
       ...prev,
-      assignedStudentIds: mockStudents.map(s => s.id),
+      assignedStudentIds: students.map(s => s.id),
     }));
   };
 
@@ -581,6 +554,35 @@ export default function FacultySupervisorTasksPage() {
       assignedStudentIds: [],
     }));
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Task Management</h1>
+          <p className="text-muted-foreground mt-1">Loading tasks...</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
+                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
+                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
+                <div className="h-3 w-16 bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Loading tasks...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -611,6 +613,7 @@ export default function FacultySupervisorTasksPage() {
               </DialogHeader>
               <TaskForm 
                 formData={formData}
+                students={students}
                 onFormDataChange={setFormData}
                 onSelectAllStudents={selectAllStudents}
                 onDeselectAllStudents={deselectAllStudents}
@@ -943,6 +946,7 @@ export default function FacultySupervisorTasksPage() {
           </DialogHeader>
           <TaskForm 
             formData={formData}
+            students={students}
             onFormDataChange={setFormData}
             onSelectAllStudents={selectAllStudents}
             onDeselectAllStudents={deselectAllStudents}

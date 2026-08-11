@@ -86,150 +86,120 @@ interface InternPerformance {
   status: "active" | "on_leave" | "completed" | "terminated";
 }
 
-// Mock data for demonstration
-const mockRecentApplications: RecentApplication[] = [
-  {
-    id: "1",
-    student_name: "Sarah Johnson",
-    student_email: "sarah.j@university.edu",
-    internship_title: "Software Engineering Intern",
-    status: "pending",
-    applied_at: "2024-02-10T10:30:00Z",
-    university: "State University",
-  },
-  {
-    id: "2",
-    student_name: "Mike Chen",
-    student_email: "mike.chen@tech.edu",
-    internship_title: "Data Science Intern",
-    status: "pending",
-    applied_at: "2024-02-09T14:20:00Z",
-    university: "Tech University",
-  },
-  {
-    id: "3",
-    student_name: "Emily Davis",
-    student_email: "emily.d@business.edu",
-    internship_title: "Marketing Intern",
-    status: "accepted",
-    applied_at: "2024-02-05T09:15:00Z",
-    university: "Business School",
-  },
-  {
-    id: "4",
-    student_name: "Alex Wilson",
-    student_email: "alex.w@research.edu",
-    internship_title: "Software Engineering Intern",
-    status: "rejected",
-    applied_at: "2024-01-28T16:45:00Z",
-    university: "Research Institute",
-  },
-  {
-    id: "5",
-    student_name: "Lisa Park",
-    student_email: "lisa.p@state.edu",
-    internship_title: "UI/UX Design Intern",
-    status: "reviewing",
-    applied_at: "2024-02-08T11:00:00Z",
-    university: "State University",
-  },
-];
+// Default empty states - data will be fetched from database
+const DEFAULT_STATS: CompanyStats = {
+  activeInternships: 0,
+  totalApplications: 0,
+  activeInterns: 0,
+  pendingReviews: 0,
+  completionRate: 0,
+  totalSupervisors: 0,
+};
 
-const mockActivePrograms: ActiveProgram[] = [
-  {
-    id: "1",
-    title: "Software Engineering Internship - Summer 2024",
-    status: "active",
-    applicants_count: 24,
-    max_applicants: 30,
-    start_date: "2024-06-01",
-    end_date: "2024-08-31",
-  },
-  {
-    id: "2",
-    title: "Marketing & Digital Media Internship",
-    status: "active",
-    applicants_count: 18,
-    max_applicants: 15,
-    start_date: "2024-06-15",
-    end_date: "2024-08-30",
-  },
-  {
-    id: "3",
-    title: "Data Analytics Research Program",
-    status: "open",
-    applicants_count: 12,
-    max_applicants: 20,
-    start_date: "2024-07-01",
-    end_date: "2024-09-30",
-  },
-];
-
-const mockInternPerformance: InternPerformance[] = [
-  {
-    id: "1",
-    name: "Emily Davis",
-    program: "Marketing Intern",
-    attendance_rate: 96,
-    rating: 4.8,
-    status: "active",
-  },
-  {
-    id: "2",
-    name: "James Miller",
-    program: "Software Engineering Intern",
-    attendance_rate: 92,
-    rating: 4.5,
-    status: "active",
-  },
-  {
-    id: "3",
-    name: "Sophie Turner",
-    program: "Data Science Intern",
-    attendance_rate: 88,
-    rating: 4.2,
-    status: "on_leave",
-  },
-  {
-    id: "4",
-    name: "David Kim",
-    program: "UI/UX Design Intern",
-    attendance_rate: 100,
-    rating: 4.9,
-    status: "completed",
-  },
-];
+const DEFAULT_APPLICATIONS: RecentApplication[] = [];
+const DEFAULT_PROGRAMS: ActiveProgram[] = [];
+const DEFAULT_PERFORMANCE: InternPerformance[] = [];
 
 export default function CompanyHRDashboard() {
   const { user, profile } = useAuth();
-  const [stats, setStats] = useState<CompanyStats | null>(null);
+  const [stats, setStats] = useState<CompanyStats>(DEFAULT_STATS);
   const [isLoading, setIsLoading] = useState(true);
-  const [recentApplications] = useState<RecentApplication[]>(mockRecentApplications);
-  const [activePrograms] = useState<ActiveProgram[]>(mockActivePrograms);
-  const [internPerformance] = useState<InternPerformance[]>(mockInternPerformance);
+  const [recentApplications, setRecentApplications] = useState<RecentApplication[]>(DEFAULT_APPLICATIONS);
+  const [activePrograms, setActivePrograms] = useState<ActiveProgram[]>(DEFAULT_PROGRAMS);
+  const [internPerformance, setInternPerformance] = useState<InternPerformance[]>(DEFAULT_PERFORMANCE);
 
   useEffect(() => {
-    fetchCompanyStats();
-  }, []);
+    fetchCompanyData();
+  }, [user]);
 
-  async function fetchCompanyStats() {
-    if (!user) return;
+  async function fetchCompanyData() {
+    if (!user) { setIsLoading(false); return; }
 
     try {
       const supabase = createClient();
       
-      // Fetch company-specific stats (using mock data for now)
-      // In production, these would be actual Supabase queries filtered by company_id
-      setStats({
-        activeInternships: 8,
-        totalApplications: 156,
-        activeInterns: 24,
-        pendingReviews: 12,
-        completionRate: 87,
-        totalSupervisors: 6,
-      });
+      // Fetch real data from Supabase - using Promise.allSettled for resilience
+      const results = await Promise.allSettled([
+        // Fetch internships count
+        supabase
+          .from('internships')
+          .select('id', { count: 'exact' })
+          .eq('company_id', user.id)
+          .in('status', ['active', 'open']),
+        
+        // Fetch applications count
+        supabase
+          .from('applications')
+          .select('id', { count: 'exact' }),
+          
+        // Fetch recent applications with details
+        supabase
+          .from('applications')
+          .select(`
+            id,
+            students!inner(student_name, email, university),
+            internships!inner(title)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        
+        // Fetch active programs
+        supabase
+          .from('internships')
+          .select('*')
+          .eq('company_id', user.id)
+          .in('status', ['active', 'open'])
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ]);
+
+      // Process results safely
+      const [internshipsResult, applicationsResult, recentAppsResult, programsResult] = results;
+      
+      // Update stats from actual data
+      const newStats: CompanyStats = { ...DEFAULT_STATS };
+      
+      if (internshipsResult.status === 'fulfilled' && internshipsResult.value.data) {
+        newStats.activeInternships = internshipsResult.value.count || 0;
+      }
+      if (applicationsResult.status === 'fulfilled' && applicationsResult.value.data) {
+        newStats.totalApplications = applicationsResult.value.count || 0;
+      }
+      
+      // Set stats
+      setStats(newStats);
+      
+      // Set recent applications if available
+      if (recentAppsResult.status === 'fulfilled' && recentAppsResult.value.data) {
+        const apps: RecentApplication[] = recentAppsResult.value.data.map((app: any) => ({
+          id: app.id,
+          student_name: app.students?.student_name || 'Unknown',
+          student_email: app.students?.email || '',
+          internship_title: app.internships?.title || 'Unknown Program',
+          status: app.status || 'pending',
+          applied_at: app.created_at,
+          university: app.students?.university,
+        }));
+        setRecentApplications(apps);
+      }
+      
+      // Set active programs if available
+      if (programsResult.status === 'fulfilled' && programsResult.value.data) {
+        const programs: ActiveProgram[] = programsResult.value.data.map((prog: any) => ({
+          id: prog.id,
+          title: prog.title,
+          status: prog.status,
+          applicants_count: prog.current_applicants || 0,
+          max_applicants: prog.max_applicants || 0,
+          start_date: prog.start_date,
+          end_date: prog.end_date,
+        }));
+        setActivePrograms(programs);
+      }
+      
     } catch (error) {
-      console.error("Error fetching company stats:", error);
+      console.error("Error fetching company data:", error);
+      // Keep default empty state on error
     } finally {
       setIsLoading(false);
     }

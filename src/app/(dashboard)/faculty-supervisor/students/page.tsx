@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import {
   Card,
   CardContent,
@@ -135,179 +137,105 @@ interface AttendanceSummary {
   attendanceRate: number;
 }
 
-// Mock data for students
-const mockStudents: Student[] = [
-  {
-    id: "1",
-    name: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    phone: "+92-300-1234567",
-    university: "State University",
-    program: "BSc Computer Science",
-    major: "Software Engineering",
-    semester: 6,
-    internshipTitle: "Software Engineering Intern",
-    company: "Tech Corp",
-    companyLocation: "Islamabad, Pakistan",
-    status: "active",
-    weeklyLogStatus: "submitted",
-    overallProgress: 75,
-    lastActivity: "2024-02-12",
-    startDate: "2024-01-15",
-    endDate: "2024-04-15",
-    supervisorNotes: "Excellent progress. Strong technical skills.",
-  },
-  {
-    id: "2",
-    name: "Mike Chen",
-    email: "mike.chen@university.edu",
-    phone: "+92-301-2345678",
-    university: "Tech University",
-    program: "BSc Software Engineering",
-    major: "Frontend Development",
-    semester: 8,
-    internshipTitle: "Frontend Developer Intern",
-    company: "Web Agency",
-    companyLocation: "Lahore, Pakistan",
-    status: "active",
-    weeklyLogStatus: "pending",
-    overallProgress: 60,
-    lastActivity: "2024-02-10",
-    startDate: "2024-01-10",
-    endDate: "2024-04-10",
-  },
-  {
-    id: "3",
-    name: "Emily Davis",
-    email: "emily.d@university.edu",
-    phone: "+92-302-3456789",
-    university: "Business School",
-    program: "BBA Marketing",
-    major: "Digital Marketing",
-    semester: 4,
-    internshipTitle: "Digital Marketing Intern",
-    company: "Growth Co",
-    companyLocation: "Karachi, Pakistan",
-    status: "active",
-    weeklyLogStatus: "not_submitted",
-    overallProgress: 45,
-    lastActivity: "2024-02-08",
-    startDate: "2024-01-20",
-    endDate: "2024-04-20",
-    supervisorNotes: "Needs to improve time management.",
-  },
-  {
-    id: "4",
-    name: "Ahmed Khan",
-    email: "ahmed.k@university.edu",
-    phone: "+92-303-4567890",
-    university: "State University",
-    program: "MSc Data Science",
-    major: "Machine Learning",
-    semester: 2,
-    internshipTitle: "Data Science Intern",
-    company: "Data Insights Ltd",
-    companyLocation: "Islamabad, Pakistan",
-    status: "active",
-    weeklyLogStatus: "approved",
-    overallProgress: 88,
-    lastActivity: "2024-02-12",
-    startDate: "2024-01-05",
-    endDate: "2024-04-05",
-    supervisorNotes: "Outstanding performance. Exceeds expectations.",
-  },
-  {
-    id: "5",
-    name: "Fatima Ali",
-    email: "fatima.a@university.edu",
-    phone: "+92-304-5678901",
-    university: "Tech University",
-    program: "BSc Information Technology",
-    major: "Cloud Computing",
-    semester: 6,
-    internshipTitle: "Cloud Infrastructure Intern",
-    company: "Cloud Systems",
-    companyLocation: "Rawalpindi, Pakistan",
-    status: "on_leave",
-    weeklyLogStatus: "not_submitted",
-    overallProgress: 32,
-    lastActivity: "2024-02-01",
-    startDate: "2024-01-15",
-    endDate: "2024-04-15",
-    supervisorNotes: "On medical leave. Expected back Feb 20.",
-  },
-  {
-    id: "6",
-    name: "Omar Hassan",
-    email: "omar.h@university.edu",
-    phone: "+92-305-6789012",
-    university: "State University",
-    program: "BSc Computer Science",
-    major: "Cybersecurity",
-    semester: 8,
-    internshipTitle: "Security Analyst Intern",
-    company: "SecureTech",
-    companyLocation: "Islamabad, Pakistan",
-    status: "active",
-    weeklyLogStatus: "submitted",
-    overallProgress: 67,
-    lastActivity: "2024-02-11",
-    startDate: "2024-01-12",
-    endDate: "2024-04-12",
-  },
-];
-
-// Mock task data
-const mockTasks: Record<string, TaskItem[]> = {
-  "1": [
-    { id: "t1", title: "React Component Development", status: "completed", dueDate: "2024-02-05", completedAt: "2024-02-04", grade: "A" },
-    { id: "t2", title: "API Integration Testing", status: "in_progress", dueDate: "2024-02-15" },
-    { id: "t3", title: "Database Design Documentation", status: "pending", dueDate: "2024-02-20" },
-    { id: "t4", title: "Code Review & Refactoring", status: "pending", dueDate: "2024-02-28" },
-  ],
-  "2": [
-    { id: "t5", title: "UI Component Library Setup", status: "completed", dueDate: "2024-02-03", completedAt: "2024-02-02", grade: "B+" },
-    { id: "t6", title: "Responsive Design Implementation", status: "overdue", dueDate: "2024-02-10" },
-    { id: "t7", title: "Performance Optimization", status: "in_progress", dueDate: "2024-02-18" },
-  ],
-};
-
-// Mock submission data
-const mockSubmissions: Record<string, Submission[]> = {
-  "1": [
-    { id: "s1", type: "weekly_log", title: "Week 3 Weekly Log", submittedAt: "2024-02-12", status: "pending", grade: undefined },
-    { id: "s2", type: "task", title: "React Component Development", submittedAt: "2024-02-04", status: "approved", grade: 95, feedback: "Excellent work!" },
-    { id: "s3", type: "document", title: "Technical Documentation v1", submittedAt: "2024-02-01", status: "approved", grade: 88 },
-  ],
-};
-
-// Mock evaluation data
-const mockEvaluations: Record<string, EvaluationRecord[]> = {
-  "1": [
-    { id: "e1", type: "weekly", date: "2024-02-05", score: 18, maxScore: 20, status: "completed", comments: "Good progress this week." },
-    { id: "e2", type: "weekly", date: "2024-02-12", score: 17, maxScore: 20, status: "completed", comments: "Keep up the good work." },
-  ],
-};
-
-// Mock attendance data
-const mockAttendance: Record<string, AttendanceSummary> = {
-  "1": { totalDays: 28, present: 26, absent: 1, late: 1, leave: 0, attendanceRate: 93 },
-  "2": { totalDays: 30, present: 24, absent: 2, late: 3, leave: 1, attendanceRate: 80 },
-  "3": { totalDays: 25, present: 20, absent: 3, late: 2, leave: 0, attendanceRate: 80 },
-  "4": { totalDays: 38, present: 37, absent: 0, late: 1, leave: 0, attendanceRate: 97 },
-  "5": { totalDays: 28, present: 18, absent: 0, late: 0, leave: 10, attendanceRate: 64 },
-  "6": { totalDays: 30, present: 25, absent: 2, late: 2, leave: 1, attendanceRate: 83 },
-};
+// Default empty data - will be populated from database
+const DEFAULT_STUDENTS: Student[] = [];
+const DEFAULT_TASKS: Record<string, TaskItem[]> = {};
+const DEFAULT_SUBMISSIONS: Record<string, Submission[]> = {};
+const DEFAULT_EVALUATIONS: Record<string, EvaluationRecord[]> = {};
+const DEFAULT_ATTENDANCE: Record<string, AttendanceSummary> = {};
 
 export default function FacultySupervisorStudentsPage() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
-  const [students] = useState<Student[]>(mockStudents);
+  const [students, setStudents] = useState<Student[]>(DEFAULT_STUDENTS);
+  const [tasks] = useState<Record<string, TaskItem[]>>(DEFAULT_TASKS);
+  const [submissions] = useState<Record<string, Submission[]>>(DEFAULT_SUBMISSIONS);
+  const [evaluations] = useState<Record<string, EvaluationRecord[]>>(DEFAULT_EVALUATIONS);
+  const [attendance] = useState<Record<string, AttendanceSummary>>(DEFAULT_ATTENDANCE);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [programFilter, setProgramFilter] = useState<string>("all");
   const [progressFilter, setProgressFilter] = useState<string>("all");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return; }
+      
+      try {
+        const supabase = createClient();
+        
+        // Get supervisor record
+        const { data: supervisor } = await supabase
+          .from("supervisors")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "faculty")
+          .single();
+
+        if (!supervisor) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch supervised students with their internship details
+        const { data: studentData } = await supabase
+          .from("student_internships")
+          .select(`
+            id,
+            status,
+            start_date,
+            end_date,
+            progress,
+            last_activity_at,
+            student:students(
+              id,
+              full_name,
+              email,
+              phone,
+              avatar_url,
+              program:programs(name),
+              university:universities(name)
+            ),
+            internship:internships(title, company, location)
+          `)
+          .eq("faculty_supervisor_id", supervisor.id);
+
+        const studentList: Student[] = (studentData || []).map((s: any) => ({
+          id: s.student?.id || s.id,
+          name: s.student?.full_name || `Student ${s.id?.slice(0, 6)}`,
+          email: s.student?.email || "",
+          phone: s.student?.phone,
+          university: s.student?.university?.name || "Unknown University",
+          program: s.student?.program?.name || "Unknown Program",
+          major: "", // Would come from student profile
+          semester: 0, // Would come from student profile
+          internshipTitle: s.internship?.title || "N/A",
+          company: s.internship?.company || "N/A",
+          companyLocation: s.internship?.location || "N/A",
+          status: s.status || "active",
+          weeklyLogStatus: "not_submitted" as Student["weeklyLogStatus"],
+          overallProgress: s.progress || 0,
+          lastActivity: s.last_activity_at || "",
+          startDate: s.start_date || "",
+          endDate: s.end_date || "",
+          avatarUrl: s.student?.avatar_url,
+        }));
+
+        setStudents(studentList);
+      } catch (error) {
+        console.error("Error fetching student data:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [user]);
 
   // Get unique programs for filter
   const programs = useMemo(() => {
@@ -505,6 +433,35 @@ export default function FacultySupervisorStudentsPage() {
     onTrack: students.filter((s) => s.overallProgress >= 70).length,
     atRisk: students.filter((s) => s.overallProgress < 40).length,
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Students</h1>
+          <p className="text-muted-foreground mt-1">Loading students...</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
+                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
+                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
+                <div className="h-3 w-16 bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Loading student data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -943,7 +900,7 @@ export default function FacultySupervisorStudentsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(mockTasks[selectedStudent.id] || []).map((task) => (
+                        {(tasks[selectedStudent.id] || []).map((task) => (
                           <div key={task.id} className="flex items-center justify-between p-3 rounded-lg border">
                             <div className="flex-1">
                               <p className="font-medium text-sm">{task.title}</p>
@@ -964,7 +921,7 @@ export default function FacultySupervisorStudentsPage() {
                             {getTaskStatusBadge(task.status)}
                           </div>
                         ))}
-                        {(!mockTasks[selectedStudent.id] || mockTasks[selectedStudent.id].length === 0) && (
+                        {(!tasks[selectedStudent.id] || tasks[selectedStudent.id].length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
                             <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
                             <p>No tasks assigned yet</p>
@@ -984,7 +941,7 @@ export default function FacultySupervisorStudentsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(mockSubmissions[selectedStudent.id] || []).map((submission) => (
+                        {(submissions[selectedStudent.id] || []).map((submission) => (
                           <div key={submission.id} className="flex items-start justify-between p-3 rounded-lg border">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
@@ -1012,7 +969,7 @@ export default function FacultySupervisorStudentsPage() {
                             {getSubmissionStatusBadge(submission.status)}
                           </div>
                         ))}
-                        {(!mockSubmissions[selectedStudent.id] || mockSubmissions[selectedStudent.id].length === 0) && (
+                        {(!submissions[selectedStudent.id] || submissions[selectedStudent.id].length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
                             <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
                             <p>No submissions yet</p>
@@ -1032,7 +989,7 @@ export default function FacultySupervisorStudentsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(mockEvaluations[selectedStudent.id] || []).map((evaluation) => (
+                        {(evaluations[selectedStudent.id] || []).map((evaluation) => (
                           <div key={evaluation.id} className="flex items-center justify-between p-3 rounded-lg border">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
@@ -1064,7 +1021,7 @@ export default function FacultySupervisorStudentsPage() {
                             </div>
                           </div>
                         ))}
-                        {(!mockEvaluations[selectedStudent.id] || mockEvaluations[selectedStudent.id].length === 0) && (
+                        {(!evaluations[selectedStudent.id] || evaluations[selectedStudent.id].length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
                             <ClipboardCheck className="h-8 w-8 mx-auto mb-2 opacity-50" />
                             <p>No evaluations yet</p>
@@ -1083,12 +1040,12 @@ export default function FacultySupervisorStudentsPage() {
                       <CardDescription>Attendance record during internship</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      {mockAttendance[selectedStudent.id] ? (
+                      {attendance[selectedStudent.id] ? (
                         <div className="space-y-4">
                           {/* Overall Attendance Rate */}
                           <div className="text-center p-6 bg-muted/50 rounded-lg">
-                            <p className={`text-4xl font-bold ${getAttendanceColor(mockAttendance[selectedStudent.id].attendanceRate)}`}>
-                              {mockAttendance[selectedStudent.id].attendanceRate}%
+                            <p className={`text-4xl font-bold ${getAttendanceColor(attendance[selectedStudent.id].attendanceRate)}`}>
+                              {attendance[selectedStudent.id].attendanceRate}%
                             </p>
                             <p className="text-sm text-muted-foreground mt-1">Overall Attendance Rate</p>
                           </div>
@@ -1097,25 +1054,25 @@ export default function FacultySupervisorStudentsPage() {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="text-center p-4 bg-emerald-50 rounded-lg">
                               <p className="text-xl font-bold text-emerald-600">
-                                {mockAttendance[selectedStudent.id].present}
+                                {attendance[selectedStudent.id].present}
                               </p>
                               <p className="text-xs text-muted-foreground">Present</p>
                             </div>
                             <div className="text-center p-4 bg-red-50 rounded-lg">
                               <p className="text-xl font-bold text-red-600">
-                                {mockAttendance[selectedStudent.id].absent}
+                                {attendance[selectedStudent.id].absent}
                               </p>
                               <p className="text-xs text-muted-foreground">Absent</p>
                             </div>
                             <div className="text-center p-4 bg-amber-50 rounded-lg">
                               <p className="text-xl font-bold text-amber-600">
-                                {mockAttendance[selectedStudent.id].late}
+                                {attendance[selectedStudent.id].late}
                               </p>
                               <p className="text-xs text-muted-foreground">Late</p>
                             </div>
                             <div className="text-center p-4 bg-gray-50 rounded-lg">
                               <p className="text-xl font-bold text-gray-600">
-                                {mockAttendance[selectedStudent.id].leave}
+                                {attendance[selectedStudent.id].leave}
                               </p>
                               <p className="text-xs text-muted-foreground">On Leave</p>
                             </div>
@@ -1123,7 +1080,7 @@ export default function FacultySupervisorStudentsPage() {
 
                           {/* Total Days */}
                           <div className="text-center text-sm text-muted-foreground">
-                            Total Working Days: {mockAttendance[selectedStudent.id].totalDays}
+                            Total Working Days: {attendance[selectedStudent.id].totalDays}
                           </div>
                         </div>
                       ) : (

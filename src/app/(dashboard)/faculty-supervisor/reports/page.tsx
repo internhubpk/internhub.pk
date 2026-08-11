@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import {
   Card,
   CardContent,
@@ -113,71 +115,16 @@ interface CertificateData {
   certificateId: string;
 }
 
-// Mock students
-const mockStudents: StudentForReport[] = [
-  {
-    id: "1",
-    name: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    program: "BSc Computer Science",
-    company: "Tech Corp",
-    internshipTitle: "Software Engineering Intern",
-    startDate: "2024-01-15",
-    endDate: "2024-04-15",
-    status: "active",
-    overallProgress: 75,
-    finalGrade: undefined,
-    gpa: 3.6,
-  },
-  {
-    id: "2",
-    name: "Mike Chen",
-    email: "mike.chen@university.edu",
-    program: "BSc Software Engineering",
-    company: "Web Agency",
-    internshipTitle: "Frontend Developer Intern",
-    startDate: "2024-01-10",
-    endDate: "2024-04-10",
-    status: "active",
-    overallProgress: 60,
-    finalGrade: undefined,
-    gpa: 3.2,
-  },
-  {
-    id: "3",
-    name: "Ahmed Khan",
-    email: "ahmed.k@university.edu",
-    program: "MSc Data Science",
-    company: "Data Insights Ltd",
-    internshipTitle: "Data Science Intern",
-    startDate: "2024-01-05",
-    endDate: "2024-04-05",
-    status: "completed",
-    overallProgress: 100,
-    finalGrade: "A",
-    gpa: 3.9,
-  },
-];
-
-// Mock marksheet data
-const mockMarksheet: MarksheetEntry[] = [
-  { weekNumber: 1, weekStart: "2024-01-05", weekEnd: "2024-01-11", tasksCompleted: 3, tasksTotal: 4, attendance: 95, weeklyScore: 18, maxScore: 20, remarks: "Good start" },
-  { weekNumber: 2, weekStart: "2024-01-12", weekEnd: "2024-01-18", tasksCompleted: 4, tasksTotal: 4, attendance: 100, weeklyScore: 19, maxScore: 20, remarks: "Excellent progress" },
-  { weekNumber: 3, weekStart: "2024-01-19", weekEnd: "2024-01-25", tasksCompleted: 3, tasksTotal: 5, attendance: 90, weeklyScore: 17, maxScore: 20, remarks: "Needs improvement in documentation" },
-  { weekNumber: 4, weekStart: "2024-01-26", weekEnd: "2024-02-01", tasksCompleted: 5, tasksTotal: 5, attendance: 100, weeklyScore: 20, maxScore: 20, remarks: "Outstanding work this week" },
-  { weekNumber: 5, weekStart: "2024-02-02", weekEnd: "2024-02-08", tasksCompleted: 4, tasksTotal: 4, attendance: 95, weeklyScore: 18, maxScore: 20, remarks: "Consistent performance" },
-  { weekNumber: 6, weekStart: "2024-02-09", weekEnd: "2024-02-15", tasksCompleted: 4, tasksTotal: 5, attendance: 90, weeklyScore: 17, maxScore: 20, remarks: "Good technical skills shown" },
-  { weekNumber: 7, weekStart: "2024-02-16", weekEnd: "2024-02-22", tasksCompleted: 5, tasksTotal: 5, attendance: 100, weeklyScore: 19, maxScore: 20, remarks: "Excellent problem-solving" },
-  { weekNumber: 8, weekStart: "2024-02-23", weekEnd: "2024-03-01", tasksCompleted: 4, tasksTotal: 4, attendance: 95, weeklyScore: 18, maxScore: 20, remarks: "Strong collaboration skills" },
-  { weekNumber: 9, weekStart: "2024-03-02", weekEnd: "2024-03-08", tasksCompleted: 5, tasksTotal: 5, attendance: 100, weeklyScore: 20, maxScore: 20, remarks: "Outstanding contribution" },
-  { weekNumber: 10, weekStart: "2024-03-09", weekEnd: "2024-03-15", tasksCompleted: 4, tasksTotal: 5, attendance: 90, weeklyScore: 17, maxScore: 20, remarks: "Final project phase - good progress" },
-  { weekNumber: 11, weekStart: "2024-03-16", weekEnd: "2024-03-22", tasksCompleted: 5, tasksTotal: 5, attendance: 100, weeklyScore: 19, maxScore: 20, remarks: "Excellent presentation of findings" },
-  { weekNumber: 12, weekStart: "2024-03-23", weekEnd: "2024-03-29", tasksCompleted: 5, tasksTotal: 5, attendance: 100, weeklyScore: 20, maxScore: 20, remarks: "Exceptional performance throughout" },
-];
+// Default empty data - will be populated from database
+const DEFAULT_STUDENTS: StudentForReport[] = [];
+const DEFAULT_MARKSHEET: MarksheetEntry[] = [];
 
 export default function FacultySupervisorReportsPage() {
+  const { user } = useAuth();
   // State
-  const [students] = useState<StudentForReport[]>(mockStudents);
+  const [students, setStudents] = useState<StudentForReport[]>(DEFAULT_STUDENTS);
+  const [marksheet, setMarksheet] = useState<MarksheetEntry[]>(DEFAULT_MARKSHEET);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   
@@ -192,6 +139,77 @@ export default function FacultySupervisorReportsPage() {
     additionalRemarks: "",
   });
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return; }
+      
+      try {
+        const supabase = createClient();
+        
+        // Get supervisor record
+        const { data: supervisor } = await supabase
+          .from("supervisors")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "faculty")
+          .single();
+
+        if (!supervisor) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch supervised students with their internship details
+        const { data: studentData } = await supabase
+          .from("student_internships")
+          .select(`
+            id,
+            status,
+            start_date,
+            end_date,
+            progress,
+            student:students(
+              id,
+              full_name,
+              email,
+              program:programs(name),
+              gpa
+            ),
+            internship:internships(title, company)
+          `)
+          .eq("faculty_supervisor_id", supervisor.id);
+
+        const studentList: StudentForReport[] = (studentData || []).map((s: any) => ({
+          id: s.student?.id || s.id,
+          name: s.student?.full_name || `Student ${s.id?.slice(0, 6)}`,
+          email: s.student?.email || "",
+          program: s.student?.program?.name || "Unknown Program",
+          company: s.internship?.company || "N/A",
+          internshipTitle: s.internship?.title || "N/A",
+          startDate: s.start_date || "",
+          endDate: s.end_date || "",
+          status: s.status || "active",
+          overallProgress: s.progress || 0,
+          finalGrade: undefined, // Would come from evaluations table
+          gpa: s.student?.gpa,
+        }));
+
+        setStudents(studentList);
+
+        // Fetch marksheet data when a student is selected (would be triggered by selection)
+        // setMarksheet(marksheetData || []);
+      } catch (error) {
+        console.error("Error fetching report data:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [user]);
 
   // Ref for printing
   const certificateRef = useRef<HTMLDivElement>(null);
@@ -215,8 +233,8 @@ export default function FacultySupervisorReportsPage() {
     totalStudents: students.length,
     completedInternships: students.filter(s => s.status === "completed").length,
     activeInternships: students.filter(s => s.status === "active").length,
-    avgProgress: Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length),
-    avgGpa: (students.reduce((acc, s) => acc + (s.gpa || 0), 0) / students.length).toFixed(2),
+    avgProgress: students.length > 0 ? Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length) : 0,
+    avgGpa: students.length > 0 ? (students.reduce((acc, s) => acc + (s.gpa || 0), 0) / students.length).toFixed(2) : "0.00",
   };
 
   const getStatusBadge = (status: string) => {
@@ -264,8 +282,9 @@ export default function FacultySupervisorReportsPage() {
   };
 
   const calculateFinalScore = () => {
-    const totalScore = mockMarksheet.reduce((acc, entry) => acc + entry.weeklyScore, 0);
-    const maxPossible = mockMarksheet.reduce((acc, entry) => acc + entry.maxScore, 0);
+    if (marksheet.length === 0) return 0;
+    const totalScore = marksheet.reduce((acc, entry) => acc + entry.weeklyScore, 0);
+    const maxPossible = marksheet.reduce((acc, entry) => acc + entry.maxScore, 0);
     return Math.round((totalScore / maxPossible) * 100);
   };
 
@@ -437,6 +456,35 @@ export default function FacultySupervisorReportsPage() {
       </div>
     </div>
   );
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Reports & Certificates</h1>
+          <p className="text-muted-foreground mt-1">Loading reports...</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
+                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
+                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
+                <div className="h-3 w-16 bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Loading report data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -741,7 +789,14 @@ export default function FacultySupervisorReportsPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {mockMarksheet.map((entry) => (
+                          {marksheet.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                No marksheet data available for this student yet.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            marksheet.map((entry) => (
                             <TableRow key={entry.weekNumber}>
                               <TableCell className="font-medium">{entry.weekNumber}</TableCell>
                               <TableCell>
@@ -773,7 +828,8 @@ export default function FacultySupervisorReportsPage() {
                                 </span>
                               </TableCell>
                             </TableRow>
-                          ))}
+                          ))
+                          )}
                         </TableBody>
                       </Table>
                     </div>

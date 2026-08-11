@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,48 +13,79 @@ import {
   Star,
   AlertCircle,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 
-// Mock evaluation data
-const mockEvaluations = [
-  {
-    id: "1",
-    type: "Weekly Evaluation",
-    course: "CS498 - Internship",
-    week: 3,
-    status: "completed",
-    score: 85,
-    feedback: "Good progress this week. Keep up the good work on the frontend tasks.",
-    date: "2024-06-15",
-    evaluator: "Dr. Ahmad Khan",
-  },
-  {
-    id: "2",
-    type: "Site Supervisor Review",
-    company: "TechCorp Pakistan",
-    week: 3,
-    status: "pending",
-    score: null,
-    feedback: null,
-    date: null,
-    evaluator: "Ali Hassan (Site Supervisor)",
-  },
-  {
-    id: "3",
-    type: "Mid-term Evaluation",
-    course: "CS498 - Internship",
-    week: 6,
-    status: "upcoming",
-    score: null,
-    feedback: null,
-    date: "2024-07-01",
-    evaluator: "Dr. Ahmad Khan",
-  },
-];
+// Types
+interface Evaluation {
+  id: string;
+  type: string;
+  course?: string;
+  company?: string;
+  week?: number;
+  status: "completed" | "pending" | "upcoming";
+  score: number | null;
+  feedback: string | null;
+  date: string | null;
+  evaluator: string;
+}
+
+// Default empty state - evaluations will be fetched from database
+const DEFAULT_EVALUATIONS: Evaluation[] = [];
 
 export default function StudentEvaluationsPage() {
+  const { user } = useAuth();
+  const [evaluations, setEvaluations] = useState<Evaluation[]>(DEFAULT_EVALUATIONS);
+  const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "completed" | "pending" | "upcoming">("all");
 
-  const filtered = mockEvaluations.filter((e) =>
+  useEffect(() => {
+    fetchEvaluations();
+  }, [user]);
+
+  async function fetchEvaluations() {
+    if (!user) { setIsLoading(false); return; }
+
+    try {
+      const supabase = createClient();
+      
+      // Fetch evaluations for current student
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select(`
+          *,
+          evaluators!inner(full_name, type),
+          internships!inner(title)
+        `)
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const evals: Evaluation[] = data.map((ev: any) => ({
+          id: ev.id,
+          type: ev.evaluation_type || 'Evaluation',
+          course: ev.course_code,
+          company: ev.internships?.title,
+          week: ev.week_number,
+          status: ev.status || 'pending',
+          score: ev.overall_rating,
+          feedback: ev.comments,
+          date: ev.evaluated_at || ev.created_at,
+          evaluator: ev.evaluators?.full_name || 'Unknown',
+        }));
+        setEvaluations(evals);
+      }
+    } catch (error) {
+      console.error("Error fetching evaluations:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const filtered = evaluations.filter((e) =>
     filter === "all" ? true : e.status === filter
   );
 
@@ -71,6 +102,28 @@ export default function StudentEvaluationsPage() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">Evaluations</h1>
+            <p className="text-muted-foreground mt-1">Loading...</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="h-8 bg-muted animate-pulse rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
       {/* Header */}
@@ -85,10 +138,10 @@ export default function StudentEvaluationsPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total", value: mockEvaluations.length, icon: FileText },
-            { label: "Completed", value: mockEvaluations.filter(e => e.status === "completed").length, icon: CheckCircle2, color: "text-green-600" },
-            { label: "Pending", value: mockEvaluations.filter(e => e.status === "pending").length, icon: Clock, color: "text-yellow-600" },
-            { label: "Upcoming", value: mockEvaluations.filter(e => e.status === "upcoming").length, icon: AlertCircle, color: "text-blue-600" },
+            { label: "Total", value: evaluations.length, icon: FileText },
+            { label: "Completed", value: evaluations.filter(e => e.status === "completed").length, icon: CheckCircle2, color: "text-green-600" },
+            { label: "Pending", value: evaluations.filter(e => e.status === "pending").length, icon: Clock, color: "text-yellow-600" },
+            { label: "Upcoming", value: evaluations.filter(e => e.status === "upcoming").length, icon: AlertCircle, color: "text-blue-600" },
           ].map((stat) => (
             <Card key={stat.label}>
               <CardContent className="p-4 flex items-center gap-3">

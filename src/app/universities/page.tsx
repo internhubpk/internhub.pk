@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { SiteNav } from "@/components/layout/site-nav";
@@ -27,6 +27,7 @@ import {
   Filter,
   X,
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 // ============ TYPES ============
 interface UniversityData {
@@ -44,189 +45,8 @@ interface UniversityData {
   website?: string;
 }
 
-// ============ MOCK DATA ============
-const mockUniversities: UniversityData[] = [
-  {
-    id: "1",
-    name: "International Islamic University Islamabad (IIUI)",
-    slug: "iiui",
-    logo_url: null,
-    city: "Islamabad",
-    province: "Federal",
-    department_count: 12,
-    student_count: 32000,
-    established_year: 1980,
-    type: "public",
-    description:
-      "A premier public research university known for engineering, computer science, and Islamic studies programs.",
-    website: "https://iiu.edu.pk",
-  },
-  {
-    id: "2",
-    name: "COMSATS University Islamabad (CUI)",
-    slug: "comsats",
-    logo_url: null,
-    city: "Islamabad",
-    province: "Federal",
-    department_count: 18,
-    student_count: 45000,
-    established_year: 1998,
-    type: "public",
-    description:
-      "Leading university in IT and sciences with multiple campuses across Pakistan.",
-    website: "https://comsats.edu.pk",
-  },
-  {
-    id: "3",
-    name: "National University of Sciences & Technology (NUST)",
-    slug: "nust",
-    logo_url: null,
-    city: "Islamabad",
-    province: "Federal",
-    department_count: 19,
-    student_count: 15000,
-    established_year: 1991,
-    type: "public",
-    description:
-      "Pakistan's top-ranked engineering and technology university with world-class research facilities.",
-    website: "https://nust.edu.pk",
-  },
-  {
-    id: "4",
-    name: "FAST-NUCES",
-    slug: "fast",
-    logo_url: null,
-    city: "Lahore",
-    province: "Punjab",
-    department_count: 8,
-    student_count: 12000,
-    established_year: 2000,
-    type: "private",
-    description:
-      "Pioneer of computer science education in Pakistan with campuses in major cities.",
-    website: "https://nu.edu.pk",
-  },
-  {
-    id: "5",
-    name: "Lahore University of Management Sciences (LUMS)",
-    slug: "lums",
-    logo_url: null,
-    city: "Lahore",
-    province: "Punjab",
-    department_count: 5,
-    student_count: 5000,
-    established_year: 1984,
-    type: "private",
-    description:
-      "Pakistan's premier liberal arts and business school with international recognition.",
-    website: "https://lums.edu.pk",
-  },
-  {
-    id: "6",
-    name: "University of Engineering & Technology Lahore (UET)",
-    slug: "uet-lahore",
-    logo_url: null,
-    city: "Lahore",
-    province: "Punjab",
-    department_count: 15,
-    student_count: 25000,
-    established_year: 1921,
-    type: "public",
-    description:
-      "One of Pakistan's oldest and most prestigious engineering institutions.",
-    website: "https://uet.edu.pk",
-  },
-  {
-    id: "7",
-    name: "University of Karachi",
-    slug: "ku",
-    logo_url: null,
-    city: "Karachi",
-    province: "Sindh",
-    department_count: 25,
-    student_count: 55000,
-    established_year: 1951,
-    type: "public",
-    description:
-      "Pakistan's largest public university by enrollment with diverse academic programs.",
-    website: "https://uok.edu.pk",
-  },
-  {
-    id: "8",
-    name: "NED University of Engineering & Technology",
-    slug: "ned",
-    logo_url: null,
-    city: "Karachi",
-    province: "Sindh",
-    department_count: 10,
-    student_count: 9000,
-    established_year: 1922,
-    type: "public",
-    description:
-      "Karachi's leading engineering institution with strong industry connections.",
-    website: "https://neduet.edu.pk",
-  },
-  {
-    id: "9",
-    name: "University of Peshawar",
-    slug: "uop",
-    logo_url: null,
-    city: "Peshawar",
-    province: "KPK",
-    department_count: 14,
-    student_count: 18000,
-    established_year: 1950,
-    type: "public",
-    description:
-      "The oldest university in Khyber Pakhtunkhwa offering comprehensive education.",
-    website: "https://upesh.edu.pk",
-  },
-  {
-    id: "10",
-    name: "Balochistan University of Information Technology (BUITMS)",
-    slug: "buitms",
-    logo_url: null,
-    city: "Quetta",
-    province: "Balochistan",
-    department_count: 6,
-    student_count: 6000,
-    established_year: 2002,
-    type: "public",
-    description:
-      "Leading technology institution in Balochistan focusing on IT and management sciences.",
-    website: "https://buitms.edu.pk",
-  },
-  {
-    id: "11",
-    name: "Air University Islamabad",
-    slug: "au",
-    logo_url: null,
-    city: "Islamabad",
-    province: "Federal",
-    department_count: 9,
-    student_count: 8000,
-    established_year: 2002,
-    type: "public",
-    description:
-      "PAF-affiliated university specializing in aerospace, engineering, and computing disciplines.",
-    website: "https://au.edu.pk",
-  },
-  {
-    id: "12",
-    name: "Shaheed Zulfikar Ali Bhutto Institute of Science & Technology (SZABIST)",
-    slug: "szabist",
-    logo_url: null,
-    city: "Karachi",
-    province: "Sindh",
-    department_count: 7,
-    student_count: 7000,
-    established_year: 1995,
-    type: "private",
-    description:
-      "Multi-campus private university known for management sciences and computer science programs.",
-    website: "https://szabist.edu.pk",
-  },
-];
+// Default empty state - universities will be fetched from database
+const DEFAULT_UNIVERSITIES: UniversityData[] = [];
 
 const provinces = ["all", "Federal", "Punjab", "Sindh", "KPK", "Balochistan"];
 const types = ["all", "public", "private"];
@@ -247,13 +67,54 @@ const itemVariants = {
 
 // ============ COMPONENT ============
 export default function UniversitiesPage() {
+  const [universities, setUniversities] = useState<UniversityData[]>(DEFAULT_UNIVERSITIES);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProvince, setSelectedProvince] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
 
+  useEffect(() => {
+    fetchUniversities();
+  }, []);
+
+  async function fetchUniversities() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('universities')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const uniList: UniversityData[] = data.map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          slug: u.slug || u.name.toLowerCase().replace(/\s+/g, '-'),
+          logo_url: u.logo_url,
+          city: u.city || '',
+          province: u.province || '',
+          department_count: u.department_count || 0,
+          student_count: u.student_count || 0,
+          established_year: u.established_year || 2000,
+          type: u.type || 'public',
+          description: u.description || '',
+          website: u.website,
+        }));
+        setUniversities(uniList);
+      }
+    } catch (error) {
+      console.error("Error fetching universities:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   // Filter universities
   const filteredUniversities = useMemo(() => {
-    return mockUniversities.filter((uni) => {
+    return universities.filter((uni) => {
       const matchesSearch =
         uni.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         uni.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -294,7 +155,7 @@ export default function UniversitiesPage() {
               <p className="text-muted-foreground text-lg max-w-2xl">
                 Explore our network of{" "}
                 <span className="font-semibold text-foreground">
-                  {mockUniversities.length}+
+                  {universities.length}+
                 </span>{" "}
                 leading Pakistani universities offering internship opportunities
                 through InternHub.
@@ -380,7 +241,7 @@ export default function UniversitiesPage() {
             <span className="font-semibold text-foreground">
               {filteredUniversities.length}
             </span>{" "}
-            of {mockUniversities.length} universities
+            of {universities.length} universities
           </p>
           <Filter className="h-4 w-4 text-muted-foreground hidden sm:block" />
         </motion.div>

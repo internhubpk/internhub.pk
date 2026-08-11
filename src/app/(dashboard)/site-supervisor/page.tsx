@@ -65,11 +65,25 @@ interface RecentActivity {
   timestamp: string;
 }
 
+// Default empty states - data will be fetched from database
+const DEFAULT_STATS: SupervisorStats = {
+  assignedStudents: 0,
+  activeStudents: 0,
+  pendingEvaluations: 0,
+  completedEvaluations: 0,
+  weeklyLogsPending: 0,
+  weeklyLogsApproved: 0,
+  evaluationsDueThisWeek: 0,
+};
+
+const DEFAULT_STUDENTS: StudentSummary[] = [];
+const DEFAULT_ACTIVITY: RecentActivity[] = [];
+
 export default function SiteSupervisorDashboard() {
   const { user, profile } = useAuth();
-  const [stats, setStats] = useState<SupervisorStats | null>(null);
-  const [students, setStudents] = useState<StudentSummary[]>([]);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const [stats, setStats] = useState<SupervisorStats>(DEFAULT_STATS);
+  const [students, setStudents] = useState<StudentSummary[]>(DEFAULT_STUDENTS);
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>(DEFAULT_ACTIVITY);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -92,8 +106,7 @@ export default function SiteSupervisorDashboard() {
         .single();
 
       if (!supervisor) {
-        // Use mock data for demo if no supervisor record
-        setMockData();
+        // No supervisor record found - keep empty state
         setIsLoading(false);
         return;
       }
@@ -170,108 +183,19 @@ export default function SiteSupervisorDashboard() {
       
       setStudents(studentData.slice(0, 5)); // Show only first 5 on dashboard
 
-      // Mock recent activity for now
-      setRecentActivity([
-        {
-          id: "1",
-          type: "evaluation",
-          studentName: studentData[0]?.name || "Student",
-          description: "Completed Week 3 evaluation",
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "2",
-          type: "log_review",
-          studentName: studentData[1]?.name || "Student",
-          description: "Weekly log approved",
-          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "3",
-          type: "notification",
-          studentName: "All Students",
-          description: "Sent reminder about log submission",
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        },
-      ]);
+      // Set empty recent activity - will be populated from activity logs table
+      setRecentActivity([]);
 
     } catch (error) {
       console.error("Error fetching supervisor data:", error);
-      // Set mock data on error for demo purposes
-      setMockData();
+      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
 
-  function setMockData() {
-    setStats({
-      assignedStudents: 4,
-      activeStudents: 3,
-      pendingEvaluations: 2,
-      completedEvaluations: 8,
-      weeklyLogsPending: 3,
-      weeklyLogsApproved: 12,
-      evaluationsDueThisWeek: 2,
-    });
-    
-    setStudents([
-      {
-        id: "1",
-        studentId: "s1",
-        name: "Ahmed Khan",
-        email: "ahmed@university.edu.pk",
-        progress: 72,
-        lastActivity: new Date().toLocaleDateString(),
-        lastEvaluationDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 15,
-        performanceRating: "good",
-        status: "active",
-      },
-      {
-        id: "2",
-        studentId: "s2",
-        name: "Fatima Ali",
-        email: "fatima@university.edu.pk",
-        progress: 85,
-        lastActivity: new Date().toLocaleDateString(),
-        lastEvaluationDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 10,
-        performanceRating: "excellent",
-        status: "active",
-      },
-      {
-        id: "3",
-        studentId: "s3",
-        name: "Usman Malik",
-        email: "usman@university.edu.pk",
-        progress: 45,
-        lastActivity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString(),
-        lastEvaluationDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 25,
-        performanceRating: "needs_attention",
-        status: "active",
-      },
-      {
-        id: "4",
-        studentId: "s4",
-        name: "Ayesha Raza",
-        email: "ayesha@university.edu.pk",
-        progress: 100,
-        lastActivity: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString(),
-        lastEvaluationDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        daysSinceEvaluation: 30,
-        performanceRating: "excellent",
-        status: "completed",
-      },
-    ]);
-
-    setRecentActivity([
-      { id: "1", type: "evaluation", studentName: "Fatima Ali", description: "Completed Week 6 evaluation", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-      { id: "2", type: "log_review", studentName: "Ahmed Khan", description: "Weekly log approved", timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
-      { id: "3", type: "notification", studentName: "All Students", description: "Sent reminder about deadline", timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
-    ]);
-  }
+  // Note: Mock data removed - dashboard shows empty state until real data is available
+  // function setMockData() has been removed to prevent showing fake data
 
   const statCards = [
     {

@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import {
   Card,
   CardContent,
@@ -102,107 +104,18 @@ interface Notification {
   senderName: string;
 }
 
-// Mock students
-const mockStudents: StudentOption[] = [
-  { id: "1", name: "Sarah Johnson", email: "sarah.j@university.edu", program: "BSc Computer Science" },
-  { id: "2", name: "Mike Chen", email: "mike.chen@university.edu", program: "BSc Software Engineering" },
-  { id: "3", name: "Emily Davis", email: "emily.d@university.edu", program: "BBA Marketing" },
-  { id: "4", name: "Ahmed Khan", email: "ahmed.k@university.edu", program: "MSc Data Science" },
-  { id: "5", name: "Fatima Ali", email: "fatima.a@university.edu", program: "BSc Information Technology" },
-  { id: "6", name: "Omar Hassan", email: "omar.h@university.edu", program: "BSc Computer Science" },
-];
-
-// Mock programs
-const mockPrograms = [
-  { id: "p1", name: "BSc Computer Science", studentCount: 3 },
-  { id: "p2", name: "BSc Software Engineering", studentCount: 1 },
-  { id: "p3", name: "BBA Marketing", studentCount: 1 },
-  { id: "p4", name: "MSc Data Science", studentCount: 1 },
-  { id: "p5", name: "BSc Information Technology", studentCount: 1 },
-];
-
-// Mock notifications
-const mockNotifications: Notification[] = [
-  {
-    id: "n1",
-    title: "Weekly Log Reminder",
-    message: "This is a reminder to submit your weekly log by Friday 5 PM. Make sure to include all tasks completed, challenges faced, and goals for next week.",
-    priority: "medium",
-    target: "all",
-    targetName: "All Students",
-    recipientCount: 6,
-    readCount: 5,
-    status: "delivered",
-    sentAt: "2024-02-12T09:00:00Z",
-    deliveredAt: "2024-02-12T09:01:00Z",
-    createdAt: "2024-02-12T08:55:00Z",
-    senderName: "Dr. Smith (You)",
-  },
-  {
-    id: "n2",
-    title: "Task Assignment: API Documentation",
-    message: "A new task has been assigned to you. Please check your Tasks page for details. Due date: February 20, 2024.",
-    priority: "high",
-    target: "individual",
-    targetName: "Sarah Johnson",
-    recipientCount: 1,
-    readCount: 1,
-    status: "read",
-    sentAt: "2024-02-11T14:30:00Z",
-    deliveredAt: "2024-02-11T14:31:00Z",
-    createdAt: "2024-02-11T14:25:00Z",
-    senderName: "Dr. Smith (You)",
-  },
-  {
-    id: "n3",
-    title: "Midterm Evaluation Schedule",
-    message: "Please note that midterm evaluations will be conducted next week (Feb 19-23). Prepare a presentation of your work so far. Schedule will be shared individually.",
-    priority: "high",
-    target: "program",
-    targetName: "BSc Computer Science",
-    recipientCount: 3,
-    readCount: 2,
-    status: "delivered",
-    sentAt: "2024-02-10T10:00:00Z",
-    deliveredAt: "2024-02-10T10:01:00Z",
-    createdAt: "2024-02-10T09:55:00Z",
-    senderName: "Dr. Smith (You)",
-  },
-  {
-    id: "n4",
-    title: "Welcome to Internship Program",
-    message: "Welcome to the internship program! Please review the guidelines document attached and attend the orientation session on Monday at 10 AM.",
-    priority: "low",
-    target: "all",
-    targetName: "All Students",
-    recipientCount: 6,
-    readCount: 6,
-    status: "read",
-    sentAt: "2024-01-15T08:00:00Z",
-    deliveredAt: "2024-01-15T08:01:00Z",
-    createdAt: "2024-01-15T07:50:00Z",
-    senderName: "Dr. Smith (You)",
-  },
-  {
-    id: "n5",
-    title: "URGENT: Deadline Extension Request",
-    message: "Due to system maintenance this weekend, the deadline for Task #5 has been extended by 2 days. New deadline: February 16, 2024.",
-    priority: "urgent",
-    target: "program",
-    targetName: "BSc Software Engineering",
-    recipientCount: 1,
-    readCount: 1,
-    status: "read",
-    sentAt: "2024-02-09T16:45:00Z",
-    deliveredAt: "2024-02-09T16:46:00Z",
-    createdAt: "2024-02-09T16:40:00Z",
-    senderName: "Dr. Smith (You)",
-  },
-];
+// Default empty data - will be populated from database
+const DEFAULT_STUDENTS: StudentOption[] = [];
+const DEFAULT_PROGRAMS: { id: string; name: string; studentCount: number }[] = [];
+const DEFAULT_NOTIFICATIONS: Notification[] = [];
 
 export default function FacultySupervisorNotificationsPage() {
+  const { user } = useAuth();
   // State
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
+  const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
+  const [programs, setPrograms] = useState(DEFAULT_PROGRAMS);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -222,6 +135,77 @@ export default function FacultySupervisorNotificationsPage() {
     selectedProgramId: "",
   });
   const [isSending, setIsSending] = useState(false);
+
+  // Fetch data from database
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) { setIsLoading(false); return; }
+      
+      try {
+        const supabase = createClient();
+        
+        // Get supervisor record
+        const { data: supervisor } = await supabase
+          .from("supervisors")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("type", "faculty")
+          .single();
+
+        if (!supervisor) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch supervised students
+        const { data: studentData } = await supabase
+          .from("student_internships")
+          .select(`
+            student_id,
+            student:students(id, full_name, email, program:programs(name))
+          `)
+          .eq("faculty_supervisor_id", supervisor.id)
+          .in("status", ["active", "in_progress"]);
+
+        const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
+          id: s.student?.id || s.student_id,
+          name: s.student?.full_name || `Student ${s.student_id?.slice(0, 6)}`,
+          email: s.student?.email || "",
+          program: s.student?.program?.name || "Unknown Program",
+        }));
+
+        setStudents(studentList);
+
+        // Group students by program for program selector
+        const programMap = new Map<string, number>();
+        studentList.forEach(s => {
+          programMap.set(s.program, (programMap.get(s.program) || 0) + 1);
+        });
+        const programList = Array.from(programMap.entries()).map(([name, count], idx) => ({
+          id: `p${idx}`,
+          name,
+          studentCount: count,
+        }));
+        setPrograms(programList);
+
+        // Fetch notifications (when API is ready)
+        // const { data: notificationData } = await supabase
+        //   .from("notifications")
+        //   .select("*")
+        //   .eq("sender_id", supervisor.id)
+        //   .order("created_at", { ascending: false });
+        
+        // setNotifications(notificationData || []);
+      } catch (error) {
+        console.error("Error fetching notification data:", error);
+        // Keep empty state on error
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [user]);
 
   // Filter notifications
   const filteredNotifications = useMemo(() => {
@@ -358,13 +342,13 @@ export default function FacultySupervisorNotificationsPage() {
       targetName: composeForm.target === "all"
         ? "All Students"
         : composeForm.target === "individual"
-        ? mockStudents.find(s => s.id === composeForm.selectedStudentId)?.name || "Student"
-        : mockPrograms.find(p => p.id === composeForm.selectedProgramId)?.name || "Program",
+        ? students.find(s => s.id === composeForm.selectedStudentId)?.name || "Student"
+        : programs.find(p => p.id === composeForm.selectedProgramId)?.name || "Program",
       recipientCount: composeForm.target === "all"
-        ? mockStudents.length
+        ? students.length
         : composeForm.target === "individual"
         ? 1
-        : mockPrograms.find(p => p.id === composeForm.selectedProgramId)?.studentCount || 0,
+        : programs.find(p => p.id === composeForm.selectedProgramId)?.studentCount || 0,
       readCount: 0,
       status: "sent",
       sentAt: new Date().toISOString(),
@@ -382,6 +366,35 @@ export default function FacultySupervisorNotificationsPage() {
     setSelectedNotification(notification);
     setIsViewDialogOpen(true);
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Notifications</h1>
+          <p className="text-muted-foreground mt-1">Loading notifications...</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
+                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
+                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
+                <div className="h-3 w-16 bg-muted rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Loading notification data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -469,11 +482,15 @@ export default function FacultySupervisorNotificationsPage() {
                       <SelectValue placeholder="Choose a student" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockStudents.map((student) => (
-                        <SelectItem key={student.id} value={student.id}>
-                          {student.name} ({student.program})
-                        </SelectItem>
-                      ))}
+                      {students.length === 0 ? (
+                        <SelectItem value="_none" disabled>No students available</SelectItem>
+                      ) : (
+                        students.map((student) => (
+                          <SelectItem key={student.id} value={student.id}>
+                            {student.name} ({student.program})
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -490,11 +507,15 @@ export default function FacultySupervisorNotificationsPage() {
                       <SelectValue placeholder="Choose a program" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPrograms.map((program) => (
-                        <SelectItem key={program.id} value={program.id}>
-                          {program.name} ({program.studentCount} students)
-                        </SelectItem>
-                      ))}
+                      {programs.length === 0 ? (
+                        <SelectItem value="_none" disabled>No programs available</SelectItem>
+                      ) : (
+                        programs.map((program) => (
+                          <SelectItem key={program.id} value={program.id}>
+                            {program.name} ({program.studentCount} students)
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -535,8 +556,8 @@ export default function FacultySupervisorNotificationsPage() {
                       To: {composeForm.target === "all" 
                         ? "All Students" 
                         : composeForm.target === "individual"
-                        ? mockStudents.find(s => s.id === composeForm.selectedStudentId)?.name || "Selected Student"
-                        : mockPrograms.find(p => p.id === composeForm.selectedProgramId)?.name || "Selected Program"}
+                        ? students.find(s => s.id === composeForm.selectedStudentId)?.name || "Selected Student"
+                        : programs.find(p => p.id === composeForm.selectedProgramId)?.name || "Selected Program"}
                     </div>
                   </CardContent>
                 </Card>

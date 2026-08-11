@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -71,6 +71,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface InternshipProgram {
@@ -95,90 +96,8 @@ interface InternshipProgram {
   updated_at: string;
 }
 
-// Mock data for internships
-const mockInternships: InternshipProgram[] = [
-  {
-    id: "1",
-    title: "Software Engineering Internship - Summer 2024",
-    description: "Join our engineering team to work on cutting-edge web applications using React, Node.js, and cloud technologies. You'll be mentored by senior engineers and contribute to real projects that impact thousands of users.",
-    status: "active",
-    location_type: "hybrid",
-    location: "Karachi, Pakistan",
-    is_paid: true,
-    stipend: 50000,
-    duration_weeks: 12,
-    target_departments: ["Computer Science", "Software Engineering"],
-    target_university: "State University",
-    max_applicants: 30,
-    current_applicants: 24,
-    start_date: "2024-06-01",
-    end_date: "2024-08-31",
-    application_deadline: "2024-05-15",
-    required_skills: ["React", "TypeScript", "Node.js", "SQL"],
-    created_at: "2024-03-01T10:00:00Z",
-    updated_at: "2024-04-10T14:30:00Z",
-  },
-  {
-    id: "2",
-    title: "Digital Marketing & Social Media Intern",
-    description: "Learn digital marketing hands-on by managing our social media presence, creating content strategies, and analyzing campaign performance metrics.",
-    status: "open",
-    location_type: "remote",
-    location: null,
-    is_paid: true,
-    stipend: 30000,
-    duration_weeks: 8,
-    target_departments: ["Marketing", "Business Administration"],
-    max_applicants: 15,
-    current_applicants: 18,
-    start_date: "2024-06-15",
-    end_date: "2024-08-10",
-    application_deadline: "2024-05-30",
-    required_skills: ["Social Media", "Content Writing", "Analytics"],
-    created_at: "2024-03-15T09:00:00Z",
-    updated_at: "2024-04-08T11:20:00Z",
-  },
-  {
-    id: "3",
-    title: "Data Analytics Research Program",
-    description: "Work with our data science team on real-world analytics projects. Gain experience in statistical analysis, machine learning, and data visualization.",
-    status: "draft",
-    location_type: "on_site",
-    location: "Lahore, Pakistan",
-    is_paid: false,
-    stipend: null,
-    duration_weeks: 16,
-    target_departments: ["Data Science", "Statistics", "Computer Science"],
-    max_applicants: 20,
-    current_applicants: 0,
-    start_date: "2024-07-01",
-    end_date: "2024-10-19",
-    application_deadline: null,
-    required_skills: ["Python", "SQL", "Excel", "Machine Learning"],
-    created_at: "2024-04-01T16:00:00Z",
-    updated_at: "2024-04-01T16:00:00Z",
-  },
-  {
-    id: "4",
-    title: "UI/UX Design Internship",
-    description: "Help us create beautiful and intuitive user interfaces. Work closely with product managers and developers to design solutions that delight users.",
-    status: "closed",
-    location_type: "hybrid",
-    location: "Islamabad, Pakistan",
-    is_paid: true,
-    stipend: 40000,
-    duration_weeks: 10,
-    target_departments: ["Design", "Computer Science"],
-    max_applicants: 10,
-    current_applicants: 12,
-    start_date: "2024-02-01",
-    end_date: "2024-04-12",
-    application_deadline: "2024-01-20",
-    required_skills: ["Figma", "User Research", "Prototyping", "Adobe XD"],
-    created_at: "2023-12-01T10:00:00Z",
-    updated_at: "2024-04-15T09:45:00Z",
-  },
-];
+// Default empty state - internships will be fetched from database
+const DEFAULT_INTERNSHIPS: InternshipProgram[] = [];
 
 // Available departments (mock)
 const availableDepartments = [
@@ -204,7 +123,54 @@ const availableUniversities = [
 ];
 
 export default function CompanyHRInternshipsPage() {
-  const [internships, setInternships] = useState<InternshipProgram[]>(mockInternships);
+  const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchInternships();
+  }, []);
+
+  async function fetchInternships() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('internships')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const progList: InternshipProgram[] = data.map((prog: any) => ({
+          id: prog.id,
+          title: prog.title || 'Untitled Program',
+          description: prog.description || '',
+          status: prog.status || 'draft',
+          location_type: prog.location_type || 'on_site',
+          location: prog.location,
+          is_paid: prog.is_paid || false,
+          stipend: prog.stipend,
+          duration_weeks: prog.duration_weeks || 0,
+          target_departments: prog.target_departments || [],
+          target_university: prog.target_university,
+          max_applicants: prog.max_applicants,
+          current_applicants: prog.current_applicants || 0,
+          start_date: prog.start_date,
+          end_date: prog.end_date,
+          application_deadline: prog.application_deadline,
+          required_skills: prog.required_skills || [],
+          created_at: prog.created_at,
+          updated_at: prog.updated_at || prog.created_at,
+        }));
+        setInternships(progList);
+      }
+    } catch (error) {
+      console.error("Error fetching internships:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingInternship, setEditingInternship] = useState<InternshipProgram | null>(null);

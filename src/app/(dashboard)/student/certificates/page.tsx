@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,32 +14,96 @@ import {
   Building2,
   FileText,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 
-// Mock data for certificates
-const mockCertificates = [
-  {
-    id: "1",
-    title: "Software Engineering Internship Completion",
-    company: "Tech Corp",
-    issueDate: "2024-02-15",
-    status: "issued" as const,
-    certificateNumber: "CERT-2024-001234",
-    internshipDuration: "3 months",
-    skills: ["React", "TypeScript", "Node.js", "Agile"],
-  },
-  {
-    id: "2",
-    title: "Data Science Research Internship",
-    company: "AI Solutions",
-    issueDate: "2024-01-20",
-    status: "issued" as const,
-    certificateNumber: "CERT-2024-000987",
-    internshipDuration: "4 months",
-    skills: ["Python", "Machine Learning", "Data Analysis", "SQL"],
-  },
-];
+// Types
+interface Certificate {
+  id: string;
+  title: string;
+  company: string;
+  issueDate: string;
+  status: "issued" | "pending" | "processing";
+  certificateNumber: string;
+  internshipDuration: string;
+  skills: string[];
+}
+
+// Default empty state - certificates will be fetched from database
+const DEFAULT_CERTIFICATES: Certificate[] = [];
 
 export default function StudentCertificatesPage() {
+  const { user } = useAuth();
+  const [certificates, setCertificates] = useState<Certificate[]>(DEFAULT_CERTIFICATES);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchCertificates();
+  }, [user]);
+
+  async function fetchCertificates() {
+    if (!user) { setIsLoading(false); return; }
+
+    try {
+      const supabase = createClient();
+      
+      // Fetch certificates for current student
+      const { data, error } = await supabase
+        .from('certificates')
+        .select(`
+          *,
+          internships!inner(title, companies(name))
+        `)
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const certList: Certificate[] = data.map((cert: any) => ({
+          id: cert.id,
+          title: `${cert.internships?.title || 'Internship'} Completion`,
+          company: cert.internships?.companies?.name || 'Company',
+          issueDate: cert.issued_at || cert.created_at,
+          status: cert.status || 'pending',
+          certificateNumber: cert.certificate_number || `CERT-${cert.id}`,
+          internshipDuration: cert.duration || 'N/A',
+          skills: cert.skills || [],
+        }));
+        setCertificates(certList);
+      }
+    } catch (error) {
+      console.error("Error fetching certificates:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b bg-card">
+          <div className="container mx-auto px-4 py-6 lg:px-8">
+            <div className="h-8 bg-muted animate-pulse rounded w-48" />
+            <div className="h-4 bg-muted animate-pulse rounded w-64 mt-2" />
+          </div>
+        </div>
+        <div className="container mx-auto px-4 py-6 lg:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 mb-6">
+            {[1, 2].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="h-12 bg-muted animate-pulse rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -75,7 +139,7 @@ export default function StudentCertificatesPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Certificates</p>
-                <p className="text-2xl font-bold">{mockCertificates.length}</p>
+                <p className="text-2xl font-bold">{certificates.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -87,7 +151,7 @@ export default function StudentCertificatesPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Issued</p>
-                <p className="text-2xl font-bold">{mockCertificates.filter(c => c.status === "issued").length}</p>
+                <p className="text-2xl font-bold">{certificates.filter(c => c.status === "issued").length}</p>
               </div>
             </CardContent>
           </Card>
@@ -95,7 +159,7 @@ export default function StudentCertificatesPage() {
 
         {/* Certificates List */}
         <div className="grid gap-6 md:grid-cols-2">
-          {mockCertificates.map((certificate, index) => (
+          {certificates.map((certificate, index) => (
             <motion.div
               key={certificate.id}
               initial={{ opacity: 0, y: 20 }}
@@ -147,16 +211,18 @@ export default function StudentCertificatesPage() {
                   </div>
 
                   {/* Skills */}
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Skills Validated</p>
-                    <div className="flex flex-wrap gap-1">
-                      {certificate.skills.map((skill) => (
-                        <Badge key={skill} variant="outline" className="text-xs">
-                          {skill}
-                        </Badge>
-                      ))}
+                  {certificate.skills && certificate.skills.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Skills Validated</p>
+                      <div className="flex flex-wrap gap-1">
+                        {certificate.skills.map((skill) => (
+                          <Badge key={skill} variant="outline" className="text-xs">
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t">
@@ -174,7 +240,7 @@ export default function StudentCertificatesPage() {
         </div>
 
         {/* Empty State if no certificates */}
-        {mockCertificates.length === 0 && (
+        {certificates.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

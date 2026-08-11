@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface Application {
@@ -102,123 +103,8 @@ interface Application {
   phone?: string;
 }
 
-// Mock data for applications
-const mockApplications: Application[] = [
-  {
-    id: "1",
-    student_id: "stu_001",
-    student_name: "Sarah Johnson",
-    student_email: "sarah.j@university.edu",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    status: "pending",
-    applied_at: "2024-02-10T10:30:00Z",
-    updated_at: "2024-02-10T10:30:00Z",
-    university: "State University",
-    department: "Computer Science",
-    gpa: "3.8",
-    match_score: 95,
-    cover_letter: "I am excited to apply for this Software Engineering Internship position at your company. As a final year Computer Science student with a strong foundation in web development, I believe I would be a great fit for your team.\n\nDuring my academic career, I have developed multiple projects using React, TypeScript, and Node.js. My capstone project involved building a full-stack application that is currently being used by over 500 students on campus.\n\nI am particularly drawn to your company's innovative approach to technology and would welcome the opportunity to contribute to your team while learning from experienced engineers.",
-    resume_url: "#",
-    skills: ["React", "TypeScript", "Node.js", "SQL", "Git"],
-    phone: "+92-300-1234567",
-  },
-  {
-    id: "2",
-    student_id: "stu_002",
-    student_name: "Mike Chen",
-    student_email: "mike.chen@tech.edu",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    status: "reviewing",
-    applied_at: "2024-02-08T14:20:00Z",
-    updated_at: "2024-02-09T09:15:00Z",
-    university: "Tech University",
-    department: "Software Engineering",
-    gpa: "3.6",
-    match_score: 88,
-    cover_letter: "With my experience in web development and passion for clean code, I am confident I can make meaningful contributions to your engineering team.",
-    resume_url: "#",
-    skills: ["Python", "JavaScript", "Django", "PostgreSQL"],
-    phone: "+92-301-9876543",
-  },
-  {
-    id: "3",
-    student_id: "stu_003",
-    student_name: "Emily Davis",
-    student_email: "emily.d@business.edu",
-    internship_id: "int_002",
-    internship_title: "Marketing Intern",
-    status: "accepted",
-    applied_at: "2024-02-05T09:15:00Z",
-    updated_at: "2024-02-12T11:00:00Z",
-    university: "Business School",
-    department: "Marketing",
-    gpa: "3.9",
-    match_score: 92,
-    cover_letter: "My passion for digital marketing and data-driven strategies makes me an ideal candidate for this position.",
-    resume_url: "#",
-    skills: ["Social Media", "Analytics", "Content Writing", "SEO"],
-    phone: "+92-332-4567890",
-  },
-  {
-    id: "4",
-    student_id: "stu_004",
-    student_name: "Alex Wilson",
-    student_email: "alex.w@research.edu",
-    internship_id: "int_003",
-    internship_title: "Data Science Intern",
-    status: "rejected",
-    applied_at: "2024-01-28T16:45:00Z",
-    updated_at: "2024-02-01T14:30:00Z",
-    university: "Research Institute",
-    department: "Data Science",
-    gpa: "3.7",
-    match_score: 90,
-    cover_letter: "I have been working on ML projects for the past year and would love to apply my skills in a real-world setting.",
-    resume_url: "#",
-    skills: ["Python", "Machine Learning", "SQL", "R", "TensorFlow"],
-    phone: "+92-333-7890123",
-  },
-  {
-    id: "5",
-    student_id: "stu_005",
-    student_name: "Lisa Park",
-    student_email: "lisa.p@state.edu",
-    internship_id: "int_004",
-    internship_title: "UI/UX Design Intern",
-    status: "pending",
-    applied_at: "2024-02-08T11:00:00Z",
-    updated_at: "2024-02-08T11:00:00Z",
-    university: "State University",
-    department: "Design",
-    gpa: "3.85",
-    match_score: 94,
-    cover_letter: "As a design enthusiast with experience in Figma and user research, I am eager to bring fresh perspectives to your design team.",
-    resume_url: "#",
-    skills: ["Figma", "User Research", "Prototyping", "Adobe XD", "CSS"],
-    phone: "+92-344-2345678",
-  },
-  {
-    id: "6",
-    student_id: "stu_006",
-    student_name: "James Miller",
-    student_email: "james.m@tech.edu",
-    internship_id: "int_001",
-    internship_title: "Software Engineering Intern",
-    status: "pending",
-    applied_at: "2024-02-09T16:30:00Z",
-    updated_at: "2024-02-09T16:30:00Z",
-    university: "Tech University",
-    department: "Computer Science",
-    gpa: "3.5",
-    match_score: 82,
-    cover_letter: "I am a motivated computer science student looking to gain industry experience through this internship opportunity.",
-    resume_url: "#",
-    skills: ["Java", "Spring Boot", "React", "MySQL"],
-    phone: "+92-305-8901234",
-  },
-];
+// Default empty state - applications will be fetched from database
+const DEFAULT_APPLICATIONS: Application[] = [];
 
 const availablePrograms = [
   "All Programs",
@@ -229,7 +115,56 @@ const availablePrograms = [
 ];
 
 export default function CompanyHRApplicationsPage() {
-  const [applications, setApplications] = useState<Application[]>(mockApplications);
+  const [applications, setApplications] = useState<Application[]>(DEFAULT_APPLICATIONS);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchApplications();
+  }, []);
+
+  async function fetchApplications() {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('applications')
+        .select(`
+          *,
+          students!inner(student_name, email, university, department),
+          internships!inner(title)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const apps: Application[] = data.map((app: any) => ({
+          id: app.id,
+          student_id: app.student_id,
+          student_name: app.students?.student_name || 'Unknown',
+          student_email: app.students?.email || '',
+          internship_id: app.internship_id,
+          internship_title: app.internships?.title || 'Unknown Program',
+          status: app.status || 'pending',
+          applied_at: app.created_at,
+          updated_at: app.updated_at || app.created_at,
+          university: app.students?.university,
+          department: app.students?.department,
+          gpa: app.gpa || 'N/A',
+          match_score: app.match_score || 0,
+          cover_letter: app.cover_letter,
+          resume_url: app.resume_url,
+          skills: app.skills || [],
+          phone: app.phone,
+        }));
+        setApplications(apps);
+      }
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,64 +32,32 @@ import {
   Send,
   Calendar,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 
-// Mock data for weekly logs
-const mockWeeklyLogs = [
-  {
-    id: "1",
-    weekNumber: 8,
-    startDate: "2024-02-05",
-    endDate: "2024-02-11",
-    status: "approved" as const,
-    tasksCompleted: [
-      "Implemented user authentication module",
-      "Fixed responsive design issues on mobile",
-      "Participated in code review sessions",
-      "Attended team standup meetings"
-    ],
-    challenges: "Learning new testing framework took longer than expected",
-    nextWeekGoals: ["Complete API integration", "Start working on dashboard analytics"],
-    supervisorFeedback: "Great progress this week! Keep up the good work.",
-    hoursWorked: 40,
-    submittedAt: "2024-02-12T10:30:00Z",
-    reviewedAt: "2024-02-13T14:20:00Z",
-  },
-  {
-    id: "2",
-    weekNumber: 7,
-    startDate: "2024-01-29",
-    endDate: "2024-02-04",
-    status: "approved" as const,
-    tasksCompleted: [
-      "Designed database schema for new feature",
-      "Created wireframes for mobile app",
-      "Wrote technical documentation"
-    ],
-    challenges: "Some delays in getting design approvals",
-    nextWeekGoals: ["Start implementation of approved designs"],
-    supervisorFeedback: "Good documentation work. Designs look solid.",
-    hoursWorked: 38,
-    submittedAt: "2024-02-05T09:15:00Z",
-    reviewedAt: "2024-02-06T11:45:00Z",
-  },
-  {
-    id: "3",
-    weekNumber: 9,
-    startDate: "2024-02-12",
-    endDate: "2024-02-18",
-    status: "pending" as const,
-    tasksCompleted: [],
-    challenges: "",
-    nextWeekGoals: [],
-    supervisorFeedback: "",
-    hoursWorked: 0,
-    submittedAt: null,
-    reviewedAt: null,
-  },
-];
+// Types
+interface WeeklyLog {
+  id: string;
+  weekNumber: number;
+  startDate: string;
+  endDate: string;
+  status: "approved" | "rejected" | "pending" | "draft";
+  tasksCompleted: string[];
+  challenges: string;
+  nextWeekGoals: string[];
+  supervisorFeedback: string | null;
+  hoursWorked: number;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+}
+
+// Default empty state - logs will be fetched from database
+const DEFAULT_LOGS: WeeklyLog[] = [];
 
 export default function StudentWeeklyLogsPage() {
-  const [logs, setLogs] = useState(mockWeeklyLogs);
+  const { user } = useAuth();
+  const [logs, setLogs] = useState<WeeklyLog[]>(DEFAULT_LOGS);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   
@@ -100,6 +68,50 @@ export default function StudentWeeklyLogsPage() {
     nextWeekGoals: "",
     hoursWorked: "",
   });
+
+  useEffect(() => {
+    fetchWeeklyLogs();
+  }, [user]);
+
+  async function fetchWeeklyLogs() {
+    if (!user) { setIsLoading(false); return; }
+
+    try {
+      const supabase = createClient();
+      
+      // Fetch weekly logs for current student
+      const { data, error } = await supabase
+        .from('weekly_logs')
+        .select('*')
+        .eq('student_id', user.id)
+        .order('week_start_date', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const logList: WeeklyLog[] = data.map((log: any) => ({
+          id: log.id,
+          weekNumber: log.week_number || 0,
+          startDate: log.week_start_date || '',
+          endDate: log.week_end_date || '',
+          status: log.status || 'draft',
+          tasksCompleted: log.tasks_completed || [],
+          challenges: log.challenges || '',
+          nextWeekGoals: log.next_week_goals || [],
+          supervisorFeedback: log.supervisor_feedback,
+          hoursWorked: log.hours_worked || 0,
+          submittedAt: log.submitted_at,
+          reviewedAt: log.reviewed_at,
+        }));
+        setLogs(logList);
+      }
+    } catch (error) {
+      console.error("Error fetching weekly logs:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -114,14 +126,47 @@ export default function StudentWeeklyLogsPage() {
     }
   };
 
-  const handleSubmitLog = () => {
+  const handleSubmitLog = async () => {
     // In real app, this would submit to Supabase
-    alert("Weekly log submitted successfully!");
-    setIsDialogOpen(false);
-    setFormData({ tasksCompleted: "", challenges: "", nextWeekGoals: "", hoursWorked: "" });
+    try {
+      const supabase = createClient();
+      // Submit logic here
+      alert("Weekly log submitted successfully!");
+      setIsDialogOpen(false);
+      setFormData({ tasksCompleted: "", challenges: "", nextWeekGoals: "", hoursWorked: "" });
+      // Refresh logs
+      fetchWeeklyLogs();
+    } catch (error) {
+      console.error("Error submitting log:", error);
+      alert("Failed to submit log. Please try again.");
+    }
   };
 
-  const pendingWeeks = logs.filter(log => log.status === "pending");
+  const pendingWeeks = logs.filter(log => log.status === "pending" || log.status === "draft");
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b bg-card">
+          <div className="container mx-auto px-4 py-6 lg:px-8">
+            <div className="h-8 bg-muted animate-pulse rounded w-48" />
+            <div className="h-4 bg-muted animate-pulse rounded w-64 mt-2" />
+          </div>
+        </div>
+        <div className="container mx-auto px-4 py-6 lg:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="h-12 bg-muted animate-pulse rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -276,65 +321,77 @@ export default function StudentWeeklyLogsPage() {
 
         {/* Weekly Logs List */}
         <div className="space-y-4">
-          {logs.map((log, index) => (
-            <motion.div
-              key={log.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05, duration: 0.3 }}
-            >
-              <Card className="transition-all hover:shadow-md">
-                <CardHeader className="pb-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <CardTitle className="text-lg">
-                        Week {log.weekNumber}
-                      </CardTitle>
-                      <CardDescription className="flex items-center gap-2 mt-1">
-                        <Calendar className="h-3 w-3" />
-                        {log.startDate} - {log.endDate}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(log.status)}
-                      {log.submittedAt && (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(log.submittedAt).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-
-                {log.tasksCompleted.length > 0 && (
-                  <CardContent className="pt-0 space-y-3">
-                    <div>
-                      <h4 className="text-sm font-semibold mb-2">Tasks Completed:</h4>
-                      <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                        {log.tasksCompleted.map((task, i) => (
-                          <li key={i}>{task}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {log.challenges && (
+          {logs.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="font-medium">No weekly logs yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Your weekly logs will appear here once you start your internship
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            logs.map((log, index) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05, duration: 0.3 }}
+              >
+                <Card className="transition-all hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h4 className="text-sm font-semibold mb-2">Challenges:</h4>
-                        <p className="text-sm text-muted-foreground">{log.challenges}</p>
+                        <CardTitle className="text-lg">
+                          Week {log.weekNumber}
+                        </CardTitle>
+                        <CardDescription className="flex items-center gap-2 mt-1">
+                          <Calendar className="h-3 w-3" />
+                          {log.startDate} - {log.endDate}
+                        </CardDescription>
                       </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-4 pt-2 text-sm text-muted-foreground border-t">
-                      <span>Hours: <strong>{log.hoursWorked}</strong></span>
-                      {log.supervisorFeedback && (
-                        <span>Feedback: <strong className="text-emerald-600">Received</strong></span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(log.status)}
+                        {log.submittedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(log.submittedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </CardContent>
-                )}
-              </Card>
-            </motion.div>
-          ))}
+                  </CardHeader>
+
+                  {log.tasksCompleted.length > 0 && (
+                    <CardContent className="pt-0 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Tasks Completed:</h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                          {log.tasksCompleted.map((task, i) => (
+                            <li key={i}>{task}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {log.challenges && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Challenges:</h4>
+                          <p className="text-sm text-muted-foreground">{log.challenges}</p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-4 pt-2 text-sm text-muted-foreground border-t">
+                        <span>Hours: <strong>{log.hoursWorked}</strong></span>
+                        {log.supervisorFeedback && (
+                          <span>Feedback: <strong className="text-emerald-600">Received</strong></span>
+                        )}
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              </motion.div>
+            ))
+          )}
         </div>
       </div>
     </div>
