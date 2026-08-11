@@ -33,6 +33,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -95,8 +105,14 @@ export default function SuperAdminUniversitiesPage() {
   const [editingUniversity, setEditingUniversity] = useState<University | null>(null);
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
   const [tablesExist, setTablesExist] = useState(true);
+  
+  // Delete confirmation dialog state
+  const [deleteTarget, setDeleteTarget] = useState<University | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUniversities();
@@ -369,10 +385,17 @@ export default function SuperAdminUniversitiesPage() {
     }
   }
 
-  async function handleDelete(universityId: string) {
-    if (!confirm("Are you sure you want to delete this university? This action cannot be undone.")) {
-      return;
-    }
+  function openDeleteDialog(university: University) {
+    setDeleteTarget(university);
+    setDeleteError(null);
+    setIsDeleteDialogOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    
+    setIsDeleting(true);
+    setDeleteError(null);
 
     try {
       const supabase = createClient();
@@ -381,25 +404,30 @@ export default function SuperAdminUniversitiesPage() {
       const { count } = await supabase
         .from("profiles")
         .select("id", { count: "exact", head: true })
-        .eq("university_id", universityId);
+        .eq("university_id", deleteTarget.id);
 
       if (count && count > 0) {
-        alert(`Cannot delete: ${count} user(s) are associated with this university. Reassign or remove them first.`);
+        setDeleteError(`Cannot delete: ${count} user(s) are associated with this university. Reassign or remove them first.`);
+        setIsDeleting(false);
         return;
       }
 
       const { error } = await supabase
         .from("universities")
         .delete()
-        .eq("id", universityId);
+        .eq("id", deleteTarget.id);
 
       if (error) throw error;
 
       setMessage({ type: "success", text: "University deleted successfully!" });
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
       fetchUniversities();
     } catch (error: any) {
       console.error("Error deleting university:", error);
-      setMessage({ type: "error", text: error.message || "Failed to delete university" });
+      setDeleteError(error.message || "Failed to delete university");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -621,7 +649,7 @@ export default function SuperAdminUniversitiesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDelete(university.id)}
+                        onClick={() => openDeleteDialog(university)}
                       >
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
@@ -634,9 +662,9 @@ export default function SuperAdminUniversitiesPage() {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog - Scrollable */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[550px]">
+        <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingUniversity ? "Edit University" : "Add New University"}
@@ -644,12 +672,13 @@ export default function SuperAdminUniversitiesPage() {
             <DialogDescription>
               {editingUniversity 
                 ? "Update university information."
-                : "Register a new university on the platform."
+                : "Register a new university on the platform and create an admin account."
               }
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+          {/* Scrollable content area */}
+          <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-1">
             {/* University Details Section */}
             <div className="space-y-3">
               <h4 className="font-semibold text-sm text-primary flex items-center gap-2">
@@ -797,7 +826,7 @@ export default function SuperAdminUniversitiesPage() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 gap-2">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
@@ -808,12 +837,76 @@ export default function SuperAdminUniversitiesPage() {
                   Saving...
                 </>
               ) : (
-                editingUniversity ? "Update University" : "Create University"
+                editingUniversity ? "Update University" : "Create University & Admin"
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Custom Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete University
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="font-medium text-red-800 dark:text-red-200">
+                  Are you absolutely sure you want to delete this university?
+                </p>
+                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                  This action <strong>cannot be undone</strong>. All data associated with this university will be permanently removed.
+                </p>
+              </div>
+              
+              {deleteTarget && (
+                <div className="space-y-2 bg-muted/50 p-3 rounded-lg">
+                  <p className="font-semibold">{deleteTarget.name}</p>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    {deleteTarget.slug && <p>Slug: <code className="bg-background px-1 rounded">{deleteTarget.slug}</code></p>}
+                    <p>Students: <strong>{deleteTarget.student_count || 0}</strong></p>
+                    <p>Status: <Badge variant={deleteTarget.status === 'active' ? 'default' : 'secondary'} className="text-xs">{deleteTarget.status || 'active'}</Badge></p>
+                  </div>
+                </div>
+              )}
+
+              {deleteError && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300">{deleteError}</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-500"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Permanently
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
