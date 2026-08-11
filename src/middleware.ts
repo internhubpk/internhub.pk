@@ -137,15 +137,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Verify required environment variables exist
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    console.error("Middleware Error: Missing Supabase environment variables");
-    // In development, allow through; in production, this is a critical error
-    if (process.env.NODE_ENV === "production") {
-      return new NextResponse("Server configuration error", { status: 500 });
-    }
-  }
-
   let supabaseResponse = NextResponse.next({
     request: {
       headers: request.headers,
