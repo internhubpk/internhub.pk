@@ -5,7 +5,8 @@ import { ROLE_DASHBOARD_PATHS } from "@/lib/auth";
 import type { UserRole } from "@/types";
 
 // Default fallback path if role is not recognized
-const DEFAULT_PATH = "/student";
+// NOTE: We use /onboarding so users can verify their role rather than assuming "student"
+const DEFAULT_PATH = "/onboarding";
 
 /**
  * Dashboard Redirect Page
@@ -90,6 +91,8 @@ export default async function DashboardPage() {
 
   // Log for debugging (visible in Vercel logs)
   console.log(`Dashboard: Redirecting user ${user.email} → ${dashboardPath} (role: ${role || 'none/default'})`);
+  console.log(`Dashboard: User metadata:`, JSON.stringify(user.user_metadata));
+  console.log(`Dashboard: App metadata:`, JSON.stringify(user.app_metadata));
 
   // Redirect to the appropriate dashboard
   redirect(dashboardPath);

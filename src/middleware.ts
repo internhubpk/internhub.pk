@@ -298,16 +298,17 @@ export async function middleware(request: NextRequest) {
     }
     
     // If we DON'T have a role at all (no metadata, no profile access), 
-    // still allow access to default student dashboard rather than looping
-    // The client-side code can handle showing proper UI based on what it can fetch
+    // redirect to onboarding page where we can figure out the proper role
+    // NEVER assume "student" - that's wrong for super_admins and other roles!
     if (!userRole) {
       // Only redirect if they're not already going to a safe default page
-      const safePaths = ["/student", "/dashboard", "/onboarding"];
+      const safePaths = ["/dashboard", "/onboarding", "/login"];
       if (!safePaths.some(p => pathname === p || pathname.startsWith(p + "/"))) {
-        return NextResponse.redirect(new URL("/student", origin));
+        console.log(`Middleware: No role found for ${user.email}, redirecting to /onboarding`);
+        return NextResponse.redirect(new URL("/onboarding", origin));
       }
-      // Set a default role for header propagation
-      userRole = "student";
+      // Don't set a fake role - let the onboarding page handle it
+      supabaseResponse.headers.set("x-user-role", "unknown");
     }
 
     // ==========================================
