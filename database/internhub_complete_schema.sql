@@ -543,7 +543,7 @@ CREATE TABLE documents (
   
   status document_status NOT NULL DEFAULT 'pending',
   
-  verification: 
+  -- Verification fields
   verified_by UUID REFERENCES auth.users(id),
   verified_at TIMESTAMPTZ,
   rejection_reason TEXT,
