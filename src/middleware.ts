@@ -2,9 +2,10 @@
  * InternHub Middleware - Server-Side Route Protection
  * 
  * Implements defense-in-depth security:
- * 1. Authentication check (is user logged in?)
- * 2. Role-based route authorization (can this role access this route?)
- * 3. Redirect unauthorized users to appropriate pages
+ * 1. Subdomain-based tenant detection & context propagation
+ * 2. Authentication check (is user logged in?)
+ * 3. Role-based route authorization (can this role access this route?)
+ * 4. Redirect unauthorized users to appropriate pages
  * 
  * This runs on EVERY request before it reaches the page.
  */
@@ -16,6 +17,11 @@ import {
   isRoleAllowedForRoute,
   getRoleDashboardPath,
 } from "@/lib/route-permissions";
+import {
+  extractSubdomain,
+  isValidTenant,
+  DEMO_TENANTS,
+} from "@/lib/tenant";
 
 export async function middleware(request: NextRequest) {
   const { pathname, origin } = request.nextUrl;
@@ -62,6 +68,57 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // ============================================================
+  // TENANT DETECTION FROM SUBDOMAIN
+  // ============================================================
+  
+  const hostname = request.headers.get("host") || "";
+  const tenantSlug = extractSubdomain(hostname);
+  const isKnownTenant = tenantSlug ? isValidTenant(tenantSlug) : false;
+  
+  // Handle unknown subdomains - redirect to main platform
+  if (tenantSlug && !isKnownTenant) {
+    const url = request.nextUrl.clone();
+    url.hostname = "internhub.pk"; // Redirect to main domain
+    url.port = "";
+    return NextResponse.redirect(url, 302);
+  }
+
+  // Add tenant information to response headers for client-side access
+  if (tenantSlug && isKnownTenant) {
+    const tenant = DEMO_TENANTS[tenantSlug];
+    
+    supabaseResponse.headers.set("x-tenant-id", tenant.id);
+    supabaseResponse.headers.set("x-tenant-slug", tenant.slug);
+    supabaseResponse.headers.set("x-tenant-name", tenant.name);
+    supabaseResponse.headers.set("x-tenant-logo", tenant.logo);
+    supabaseResponse.headers.set("x-tenant-primary-color", tenant.primaryColor);
+    supabaseResponse.headers.set("x-tenant-secondary-color", tenant.secondaryColor);
+    supabaseResponse.headers.set("x-tenant-domain", tenant.domain);
+    supabaseResponse.headers.set("x-is-tenant", "true");
+    
+    // Pass features as JSON string
+    supabaseResponse.headers.set(
+      "x-tenant-features",
+      JSON.stringify(tenant.features)
+    );
+    
+    // Pass branding as JSON string
+    supabaseResponse.headers.set(
+      "x-tenant-branding",
+      JSON.stringify(tenant.branding)
+    );
+  } else {
+    // Main platform headers
+    supabaseResponse.headers.set("x-tenant-slug", "main");
+    supabaseResponse.headers.set("x-tenant-name", "InternHub");
+    supabaseResponse.headers.set("x-is-tenant", "false");
+  }
+
+  // ============================================================
+  // AUTHENTICATION CHECKS
+  // ============================================================
+
   // Check authentication
   const {
     data: { user },
@@ -85,17 +142,24 @@ export async function middleware(request: NextRequest) {
     // Not authenticated - redirect to login with return URL
     const loginUrl = new URL("/login", origin);
     loginUrl.searchParams.set("returnUrl", pathname);
+    
+    // Preserve tenant context in redirect URL for subdomain scenarios
+    if (tenantSlug) {
+      loginUrl.searchParams.set("tenant", tenantSlug);
+    }
+    
     return NextResponse.redirect(loginUrl);
   }
 
   // User is authenticated - get their profile/role
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, university_id")
     .eq("user_id", user.id)
     .single();
 
   const userRole = profile?.role as string | null;
+  const universityId = profile?.university_id as string | null;
 
   // ==========================================
   // ROLE-BASED ROUTE AUTHORIZATION
@@ -119,6 +183,17 @@ export async function middleware(request: NextRequest) {
     
     // Fallback: redirect to generic dashboard
     return NextResponse.redirect(new URL("/dashboard", origin));
+  }
+
+  // ==========================================
+  // TENANT CONTEXT PROPAGATION (for server components)
+  // ==========================================
+  // Add user's university_id to headers for downstream use in server components/API routes
+  if (universityId) {
+    supabaseResponse.headers.set("x-user-university-id", universityId);
+  }
+  if (userRole) {
+    supabaseResponse.headers.set("x-user-role", userRole);
   }
 
   // ==========================================
