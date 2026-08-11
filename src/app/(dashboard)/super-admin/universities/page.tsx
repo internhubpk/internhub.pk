@@ -17,6 +17,8 @@ import {
   Loader2,
   Database,
   Key,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,6 +115,9 @@ export default function SuperAdminUniversitiesPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  
+  // Password visibility state
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     fetchUniversities();
@@ -202,7 +207,7 @@ export default function SuperAdminUniversitiesPage() {
     setIsDialogOpen(true);
   }
 
-  function openEditDialog(university: University) {
+  async function openEditDialog(university: University) {
     setEditingUniversity(university);
     setFormData({
       name: university.name,
@@ -211,11 +216,34 @@ export default function SuperAdminUniversitiesPage() {
       website: university.website || "",
       domain: university.domain || "",
       status: (university.status === "suspended" ? "inactive" : university.status) || "active",
-      // Don't populate admin fields on edit (they're only for new creation)
+      // Initialize empty - will fetch admin info below
       adminEmail: "",
       adminPassword: "",
       adminName: "",
     });
+    
+    // Fetch existing admin user for this university
+    try {
+      const supabase = createClient();
+      const { data: adminProfile } = await supabase
+        .from("profiles")
+        .select("email, full_name, user_id")
+        .eq("university_id", university.id)
+        .eq("role", "university_admin")
+        .limit(1)
+        .maybeSingle();
+      
+      if (adminProfile) {
+        setFormData(prev => ({
+          ...prev,
+          adminEmail: adminProfile.email || "",
+          adminName: adminProfile.full_name || "",
+        }));
+      }
+    } catch (e) {
+      console.log("Could not fetch admin info:", e);
+    }
+    
     setIsDialogOpen(true);
   }
 
@@ -762,16 +790,18 @@ export default function SuperAdminUniversitiesPage() {
             {/* Divider */}
             <Separator />
 
-            {/* Admin Account Section - Only show for new universities */}
-            {!editingUniversity && (
-              <div className="space-y-3 bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  University Admin Account
-                </h4>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
-                  An admin account will be created with access to manage this university.
-                </p>
+            {/* Admin Account Section - Show for both create and edit */}
+            <div className="space-y-3 bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+              <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                {editingUniversity ? 'University Admin Account' : 'Create Admin Account'}
+              </h4>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
+                {editingUniversity 
+                  ? 'View or update the university administrator account details.'
+                  : 'An admin account will be created with access to manage this university.'
+                }
+              </p>
                 
                 <div className="grid gap-2">
                   <Label htmlFor="adminName">Admin Full Name</Label>
@@ -795,35 +825,57 @@ export default function SuperAdminUniversitiesPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="adminPassword">Default Password *</Label>
+                  <Label htmlFor="adminPassword">
+                    {editingUniversity ? "New Password (leave blank to keep current)" : "Default Password *"}
+                  </Label>
                   <div className="relative">
                     <Input
                       id="adminPassword"
-                      type="password"
-                      placeholder="Min 6 characters"
+                      type={showPassword ? "text" : "password"}
+                      placeholder={editingUniversity ? "Leave blank to keep current" : "Min 6 characters"}
                       value={formData.adminPassword}
                       onChange={(e) => setFormData(prev => ({ ...prev, adminPassword: e.target.value }))}
-                      className="pr-20"
+                      className="pr-24"
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs"
-                      onClick={() => {
-                        const newPass = "Admin@" + Math.random().toString(36).substring(2, 8);
-                        setFormData(prev => ({ ...prev, adminPassword: newPass }));
-                      }}
-                    >
-                      🎲 Generate
-                    </Button>
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                      {!editingUniversity && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            const newPass = "Admin@" + Math.random().toString(36).substring(2, 8);
+                            setFormData(prev => ({ ...prev, adminPassword: newPass }));
+                          }}
+                        >
+                          Generate
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Share this password with the university administrator. They can change it after login.
+                    {editingUniversity 
+                      ? "Only enter a password if you want to change the admin's password."
+                      : "Share this password with the university administrator. They can change it after login."
+                    }
                   </p>
                 </div>
               </div>
-            )}
           </div>
 
           <DialogFooter className="flex-shrink-0 gap-2">

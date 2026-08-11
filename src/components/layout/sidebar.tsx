@@ -40,6 +40,8 @@ import {
   Key,
   HardDrive,
   RefreshCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -163,7 +165,20 @@ function SidebarContent({
 
   const isActive = (href: string) => {
     if (href === "/dashboard" && pathname === "/") return true;
-    return pathname === href || pathname.startsWith(href + "/");
+    // Exact match
+    if (pathname === href) return true;
+    // For non-dashboard items, check if path starts with href + "/"
+    // BUT don't highlight parent "Dashboard" items when on a sub-page
+    const isDashboardItem = ["/super-admin", "/university-admin", "/department-coordinator", 
+      "/faculty-supervisor", "/student", "/company-hr", "/site-supervisor", "/external-evaluator"]
+      .includes(href);
+    
+    if (isDashboardItem) {
+      // Only highlight dashboard if exactly on that path, not sub-pages
+      return false;
+    }
+    
+    return pathname.startsWith(href + "/");
   };
 
   const isChildActive = (children?: NavItem[]) => {
