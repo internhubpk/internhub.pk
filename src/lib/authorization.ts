@@ -5,6 +5,13 @@
  * All authorization checks should use this system to ensure
  * consistent security across the application.
  * 
+ * SECURITY ARCHITECTURE (Defense-in-Depth):
+ * 1. Supabase Auth - Authentication layer
+ * 2. Next.js Middleware - Route-level authorization
+ * 3. Server-side Authorization - API route protection
+ * 4. Client-side RouteGuard - UI protection
+ * 5. Supabase RLS - Database-level isolation
+ * 
  * ROLES HIERARCHY:
  * 1. super_admin      - Platform-level, full access
  * 2. university_admin  - University-level management
@@ -20,6 +27,10 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createBrowserClient } from "@/utils/supabase/client";
 import { cookies } from "next/headers";
 import type { UserRole } from "@/types";
+import {
+  isRoleAllowedForRoute,
+  getRoleDashboardPath,
+} from "@/lib/route-permissions";
 
 export interface AuthContext {
   user: {
@@ -400,4 +411,54 @@ export function authenticationError(message: string = "Not authenticated") {
     { success: false, error: message },
     { status: 401 }
   );
+}
+
+/**
+ * Check if user can access a specific route (server-side)
+ */
+export async function requireRouteAccess(pathname: string): Promise<AuthContext> {
+  const context = await requireAuth();
+  
+  const userRole: UserRole | null = context.profile?.role ?? null;
+  
+  if (!isRoleAllowedForRoute(userRole, pathname)) {
+    throw new Error(`Route access denied for role: ${userRole}`);
+  }
+  
+  return context;
+}
+
+/**
+ * Get safe redirect URL based on user's role
+ * Prevents redirect loops and ensures user goes to valid dashboard
+ */
+export function getSafeRedirectUrl(userRole: UserRole | null, fallback?: string): string {
+  if (userRole) {
+    return getRoleDashboardPath(userRole);
+  }
+  return fallback || "/dashboard";
+}
+
+/**
+ * Audit log helper - logs security-relevant actions
+ * In production, this should write to an audit log table
+ */
+export function auditLog(action: string, details: Record<string, any>, authContext?: AuthContext): void {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    action,
+    userId: authContext?.user?.id,
+    role: authContext?.profile?.role,
+    universityId: authContext?.profile?.university_id,
+    ...details,
+  };
+  
+  // Console log in development
+  if (process.env.NODE_ENV === "development") {
+    console.log("[AUDIT]", JSON.stringify(logEntry, null, 2));
+  }
+  
+  // TODO: In production, write to audit_logs table
+  // Example:
+  // await supabase.from('audit_logs').insert(logEntry);
 }

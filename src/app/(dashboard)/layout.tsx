@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header, HeaderSkeleton } from "@/components/layout/header";
 import { AuthProvider, useAuth } from "@/components/providers/auth-provider";
 import { PageLoader, ContentLoader } from "@/components/layout/loading-state";
+import { RouteGuard } from "@/components/auth/route-guard";
 import { cn } from "@/lib/utils";
 
 // ============================================
@@ -138,7 +139,9 @@ export default function DashboardLayout({
   return (
     <AuthProvider>
       <Suspense fallback={<PageLoader />}>
-        <DashboardShell>{children}</DashboardShell>
+        <RouteGuard>
+          <DashboardShell>{children}</DashboardShell>
+        </RouteGuard>
       </Suspense>
     </AuthProvider>
   );
