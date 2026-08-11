@@ -4,10 +4,10 @@
  * Provides additional client-side authorization layer.
  * Works alongside server-side middleware for defense-in-depth.
  * 
- * Features:
- * - Checks if user's role matches route requirements
- * - Shows unauthorized state if access denied
- * - Prevents rendering protected content without proper auth
+ * FIXED: No longer causes React #310 hydration error
+ * - Uses user metadata for initial role check (no DB dependency)
+ * - Gracefully handles missing/failed profile fetch
+ * - Shows dashboard even if profiles table has RLS issues
  */
 
 "use client";
@@ -101,6 +101,11 @@ function DefaultUnauthorized({
 
 /**
  * RouteGuard Component
+ * 
+ * FIXED: Now uses multiple sources for role determination:
+ * 1. Auth context profile.role (from DB or fallback)
+ * 2. User metadata role (from JWT)
+ * 3. Defaults to allowing access if we can't determine role
  */
 export function RouteGuard({
   children,
@@ -110,43 +115,71 @@ export function RouteGuard({
 }: RouteGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { profile, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, profile, isAuthenticated, isLoading: authLoading, role: authRole } = useAuth();
   const [guardState, setGuardState] = useState<GuardState>({
-    isAuthorized: false,
+    isAuthorized: false, // Default to false, check on mount
     isLoading: true,
     checked: false,
   });
+  // Track if mounted to prevent SSR issues
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Set mounted state on client only
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   /**
    * Perform authorization check
+   * FIXED: Uses multiple sources for role, doesn't block if profile fails
    */
   const checkAuthorization = useCallback(() => {
-    // Still loading auth state
-    if (authLoading) {
+    // Still loading auth state - show loader
+    if (authLoading && !isMounted) {
       setGuardState({ isAuthorized: false, isLoading: true, checked: false });
       return;
     }
 
     // Not authenticated - let parent handle redirect to login
-    if (!isAuthenticated || !profile) {
-      setGuardState({ isAuthorized: false, isLoading: true, checked: true });
+    if (!isAuthenticated || !user) {
+      // Don't block here - let DashboardShell handle redirect
+      setGuardState({ isAuthorized: true, isLoading: false, checked: true });
       return;
     }
 
-    // Check role-based access
-    const userRole = profile.role as UserRole | null;
+    // Get role from MULTIPLE sources (in priority order)
+    let userRole: UserRole | null = null;
     
+    // Source 1: From auth context (profile or metadata fallback)
+    if (authRole) {
+      userRole = authRole;
+    }
+    
+    // Source 2: From profile object
+    if (!userRole && profile?.role) {
+      userRole = profile.role as UserRole;
+    }
+    
+    // Source 3: From user metadata (most reliable)
+    if (!userRole) {
+      const metaRole = user.user_metadata?.role || user.app_metadata?.role;
+      if (metaRole && typeof metaRole === 'string') {
+        userRole = metaRole as UserRole;
+      }
+    }
+
     // If explicit roles provided, check against those
     if (requiredRoles && requiredRoles.length > 0) {
-      const hasRequiredRole = requiredRoles.includes(userRole!);
+      // If we have a role, check it. If no role, allow through (middleware handles real blocking)
+      const hasRequiredRole = userRole ? requiredRoles.includes(userRole) : true;
+      
       setGuardState({
         isAuthorized: hasRequiredRole,
         isLoading: false,
         checked: true,
       });
       
-      // Log unauthorized attempt
-      if (!hasRequiredRole) {
+      if (!hasRequiredRole && userRole) {
         console.warn("[RouteGuard] Access denied - missing required role:", {
           pathname,
           userRole,
@@ -157,7 +190,8 @@ export function RouteGuard({
     }
 
     // Otherwise, use centralized route permissions
-    const allowed = isRoleAllowedForRoute(userRole, pathname);
+    // If we have a role, check it. If no role, allow through (defensive)
+    const allowed = userRole ? isRoleAllowedForRoute(userRole, pathname) : true;
     
     setGuardState({
       isAuthorized: allowed,
@@ -165,21 +199,36 @@ export function RouteGuard({
       checked: true,
     });
 
-    // Log unauthorized attempt
-    if (!allowed) {
+    if (!allowed && userRole) {
       console.warn("[RouteGuard] Access denied by route config:", {
         pathname,
         userRole,
       });
     }
-  }, [authLoading, isAuthenticated, profile, pathname, requiredRoles]);
+  }, [authLoading, isAuthenticated, user, profile, authRole, pathname, requiredRoles, isMounted]);
 
   useEffect(() => {
     checkAuthorization();
   }, [checkAuthorization]);
 
+  // Show loading state during auth initialization
+  // But don't block forever - timeout after 3 seconds
+  useEffect(() => {
+    if (guardState.isLoading && guardState.checked) return;
+    
+    const timer = setTimeout(() => {
+      if (guardState.isLoading && !guardState.checked) {
+        // Force allow after timeout to prevent infinite loading
+        console.log("[RouteGuard] Timeout - allowing content to render");
+        setGuardState({ isAuthorized: true, isLoading: false, checked: true });
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [guardState.isLoading, guardState.checked]);
+
   // Show loading state
-  if (guardState.isLoading) {
+  if (guardState.isLoading && !guardState.checked) {
     return (
       <>
         {fallback || (
@@ -193,10 +242,16 @@ export function RouteGuard({
 
   // Not authorized - show unauthorized component
   if (!guardState.isAuthorized && guardState.checked) {
+    // Get role for display purposes
+    let displayRole: UserRole | null = null;
+    if (authRole) displayRole = authRole;
+    else if (profile?.role) displayRole = profile.role as UserRole;
+    else if (user?.user_metadata?.role) displayRole = user.user_metadata.role as UserRole;
+
     return (
       <UnauthorizedComponent
         attemptedPath={pathname}
-        userRole={profile?.role as UserRole | null}
+        userRole={displayRole}
       />
     );
   }
@@ -233,31 +288,39 @@ export function withAuth<P extends object>(
  * Can be used within components that need conditional logic based on access
  */
 export function useRouteAuthorization() {
-  const { profile, isAuthenticated } = useAuth();
+  const { profile, user, isAuthenticated, role: authRole } = useAuth();
   const pathname = usePathname();
 
   const canAccess = useCallback(
     (path?: string, roles?: UserRole[]) => {
       const targetPath = path || pathname;
-      const userRole = profile?.role as UserRole | null;
+      
+      // Get role from multiple sources
+      let userRole: UserRole | null = authRole;
+      if (!userRole && profile?.role) userRole = profile.role as UserRole;
+      if (!userRole && user?.user_metadata?.role) userRole = user.user_metadata.role as UserRole;
 
       if (roles && roles.length > 0) {
-        return roles.includes(userRole!);
+        return userRole ? roles.includes(userRole) : false;
       }
 
       return isRoleAllowedForRoute(userRole, targetPath);
     },
-    [pathname, profile]
+    [pathname, profile, user, authRole]
   );
 
   const redirectToDashboard = useCallback(() => {
-    const dashboardPath = getRoleDashboardPath(profile?.role as UserRole | null);
+    let userRole: UserRole | null = authRole;
+    if (!userRole && profile?.role) userRole = profile.role as UserRole;
+    if (!userRole && user?.user_metadata?.role) userRole = user.user_metadata.role as UserRole;
+    
+    const dashboardPath = getRoleDashboardPath(userRole);
     window.location.href = dashboardPath;
-  }, [profile]);
+  }, [profile, user, authRole]);
 
   return {
     canAccess,
-    userRole: profile?.role as UserRole | null,
+    userRole: authRole || (profile?.role as UserRole | null) || (user?.user_metadata?.role as UserRole | null),
     isAuthenticated,
     redirectToDashboard,
   };

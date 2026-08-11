@@ -20,6 +20,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Role dashboard paths for quick lookup
+const ROLE_DASHBOARDS: Record<UserRole, string> = {
+  super_admin: "/super-admin",
+  university_admin: "/university-admin",
+  department_coordinator: "/department-coordinator",
+  faculty_supervisor: "/faculty-supervisor",
+  student: "/student",
+  company_hr: "/company-hr",
+  site_supervisor: "/site-supervisor",
+  external_evaluator: "/external-evaluator",
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -27,6 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = React.useRef(true);
+  // Track if initialized to prevent duplicate calls
+  const initializedRef = React.useRef(false);
 
   // Cleanup on unmount
   React.useEffect(() => {
@@ -48,7 +62,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
-  const fetchProfile = useCallback(async (userId: string, client: SupabaseClient | null) => {
+  /**
+   * Create a fallback profile from user metadata
+   * This ensures we ALWAYS have a profile object even if DB fails
+   */
+  const createFallbackProfile = useCallback((userData: User): Profile => {
+    const meta = userData.user_metadata || {};
+    const appMeta = userData.app_metadata || {};
+    
+    // Determine role from metadata
+    let role: UserRole = 'student';
+    const metaRole = meta.role || appMeta.role;
+    if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
+      role = metaRole as UserRole;
+    }
+
+    return {
+      user_id: userData.id,
+      email: userData.email || "",
+      full_name: meta.full_name || meta.name || null,
+      first_name: meta.first_name || null,
+      last_name: meta.last_name || null,
+      role: role,
+      avatar_url: meta.avatar_url || meta.picture || null,
+      phone: meta.phone || null,
+      bio: null,
+      username: meta.username || null,
+      university_id: meta.university_id || null,
+      department_id: meta.department_id || null,
+      company_id: meta.company_id || null,
+      status: 'active',
+      is_active: true,
+      student_id: null,
+      company_name: meta.company_name || null,
+      job_title: meta.job_title || null,
+      organization: meta.organization || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }, []);
+
+  const fetchProfile = useCallback(async (userId: string, client: SupabaseClient | null, userData?: User) => {
     if (!client || !isMountedRef.current) return;
     
     try {
@@ -61,40 +115,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Handle case where profile doesn't exist yet (new user) or table has RLS issues
       if (profileError) {
-        // If we get 403/permission error, build profile from user_metadata instead
-        console.log("Profile table not accessible, using user_metadata fallback");
+        console.log("Profile table not accessible, using user_metadata fallback. Error:", profileError.message);
         
-        // Get current session to extract metadata
-        const { data: { session } } = await client.auth.getSession();
-        
-        if (session?.user && isMountedRef.current) {
-          const meta = session.user.user_metadata || {};
-          const fallbackProfile: Profile = {
-            user_id: userId,
-            email: session.user.email || "",
-            full_name: meta.full_name || null,
-            first_name: meta.first_name || null,
-            last_name: meta.last_name || null,
-            role: (meta.role || 'student') as UserRole,
-            avatar_url: meta.avatar_url || null,
-            phone: null,
-            bio: null,
-            username: null,
-            university_id: null,
-            department_id: null,
-            company_id: null,
-            status: 'active',
-            is_active: true,
-            student_id: null,
-            company_name: null,
-            job_title: null,
-            organization: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
+        // Use fallback profile from metadata
+        if (userData && isMountedRef.current) {
+          const fallbackProfile = createFallbackProfile(userData);
           setProfile(fallbackProfile);
         } else if (isMountedRef.current) {
-          setProfile(null);
+          // Try to get session for user data
+          try {
+            const { data: { session } } = await client.auth.getSession();
+            if (session?.user && isMountedRef.current) {
+              const fallbackProfile = createFallbackProfile(session.user);
+              setProfile(fallbackProfile);
+            } else if (isMountedRef.current) {
+              setProfile(null);
+            }
+          } catch (sessionErr) {
+            console.log("Session fetch failed:", sessionErr instanceof Error ? sessionErr.message : sessionErr);
+            if (isMountedRef.current) {
+              setProfile(null);
+            }
+          }
         }
         return;
       }
@@ -124,30 +166,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Catch any unexpected errors gracefully - use metadata fallback
       console.log("Profile fetch error, using fallback:", error instanceof Error ? error.message : "Unknown error");
       
-      try {
-        const { data: { session } } = await client.auth.getSession();
-        if (session?.user && isMountedRef.current) {
-          const meta = session.user.user_metadata || {};
-          const fallbackProfile: Profile = {
-            user_id: userId,
-            email: session.user.email || "",
-            full_name: meta.full_name || null,
-            role: (meta.role || 'student') as UserRole,
-            status: 'active',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setProfile(fallbackProfile);
-        }
-      } catch (e) {
-        if (isMountedRef.current) {
-          setProfile(null);
-          setUniversity(null);
-        }
+      if (userData && isMountedRef.current) {
+        const fallbackProfile = createFallbackProfile(userData);
+        setProfile(fallbackProfile);
+      } else if (isMountedRef.current) {
+        setProfile(null);
+        setUniversity(null);
       }
     }
-  }, []);
+  }, [createFallbackProfile]);
 
   useEffect(() => {
     // Skip if supabase client is not available (SSR or build time)
@@ -157,12 +184,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Prevent duplicate initializations
-    let isInitialized = false;
+    if (initializedRef.current) return;
 
     // Get initial session
     const initializeAuth = async () => {
-      if (isInitialized) return;
-      isInitialized = true;
+      initializedRef.current = true;
       
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -177,7 +203,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id, supabase);
+          // Pass user data so fallback can be created if DB fails
+          await fetchProfile(session.user.id, supabase, session.user);
         }
       } catch (error) {
         console.error("Error initializing auth:", error instanceof Error ? error.message : error);
@@ -198,7 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           if (event === "SIGNED_IN" && session?.user) {
             setUser(session.user);
-            await fetchProfile(session.user.id, supabase);
+            await fetchProfile(session.user.id, supabase, session.user);
           } else if (event === "SIGNED_OUT") {
             setUser(null);
             setProfile(null);
@@ -222,7 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     if (user && supabase) {
-      await fetchProfile(user.id, supabase);
+      await fetchProfile(user.id, supabase, user);
     }
   }, [user, supabase, fetchProfile]);
 
@@ -240,9 +267,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   const hasRole = useCallback((roles: UserRole[]): boolean => {
-    if (!profile?.role) return false;
-    return roles.includes(profile.role);
-  }, [profile?.role]);
+    // Check multiple sources for role
+    if (profile?.role && roles.includes(profile.role)) return true;
+    
+    // Also check user metadata
+    if (user?.user_metadata?.role && roles.includes(user.user_metadata.role as UserRole)) return true;
+    if (user?.app_metadata?.role && roles.includes(user.app_metadata.role as UserRole)) return true;
+    
+    return false;
+  }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
+
+  // Determine role from multiple sources for the context value
+  const getEffectiveRole = useCallback((): UserRole | null => {
+    // Priority 1: From profile (DB or fallback)
+    if (profile?.role) return profile.role;
+    
+    // Priority 2: From user metadata
+    if (user?.user_metadata?.role) return user.user_metadata.role as UserRole;
+    if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
+    
+    return null;
+  }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
 
   const value: AuthContextType = {
     user,
@@ -250,7 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     university,
     isLoading,
     isAuthenticated: !!user,
-    role: profile?.role || null,
+    role: getEffectiveRole(),
     refreshProfile,
     logout,
     hasRole,
