@@ -137,13 +137,11 @@ export default function LoginPage() {
       // Fetch user profile to determine redirect path - with fallback
       let redirectPath = "/dashboard";
       
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("user_id", data.user.id)
-          .single();
-
+      // First try to get role from user metadata (fastest, no DB call)
+      const metaRole = data.user?.user_metadata?.role;
+      
+      if (metaRole) {
+        // Use role from metadata
         const rolePaths: Record<string, string> = {
           super_admin: "/super-admin",
           university_admin: "/university-admin",
@@ -154,18 +152,39 @@ export default function LoginPage() {
           site_supervisor: "/site-supervisor",
           external_evaluator: "/external-evaluator",
         };
+        redirectPath = rolePaths[metaRole] || "/dashboard";
+      } else {
+        // Fallback: Try to get role from profiles table
+        try {
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("user_id", data.user.id)
+            .single();
 
-        if (!profileError && profile?.role && rolePaths[profile.role]) {
-          redirectPath = rolePaths[profile.role];
+          const rolePaths: Record<string, string> = {
+            super_admin: "/super-admin",
+            university_admin: "/university-admin",
+            department_coordinator: "/department-coordinator",
+            faculty_supervisor: "/faculty-supervisor",
+            student: "/student",
+            company_hr: "/company-hr",
+            site_supervisor: "/site-supervisor",
+            external_evaluator: "/external-evaluator",
+          };
+
+          if (!profileError && profile?.role && rolePaths[profile.role]) {
+            redirectPath = rolePaths[profile.role];
+          }
+          
+          // Log profile fetch for debugging (remove in production)
+          if (profileError) {
+            console.log("Profile fetch note:", profileError.message);
+          }
+        } catch (profileErr) {
+          // If profile fetch fails, still redirect to /dashboard which will handle routing
+          console.log("Profile fetch failed, using default redirect:", profileErr instanceof Error ? profileErr.message : profileErr);
         }
-        
-        // Log profile fetch for debugging (remove in production)
-        if (profileError) {
-          console.log("Profile fetch note:", profileError.message);
-        }
-      } catch (profileErr) {
-        // If profile fetch fails, still redirect to /dashboard which will handle routing
-        console.log("Profile fetch failed, using default redirect:", profileErr instanceof Error ? profileErr.message : profileErr);
       }
 
       setTimeout(() => {

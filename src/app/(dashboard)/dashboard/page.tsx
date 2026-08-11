@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, getCurrentProfile, ROLE_DASHBOARD_PATHS } from "@/lib/auth";
+import { createClient } from "@/utils/supabase/server";
+import { cookies } from "next/headers";
+import { ROLE_DASHBOARD_PATHS } from "@/lib/auth";
 import type { UserRole } from "@/types";
 
 // Default fallback path if role is not recognized
@@ -9,43 +11,50 @@ const DEFAULT_PATH = "/student";
  * Dashboard Redirect Page
  * 
  * This server component:
- * 1. Checks if user is authenticated
- * 2. Fetches user's profile with role
+ * 1. Checks if user is authenticated via Supabase Auth
+ * 2. Tries to get role from multiple sources (user_metadata, then profiles table)
  * 3. Redirects to appropriate dashboard based on role
  */
 export default async function DashboardPage() {
-  // Check if user is authenticated
-  const user = await getCurrentUser();
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   
-  if (!user) {
+  // Check if user is authenticated
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError || !user) {
     // Not authenticated - redirect to login
     redirect("/login");
   }
 
-  // Get user's profile with role - with error handling
-  let profile = null;
-  try {
-    profile = await getCurrentProfile();
-  } catch (error) {
-    console.log("Profile fetch failed in dashboard:", error instanceof Error ? error.message : error);
-    // Continue without profile - will use default path
+  // Try to get role from user_metadata first (most reliable, doesn't need DB access)
+  let role: UserRole | null = user.user_metadata?.role || null;
+  
+  // If no role in metadata, try profiles table
+  if (!role) {
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (!profileError && profile?.role) {
+        role = profile.role as UserRole;
+      }
+    } catch (e) {
+      // Profiles table might not be accessible - continue with fallback
+      console.log("Profile fetch failed, using fallback:", e instanceof Error ? e.message : e);
+    }
   }
   
   // Determine the correct dashboard path
-  let dashboardPath: string;
-  
-  if (profile && profile.role) {
-    // User has a profile with a role - use it
-    dashboardPath = ROLE_DASHBOARD_PATHS[profile.role as UserRole] || DEFAULT_PATH;
-  } else {
-    // No profile or no role - check for common patterns or default to student
-    // In production, University Admin would assign roles via admin panel
-    console.log(`No profile/role found for user ${user.id}, redirecting to student dashboard`);
-    dashboardPath = DEFAULT_PATH;
-  }
-  
-  // Log the redirection for debugging
-  console.log(`Redirecting user ${user.id} to ${dashboardPath} (role: ${profile?.role || 'none'})`);
+  const dashboardPath = (role && ROLE_DASHBOARD_PATHS[role]) 
+    ? ROLE_DASHBOARD_PATHS[role] 
+    : DEFAULT_PATH;
+
+  // Log for debugging
+  console.log(`Redirecting user ${user.email} to ${dashboardPath} (role: ${role || 'none/default'})`);
 
   // Redirect to the appropriate dashboard
   redirect(dashboardPath);
