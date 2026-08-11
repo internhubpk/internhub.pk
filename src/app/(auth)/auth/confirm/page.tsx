@@ -14,10 +14,7 @@ function ConfirmEmailContent() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("Confirming your email...");
 
-  useEffect(() => {
-    confirmEmail();
-  }, []);
-
+  // Define the function first before using it in useEffect
   async function confirmEmail() {
     try {
       const token_hash = searchParams.get("token_hash");
@@ -93,6 +90,11 @@ function ConfirmEmailContent() {
       }, 3000);
     }
   }
+
+  // Call confirmEmail on mount (now that it's declared above)
+  useEffect(() => {
+    confirmEmail();
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

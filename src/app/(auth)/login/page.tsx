@@ -15,6 +15,7 @@ import {
   EyeOff,
   Loader2,
   ArrowRight,
+  User,
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
@@ -30,12 +31,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-// Form validation schema
+// Enhanced form validation - accepts email OR username
 const loginSchema = z.object({
-  email: z
+  identifier: z
     .string()
-    .min(1, "Email is required")
-    .email("Please enter a valid email address"),
+    .min(1, "Email or username is required"),
   password: z
     .string()
     .min(1, "Password is required")
@@ -52,7 +52,7 @@ export default function LoginPage() {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -62,16 +62,49 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
+      
+      // Determine if user entered email or username
+      const isEmail = values.identifier.includes("@");
+      let email = values.identifier;
 
+      // If it's a username, look up the associated email
+      if (!isEmail) {
+        try {
+          const response = await fetch("/api/auth/lookup-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: values.identifier }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || !result.email) {
+            toast.error("Username not found", {
+              description: "No account found with this username. Please check your credentials.",
+            });
+            return;
+          }
+
+          email = result.email;
+        } catch (error) {
+          console.error("Username lookup error:", error);
+          toast.error("Lookup failed", {
+            description: "Unable to verify username. Please try again.",
+          });
+          return;
+        }
+      }
+
+      // Sign in with the email (whether originally entered or looked up)
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: values.email,
+        email: email,
         password: values.password,
       });
 
       if (error) {
         if (error.message.includes("Invalid login credentials")) {
           toast.error("Invalid credentials", {
-            description: "The email or password you entered is incorrect.",
+            description: "The email/username or password you entered is incorrect.",
           });
         } else if (error.message.includes("Email not confirmed")) {
           toast.error("Email not verified", {
@@ -145,28 +178,39 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Login Info Banner */}
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+            <strong>Students &amp; Super Admins:</strong> Sign in with email<br/>
+            <strong>Staff (Admins, Coordinators, Supervisors, HR):</strong> Sign in with username
+          </p>
+        </div>
+
         {/* Login Form Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-5 sm:p-8">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-5">
-              {/* Email Field */}
+              {/* Email/Username Field */}
               <FormField
                 control={form.control}
-                name="email"
+                name="identifier"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Email Address</FormLabel>
+                    <FormLabel className="text-sm font-medium">Email or Username</FormLabel>
                     <FormControl>
                       <div className="relative mt-1.5">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          type="email"
-                          placeholder="name@university.edu"
+                          type="text"
+                          placeholder="email@example.com or username"
                           className="h-12 pl-10 pr-4 rounded-xl text-sm sm:text-base"
                           {...field}
                         />
                       </div>
                     </FormControl>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter your email address or username
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}

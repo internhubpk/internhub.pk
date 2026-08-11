@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import {
   Users,
   Briefcase,
@@ -19,30 +20,203 @@ import {
   Plus,
   RefreshCw,
   ClipboardList,
+  CheckSquare,
+  Send,
+  ArrowRight,
+  AlertTriangle,
+  Star,
+  Eye,
+  MessageSquare,
+  FileCheck,
+  XCircle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
+// Types
 interface FacultyStats {
   supervisedStudents: number;
   activeInternships: number;
   pendingReviews: number;
   evaluationsCompleted: number;
+  tasksPending: number;
+  tasksCompleted: number;
+  tasksOverdue: number;
+  avgProgress: number;
 }
+
+interface StudentOverview {
+  id: string;
+  name: string;
+  email: string;
+  program: string;
+  company: string;
+  progress: number;
+  status: "active" | "on_leave" | "completed";
+  lastActivity: string;
+  avatarUrl?: string;
+}
+
+interface RecentSubmission {
+  id: string;
+  studentName: string;
+  taskTitle: string;
+  submittedAt: string;
+  status: "pending" | "approved" | "rejected";
+  type: "task" | "weekly_log" | "document";
+}
+
+interface TaskNeedingAttention {
+  id: string;
+  title: string;
+  assignedTo: string;
+  dueDate: string;
+  status: "overdue" | "pending_review" | "not_started";
+  priority: "high" | "medium" | "low";
+}
+
+// Mock data for demonstration (will be replaced with API calls)
+const mockStudents: StudentOverview[] = [
+  {
+    id: "1",
+    name: "Sarah Johnson",
+    email: "sarah.j@university.edu",
+    program: "BSc Computer Science",
+    company: "Tech Corp",
+    progress: 75,
+    status: "active",
+    lastActivity: "2024-02-12",
+  },
+  {
+    id: "2",
+    name: "Mike Chen",
+    email: "mike.chen@university.edu",
+    program: "BSc Software Engineering",
+    company: "Web Agency",
+    progress: 60,
+    status: "active",
+    lastActivity: "2024-02-10",
+  },
+  {
+    id: "3",
+    name: "Emily Davis",
+    email: "emily.d@university.edu",
+    program: "BBA Marketing",
+    company: "Growth Co",
+    progress: 45,
+    status: "active",
+    lastActivity: "2024-02-11",
+  },
+  {
+    id: "4",
+    name: "Ahmed Khan",
+    email: "ahmed.k@university.edu",
+    program: "MSc Data Science",
+    company: "Data Insights Ltd",
+    progress: 88,
+    status: "active",
+    lastActivity: "2024-02-12",
+  },
+  {
+    id: "5",
+    name: "Fatima Ali",
+    email: "fatima.a@university.edu",
+    program: "BSc Information Technology",
+    company: "Cloud Systems",
+    progress: 32,
+    status: "on_leave",
+    lastActivity: "2024-02-01",
+  },
+];
+
+const mockRecentSubmissions: RecentSubmission[] = [
+  {
+    id: "1",
+    studentName: "Sarah Johnson",
+    taskTitle: "Week 4 Weekly Log - Frontend Development",
+    submittedAt: "2024-02-12T10:30:00Z",
+    status: "pending",
+    type: "weekly_log",
+  },
+  {
+    id: "2",
+    studentName: "Ahmed Khan",
+    taskTitle: "Data Analysis Report - Q1",
+    submittedAt: "2024-02-12T09:15:00Z",
+    status: "pending",
+    type: "task",
+  },
+  {
+    id: "3",
+    studentName: "Mike Chen",
+    taskTitle: "UI Component Library Documentation",
+    submittedAt: "2024-02-11T16:45:00Z",
+    status: "approved",
+    type: "document",
+  },
+  {
+    id: "4",
+    studentName: "Emily Davis",
+    taskTitle: "Social Media Campaign Analysis",
+    submittedAt: "2024-02-11T14:20:00Z",
+    status: "pending",
+    type: "task",
+  },
+  {
+    id: "5",
+    studentName: "Sarah Johnson",
+    taskTitle: "React Component Testing Suite",
+    submittedAt: "2024-02-10T11:00:00Z",
+    status: "approved",
+    type: "task",
+  },
+];
+
+const mockTasksNeedingAttention: TaskNeedingAttention[] = [
+  {
+    id: "1",
+    title: "Database Design Documentation",
+    assignedTo: "Mike Chen",
+    dueDate: "2024-02-10",
+    status: "overdue",
+    priority: "high",
+  },
+  {
+    id: "2",
+    title: "API Integration Testing",
+    assignedTo: "Sarah Johnson",
+    dueDate: "2024-02-13",
+    status: "pending_review",
+    priority: "medium",
+  },
+  {
+    id: "3",
+    title: "Market Research Survey",
+    assignedTo: "Emily Davis",
+    dueDate: "2024-02-14",
+    status: "not_started",
+    priority: "low",
+  },
+];
 
 export default function FacultySupervisorDashboard() {
   const { user, profile } = useAuth();
   const [stats, setStats] = useState<FacultyStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [students, setStudents] = useState<StudentOverview[]>(mockStudents);
+  const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>(mockRecentSubmissions);
+  const [tasksNeedingAttention, setTasksNeedingAttention] = useState<TaskNeedingAttention[]>(mockTasksNeedingAttention);
 
   useEffect(() => {
-    fetchFacultyStats();
+    fetchFacultyData();
   }, []);
 
-  async function fetchFacultyStats() {
+  async function fetchFacultyData() {
     if (!user) return;
 
     try {
@@ -70,14 +244,34 @@ export default function FacultySupervisorDashboard() {
           .eq("status", "completed"),
       ]);
 
+      // Calculate additional stats from mock data for demo
+      const totalProgress = mockStudents.reduce((acc, s) => acc + s.progress, 0);
+      const avgProgress = Math.round(totalProgress / mockStudents.length);
+
       setStats({
-        supervisedStudents: studentsRes.count || 0,
-        activeInternships: activeRes.count || 0,
-        pendingReviews: pendingRes.count || 0,
-        evaluationsCompleted: completedRes.count || 0,
+        supervisedStudents: studentsRes.count || mockStudents.length,
+        activeInternships: activeRes.count || mockStudents.filter(s => s.status === "active").length,
+        pendingReviews: pendingRes.count || recentSubmissions.filter(s => s.status === "pending").length,
+        evaluationsCompleted: completedRes.count || 12,
+        tasksPending: 8,
+        tasksCompleted: 24,
+        tasksOverdue: 2,
+        avgProgress,
       });
     } catch (error) {
       console.error("Error fetching faculty stats:", error);
+      // Set fallback stats from mock data
+      const totalProgress = mockStudents.reduce((acc, s) => acc + s.progress, 0);
+      setStats({
+        supervisedStudents: mockStudents.length,
+        activeInternships: mockStudents.filter(s => s.status === "active").length,
+        pendingReviews: recentSubmissions.filter(s => s.status === "pending").length,
+        evaluationsCompleted: 12,
+        tasksPending: 8,
+        tasksCompleted: 24,
+        tasksOverdue: 2,
+        avgProgress: Math.round(totalProgress / mockStudents.length),
+      });
     } finally {
       setIsLoading(false);
     }
@@ -88,15 +282,19 @@ export default function FacultySupervisorDashboard() {
       title: "Supervised Students",
       value: stats?.supervisedStudents.toString() || "0",
       icon: GraduationCap,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-50",
+      borderColor: "border-emerald-200",
+      description: "Across your programs",
     },
     {
       title: "Active Internships",
       value: stats?.activeInternships.toString() || "0",
       icon: Briefcase,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
+      description: "Currently ongoing",
     },
     {
       title: "Pending Reviews",
@@ -104,42 +302,129 @@ export default function FacultySupervisorDashboard() {
       icon: Clock,
       color: "text-amber-600",
       bgColor: "bg-amber-50",
+      borderColor: "border-amber-200",
+      description: "Awaiting your action",
     },
     {
-      title: "Evaluations Done",
-      value: stats?.evaluationsCompleted.toString() || "0",
+      title: "Tasks Completed",
+      value: stats?.tasksCompleted.toString() || "0",
       icon: CheckCircle2,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
+      borderColor: "border-purple-200",
+      description: "By your students",
     },
   ];
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return <Badge variant="destructive">High</Badge>;
+      case "medium":
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Medium</Badge>;
+      case "low":
+        return <Badge className="bg-gray-100 text-gray-700 border-gray-200">Low</Badge>;
+      default:
+        return <Badge variant="outline">{priority}</Badge>;
+    }
+  };
+
+  const getTaskStatusBadge = (status: string) => {
+    switch (status) {
+      case "overdue":
+        return <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Overdue</Badge>;
+      case "pending_review":
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="mr-1 h-3 w-3" />Pending Review</Badge>;
+      case "not_started":
+        return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Not Started</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getSubmissionStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="mr-1 h-3 w-3" />Pending</Badge>;
+      case "approved":
+        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>;
+      case "rejected":
+        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getSubmissionTypeIcon = (type: string) => {
+    switch (type) {
+      case "weekly_log":
+        return <FileText className="h-4 w-4 text-blue-500" />;
+      case "task":
+        return <CheckSquare className="h-4 w-4 text-green-500" />;
+      case "document":
+        return <FileText className="h-4 w-4 text-purple-500" />;
+      default:
+        return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  const getStudentInitials = (name: string) => {
+    return name.split(" ").map(n => n[0]).join("").toUpperCase();
+  };
+
+  const getProgressColor = (progress: number) => {
+    if (progress >= 70) return "bg-emerald-500";
+    if (progress >= 40) return "bg-amber-500";
+    return "bg-red-500";
+  };
+
+  const formatRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return "Just now";
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Faculty Supervisor Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Program Supervisor Dashboard
+          </h1>
           <p className="text-muted-foreground mt-1">
             Welcome back, {profile?.full_name || user?.email || "Supervisor"}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchFacultyStats} disabled={isLoading}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={fetchFacultyData} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
           <Button asChild>
-            <a href="/faculty-supervisor/students">
+            <Link href="/faculty-supervisor/tasks/new">
               <Plus className="h-4 w-4 mr-2" />
-              View Students
-            </a>
+              New Task
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/faculty-supervisor/notifications/new">
+              <Send className="h-4 w-4 mr-2" />
+              Notify
+            </Link>
           </Button>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card, index) => (
           <motion.div
             key={card.title}
@@ -147,14 +432,15 @@ export default function FacultySupervisorDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
           >
-            <Card>
+            <Card className={`border-${card.borderColor.split('-').slice(1).join('-')} hover:shadow-md transition-shadow`}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">{card.title}</p>
+                    <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
                     <p className="text-3xl font-bold mt-1">{card.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{card.description}</p>
                   </div>
-                  <div className={`p-3 rounded-full ${card.bgColor}`}>
+                  <div className={`p-3 rounded-xl ${card.bgColor}`}>
                     <card.icon className={`h-6 w-6 ${card.color}`} />
                   </div>
                 </div>
@@ -164,128 +450,283 @@ export default function FacultySupervisorDashboard() {
         ))}
       </div>
 
-      {/* Alert for pending reviews */}
-      {stats?.pendingReviews ? (
-        <Card className="border-amber-200 bg-amber-50">
+      {/* Alert for pending reviews / overdue tasks */}
+      {(stats?.pendingReviews || 0) > 0 || (stats?.tasksOverdue || 0) > 0 ? (
+        <Card className="border-amber-200 bg-amber-50/50">
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-600" />
-              <span className="font-medium text-amber-800">
-                You have {stats.pendingReviews} weekly log(s) or evaluation(s) pending review.
-              </span>
-              <Badge variant="destructive" className="ml-auto">Action Required</Badge>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <span className="font-medium text-amber-800">
+                  You have {stats?.pendingReviews || 0} submission(s) pending review
+                  {(stats?.tasksOverdue || 0) > 0 && ` and ${stats.tasksOverdue} overdue task(s)`}.
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Badge variant="destructive">Action Required</Badge>
+                <Button size="sm" variant="outline" asChild>
+                  <Link href="/faculty-supervisor/evaluations">Review Now</Link>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
       ) : null}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <a href="/faculty-supervisor/students" className="block p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-blue-50">
-                <Users className="h-6 w-6 text-blue-600" />
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Student Overview Cards - Takes 2 columns on large screens */}
+        <div className="lg:col-span-2 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">My Students</CardTitle>
+                  <CardDescription>Students in your supervised programs</CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/faculty-supervisor/students" className="gap-1">
+                    View All <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
-              <div>
-                <h3 className="font-semibold">My Students</h3>
-                <p className="text-sm text-muted-foreground">View supervised students</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {students.map((student, index) => (
+                  <motion.div
+                    key={student.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Link href={`/faculty-supervisor/students?id=${student.id}`}>
+                      <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={student.avatarUrl} alt={student.name} />
+                          <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                            {getStudentInitials(student.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{student.name}</p>
+                            <Badge 
+                              variant={student.status === "active" ? "default" : "secondary"}
+                              className="shrink-0 text-xs"
+                            >
+                              {student.status === "active" ? "Active" : "On Leave"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{student.company}</p>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <Progress 
+                              value={student.progress} 
+                              className="h-1.5 flex-1"
+                            />
+                            <span className="text-xs text-muted-foreground w-8 text-right">
+                              {student.progress}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </motion.div>
+                ))}
               </div>
-              <ArrowRight className="h-5 w-5 ml-auto text-muted-foreground" />
-            </div>
-          </a>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-green-50">
-                <ClipboardList className="h-6 w-6 text-green-600" />
+          {/* Tasks Needing Attention */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    Tasks Needing Attention
+                  </CardTitle>
+                  <CardDescription>Overdue or requiring review</CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/faculty-supervisor/tasks" className="gap-1">
+                    View All <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
-              <div>
-                <h3 className="font-semibold">Weekly Logs</h3>
-                <p className="text-sm text-muted-foreground">{stats?.pendingReviews || 0} to review</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {tasksNeedingAttention.map((task) => (
+                  <div 
+                    key={task.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="mt-0.5">
+                      {task.status === "overdue" ? (
+                        <XCircle className="h-5 w-5 text-red-500" />
+                      ) : (
+                        <Clock className="h-5 w-5 text-amber-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{task.title}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          Assigned to: {task.assignedTo}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Due: {new Date(task.dueDate).toLocaleDateString()}
+                        </span>
+                        {getTaskStatusBadge(task.status)}
+                        {getPriorityBadge(task.priority)}
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {tasksNeedingAttention.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500" />
+                    <p>All tasks are up to date!</p>
+                  </div>
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-purple-50">
-                <BarChart3 className="h-6 w-6 text-purple-600" />
+        {/* Right Sidebar - Recent Submissions & Quick Actions */}
+        <div className="space-y-4">
+          {/* Recent Submissions Feed */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Recent Submissions</CardTitle>
+                  <CardDescription>Latest from your students</CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/faculty-supervisor/evaluations" className="gap-1">
+                    All <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
-              <div>
-                <h3 className="font-semibold">Reports</h3>
-                <p className="text-sm text-muted-foreground">View analytics & reports</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[350px] overflow-y-auto">
+                {recentSubmissions.slice(0, 5).map((submission) => (
+                  <div 
+                    key={submission.id}
+                    className="p-3 rounded-lg border hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="mt-0.5 shrink-0">
+                        {getSubmissionTypeIcon(submission.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{submission.studentName}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                          {submission.taskTitle}
+                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs text-muted-foreground">
+                            {formatRelativeTime(submission.submittedAt)}
+                          </span>
+                          {getSubmissionStatusBadge(submission.status)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2">
+                <Link href="/faculty-supervisor/tasks">
+                  <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
+                    <Plus className="h-5 w-5" />
+                    <span className="text-xs">Create Task</span>
+                  </Button>
+                </Link>
+                <Link href="/faculty-supervisor/evaluations">
+                  <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
+                    <ClipboardList className="h-5 w-5" />
+                    <span className="text-xs">Evaluate</span>
+                  </Button>
+                </Link>
+                <Link href="/faculty-supervisor/notifications">
+                  <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
+                    <Send className="h-5 w-5" />
+                    <span className="text-xs">Notify</span>
+                  </Button>
+                </Link>
+                <Link href="/faculty-supervisor/reports">
+                  <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
+                    <BarChart3 className="h-5 w-5" />
+                    <span className="text-xs">Reports</span>
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Progress Summary */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Program Progress</CardTitle>
+              <CardDescription>Average completion across students</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="relative pt-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Overall Progress</span>
+                  </div>
+                  <div className="relative">
+                    <Progress value={stats?.avgProgress || 0} className="h-3" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-bold text-white drop-shadow-sm">
+                        {stats?.avgProgress || 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-emerald-50">
+                    <p className="text-lg font-bold text-emerald-600">
+                      {students.filter(s => s.progress >= 70).length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">On Track</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-50">
+                    <p className="text-lg font-bold text-amber-600">
+                      {students.filter(s => s.progress >= 40 && s.progress < 70).length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Needs Focus</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-red-50">
+                    <p className="text-lg font-bold text-red-600">
+                      {students.filter(s => s.progress < 40).length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">At Risk</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-
-      {/* Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Supervision Overview</CardTitle>
-          <CardDescription>Summary of your supervision activities</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!stats ? (
-            <div className="flex items-center justify-center py-12">
-              <Clock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4 animate-pulse" />
-              <p className="text-muted-foreground ml-4">Loading data...</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <GraduationCap className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                  <p className="text-2xl font-bold">{stats.supervisedStudents}</p>
-                  <p className="text-sm text-muted-foreground">Students Supervised</p>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <Briefcase className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                  <p className="text-2xl font-bold">{stats.activeInternships}</p>
-                  <p className="text-sm text-muted-foreground">Active Internships</p>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <Clock className="h-8 w-8 mx-auto mb-2 text-amber-600" />
-                  <p className="text-2xl font-bold">{stats.pendingReviews}</p>
-                  <p className="text-sm text-muted-foreground">Pending Review</p>
-                </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                  <p className="text-2xl font-bold">{stats.evaluationsCompleted}</p>
-                  <p className="text-sm text-muted-foreground">Evaluations Completed</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
-  );
-}
-
-// Import ArrowRight for the quick action card
-function ArrowRight({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
   );
 }

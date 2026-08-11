@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -14,40 +17,91 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   User,
   Mail,
   Phone,
   MapPin,
-  Calendar,
   Save,
   Camera,
   GraduationCap,
   Briefcase,
   RefreshCw,
+  Upload,
+  FileText,
+  Download,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Linkedin,
+  Github,
+  Globe,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+
+interface ProfileData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  bio: string;
+  major: string;
+  gpa: string;
+  graduationYear: string;
+  skills: string[];
+  linkedin: string;
+  github: string;
+  website: string;
+}
+
+interface CVInfo {
+  url: string;
+  name: string;
+  size: number;
+  uploadedAt: string;
+}
 
 export default function StudentProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [skillInput, setSkillInput] = useState("");
   
-  // Form state - initialized empty or with real data
-  const [profileData, setProfileData] = useState({
+  // CV Upload state
+  const [cvInfo, setCvInfo] = useState<CVInfo | null>(null);
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvUploadProgress, setCvUploadProgress] = useState(0);
+  const [cvDialogOpen, setCvDialogOpen] = useState(false);
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Profile picture state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  
+  // Form state
+  const [profileData, setProfileData] = useState<ProfileData>({
     firstName: "",
     lastName: "",
     email: "",
     phone: "",
     bio: "",
-    university: "",
     major: "",
     gpa: "",
     graduationYear: "",
-    skills: [] as string[],
+    skills: [],
     linkedin: "",
     github: "",
     website: "",
@@ -62,17 +116,15 @@ export default function StudentProfilePage() {
         email: user?.email || "",
         phone: profile.phone || "",
         bio: profile.bio || "",
-        university: "", // Would come from related table
-        major: profile.major || "",
-        gpa: profile.gpa?.toString() || "",
-        graduationYear: profile.graduation_year?.toString() || "",
-        skills: profile.skills || [],
-        linkedin: profile.linkedin || "",
-        github: profile.github || "",
-        website: profile.website || "",
+        major: (profile as any).major || "",
+        gpa: (profile as any).gpa?.toString() || "",
+        graduationYear: (profile as any).graduation_year?.toString() || "",
+        skills: (profile as any).skills || [],
+        linkedin: (profile as any).linkedin || "",
+        github: (profile as any).github || "",
+        website: (profile as any).website || "",
       });
     } else if (user) {
-      // Set at least email from auth
       setProfileData(prev => ({
         ...prev,
         email: user.email || "",
@@ -80,8 +132,44 @@ export default function StudentProfilePage() {
     }
   }, [profile, user]);
 
+  // Fetch CV info on mount
+  useEffect(() => {
+    fetchCVInfo();
+  }, [user]);
+
+  async function fetchCVInfo() {
+    if (!user) return;
+    
+    try {
+      const supabase = createClient();
+      
+      // Look for CV document
+      const { data: documents } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("uploaded_by", user.id)
+        .eq("type", "resume")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (documents) {
+        setCvInfo({
+          url: documents.url,
+          name: documents.name,
+          size: documents.size,
+          uploadedAt: documents.created_at,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching CV info:", error);
+    }
+  }
+
   const handleSave = async () => {
-    setIsLoading(true);
+    setIsSaving(true);
+    setSaveSuccess(false);
+    
     try {
       const supabase = createClient();
       
@@ -108,12 +196,194 @@ export default function StudentProfilePage() {
       
       await refreshProfile();
       setIsEditing(false);
+      setSaveSuccess(true);
+      
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Error saving profile:", error);
       alert("Failed to save profile. Please try again.");
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
+  };
+
+  const handleAddSkill = () => {
+    if (skillInput.trim() && !profileData.skills.includes(skillInput.trim())) {
+      setProfileData(prev => ({
+        ...prev,
+        skills: [...prev.skills, skillInput.trim()],
+      }));
+      setSkillInput("");
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove: string) => {
+    setProfileData(prev => ({
+      ...prev,
+      skills: prev.skills.filter(s => s !== skillToRemove),
+    }));
+  };
+
+  const handleCVUpload = async () => {
+    if (!cvFile || !user) return;
+
+    setCvUploading(true);
+    setCvUploadProgress(0);
+
+    try {
+      const supabase = createClient();
+      
+      // Generate unique file name
+      const fileExt = cvFile.name.split('.').pop();
+      const fileName = `cv_${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `cvs/${fileName}`;
+
+      // Simulate progress for UX
+      const progressInterval = setInterval(() => {
+        setCvUploadProgress(prev => Math.min(prev + 15, 90));
+      }, 200);
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, cvFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      clearInterval(progressInterval);
+      
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+
+      // Record in documents table
+      const { error: dbError } = await supabase
+        .from('documents')
+        .insert({
+          name: cvFile.name,
+          type: 'resume',
+          url: urlData.publicUrl,
+          size: cvFile.size,
+          mime_type: cvFile.type,
+          uploaded_by: user.id,
+          entity_type: 'student',
+          entity_id: user.id,
+          status: 'pending',
+        });
+
+      if (dbError) throw dbError;
+
+      setCvUploadProgress(100);
+      
+      // Update local state
+      setCvInfo({
+        url: urlData.publicUrl,
+        name: cvFile.name,
+        size: cvFile.size,
+        uploadedAt: new Date().toISOString(),
+      });
+
+      setTimeout(() => {
+        setCvDialogOpen(false);
+        setCvFile(null);
+        setCvUploading(false);
+        setCvUploadProgress(0);
+      }, 1000);
+
+    } catch (error) {
+      console.error("Error uploading CV:", error);
+      alert("Failed to upload CV. Please try again.");
+      setCvUploading(false);
+      setCvUploadProgress(0);
+    }
+  };
+
+  const handleCVDelete = async () => {
+    if (!cvInfo || !user) return;
+
+    if (!confirm("Are you sure you want to delete your CV?")) return;
+
+    try {
+      const supabase = createClient();
+      
+      // Delete from storage (extract path from URL)
+      const urlParts = cvInfo.url.split('/');
+      const filePath = `cvs/${urlParts[urlParts.length - 1]}`;
+      
+      await supabase.storage.from('documents').remove([filePath]);
+      
+      // Delete record from database would need server action or API route
+      
+      setCvInfo(null);
+    } catch (error) {
+      console.error("Error deleting CV:", error);
+      alert("Failed to delete CV.");
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be less than 5MB");
+      return;
+    }
+
+    setAvatarUploading(true);
+
+    try {
+      const supabase = createClient();
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      await refreshProfile();
+    } catch (error) {
+      console.error("Error uploading avatar:", error);
+      alert("Failed to upload avatar. Please try again.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   const initials = `${profileData.firstName?.[0] || ""}${profileData.lastName?.[0] || ""}`.toUpperCase() || "U";
@@ -125,27 +395,47 @@ export default function StudentProfilePage() {
         <div>
           <h1 className="text-3xl font-bold">My Profile</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your personal information and preferences
+            Manage your personal information and professional presence
           </p>
         </div>
         
-        <Button
-          variant={isEditing ? "default" : "outline"}
-          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
-          disabled={isLoading}
-          className="gap-2"
-        >
-          {isLoading ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
+        <div className="flex items-center gap-2">
+          {saveSuccess && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-1 text-sm text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Saved successfully!
+            </motion.div>
           )}
-          {isEditing ? "Saving..." : "Edit Profile"}
-        </Button>
+          
+          {!isEditing ? (
+            <Button onClick={() => setIsEditing(true)} className="gap-2">
+              <User className="h-4 w-4" />
+              Edit Profile
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                {isSaving ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column - Avatar & Basic Info */}
+        {/* Left Column - Avatar & Quick Info */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -155,13 +445,39 @@ export default function StudentProfilePage() {
           {/* Avatar Card */}
           <Card>
             <CardContent className="p-6 text-center space-y-4">
-              <Avatar className="h-24 w-24 mx-auto">
-                <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative inline-block">
+                <Avatar className="h-28 w-28 mx-auto">
+                  <AvatarImage src={profile?.avatar_url} alt="Profile" />
+                  <AvatarFallback className="text-3xl bg-primary text-primary-foreground">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                
+                {isEditing && (
+                  <>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {avatarUploading ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
               
-              {!isEditing && (
+              {!isEditing ? (
                 <>
                   <div>
                     <h2 className="text-xl font-semibold">
@@ -181,42 +497,247 @@ export default function StudentProfilePage() {
                       <p className="text-sm text-muted-foreground">No skills added yet</p>
                     )}
                   </div>
+
+                  {/* Social Links */}
+                  {(profileData.linkedin || profileData.github || profileData.website) && (
+                    <div className="flex justify-center gap-3 pt-2 border-t">
+                      {profileData.linkedin && (
+                        <a 
+                          href={profileData.linkedin.startsWith('http') ? profileData.linkedin : `https://linkedin.com/in/${profileData.linkedin}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full hover:bg-muted transition-colors"
+                        >
+                          <Linkedin className="h-5 w-5 text-[#0077B5]" />
+                        </a>
+                      )}
+                      {profileData.github && (
+                        <a 
+                          href={profileData.github.startsWith('http') ? profileData.github : `https://github.com/${profileData.github}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full hover:bg-muted transition-colors"
+                        >
+                          <Github className="h-5 w-5" />
+                        </a>
+                      )}
+                      {profileData.website && (
+                        <a 
+                          href={profileData.website.startsWith('http') ? profileData.website : `https://${profileData.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-full hover:bg-muted transition-colors"
+                        >
+                          <Globe className="h-5 w-5 text-blue-500" />
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </>
-              )}
-              
-              {isEditing && (
+              ) : (
                 <div className="space-y-3">
-                  <Button variant="outline" className="w-full" type="button">
+                  <Button variant="outline" className="w-full" type="button" disabled={avatarUploading}>
                     <Camera className="h-4 w-4 mr-2" />
-                    Upload Photo
+                    {avatarUploading ? "Uploading..." : "Change Photo"}
                   </Button>
                   
-                  <div className="flex flex-wrap gap-2">
-                    {profileData.skills.map((skill, index) => (
-                      <Badge key={index} variant="secondary" className="cursor-pointer">
-                        {skill} ×
-                      </Badge>
-                    ))}
+                  <div className="space-y-2">
+                    <Label>Skills</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {profileData.skills.map((skill) => (
+                        <Badge 
+                          key={skill} 
+                          variant="secondary" 
+                          className="cursor-pointer pr-1"
+                          onClick={() => handleRemoveSkill(skill)}
+                        >
+                          {skill}
+                          <X className="h-3 w-3 ml-1" />
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={skillInput}
+                        onChange={(e) => setSkillInput(e.target.value)}
+                        placeholder="Add a skill..."
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())}
+                      />
+                      <Button variant="outline" size="icon" onClick={handleAddSkill}>
+                        <PlusIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Quick Info */}
+          {/* CV / Resume Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4" />
+                Resume / CV
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {cvInfo ? (
+                <div className="p-4 rounded-lg border space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-md bg-red-50 shrink-0">
+                      <FileText className="h-5 w-5 text-red-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate">{cvInfo.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatFileSize(cvInfo.size)} • Uploaded {new Date(cvInfo.uploadedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <a href={cvInfo.url} target="_blank" rel="noopener noreferrer" className="flex-1">
+                      <Button variant="outline" size="sm" className="w-full gap-1">
+                        <Download className="h-3 w-3" />
+                        Download
+                      </Button>
+                    </a>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleCVDelete}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <FileText className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-sm text-muted-foreground mb-3">No CV uploaded</p>
+                  <Dialog open={cvDialogOpen} onOpenChange={setCvDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="gap-1">
+                        <Upload className="h-4 w-4" />
+                        Upload CV
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Upload Your CV</DialogTitle>
+                        <DialogDescription>
+                          Upload your resume/CV in PDF format. This will be shared with employers when you apply.
+                        </DialogDescription>
+                      </DialogHeader>
+                      
+                      <div className="space-y-4 mt-4">
+                        <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.type !== 'application/pdf') {
+                                  alert("Please upload a PDF file");
+                                  return;
+                                }
+                                if (file.size > 10 * 1024 * 1024) {
+                                  alert("File must be less than 10MB");
+                                  return;
+                                }
+                                setCvFile(file);
+                              }
+                            }}
+                            className="hidden"
+                            id="cv-upload"
+                            accept=".pdf"
+                          />
+                          <label htmlFor="cv-upload" className="cursor-pointer">
+                            <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                            <p className="text-sm text-muted-foreground">
+                              {cvFile ? cvFile.name : "Click to select PDF"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              PDF only, max 10MB
+                            </p>
+                          </label>
+                        </div>
+
+                        {cvUploading && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Uploading...</span>
+                              <span>{cvUploadProgress}%</span>
+                            </div>
+                            <Progress value={cvUploadProgress} className="h-2" />
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-4">
+                          <Button 
+                            variant="outline" 
+                            onClick={() => {
+                              setCvDialogOpen(false);
+                              setCvFile(null);
+                            }}
+                            disabled={cvUploading}
+                          >
+                            Cancel
+                          </Button>
+                          <Button 
+                            onClick={handleCVUpload}
+                            disabled={!cvFile || cvUploading}
+                            className="gap-2"
+                          >
+                            {cvUploading ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4" />
+                            )}
+                            {cvUploading ? "Uploading..." : "Upload CV"}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
+                <p className="font-medium mb-1">Tips for a great CV:</p>
+                <ul className="space-y-1 ml-3">
+                  <li>• Keep it to 1-2 pages</li>
+                  <li>• Include relevant projects</li>
+                  <li>• Highlight technical skills</li>
+                  <li>• Proofread carefully</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Contact Info */}
           <Card>
             <CardContent className="p-6 space-y-4">
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{profileData.email || "Not provided"}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{profileData.phone || "Not provided"}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span>Location not set</span>
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                Contact Information
+              </h3>
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 text-sm">
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">{profileData.email || "Not provided"}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span>{profileData.phone || "Not provided"}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span>{(profile as any)?.location || "Location not set"}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -231,15 +752,17 @@ export default function StudentProfilePage() {
         >
           {/* Personal Information */}
           <Card>
-            <CardContent className="p-6 space-y-4">
-              <h3 className="font-semibold flex items-center gap-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
                 Personal Information
-              </h3>
-              
+              </CardTitle>
+              <CardDescription>Your basic personal details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label htmlFor="firstName">First Name *</Label>
                   <Input
                     id="firstName"
                     value={profileData.firstName}
@@ -250,7 +773,7 @@ export default function StudentProfilePage() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="lastName">Last Name *</Label>
                   <Input
                     id="lastName"
                     value={profileData.lastName}
@@ -261,39 +784,58 @@ export default function StudentProfilePage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  value={profileData.phone}
-                  onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
-                  disabled={!isEditing}
-                  placeholder="+1 (555) 123-4567"
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    value={profileData.phone}
+                    onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                    disabled={!isEditing}
+                    placeholder="+92 (XXX) XXXXXXX"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    value={profileData.email}
+                    disabled
+                    className="bg-muted/50"
+                  />
+                  <p className="text-xs text-muted-foreground">Email cannot be changed here</p>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
+                <Label htmlFor="bio">Bio / About Me</Label>
                 <Textarea
                   id="bio"
                   value={profileData.bio}
                   onChange={(e) => setProfileData(prev => ({ ...prev, bio: e.target.value }))}
                   disabled={!isEditing}
-                  rows={3}
-                  placeholder="Tell us about yourself..."
+                  rows={4}
+                  placeholder="Tell us about yourself, your career goals, and what you're looking for in an internship..."
+                  maxLength={500}
                 />
+                <p className="text-xs text-muted-foreground text-right">
+                  {profileData.bio.length}/500 characters
+                </p>
               </div>
             </CardContent>
           </Card>
 
           {/* Academic Information */}
           <Card>
-            <CardContent className="p-6 space-y-4">
-              <h3 className="font-semibold flex items-center gap-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <GraduationCap className="h-5 w-5" />
                 Academic Information
-              </h3>
-              
+              </CardTitle>
+              <CardDescription>Your educational background</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="major">Major / Field of Study</Label>
@@ -307,13 +849,17 @@ export default function StudentProfilePage() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="gpa">GPA</Label>
+                  <Label htmlFor="gpa">CGPA</Label>
                   <Input
                     id="gpa"
                     value={profileData.gpa}
                     onChange={(e) => setProfileData(prev => ({ ...prev, gpa: e.target.value }))}
                     disabled={!isEditing}
-                    placeholder="e.g., 3.8"
+                    placeholder="e.g., 3.5"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="4"
                   />
                 </div>
               </div>
@@ -342,37 +888,48 @@ export default function StudentProfilePage() {
 
           {/* Professional Information */}
           <Card>
-            <CardContent className="p-6 space-y-4">
-              <h3 className="font-semibold flex items-center gap-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <Briefcase className="h-5 w-5" />
-                Professional Information
-              </h3>
-              
-              <div className="grid gap-4 sm:grid-cols-3">
+                Professional Presence
+              </CardTitle>
+              <CardDescription>Links to your professional profiles and portfolio</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="linkedin">LinkedIn URL</Label>
+                  <Label htmlFor="linkedin" className="flex items-center gap-2">
+                    <Linkedin className="h-4 w-4 text-[#0077B5]" />
+                    LinkedIn URL
+                  </Label>
                   <Input
                     id="linkedin"
                     value={profileData.linkedin}
                     onChange={(e) => setProfileData(prev => ({ ...prev, linkedin: e.target.value }))}
                     disabled={!isEditing}
-                    placeholder="linkedin.com/in/..."
+                    placeholder="linkedin.com/in/username"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="github">GitHub URL</Label>
+                  <Label htmlFor="github" className="flex items-center gap-2">
+                    <Github className="h-4 w-4" />
+                    GitHub URL
+                  </Label>
                   <Input
                     id="github"
                     value={profileData.github}
                     onChange={(e) => setProfileData(prev => ({ ...prev, github: e.target.value }))}
                     disabled={!isEditing}
-                    placeholder="github.com/..."
+                    placeholder="github.com/username"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="website">Portfolio Website</Label>
+                  <Label htmlFor="website" className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-blue-500" />
+                    Portfolio Website
+                  </Label>
                   <Input
                     id="website"
                     value={profileData.website}
@@ -382,10 +939,33 @@ export default function StudentProfilePage() {
                   />
                 </div>
               </div>
+
+              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="flex gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Why add these links?</p>
+                    <p className="text-blue-700">
+                      Employers often check GitHub and LinkedIn profiles to learn more about candidates. 
+                      A complete professional presence can significantly increase your chances of getting noticed!
+                    </p>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
       </div>
     </div>
+  );
+}
+
+// Plus icon component
+function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </svg>
   );
 }

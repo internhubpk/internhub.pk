@@ -115,24 +115,24 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: LayoutDashboard,
     },
     {
+      title: "Programs",
+      href: "/department-coordinator/programs",
+      icon: BookOpen,
+    },
+    {
+      title: "Supervisors",
+      href: "/department-coordinator/supervisors",
+      icon: UserCheck,
+    },
+    {
       title: "Students",
       href: "/department-coordinator/students",
       icon: GraduationCap,
     },
     {
-      title: "Internships",
-      href: "/department-coordinator/internships",
-      icon: FileText,
-    },
-    {
       title: "Reports",
       href: "/department-coordinator/reports",
       icon: BarChart3,
-    },
-    {
-      title: "Evaluations",
-      href: "/department-coordinator/evaluations",
-      icon: ClipboardList,
     },
   ],
   faculty_supervisor: [
@@ -147,6 +147,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: GraduationCap,
     },
     {
+      title: "Tasks",
+      href: "/faculty-supervisor/tasks",
+      icon: CheckSquare,
+    },
+    {
       title: "Evaluations",
       href: "/faculty-supervisor/evaluations",
       icon: ClipboardList,
@@ -154,7 +159,17 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
     {
       title: "Weekly Logs",
       href: "/faculty-supervisor/weekly-logs",
-      icon: FileText,
+      icon: ScrollText,
+    },
+    {
+      title: "Notifications",
+      href: "/faculty-supervisor/notifications",
+      icon: Send,
+    },
+    {
+      title: "Reports",
+      href: "/faculty-supervisor/reports",
+      icon: BarChart3,
     },
   ],
   student: [
@@ -220,6 +235,31 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       href: "/company-hr/applications",
       icon: Inbox,
     },
+    {
+      title: "Supervisors",
+      href: "/company-hr/supervisors",
+      icon: UserCheck,
+    },
+    {
+      title: "Active Interns",
+      href: "/company-hr/interns",
+      icon: GraduationCap,
+    },
+    {
+      title: "Documents",
+      href: "/company-hr/documents",
+      icon: FolderOpen,
+    },
+    {
+      title: "Attendance",
+      href: "/company-hr/attendance",
+      icon: CalendarClock,
+    },
+    {
+      title: "Evaluations",
+      href: "/company-hr/evaluations",
+      icon: ClipboardCheck,
+    },
   ],
   site_supervisor: [
     {
@@ -228,14 +268,9 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: LayoutDashboard,
     },
     {
-      title: "Assigned Interns",
-      href: "/site-supervisor/interns",
+      title: "Assigned Students",
+      href: "/site-supervisor/students",
       icon: GraduationCap,
-    },
-    {
-      title: "Activities",
-      href: "/site-supervisor/activities",
-      icon: ClipboardList,
     },
     {
       title: "Evaluations",
@@ -243,9 +278,14 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: CheckSquare,
     },
     {
-      title: "Remarks",
-      href: "/site-supervisor/remarks",
-      icon: MessageSquare,
+      title: "Weekly Logs",
+      href: "/site-supervisor/weekly-logs",
+      icon: ScrollText,
+    },
+    {
+      title: "Notifications",
+      href: "/site-supervisor/notifications",
+      icon: Send,
     },
   ],
   external_evaluator: [

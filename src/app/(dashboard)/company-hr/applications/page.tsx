@@ -6,6 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -25,10 +28,22 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Search,
   Filter,
@@ -45,98 +60,211 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
+  Send,
+  FileText,
+  GraduationCap,
+  Building2,
+  CheckSquare,
+  MoreVertical,
+  AlertTriangle,
+  Users,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Types
+interface Application {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  student_avatar?: string;
+  internship_id: string;
+  internship_title: string;
+  status: "pending" | "reviewing" | "accepted" | "rejected" | "withdrawn";
+  applied_at: string;
+  updated_at: string;
+  university: string;
+  department: string;
+  gpa?: string;
+  match_score: number;
+  cover_letter: string;
+  resume_url?: string | null;
+  skills: string[];
+  phone?: string;
+}
 
 // Mock data for applications
-const mockApplications = [
+const mockApplications: Application[] = [
   {
     id: "1",
-    candidateName: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    position: "Software Engineering Intern",
-    status: "new" as const,
-    appliedDate: "2024-02-10",
+    student_id: "stu_001",
+    student_name: "Sarah Johnson",
+    student_email: "sarah.j@university.edu",
+    internship_id: "int_001",
+    internship_title: "Software Engineering Intern",
+    status: "pending",
+    applied_at: "2024-02-10T10:30:00Z",
+    updated_at: "2024-02-10T10:30:00Z",
     university: "State University",
-    major: "Computer Science",
+    department: "Computer Science",
     gpa: "3.8",
-    matchScore: 95,
-    coverLetter: "I am excited to apply for this position...",
-    resumeUrl: "#",
-    skills: ["React", "TypeScript", "Node.js"],
+    match_score: 95,
+    cover_letter: "I am excited to apply for this Software Engineering Internship position at your company. As a final year Computer Science student with a strong foundation in web development, I believe I would be a great fit for your team.\n\nDuring my academic career, I have developed multiple projects using React, TypeScript, and Node.js. My capstone project involved building a full-stack application that is currently being used by over 500 students on campus.\n\nI am particularly drawn to your company's innovative approach to technology and would welcome the opportunity to contribute to your team while learning from experienced engineers.",
+    resume_url: "#",
+    skills: ["React", "TypeScript", "Node.js", "SQL", "Git"],
+    phone: "+92-300-1234567",
   },
   {
     id: "2",
-    candidateName: "Mike Chen",
-    email: "mike.chen@university.edu",
-    position: "Software Engineering Intern",
-    status: "reviewing" as const,
-    appliedDate: "2024-02-08",
+    student_id: "stu_002",
+    student_name: "Mike Chen",
+    student_email: "mike.chen@tech.edu",
+    internship_id: "int_001",
+    internship_title: "Software Engineering Intern",
+    status: "reviewing",
+    applied_at: "2024-02-08T14:20:00Z",
+    updated_at: "2024-02-09T09:15:00Z",
     university: "Tech University",
-    major: "Software Engineering",
+    department: "Software Engineering",
     gpa: "3.6",
-    matchScore: 88,
-    coverLetter: "With my experience in web development...",
-    resumeUrl: "#",
-    skills: ["Python", "JavaScript", "Django"],
+    match_score: 88,
+    cover_letter: "With my experience in web development and passion for clean code, I am confident I can make meaningful contributions to your engineering team.",
+    resume_url: "#",
+    skills: ["Python", "JavaScript", "Django", "PostgreSQL"],
+    phone: "+92-301-9876543",
   },
   {
     id: "3",
-    candidateName: "Emily Davis",
-    email: "emily.d@university.edu",
-    position: "Marketing Intern",
-    status: "interview" as const,
-    appliedDate: "2024-02-05",
+    student_id: "stu_003",
+    student_name: "Emily Davis",
+    student_email: "emily.d@business.edu",
+    internship_id: "int_002",
+    internship_title: "Marketing Intern",
+    status: "accepted",
+    applied_at: "2024-02-05T09:15:00Z",
+    updated_at: "2024-02-12T11:00:00Z",
     university: "Business School",
-    major: "Marketing",
+    department: "Marketing",
     gpa: "3.9",
-    matchScore: 92,
-    coverLetter: "My passion for digital marketing...",
-    resumeUrl: "#",
-    skills: ["Social Media", "Analytics", "Content"],
+    match_score: 92,
+    cover_letter: "My passion for digital marketing and data-driven strategies makes me an ideal candidate for this position.",
+    resume_url: "#",
+    skills: ["Social Media", "Analytics", "Content Writing", "SEO"],
+    phone: "+92-332-4567890",
   },
   {
     id: "4",
-    candidateName: "Alex Wilson",
-    email: "alex.w@university.edu",
-    position: "Data Science Intern",
-    status: "accepted" as const,
-    appliedDate: "2024-01-28",
+    student_id: "stu_004",
+    student_name: "Alex Wilson",
+    student_email: "alex.w@research.edu",
+    internship_id: "int_003",
+    internship_title: "Data Science Intern",
+    status: "rejected",
+    applied_at: "2024-01-28T16:45:00Z",
+    updated_at: "2024-02-01T14:30:00Z",
     university: "Research Institute",
-    major: "Data Science",
+    department: "Data Science",
     gpa: "3.7",
-    matchScore: 90,
-    coverLetter: "I have been working on ML projects...",
-    resumeUrl: "#",
-    skills: ["Python", "ML", "SQL", "R"],
+    match_score: 90,
+    cover_letter: "I have been working on ML projects for the past year and would love to apply my skills in a real-world setting.",
+    resume_url: "#",
+    skills: ["Python", "Machine Learning", "SQL", "R", "TensorFlow"],
+    phone: "+92-333-7890123",
+  },
+  {
+    id: "5",
+    student_id: "stu_005",
+    student_name: "Lisa Park",
+    student_email: "lisa.p@state.edu",
+    internship_id: "int_004",
+    internship_title: "UI/UX Design Intern",
+    status: "pending",
+    applied_at: "2024-02-08T11:00:00Z",
+    updated_at: "2024-02-08T11:00:00Z",
+    university: "State University",
+    department: "Design",
+    gpa: "3.85",
+    match_score: 94,
+    cover_letter: "As a design enthusiast with experience in Figma and user research, I am eager to bring fresh perspectives to your design team.",
+    resume_url: "#",
+    skills: ["Figma", "User Research", "Prototyping", "Adobe XD", "CSS"],
+    phone: "+92-344-2345678",
+  },
+  {
+    id: "6",
+    student_id: "stu_006",
+    student_name: "James Miller",
+    student_email: "james.m@tech.edu",
+    internship_id: "int_001",
+    internship_title: "Software Engineering Intern",
+    status: "pending",
+    applied_at: "2024-02-09T16:30:00Z",
+    updated_at: "2024-02-09T16:30:00Z",
+    university: "Tech University",
+    department: "Computer Science",
+    gpa: "3.5",
+    match_score: 82,
+    cover_letter: "I am a motivated computer science student looking to gain industry experience through this internship opportunity.",
+    resume_url: "#",
+    skills: ["Java", "Spring Boot", "React", "MySQL"],
+    phone: "+92-305-8901234",
   },
 ];
 
+const availablePrograms = [
+  "All Programs",
+  "Software Engineering Intern",
+  "Marketing Intern",
+  "Data Science Intern",
+  "UI/UX Design Intern",
+];
+
 export default function CompanyHRApplicationsPage() {
-  const [applications] = useState(mockApplications);
+  const [applications, setApplications] = useState<Application[]>(mockApplications);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedApplication, setSelectedApplication] = useState<typeof mockApplications[0] | null>(null);
+  const [programFilter, setProgramFilter] = useState("all");
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectingAppId, setRejectingAppId] = useState<string | null>(null);
+  const [selectedForBatch, setSelectedForBatch] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState("inbox");
 
   const filteredApplications = applications.filter((app) => {
-    const matchesSearch = app.candidateName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         app.position.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = 
+      app.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.student_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.internship_title.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesStatus = statusFilter === "all" || app.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesProgram = programFilter === "all" || app.internship_title === programFilter;
+    
+    return matchesSearch && matchesStatus && matchesProgram;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: Application["status"]) => {
     switch (status) {
-      case "new":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">New</Badge>;
+      case "pending":
+        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Pending</Badge>;
       case "reviewing":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Reviewing</Badge>;
-      case "interview":
-        return <Badge className="bg-purple-100 text-purple-700 border-purple-200">Interview</Badge>;
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Reviewing</Badge>;
       case "accepted":
         return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Accepted</Badge>;
       case "rejected":
         return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
+      case "withdrawn":
+        return <Badge variant="secondary">Withdrawn</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -148,308 +276,747 @@ export default function CompanyHRApplicationsPage() {
     return "text-red-600 bg-red-50";
   };
 
+  const getInitials = (name: string) => {
+    return name.split(" ").map(n => n[0]).join("").toUpperCase();
+  };
+
+  const handleAccept = (appId: string) => {
+    setApplications(apps => apps.map(app => 
+      app.id === appId ? { ...app, status: "accepted" as const, updated_at: new Date().toISOString() } : app
+    ));
+    setIsDetailOpen(false);
+  };
+
+  const handleReject = () => {
+    if (!rejectingAppId) return;
+    
+    setApplications(apps => apps.map(app => 
+      app.id === rejectingAppId ? { ...app, status: "rejected" as const, updated_at: new Date().toISOString() } : app
+    ));
+    setIsRejectDialogOpen(false);
+    setRejectReason("");
+    setRejectingAppId(null);
+    setIsDetailOpen(false);
+  };
+
+  const openRejectDialog = (appId: string) => {
+    setRejectingAppId(appId);
+    setIsRejectDialogOpen(true);
+  };
+
+  const handleBatchAccept = () => {
+    setApplications(apps => apps.map(app => 
+      selectedForBatch.includes(app.id) ? { ...app, status: "accepted" as const, updated_at: new Date().toISOString() } : app
+    ));
+    setSelectedForBatch([]);
+  };
+
+  const toggleSelectForBatch = (id: string) => {
+    setSelectedForBatch(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedForBatch.length === filteredApplications.filter(a => a.status === "pending").length) {
+      setSelectedForBatch([]);
+    } else {
+      setSelectedForBatch(filteredApplications.filter(a => a.status === "pending").map(a => a.id));
+    }
+  };
+
+  // Stats calculations
+  const stats = {
+    total: applications.length,
+    pending: applications.filter(a => a.status === "pending").length,
+    reviewing: applications.filter(a => a.status === "reviewing").length,
+    accepted: applications.filter(a => a.status === "accepted").length,
+    rejected: applications.filter(a => a.status === "rejected").length,
+    acceptanceRate: Math.round((applications.filter(a => a.status === "accepted").length / Math.max(1, applications.length)) * 100),
+    avgMatchScore: Math.round(applications.reduce((acc, a) => acc + a.match_score, 0) / applications.length),
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              Applications
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              Review and manage internship applications
-            </p>
-          </motion.div>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Applications</h1>
+        <p className="mt-2 text-muted-foreground">
+          Review and manage internship applications
+        </p>
       </div>
 
-      <div className="container mx-auto px-4 py-6 lg:px-8">
-        {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6"
-        >
-          <Card>
-            <CardContent className="p-4 space-y-1 text-center">
-              <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold">{applications.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 space-y-1 text-center">
-              <p className="text-xs text-muted-foreground">New</p>
-              <p className="text-2xl font-bold text-blue-600">{applications.filter(a => a.status === "new").length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 space-y-1 text-center">
-              <p className="text-xs text-muted-foreground">Interview</p>
-              <p className="text-2xl font-bold text-purple-600">{applications.filter(a => a.status === "interview").length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 space-y-1 text-center">
-              <p className="text-xs text-muted-foreground">Accepted</p>
-              <p className="text-2xl font-bold text-emerald-600">{applications.filter(a => a.status === "accepted").length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 space-y-1 text-center">
-              <p className="text-xs text-muted-foreground">Rejected</p>
-              <p className="text-2xl font-bold text-red-600">{applications.filter(a => a.status === "rejected").length}</p>
-            </CardContent>
-          </Card>
-        </motion.div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-2xl font-bold">{stats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Pending</p>
+            <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Reviewing</p>
+            <p className="text-2xl font-bold text-blue-600">{stats.reviewing}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Accepted</p>
+            <p className="text-2xl font-bold text-emerald-600">{stats.accepted}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Rejected</p>
+            <p className="text-2xl font-bold text-red-600">{stats.rejected}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Accept Rate</p>
+            <p className="text-2xl font-bold text-purple-600">{stats.acceptanceRate}%</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Avg Match</p>
+            <p className="text-2xl font-bold text-primary">{stats.avgMatchScore}%</p>
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3 }}
-          className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center"
-        >
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search candidates..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+      {/* Main Content */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <TabsList>
+            <TabsTrigger value="inbox" className="gap-2">
+              Inbox
+              {stats.pending > 0 && (
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">{stats.pending}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="accepted">Accepted ({stats.accepted})</TabsTrigger>
+            <TabsTrigger value="rejected">Rejected ({stats.rejected})</TabsTrigger>
+          </TabsList>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="new">New</SelectItem>
-              <SelectItem value="reviewing">Reviewing</SelectItem>
-              <SelectItem value="interview">Interview</SelectItem>
-              <SelectItem value="accepted">Accepted</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
-        </motion.div>
+          {/* Batch Actions */}
+          {selectedForBatch.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex items-center gap-2"
+            >
+              <span className="text-sm text-muted-foreground">
+                {selectedForBatch.length} selected
+              </span>
+              <Button size="sm" onClick={handleBatchAccept} className="gap-1">
+                <CheckCircle2 className="h-4 w-4" />
+                Accept All Selected
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setSelectedForBatch([])}>
+                Clear Selection
+              </Button>
+            </motion.div>
+          )}
+        </div>
 
-        {/* Applications Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-        >
-          <Card>
-            <CardContent className="p-0">
-              {/* Mobile View */}
-              <div className="block md:hidden divide-y">
-                {filteredApplications.map((app) => (
-                  <div key={app.id} className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <h3 className="font-semibold">{app.candidateName}</h3>
-                        <p className="text-sm text-muted-foreground">{app.position}</p>
-                      </div>
-                      {getStatusBadge(app.status)}
-                    </div>
+        <TabsContent value="inbox" className="mt-6">
+          <ApplicationTable
+            applications={filteredApplications.filter(a => a.status !== "accepted" && a.status !== "rejected")}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            programFilter={programFilter}
+            setProgramFilter={setProgramFilter}
+            selectedApplication={selectedApplication}
+            setSelectedApplication={setSelectedApplication}
+            isDetailOpen={isDetailOpen}
+            setIsDetailOpen={setIsDetailOpen}
+            getStatusBadge={getStatusBadge}
+            getMatchScoreColor={getMatchScoreColor}
+            getInitials={getInitials}
+            onAccept={handleAccept}
+            onReject={openRejectDialog}
+            selectedForBatch={selectedForBatch}
+            toggleSelectForBatch={toggleSelectForBatch}
+            toggleSelectAll={toggleSelectAll}
+            availablePrograms={availablePrograms}
+          />
+        </TabsContent>
 
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Mail className="h-3 w-3" /> {app.email}
-                    </div>
+        <TabsContent value="accepted" className="mt-6">
+          <ApplicationTable
+            applications={filteredApplications.filter(a => a.status === "accepted")}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={"accepted"}
+            setStatusFilter={() => {}}
+            programFilter={programFilter}
+            setProgramFilter={setProgramFilter}
+            selectedApplication={selectedApplication}
+            setSelectedApplication={setSelectedApplication}
+            isDetailOpen={isDetailOpen}
+            setIsDetailOpen={setIsDetailOpen}
+            getStatusBadge={getStatusBadge}
+            getMatchScoreColor={getMatchScoreColor}
+            getInitials={getInitials}
+            onAccept={handleAccept}
+            onReject={openRejectDialog}
+            selectedForBatch={[]}
+            toggleSelectForBatch={() => {}}
+            toggleSelectAll={() => {}}
+            availablePrograms={availablePrograms}
+            showBatchActions={false}
+          />
+        </TabsContent>
 
-                    <div className="flex flex-wrap gap-2 text-sm">
-                      <span>{app.university}</span>
-                      <span>•</span>
-                      <span>{app.major}</span>
-                      <span>•</span>
-                      <span>GPA: {app.gpa}</span>
-                    </div>
+        <TabsContent value="rejected" className="mt-6">
+          <ApplicationTable
+            applications={filteredApplications.filter(a => a.status === "rejected")}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={"rejected"}
+            setStatusFilter={() => {}}
+            programFilter={programFilter}
+            setProgramFilter={setProgramFilter}
+            selectedApplication={selectedApplication}
+            setSelectedApplication={setSelectedApplication}
+            isDetailOpen={isDetailOpen}
+            setIsDetailOpen={setIsDetailOpen}
+            getStatusBadge={getStatusBadge}
+            getMatchScoreColor={getMatchScoreColor}
+            getInitials={getInitials}
+            onAccept={handleAccept}
+            onReject={openRejectDialog}
+            selectedForBatch={[]}
+            toggleSelectForBatch={() => {}}
+            toggleSelectAll={() => {}}
+            availablePrograms={availablePrograms}
+            showBatchActions={false}
+          />
+        </TabsContent>
+      </Tabs>
 
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(app.matchScore)}`}>
-                        <Star className="inline h-3 w-3 mr-1" />
-                        {app.matchScore}% Match
-                      </span>
-                      <Button 
-                        size="sm" 
-                        onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}
-                      >
-                        View Details
-                      </Button>
-                    </div>
+      {/* Application Detail Dialog */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {selectedApplication && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback>{getInitials(selectedApplication.student_name)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p>{selectedApplication.student_name}</p>
+                    <p className="font-normal text-sm text-muted-foreground">
+                      Application for {selectedApplication.internship_title}
+                    </p>
                   </div>
-                ))}
-              </div>
+                </DialogTitle>
+                <DialogDescription>
+                  Applied on {new Date(selectedApplication.applied_at).toLocaleDateString('en-US', { 
+                    year: 'numeric', month: 'long', day: 'numeric' })}
+                </DialogDescription>
+              </DialogHeader>
 
-              {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Candidate</TableHead>
-                      <TableHead>Position</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Match</TableHead>
-                      <TableHead>Applied</TableHead>
-                      <TableHead className="w-[150px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredApplications.map((app) => (
-                      <TableRow key={app.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{app.candidateName}</p>
-                            <p className="text-sm text-muted-foreground">{app.email}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{app.position}</TableCell>
-                        <TableCell>{getStatusBadge(app.status)}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(app.matchScore)}`}>
-                            {app.matchScore}%
-                          </span>
-                        </TableCell>
-                        <TableCell>{new Date(appliedDate).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8"
-                              onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MessageSquare className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Application Detail Dialog */}
-        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            {selectedApplication && (
-              <>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-3">
-                    <User className="h-6 w-6" />
-                    {selectedApplication.candidateName}
-                  </DialogTitle>
-                  <DialogDescription>
-                    Application for {selectedApplication.position}
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="mt-4 space-y-6">
-                  {/* Status & Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      {getStatusBadge(selectedApplication.status)}
-                      <span className="text-sm text-muted-foreground">
-                        Applied {new Date(selectedApplication.appliedDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
+              <div className="mt-4 space-y-6">
+                {/* Status & Quick Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {getStatusBadge(selectedApplication.status)}
+                    <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(selectedApplication.match_score)}`}>
+                      <Star className="inline h-3 w-3 mr-1" />
+                      {selectedApplication.match_score}% Match
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {selectedApplication.resume_url && (
                       <Button variant="outline" size="sm" className="gap-1">
                         <Download className="h-3 w-3" /> Resume
                       </Button>
-                      <Button size="sm" className="gap-1">
-                        <MessageSquare className="h-3 w-3" /> Contact
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Candidate Info Grid */}
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-3">
-                      <h4 className="font-semibold">Personal Information</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Email</span>
-                          <span>{selectedApplication.email}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">University</span>
-                          <span>{selectedApplication.university}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Major</span>
-                          <span>{selectedApplication.major}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">GPA</span>
-                          <span className="font-semibold">{selectedApplication.gpa}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <h4 className="font-semibold">Match Analysis</h4>
-                      <div className="p-4 bg-background rounded-lg border">
-                        <div className="flex items-center justify-center mb-3">
-                          <span className={`text-3xl font-bold ${getMatchScoreColor(selectedApplication.matchScore).split(' ')[0]}`}>
-                            {selectedApplication.matchScore}%
-                          </span>
-                        </div>
-                        <p className="text-center text-sm text-muted-foreground">Profile Match Score</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Skills */}
-                  <div className="space-y-2">
-                    <h4 className="font-semibold">Skills</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedApplication.skills.map((skill) => (
-                        <Badge key={skill} variant="secondary">{skill}</Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Cover Letter */}
-                  <div className="space-y-2">
-                    <h4 className="font-semibold">Cover Letter</h4>
-                    <div className="p-4 bg-muted/30 rounded-lg text-sm">
-                      {selectedApplication.coverLetter}
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-2 pt-4 border-t">
-                    <Button variant="outline" className="gap-1">
-                      <XCircle className="h-4 w-4" /> Reject
-                    </Button>
-                    <Button variant="secondary" className="gap-1">
-                      <MessageSquare className="h-4 w-4" /> Schedule Interview
-                    </Button>
-                    <Button className="gap-1">
-                      <CheckCircle2 className="h-4 w-4" /> Accept
+                    )}
+                    <Button variant="outline" size="sm" className="gap-1">
+                      <MessageSquare className="h-3 w-3" /> Contact
                     </Button>
                   </div>
                 </div>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
+
+                {/* Student Info Grid */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-4">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <User className="h-4 w-4" /> Personal Information
+                    </h4>
+                    <div className="space-y-3 p-4 bg-background rounded-lg border">
+                      <InfoRow label="Full Name" value={selectedApplication.student_name} />
+                      <InfoRow label="Email" value={selectedApplication.student_email} icon={<Mail className="h-3 w-3" />} />
+                      {selectedApplication.phone && (
+                        <InfoRow label="Phone" value={selectedApplication.phone} />
+                      )}
+                      <InfoRow label="University" value={selectedApplication.university} icon={<GraduationCap className="h-3 w-3" />} />
+                      <InfoRow label="Department" value={selectedApplication.department} icon={<Building2 className="h-3 w-3" />} />
+                      {selectedApplication.gpa && (
+                        <InfoRow label="GPA" value={selectedApplication.gpa} highlight />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" /> Match Analysis
+                    </h4>
+                    <div className="p-4 bg-background rounded-lg border space-y-4">
+                      <div className="text-center p-4 rounded-lg bg-gradient-to-br from-primary/5 to-primary/10">
+                        <span className={`text-4xl font-bold ${getMatchScoreColor(selectedApplication.match_score).split(' ')[0]}`}>
+                          {selectedApplication.match_score}%
+                        </span>
+                        <p className="text-sm text-muted-foreground mt-1">Profile Match Score</p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Skills Match</span>
+                          <span className="font-medium">High</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Experience Level</span>
+                          <span className="font-medium">Good Fit</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Education Relevance</span>
+                          <span className="font-medium">Excellent</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skills */}
+                <div className="space-y-2">
+                  <h4 className="font-semibold">Skills & Qualifications</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedApplication.skills.map((skill) => (
+                      <Badge key={skill} variant="secondary" className="py-1 px-3">{skill}</Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cover Letter */}
+                <div className="space-y-2">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <FileText className="h-4 w-4" /> Cover Letter
+                  </h4>
+                  <div className="p-4 bg-muted/30 rounded-lg text-sm whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
+                    {selectedApplication.cover_letter}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-3 pt-4 border-t">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="gap-1 text-destructive hover:text-destructive">
+                        <XCircle className="h-4 w-4" /> Reject
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Reject Application?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to reject {selectedApplication.student_name}&apos;s application?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <div className="py-4">
+                        <Label htmlFor="reject-reason">Reason (optional)</Label>
+                        <Textarea
+                          id="reject-reason"
+                          placeholder="Provide feedback to help the candidate improve..."
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={handleReject}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Reject Application
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  <Button 
+                    variant="secondary" 
+                    className="gap-1"
+                    onClick={() => {
+                      setApplications(apps => apps.map(app => 
+                        app.id === selectedApplication.id ? { ...app, status: "reviewing" as const } : app
+                      ));
+                    }}
+                  >
+                    <Clock className="h-4 w-4" /> Mark for Review
+                  </Button>
+
+                  <Button 
+                    className="gap-1"
+                    onClick={() => handleAccept(selectedApplication.id)}
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Accept Application
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Standalone Reject Dialog */}
+      <AlertDialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Application?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will notify the applicant about the decision.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="standalone-reject-reason">Reason (optional)</Label>
+            <Textarea
+              id="standalone-reject-reason"
+              placeholder="Provide feedback to help the candidate improve..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRejectReason("")}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleReject}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reject Application
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+// Sub-component for the application table
+function ApplicationTable({
+  applications,
+  searchTerm,
+  setSearchTerm,
+  statusFilter,
+  setStatusFilter,
+  programFilter,
+  setProgramFilter,
+  selectedApplication,
+  setSelectedApplication,
+  isDetailOpen,
+  setIsDetailOpen,
+  getStatusBadge,
+  getMatchScoreColor,
+  getInitials,
+  onAccept,
+  onReject,
+  selectedForBatch,
+  toggleSelectForBatch,
+  toggleSelectAll,
+  availablePrograms,
+  showBatchActions = true,
+}: {
+  applications: Application[];
+  searchTerm: string;
+  setSearchTerm: (v: string) => void;
+  statusFilter: string;
+  setStatusFilter: (v: string) => void;
+  programFilter: string;
+  setProgramFilter: (v: string) => void;
+  selectedApplication: Application | null;
+  setSelectedApplication: (a: Application | null) => void;
+  isDetailOpen: boolean;
+  setIsDetailOpen: (v: boolean) => void;
+  getStatusBadge: (s: Application["status"]) => React.ReactNode;
+  getMatchScoreColor: (s: number) => string;
+  getInitials: (n: string) => string;
+  onAccept: (id: string) => void;
+  onReject: (id: string) => void;
+  selectedForBatch: string[];
+  toggleSelectForBatch: (id: string) => void;
+  toggleSelectAll: () => void;
+  availablePrograms: string[];
+  showBatchActions?: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search candidates..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <Select value={programFilter} onValueChange={setProgramFilter}>
+            <SelectTrigger className="w-full sm:w-[200px]">
+              <Briefcase className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="All Programs" />
+            </SelectTrigger>
+            <SelectContent>
+              {availablePrograms.map(program => (
+                <SelectItem key={program} value={program}>{program}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Applications List/Table */}
+      <Card>
+        <CardContent className="p-0">
+          {/* Mobile View */}
+          <div className="block md:hidden divide-y">
+            {applications.map((app) => (
+              <div key={app.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {showBatchActions && app.status === "pending" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedForBatch.includes(app.id)}
+                        onChange={() => toggleSelectForBatch(app.id)}
+                        className="rounded"
+                      />
+                    )}
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarFallback className="text-xs">{getInitials(app.student_name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold truncate">{app.student_name}</h3>
+                      <p className="text-sm text-muted-foreground truncate">{app.internship_title}</p>
+                    </div>
+                  </div>
+                  {getStatusBadge(app.status)}
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-muted-foreground pl-12">
+                  <Mail className="h-3 w-3" />
+                  <span className="truncate">{app.student_email}</span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-sm pl-12">
+                  <span>{app.university}</span>
+                  <span>•</span>
+                  <span>{app.department}</span>
+                  {app.gpa && (
+                    <>
+                      <span>•</span>
+                      <span>GPA: {app.gpa}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t pl-12">
+                  <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(app.match_score)}`}>
+                    <Star className="inline h-3 w-3 mr-1" />
+                    {app.match_score}% Match
+                  </span>
+                  <div className="flex gap-1">
+                    {app.status === "pending" && (
+                      <>
+                        <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700" onClick={() => onAccept(app.id)}>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => onReject(app.id)}>
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                    <Button 
+                      size="sm" 
+                      onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}
+                    >
+                      View Details
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {showBatchActions && (
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        checked={applications.filter(a => a.status === "pending").length > 0 && selectedForBatch.length === applications.filter(a => a.status === "pending").length}
+                        onChange={toggleSelectAll}
+                        className="rounded"
+                      />
+                    </TableHead>
+                  )}
+                  <TableHead>Candidate</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Match</TableHead>
+                  <TableHead>Applied</TableHead>
+                  <TableHead className="w-[180px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {applications.map((app) => (
+                  <TableRow key={app.id} className="group">
+                    {showBatchActions && (
+                      <TableCell>
+                        {app.status === "pending" && (
+                          <input
+                            type="checkbox"
+                            checked={selectedForBatch.includes(app.id)}
+                            onChange={() => toggleSelectForBatch(app.id)}
+                            className="rounded"
+                          />
+                        )}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="text-xs">{getInitials(app.student_name)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{app.student_name}</p>
+                          <p className="text-sm text-muted-foreground">{app.student_email}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{app.internship_title}</p>
+                        <p className="text-xs text-muted-foreground">{app.university}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(app.status)}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(app.match_score)}`}>
+                        {app.match_score}%
+                      </span>
+                    </TableCell>
+                    <TableCell>{new Date(app.applied_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {app.status === "pending" && (
+                          <>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => onAccept(app.id)}
+                              title="Accept"
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => onReject(app.id)}
+                              title="Reject"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}
+                          title="View Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}>
+                              <Eye className="mr-2 h-4 w-4" /> View Full Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Download className="mr-2 h-4 w-4" /> Download Resume
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <MessageSquare className="mr-2 h-4 w-4" /> Send Message
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {applications.length === 0 && (
+            <div className="py-12 text-center">
+              <InboxIcon className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Applications Found</h3>
+              <p className="text-muted-foreground">
+                Try adjusting your search or filters
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Helper Components
+function InfoRow({ label, value, icon, highlight }: { label: string; value: string; icon?: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+      <span className={`font-medium ${highlight ? 'text-primary' : ''}`}>{value}</span>
+    </div>
+  );
+}
+
+function InboxIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
   );
 }

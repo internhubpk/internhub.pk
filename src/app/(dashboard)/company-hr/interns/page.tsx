@@ -1,0 +1,810 @@
+"use client";
+
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import Link from "next/link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Search,
+  Plus,
+  Edit,
+  Eye,
+  UserCheck,
+  Users,
+  Mail,
+  Phone,
+  GraduationCap,
+  Building2,
+  Calendar,
+  Clock,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  MoreVertical,
+  UserPlus,
+  ClipboardList,
+  FolderOpen,
+  Star,
+  Shield,
+  TrendingUp,
+  ArrowRightLeft,
+  Filter,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Types
+interface ActiveIntern {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  phone?: string | null;
+  university: string;
+  department: string;
+  internship_id: string;
+  internship_title: string;
+  supervisor_id?: string | null;
+  supervisor_name?: string | null;
+  start_date: string;
+  end_date: string;
+  status: "active" | "on_leave" | "completed" | "terminated";
+  attendance_rate: number;
+  overall_rating?: number | null;
+  offer_letter_uploaded: boolean;
+  certificate_issued: boolean;
+  weekly_logs_submitted: number;
+  total_weeks: number;
+}
+
+// Mock data
+const mockInterns: ActiveIntern[] = [
+  {
+    id: "1",
+    student_id: "stu_001",
+    student_name: "Emily Davis",
+    student_email: "emily.d@business.edu",
+    phone: "+92-332-4567890",
+    university: "Business School",
+    department: "Marketing",
+    internship_id: "int_002",
+    internship_title: "Marketing Intern",
+    supervisor_id: "sup_002",
+    supervisor_name: "Fatima Ali",
+    start_date: "2024-06-15",
+    end_date: "2024-08-10",
+    status: "active",
+    attendance_rate: 96,
+    overall_rating: null,
+    offer_letter_uploaded: true,
+    certificate_issued: false,
+    weekly_logs_submitted: 4,
+    total_weeks: 8,
+  },
+  {
+    id: "2",
+    student_id: "stu_006",
+    student_name: "James Miller",
+    student_email: "james.m@tech.edu",
+    phone: "+92-305-8901234",
+    university: "Tech University",
+    department: "Computer Science",
+    internship_id: "int_001",
+    internship_title: "Software Engineering Intern",
+    supervisor_id: "sup_001",
+    supervisor_name: "Ahmed Khan",
+    start_date: "2024-06-01",
+    end_date: "2024-08-31",
+    status: "active",
+    attendance_rate: 92,
+    overall_rating: null,
+    offer_letter_uploaded: true,
+    certificate_issued: false,
+    weekly_logs_submitted: 5,
+    total_weeks: 12,
+  },
+  {
+    id: "3",
+    student_id: "stu_007",
+    student_name: "Sophie Turner",
+    student_email: "sophie.t@state.edu",
+    phone: null,
+    university: "State University",
+    department: "Data Science",
+    internship_id: "int_003",
+    internship_title: "Data Science Intern",
+    supervisor_id: "sup_003",
+    supervisor_name: "Omar Hassan",
+    start_date: "2024-07-01",
+    end_date: "2024-10-19",
+    status: "on_leave",
+    attendance_rate: 88,
+    overall_rating: null,
+    offer_letter_uploaded: true,
+    certificate_issued: false,
+    weekly_logs_submitted: 3,
+    total_weeks: 16,
+  },
+  {
+    id: "4",
+    student_id: "stu_008",
+    student_name: "David Kim",
+    student_email: "david.k@design.edu",
+    phone: "+92-333-2345678",
+    university: "Design Institute",
+    department: "UI/UX Design",
+    internship_id: "int_004",
+    internship_title: "UI/UX Design Intern",
+    supervisor_id: null,
+    supervisor_name: null,
+    start_date: "2024-06-15",
+    end_date: "2024-08-30",
+    status: "active",
+    attendance_rate: 100,
+    overall_rating: null,
+    offer_letter_uploaded: false,
+    certificate_issued: false,
+    weekly_logs_submitted: 6,
+    total_weeks: 10,
+  },
+  {
+    id: "5",
+    student_id: "stu_009",
+    student_name: "Rachel Green",
+    student_email: "rachel.g@business.edu",
+    phone: "+92-344-5678901",
+    university: "Business School",
+    department: "Marketing",
+    internship_id: "int_002",
+    internship_title: "Marketing Intern",
+    supervisor_id: "sup_002",
+    supervisor_name: "Fatima Ali",
+    start_date: "2024-02-01",
+    end_date: "2024-04-12",
+    status: "completed",
+    attendance_rate: 98,
+    overall_rating: 4.9,
+    offer_letter_uploaded: true,
+    certificate_issued: true,
+    weekly_logs_submitted: 10,
+    total_weeks: 10,
+  },
+];
+
+const availableSupervisors = [
+  { id: "sup_001", name: "Ahmed Khan", department: "Software Engineering", intern_count: 6 },
+  { id: "sup_002", name: "Fatima Ali", department: "Marketing & Design", intern_count: 4 },
+  { id: "sup_003", name: "Omar Hassan", department: "Data Science", intern_count: 8 },
+];
+
+const programs = [
+  "All Programs",
+  "Software Engineering Intern",
+  "Marketing Intern",
+  "Data Science Intern",
+  "UI/UX Design Intern",
+];
+
+export default function CompanyHRInternsPage() {
+  const [interns, setInterns] = useState<ActiveIntern[]>(mockInterns);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [programFilter, setProgramFilter] = useState("all");
+  const [selectedIntern, setSelectedIntern] = useState<ActiveIntern | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [assigningInternId, setAssigningInternId] = useState<string | null>(null);
+  const [selectedSupervisorForAssignment, setSelectedSupervisorForAssignment] = useState<string>("");
+  const [activeTab, setActiveTab] = useState("all");
+
+  const filteredInterns = interns.filter((intern) => {
+    const matchesSearch = 
+      intern.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      intern.student_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      intern.internship_title.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || intern.status === statusFilter;
+    const matchesProgram = programFilter === "all" || intern.internship_title === programFilter;
+    
+    return matchesSearch && matchesStatus && matchesProgram;
+  });
+
+  const getStatusBadge = (status: ActiveIntern["status"]) => {
+    switch (status) {
+      case "active":
+        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><UserCheck className="mr-1 h-3 w-3" />Active</Badge>;
+      case "on_leave":
+        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200"><Clock className="mr-1 h-3 w-3" />On Leave</Badge>;
+      case "completed":
+        return <Badge className="bg-purple-100 text-purple-700 border-purple-200"><CheckCircle2 className="mr-1 h-3 w-3" />Completed</Badge>;
+      case "terminated":
+        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Terminated</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getInitials = (name: string) => name.split(" ").map(n => n[0]).join("").toUpperCase();
+
+  const handleAssignSupervisor = () => {
+    if (!assigningInternId || !selectedSupervisorForAssignment) return;
+
+    const supervisor = availableSupervisors.find(s => s.id === selectedSupervisorForAssignment);
+    
+    setInterns(interns.map(intern => 
+      intern.id === assigningInternId 
+        ? { ...intern, supervisor_id: selectedSupervisorForAssignment, supervisor_name: supervisor?.name }
+        : intern
+    ));
+
+    setIsAssignOpen(false);
+    setAssigningInternId(null);
+    setSelectedSupervisorForAssignment("");
+  };
+
+  const openAssignDialog = (internId: string) => {
+    setAssigningInternId(internId);
+    setIsAssignOpen(true);
+  };
+
+  // Stats
+  const stats = {
+    total: interns.length,
+    active: interns.filter(i => i.status === "active").length,
+    onLeave: interns.filter(i => i.status === "on_leave").length,
+    completed: interns.filter(i => i.status === "completed").length,
+    unassigned: interns.filter(i => !i.supervisor_id && i.status === "active").length,
+    avgAttendance: Math.round(interns.reduce((acc, i) => acc + i.attendance_rate, 0) / interns.length),
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Active Interns</h1>
+          <p className="mt-2 text-muted-foreground">
+            Manage and track your current interns&apos; progress
+          </p>
+        </div>
+        
+        <Button asChild variant="outline">
+          <Link href="/company-hr/documents" className="gap-2">
+            <FolderOpen className="h-4 w-4" />
+            Manage Documents
+          </Link>
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-2xl font-bold">{stats.total}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Active</p>
+            <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">On Leave</p>
+            <p className="text-2xl font-bold text-yellow-600">{stats.onLeave}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Completed</p>
+            <p className="text-2xl font-bold text-purple-600">{stats.completed}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Unassigned</p>
+            <p className="text-2xl font-bold text-red-600">{stats.unassigned}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 space-y-1 text-center">
+            <p className="text-xs text-muted-foreground">Avg Attendance</p>
+            <p className="text-2xl font-bold text-primary">{stats.avgAttendance}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <TabsList>
+            <TabsTrigger value="all">All ({stats.total})</TabsTrigger>
+            <TabsTrigger value="active">Active ({stats.active})</TabsTrigger>
+            <TabsTrigger value="completed">Completed ({stats.completed})</TabsTrigger>
+          </TabsList>
+
+          {/* Unassigned Alert */}
+          {stats.unassigned > 0 && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg"
+            >
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+              <span className="text-sm text-amber-800">
+                <strong>{stats.unassigned}</strong> active intern(s) without assigned supervisors
+              </span>
+              <Button size="sm" variant="outline" className="ml-auto bg-white hover:bg-amber-50">
+                Assign Now
+              </Button>
+            </motion.div>
+          )}
+        </div>
+
+        <TabsContent value={activeTab} className="mt-6">
+          {/* Filters */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center mb-6">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search interns..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            <Select value={programFilter} onValueChange={setProgramFilter}>
+              <SelectTrigger className="w-full sm:w-[220px]">
+                <Filter className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="All Programs" />
+              </SelectTrigger>
+              <SelectContent>
+                {programs.map(program => (
+                  <SelectItem key={program} value={program}>{program}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="on_leave">On Leave</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="terminated">Terminated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Interns Table */}
+          <Card>
+            <CardContent className="p-0">
+              {/* Mobile View */}
+              <div className="block lg:hidden divide-y">
+                {filteredInterns.map((intern) => (
+                  <div key={intern.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback>{getInitials(intern.student_name)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <h3 className="font-semibold truncate">{intern.student_name}</h3>
+                          <p className="text-sm text-muted-foreground truncate">{intern.internship_title}</p>
+                        </div>
+                      </div>
+                      {getStatusBadge(intern.status)}
+                    </div>
+
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground pl-13">
+                      <span>{intern.university}</span>
+                      <span>•</span>
+                      <span>{intern.department}</span>
+                    </div>
+
+                    <div className="space-y-2 pl-13">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Supervisor</span>
+                        <span>{intern.supervisor_name || <span className="text-amber-600">Unassigned</span>}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Attendance</span>
+                        <span className="font-medium">{intern.attendance_rate}%</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Button size="sm" variant="outline" onClick={() => { setSelectedIntern(intern); setIsDetailOpen(true); }}>
+                        <Eye className="h-3 w-3 mr-1" /> View
+                      </Button>
+                      {!intern.supervisor_id && intern.status === "active" && (
+                        <Button size="sm" onClick={() => openAssignDialog(intern.id)}>
+                          <UserPlus className="h-3 w-3 mr-1" /> Assign
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Intern</TableHead>
+                      <TableHead>University</TableHead>
+                      <TableHead>Program</TableHead>
+                      <TableHead>Supervisor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Attendance</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead>Documents</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredInterns.map((intern) => (
+                      <TableRow key={intern.id} className="group">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className="text-xs">{getInitials(intern.student_name)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{intern.student_name}</p>
+                              <p className="text-sm text-muted-foreground">{intern.student_email}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm">{intern.university}</p>
+                            <p className="text-xs text-muted-foreground">{intern.department}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[180px]">
+                          <p className="truncate" title={intern.internship_title}>{intern.internship_title}</p>
+                        </TableCell>
+                        <TableCell>
+                          {intern.supervisor_name ? (
+                            <Badge variant="outline">{intern.supervisor_name}</Badge>
+                          ) : (
+                            <button
+                              onClick={() => openAssignDialog(intern.id)}
+                              className="text-sm text-amber-600 hover:text-amber-700 hover:underline"
+                            >
+                              Unassigned
+                            </button>
+                          )}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(intern.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Progress value={intern.attendance_rate} className="h-2 w-16" />
+                            <span className="text-sm">{intern.attendance_rate}%</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm">
+                            {intern.weekly_logs_submitted}/{intern.total_weeks} weeks
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <span title="Offer Letter" className={`w-6 h-6 rounded-full flex items-center justify-center ${intern.offer_letter_uploaded ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <FileText className="h-3 w-3" />
+                            </span>
+                            <span title="Certificate" className={`w-6 h-6 rounded-full flex items-center justify-center ${intern.certificate_issued ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
+                              <Star className="h-3 w-3" />
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => { setSelectedIntern(intern); setIsDetailOpen(true); }}>
+                                <Eye className="mr-2 h-4 w-4" /> View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAssignDialog(intern.id)} disabled={!intern.status.includes('active')}>
+                                <ArrowRightLeft className="mr-2 h-4 w-4" /> Reassign Supervisor
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/company-hr/attendance?intern=${intern.id}`}>
+                                  <ClipboardList className="mr-2 h-4 w-4" /> View Attendance
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/company-hr/documents?intern=${intern.id}`}>
+                                  <FolderOpen className="mr-2 h-4 w-4" /> Documents
+                                </Link>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {filteredInterns.length === 0 && (
+                <div className="py-12 text-center">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Interns Found</h3>
+                  <p className="text-muted-foreground">
+                    Try adjusting your search or filters
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* View Detail Dialog */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedIntern && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-3">
+                  <Avatar className="h-12 w-12">
+                    <AvatarFallback>{getInitials(selectedIntern.student_name)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p>{selectedIntern.student_name}</p>
+                    <p className="font-normal text-sm text-muted-foreground">
+                      {selectedIntern.internship_title}
+                    </p>
+                  </div>
+                </DialogTitle>
+                <DialogDescription>
+                  {getStatusBadge(selectedIntern.status)}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="mt-4 space-y-6">
+                {/* Contact Info */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="font-semibold text-sm">Contact Information</h4>
+                    <InfoRow label="Email" value={selectedIntern.student_email} icon={<Mail className="h-3 w-3" />} />
+                    {selectedIntern.phone && (
+                      <InfoRow label="Phone" value={selectedIntern.phone} icon={<Phone className="h-3 w-3" />} />
+                    )}
+                  </div>
+
+                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="font-semibold text-sm">Academic Information</h4>
+                    <InfoRow label="University" value={selectedIntern.university} icon={<GraduationCap className="h-3 w-3" />} />
+                    <InfoRow label="Department" value={selectedIntern.department} icon={<Building2 className="h-3 w-3" />} />
+                  </div>
+                </div>
+
+                {/* Assignment Info */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="font-semibold text-sm">Internship Details</h4>
+                    <InfoRow label="Start Date" value={new Date(selectedIntern.start_date).toLocaleDateString()} icon={<Calendar className="h-3 w-3" />} />
+                    <InfoRow label="End Date" value={new Date(selectedIntern.end_date).toLocaleDateString()} icon={<Calendar className="h-3 w-3" />} />
+                    <InfoRow label="Duration" value={`${Math.ceil((new Date(selectedIntern.end_date).getTime() - new Date(selectedIntern.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000))} weeks`} />
+                  </div>
+
+                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="font-semibold text-sm">Supervisor Assignment</h4>
+                    {selectedIntern.supervisor_name ? (
+                      <>
+                        <InfoRow label="Assigned To" value={selectedIntern.supervisor_name} icon={<Shield className="h-3 w-3" />} highlight />
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="mt-2 w-full"
+                          onClick={() => openAssignDialog(selectedIntern.id)}
+                        >
+                          <ArrowRightLeft className="h-3 w-3 mr-1" /> Reassign
+                        </Button>
+                      </>
+                    ) : (
+                      <div className="py-4 text-center">
+                        <AlertCircle className="h-8 w-8 mx-auto text-amber-500 mb-2" />
+                        <p className="text-sm text-muted-foreground mb-2">No supervisor assigned</p>
+                        <Button size="sm" onClick={() => openAssignDialog(selectedIntern.id)}>
+                          <UserPlus className="h-3 w-3 mr-1" /> Assign Now
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Performance Summary */}
+                <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                  <h4 className="font-semibold text-sm">Performance Summary</h4>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-primary">{selectedIntern.attendance_rate}%</p>
+                      <p className="text-xs text-muted-foreground">Attendance Rate</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold">{selectedIntern.weekly_logs_submitted}/{selectedIntern.total_weeks}</p>
+                      <p className="text-xs text-muted-foreground">Weekly Logs</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold">
+                        {selectedIntern.overall_rating ? `${selectedIntern.overall_rating}/5` : "N/A"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Overall Rating</p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Weekly Progress</span>
+                      <span>{Math.round((selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100)}%</span>
+                    </div>
+                    <Progress value={(selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100} className="h-2" />
+                  </div>
+                </div>
+
+                {/* Document Status */}
+                <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                  <h4 className="font-semibold text-sm">Document Status</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className={`flex items-center gap-3 p-3 rounded-lg ${selectedIntern.offer_letter_uploaded ? 'bg-emerald-50' : 'bg-gray-50'}`}>
+                      <FileText className={`h-5 w-5 ${selectedIntern.offer_letter_uploaded ? 'text-emerald-600' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-sm font-medium">Offer Letter</p>
+                        <p className={`text-xs ${selectedIntern.offer_letter_uploaded ? 'text-emerald-600' : 'text-gray-500'}`}>
+                          {selectedIntern.offer_letter_uploaded ? 'Uploaded' : 'Not Uploaded'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className={`flex items-center gap-3 p-3 rounded-lg ${selectedIntern.certificate_issued ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                      <Star className={`h-5 w-5 ${selectedIntern.certificate_issued ? 'text-purple-600' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-sm font-medium">Certificate</p>
+                        <p className={`text-xs ${selectedIntern.certificate_issued ? 'text-purple-600' : 'text-gray-500'}`}>
+                          {selectedIntern.certificate_issued ? 'Issued' : 'Not Issued'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t gap-2">
+                  <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
+                  <Button asChild>
+                    <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
+                      <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Supervisor Dialog */}
+      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Site Supervisor</DialogTitle>
+            <DialogDescription>
+              Select a site supervisor for this intern.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Select Supervisor</Label>
+              <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a supervisor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSupervisors.map(supervisor => (
+                    <SelectItem key={supervisor.id} value={supervisor.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{supervisor.name}</span>
+                        <span className="text-muted-foreground text-xs">({supervisor.department})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedSupervisorForAssignment && (() => {
+              const supervisor = availableSupervisors.find(s => s.id === selectedSupervisorForAssignment);
+              return (
+                <div className="p-3 bg-muted/30 rounded-lg text-sm">
+                  <p><strong>{supervisor?.name}</strong></p>
+                  <p className="text-muted-foreground">
+                    Department: {supervisor?.department}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Currently supervising: {supervisor?.intern_count} intern(s)
+                  </p>
+                </div>
+              );
+            })()}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleAssignSupervisor}
+                disabled={!selectedSupervisorForAssignment}
+              >
+                Assign Supervisor
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Helper component
+function InfoRow({ label, value, icon, highlight }: { label: string; value: string; icon?: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground flex items-center gap-2 text-sm">
+        {icon}
+        {label}
+      </span>
+      <span className={`font-medium text-sm ${highlight ? 'text-primary' : ''}`}>{value}</span>
+    </div>
+  );
+}

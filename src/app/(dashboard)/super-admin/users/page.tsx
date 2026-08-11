@@ -2,6 +2,31 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import {
+  Users,
+  Search,
+  RefreshCw,
+  Loader2,
+  Shield,
+  UserCheck,
+  UserX,
+  MoreVertical,
+  Eye,
+  Ban,
+  CheckCircle2,
+  Building2,
+  GraduationCap,
+  Briefcase,
+  ClipboardCheck,
+  HardHat,
+  Award,
+  Database,
+  Plus,
+  X,
+  AlertCircle,
+  Key,
+  UserPlus,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,31 +47,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Users,
-  Search,
-  RefreshCw,
-  Loader2,
-  Shield,
-  UserCheck,
-  UserX,
-  MoreVertical,
-  Eye,
-  Ban,
-  CheckCircle2,
-  Building2,
-  GraduationCap,
-  Briefcase,
-  ClipboardCheck,
-  HardHat,
-  Award,
-  Database,
-} from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 interface UserProfile {
-  id?: string;           // New surrogate key (may not exist in older schemas)
-  user_id: string;       // Primary key - references auth.users
+  id?: string;
+  user_id: string;
   email?: string;
   full_name: string | null;
   first_name: string | null;
@@ -59,18 +79,28 @@ interface UserProfile {
   last_login?: string;
 }
 
-const roleConfig: Record<string, { label: string; icon: any; color: string }> = {
-  super_admin: { label: "Super Admin", icon: Shield, color: "bg-purple-100 text-purple-700" },
-  university_admin: { label: "University Admin", icon: Shield, color: "bg-blue-100 text-blue-700" },
-  department_coordinator: { label: "Dept. Coordinator", icon: ClipboardCheck, color: "bg-indigo-100 text-indigo-700" },
-  faculty_supervisor: { label: "Faculty Supervisor", icon: UserCheck, color: "bg-teal-100 text-teal-700" },
-  student: { label: "Student", icon: GraduationCap, color: "bg-green-100 text-green-700" },
-  company_hr: { label: "Company HR", icon: Briefcase, color: "bg-orange-100 text-orange-700" },
-  site_supervisor: { label: "Site Supervisor", icon: HardHat, color: "bg-amber-100 text-amber-700" },
-  external_evaluator: { label: "External Evaluator", icon: Award, color: "bg-pink-100 text-pink-700" },
+interface CreateUserForm {
+  email: string;
+  password: string;
+  full_name: string;
+  role: "university_admin" | "department_coordinator" | "faculty_supervisor" | "company_hr" | "site_supervisor" | "external_evaluator";
+  university_id: string;
+  company_id: string;
+}
+
+const roleConfig: Record<string, { label: string; icon: any; color: string; description: string }> = {
+  super_admin: { label: "Super Admin", icon: Shield, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", description: "Platform administrator" },
+  university_admin: { label: "University Admin", icon: Shield, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", description: "University management" },
+  department_coordinator: { label: "Dept. Coordinator", icon: ClipboardCheck, color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400", description: "Department oversight" },
+  faculty_supervisor: { label: "Faculty Supervisor", icon: UserCheck, color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400", description: "Student supervision" },
+  student: { label: "Student", icon: GraduationCap, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", description: "Internship student" },
+  company_hr: { label: "Company HR", icon: Briefcase, color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", description: "Company HR manager" },
+  site_supervisor: { label: "Site Supervisor", icon: HardHat, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", description: "On-site supervision" },
+  external_evaluator: { label: "External Evaluator", icon: Award, color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400", description: "External evaluation" },
 };
 
 export default function SuperAdminUsersPage() {
+  const { user } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -79,8 +109,27 @@ export default function SuperAdminUsersPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [tablesExist, setTablesExist] = useState(true);
 
+  // Create user dialog state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateUserForm>({
+    email: "",
+    password: "",
+    full_name: "",
+    role: "university_admin",
+    university_id: "",
+    company_id: "",
+  });
+  const [universities, setUniversities] = useState<{ id: string; name: string }[]>([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
+
+  // View user detail state
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+
   useEffect(() => {
     fetchUsers();
+    fetchUniversitiesAndCompanies();
   }, []);
 
   async function fetchUsers() {
@@ -92,14 +141,12 @@ export default function SuperAdminUsersPage() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      // Apply filters server-side if needed
       if (roleFilter !== "all") {
         query = query.eq("role", roleFilter);
       }
 
       const { data, error } = await query;
 
-      // Check if table doesn't exist
       if (error?.code === "42P01" || error?.message?.includes("does not exist")) {
         setTablesExist(false);
         setUsers([]);
@@ -133,7 +180,6 @@ export default function SuperAdminUsersPage() {
     } catch (error) {
       console.error("Error fetching users:", error);
       
-      // Check if it's a "table does not exist" error
       const err = error as any;
       if (err?.code === "42P01" || err?.message?.includes("does not exist")) {
         setTablesExist(false);
@@ -143,6 +189,26 @@ export default function SuperAdminUsersPage() {
       }
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function fetchUniversitiesAndCompanies() {
+    try {
+      const supabase = createClient();
+
+      const [uniRes, compRes] = await Promise.all([
+        supabase.from("universities").select("id, name").order("name"),
+        supabase.from("companies").select("id, name").order("name"),
+      ]);
+
+      if (uniRes.data && !uniRes.error) {
+        setUniversities(uniRes.data);
+      }
+      if (compRes.data && !compRes.error) {
+        setCompanies(compRes.data);
+      }
+    } catch (e) {
+      console.log("Could not fetch universities/companies:", e);
     }
   }
 
@@ -160,6 +226,7 @@ export default function SuperAdminUsersPage() {
         .from("profiles")
         .update({ 
           status: newStatus,
+          is_active: newStatus === "active",
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", userId);
@@ -175,6 +242,130 @@ export default function SuperAdminUsersPage() {
     } catch (error: any) {
       setMessage({ type: "error", text: error.message || "Failed to update user status" });
     }
+  }
+
+  async function handleCreateUser() {
+    // Validation
+    if (!createForm.email.trim()) {
+      setMessage({ type: "error", text: "Email is required" });
+      return;
+    }
+    if (!createForm.email.includes("@")) {
+      setMessage({ type: "error", text: "Please enter a valid email address" });
+      return;
+    }
+    if (!createForm.password || createForm.password.length < 6) {
+      setMessage({ type: "error", text: "Password must be at least 6 characters" });
+      return;
+    }
+    if (!createForm.full_name.trim()) {
+      setMessage({ type: "error", text: "Full name is required" });
+      return;
+    }
+
+    // Role-specific validation
+    if ((createForm.role === "university_admin" || createForm.role === "department_coordinator" || createForm.role === "faculty_supervisor") && !createForm.university_id) {
+      setMessage({ type: "error", text: "Please select a university for this role" });
+      return;
+    }
+    if (createForm.role === "company_hr" && !createForm.company_id) {
+      setMessage({ type: "error", text: "Please select a company for this role" });
+      return;
+    }
+
+    setIsCreatingUser(true);
+    setMessage(null);
+
+    try {
+      const supabase = createClient();
+
+      // Check if email exists
+      const { data: existingUser } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("email", createForm.email.trim())
+        .single();
+
+      if (existingUser) {
+        setMessage({ type: "error", text: "A user with this email already exists" });
+        setIsCreatingUser(false);
+        return;
+      }
+
+      // Create auth user using signUp (works on client side)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: createForm.email.trim(),
+        password: createForm.password,
+        options: {
+          data: {
+            full_name: createForm.full_name.trim(),
+            role: createForm.role,
+          },
+        },
+      });
+
+      if (authError) {
+        throw new Error(authError.message || "Failed to create auth account");
+      }
+
+      if (!authData.user) {
+        throw new Error("Failed to create user account");
+      }
+
+      // Create profile
+      const { error: profileError } = await supabase.from("profiles").insert({
+        user_id: authData.user.id,
+        email: createForm.email.trim(),
+        full_name: createForm.full_name.trim(),
+        first_name: createForm.full_name.trim().split(" ")[0],
+        last_name: createForm.full_name.trim().split(" ").slice(1).join(" ") || null,
+        role: createForm.role,
+        university_id: createForm.university_id || null,
+        company_id: createForm.company_id || null,
+        status: "active",
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (profileError) {
+        console.log("Profile creation note:", profileError);
+        // Profile might be created by trigger
+      }
+
+      setMessage({
+        type: "success",
+        text: `User created successfully! Email: ${createForm.email}`,
+      });
+
+      setIsCreateDialogOpen(false);
+      resetCreateForm();
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+      setMessage({
+        type: "error",
+        text: error.message || "Failed to create user",
+      });
+    } finally {
+      setIsCreatingUser(false);
+    }
+  }
+
+  function resetCreateForm() {
+    setCreateForm({
+      email: "",
+      password: "",
+      full_name: "",
+      role: "university_admin",
+      university_id: "",
+      company_id: "",
+    });
+  }
+
+  function openViewDialog(user: UserProfile) {
+    setSelectedUser(user);
+    setIsViewDialogOpen(true);
   }
 
   const filteredUsers = users.filter(user => {
@@ -205,11 +396,11 @@ export default function SuperAdminUsersPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700"><UserCheck className="h-3 w-3 mr-1" />Active</Badge>;
+        return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"><UserCheck className="h-3 w-3 mr-1" />Active</Badge>;
       case "suspended":
         return <Badge variant="destructive"><Ban className="h-3 w-3 mr-1" />Suspended</Badge>;
       case "pending_setup":
-        return <Badge className="bg-amber-100 text-amber-700"><RefreshCw className="h-3 w-3 mr-1" />Pending Setup</Badge>;
+        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><RefreshCw className="h-3 w-3 mr-1" />Pending Setup</Badge>;
       default:
         return <Badge variant="secondary"><UserX className="h-3 w-3 mr-1" />Inactive</Badge>;
     }
@@ -226,47 +417,54 @@ export default function SuperAdminUsersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Platform Users</h1>
-        <p className="text-muted-foreground mt-1">
-          View and manage all registered users across universities
-        </p>
-        <p className="text-sm text-muted-foreground mt-2">
-          💡 Note: University Admins are responsible for adding users to their institutions.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Platform Users</h1>
+          <p className="text-muted-foreground mt-1">
+            View and manage all registered users across universities
+          </p>
+        </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)} disabled={!tablesExist}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create User
+        </Button>
       </div>
 
       {/* Message Banner */}
       {message && (
-        <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-          message.type === "success" 
-            ? "bg-green-50 border-green-200 text-green-800" 
-            : "bg-red-50 border-red-200 text-red-800"
-        }`}>
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`flex items-center gap-3 p-4 rounded-lg border ${
+            message.type === "success" 
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300"
+              : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
+          }`}
+        >
           {message.type === "success" ? (
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
           ) : (
-            <Ban className="h-5 w-5 flex-shrink-0" />
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
           )}
           <span>{message.text}</span>
           <button onClick={() => setMessage(null)} className="ml-auto">
-            ×
+            <X className="h-4 w-4" />
           </button>
-        </div>
+        </motion.div>
       )}
 
       {/* Database Setup Required */}
       {!tablesExist && (
-        <Card className="border-amber-200 bg-amber-50">
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <Database className="h-6 w-6 text-amber-600 mt-1 flex-shrink-0" />
               <div className="flex-1">
-                <h3 className="font-semibold text-amber-800 mb-2">
-                  ⚠️ Database Tables Not Found
+                <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2">
+                  Database Tables Not Found
                 </h3>
-                <p className="text-amber-700 text-sm">
-                  The <code className="bg-amber-100 px-1 rounded">profiles</code> table doesn&apos;t exist yet.
+                <p className="text-amber-700 dark:text-amber-300 text-sm">
+                  The <code className="bg-amber-100 px-1 rounded dark:bg-amber-900/50">profiles</code> table doesn&apos;t exist yet.
                   Run the setup SQL script in Supabase to create all required tables.
                 </p>
               </div>
@@ -279,7 +477,9 @@ export default function SuperAdminUsersPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <Users className="h-5 w-5 text-blue-500" />
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30">
+              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Users</p>
               <p className="text-2xl font-bold">{totalUsers}</p>
@@ -289,7 +489,9 @@ export default function SuperAdminUsersPage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <UserCheck className="h-5 w-5 text-green-500" />
+            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
+              <UserCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
             <div>
               <p className="text-sm text-muted-foreground">Active</p>
               <p className="text-2xl font-bold">{activeUsers}</p>
@@ -299,7 +501,9 @@ export default function SuperAdminUsersPage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <GraduationCap className="h-5 w-5 text-purple-500" />
+            <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/30">
+              <GraduationCap className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
             <div>
               <p className="text-sm text-muted-foreground">Students</p>
               <p className="text-2xl font-bold">{usersByRole.student || 0}</p>
@@ -309,7 +513,9 @@ export default function SuperAdminUsersPage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <Shield className="h-5 w-5 text-orange-500" />
+            <div className="p-2.5 rounded-xl bg-orange-50 dark:bg-orange-950/30">
+              <Shield className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            </div>
             <div>
               <p className="text-sm text-muted-foreground">Admins</p>
               <p className="text-2xl font-bold">
@@ -398,12 +604,18 @@ export default function SuperAdminUsersPage() {
                   : "Once universities register their admins, users will appear here."
                 }
               </p>
+              {!searchTerm && roleFilter === "all" && statusFilter === "all" && (
+                <Button className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create First User
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -416,55 +628,74 @@ export default function SuperAdminUsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.user_id}>
+                {filteredUsers.map((userItem) => (
+                  <TableRow key={userItem.user_id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <span className="text-sm font-medium text-primary">
-                            {(user.full_name || user.email || "U")[0].toUpperCase()}
+                            {(userItem.full_name || userItem.email || "U")[0].toUpperCase()}
                           </span>
                         </div>
-                        <div>
-                          <p className="font-medium">
-                            {user.full_name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unnamed"}
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">
+                            {userItem.full_name || `${userItem.first_name || ""} ${userItem.last_name || ""}`.trim() || "Unnamed"}
                           </p>
-                          <p className="text-sm text-muted-foreground">{user.email}</p>
+                          <p className="text-sm text-muted-foreground truncate">{userItem.email}</p>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{getRoleBadge(user.role)}</TableCell>
+                    <TableCell>{getRoleBadge(userItem.role)}</TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {user.university_name ? (
+                      {userItem.university_name ? (
                         <span className="flex items-center gap-1 text-sm">
-                          <Building2 className="h-3.5 w-3.5" />
-                          {user.university_name}
+                          <Building2 className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">{userItem.university_name}</span>
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
                     </TableCell>
-                    <TableCell>{getStatusBadge(user.status)}</TableCell>
+                    <TableCell>{getStatusBadge(userItem.status)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <span className="text-sm text-muted-foreground">
-                        {new Date(user.created_at).toLocaleDateString()}
+                        {new Date(userItem.created_at).toLocaleDateString()}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleToggleUserStatus(user.user_id, user.status)}
-                          title={user.status === "active" ? "Suspend user" : "Activate user"}
-                        >
-                          {user.status === "active" ? (
-                            <Ban className="h-4 w-4 text-red-500" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          )}
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openViewDialog(userItem)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleToggleUserStatus(userItem.user_id, userItem.status)}
+                            className={
+                              userItem.status === "active" 
+                                ? "text-red-600 focus:text-red-600" 
+                                : "text-emerald-600 focus:text-emerald-600"
+                            }
+                          >
+                            {userItem.status === "active" ? (
+                              <>
+                                <Ban className="h-4 w-4 mr-2" />
+                                Suspend User
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 mr-2" />
+                                Activate User
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -473,6 +704,267 @@ export default function SuperAdminUsersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Create User Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+        setIsCreateDialogOpen(open);
+        if (!open) resetCreateForm();
+      }}>
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Create New User
+            </DialogTitle>
+            <DialogDescription>
+              Create a new admin or staff account. The user will receive access credentials.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Account Information */}
+            <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                Account Information
+              </h4>
+              
+              <div className="space-y-2">
+                <Label htmlFor="create-email">Email Address *</Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  placeholder="admin@university.edu.pk"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-password">Password *</Label>
+                <Input
+                  id="create-password"
+                  type="password"
+                  placeholder="Min. 6 characters"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="create-name">Full Name *</Label>
+                <Input
+                  id="create-name"
+                  placeholder="John Doe"
+                  value={createForm.full_name}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, full_name: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Role Assignment */}
+            <div className="space-y-3 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+              <h4 className="font-medium text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Role Assignment
+              </h4>
+              
+              <div className="space-y-2">
+                <Label>Role *</Label>
+                <Select 
+                  value={createForm.role} 
+                  onValueChange={(value: any) => setCreateForm(prev => ({ ...prev, role: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="university_admin">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        University Admin
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="department_coordinator">
+                      <div className="flex items-center gap-2">
+                        <ClipboardCheck className="h-4 w-4" />
+                        Department Coordinator
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="faculty_supervisor">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" />
+                        Faculty Supervisor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="company_hr">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Company HR
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="site_supervisor">
+                      <div className="flex items-center gap-2">
+                        <HardHat className="h-4 w-4" />
+                        Site Supervisor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="external_evaluator">
+                      <div className="flex items-center gap-2">
+                        <Award className="h-4 w-4" />
+                        External Evaluator
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                {roleConfig[createForm.role] && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    {roleConfig[createForm.role].description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* University/Company Assignment */}
+            {(createForm.role === "university_admin" || createForm.role === "department_coordinator" || createForm.role === "faculty_supervisor") && (
+              <div className="space-y-2">
+                <Label>University *</Label>
+                <Select 
+                  value={createForm.university_id}
+                  onValueChange={(value) => setCreateForm(prev => ({ ...prev, university_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a university" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {universities.map((uni) => (
+                      <SelectItem key={uni.id} value={uni.id}>{uni.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {createForm.role === "company_hr" && (
+              <div className="space-y-2">
+                <Label>Company *</Label>
+                <Select 
+                  value={createForm.company_id}
+                  onValueChange={(value) => setCreateForm(prev => ({ ...prev, company_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((comp) => (
+                      <SelectItem key={comp.id} value={comp.id}>{comp.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser} disabled={isCreatingUser}>
+              {isCreatingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create User
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View User Detail Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>User Details</DialogTitle>
+            <DialogDescription>
+              Complete information about this user account.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedUser && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-primary">
+                    {(selectedUser.full_name || selectedUser.email || "U")[0].toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">
+                    {selectedUser.full_name || "Unnamed User"}
+                  </h3>
+                  <p className="text-muted-foreground">{selectedUser.email}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <p className="text-xs text-muted-foreground">Role</p>
+                  <div className="mt-1">{getRoleBadge(selectedUser.role)}</div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <div className="mt-1">{getStatusBadge(selectedUser.status)}</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <InfoRow 
+                  label="University" 
+                  value={selectedUser.university_name || "Not assigned"} 
+                />
+                <InfoRow 
+                  label="User ID" 
+                  value={selectedUser.user_id.substring(0, 8) + "..."} 
+                />
+                <InfoRow 
+                  label="Joined" 
+                  value={new Date(selectedUser.created_at).toLocaleDateString()} 
+                />
+                {selectedUser.last_login && (
+                  <InfoRow 
+                    label="Last Login" 
+                    value={new Date(selectedUser.last_login).toLocaleString()} 
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Helper component for info rows in view dialog
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between items-center py-2 border-b border-border/50 last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-right max-w-[200px] truncate">{value}</span>
     </div>
   );
 }

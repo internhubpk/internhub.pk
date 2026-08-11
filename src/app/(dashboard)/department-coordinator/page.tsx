@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import {
   Users,
   Briefcase,
@@ -9,7 +10,6 @@ import {
   GraduationCap,
   Building2,
   FileText,
-  Search,
   UserCheck,
   BarChart3,
   Calendar,
@@ -18,253 +18,472 @@ import {
   AlertCircle,
   Plus,
   RefreshCw,
+  ArrowRight,
+  BookOpen,
+  AlertTriangle,
+  UserPlus,
+  Settings,
+  Activity,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";
 
 interface DepartmentStats {
   totalStudents: number;
-  activeInternships: number;
-  pendingApprovals: number;
+  activeStudents: number;
   completedInternships: number;
+  activeInternships: number;
+  pendingAssignments: number;
+  totalSupervisors: number;
+  totalPrograms: number;
+  activePrograms: number;
+}
+
+interface ProgramSummary {
+  id: string;
+  name: string;
+  code: string;
+  student_count: number;
+  is_active: boolean;
+}
+
+interface RecentActivity {
+  id: string;
+  type: "student_enrolled" | "internship_started" | "internship_completed" | "supervisor_assigned";
+  message: string;
+  timestamp: string;
+}
+
+interface PendingItem {
+  id: string;
+  type: "no_supervisor" | "pending_evaluation" | "incomplete_profile";
+  student_name: string;
+  description: string;
 }
 
 export default function DepartmentCoordinatorDashboard() {
   const { user, profile } = useAuth();
   const [stats, setStats] = useState<DepartmentStats | null>(null);
+  const [programs, setPrograms] = useState<ProgramSummary[]>([]);
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchDepartmentStats();
-  }, []);
-
-  async function fetchDepartmentStats() {
+  const fetchDashboardData = useCallback(async () => {
     try {
+      setIsLoading(true);
       const supabase = createClient();
       
-      // Fetch department stats
-      const departmentId = profile?.department_id;
-      
-      const [studentsRes, activeRes, pendingRes, completedRes] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id", { count: "exact" })
-          .eq("role", "student")
-          .eq("department_id", departmentId),
-        supabase
-          .from("internships")
-          .select("id", { count: "exact" })
-          .eq("status", "active"),
-        supabase
-          .from("applications")
-          .select("id", { count: "exact" })
-          .eq("status", "pending"),
-        supabase
-          .from("internships")
-          .select("id", { count: "exact" })
-          .eq("status", "completed"),
-      ]);
+      // Fetch department stats from our department-scoped API
+      const statsRes = await fetch("/api/department-coordinator/reports?type=overview");
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.success) {
+          setStats(statsData.data);
+        }
+      }
 
-      setStats({
-        totalStudents: studentsRes.count || 0,
-        activeInternships: activeRes.count || 0,
-        pendingApprovals: pendingRes.count || 0,
-        completedInternships: completedRes.count || 0,
-      });
+      // Fetch programs
+      const programsRes = await fetch("/api/programs?pageSize=5");
+      if (programsRes.ok) {
+        const programsData = await programsRes.json();
+        if (programsData.success) {
+          setPrograms(programsData.data.data || []);
+        }
+      }
+
+      // Fetch students for recent activity and pending items
+      if (profile?.department_id) {
+        const studentsRes = await fetch(`/api/students?pageSize=10&sort_by=created_at&sort_order=desc`);
+        if (studentsRes.ok) {
+          const studentsData = await studentsRes.json();
+          if (studentsData.success && studentsData.data?.data) {
+            const students = studentsData.data.data;
+            
+            // Generate recent activities
+            const activities: RecentActivity[] = students.slice(0, 5).map((s: any) => ({
+              id: s.id,
+              type: "student_enrolled" as const,
+              message: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.enrollment_number,
+              timestamp: s.created_at,
+            }));
+            setRecentActivities(activities);
+
+            // Find students potentially needing attention
+            const pending: PendingItem[] = [];
+            // Students without program assignment
+            const noProgramStudents = students.filter((s: any) => !s.program_id).slice(0, 3);
+            noProgramStudents.forEach((s: any) => {
+              pending.push({
+                id: s.id,
+                type: "incomplete_profile",
+                student_name: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.enrollment_number,
+                description: "Not assigned to a program",
+              });
+            });
+            setPendingItems(pending);
+          }
+        }
+      }
     } catch (error) {
-      console.error("Error fetching department stats:", error);
+      console.error("Error fetching dashboard data:", error);
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [profile?.department_id]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const statCards = [
     {
-      title: "Department Students",
+      title: "Total Students",
       value: stats?.totalStudents.toString() || "0",
       icon: GraduationCap,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
+      color: "text-emerald-600 dark:text-emerald-400",
+      bgColor: "bg-emerald-50 dark:bg-emerald-950",
+      trend: stats?.activeStudents && stats.totalStudents > 0 
+        ? { value: Math.round((stats.activeStudents / stats.totalStudents) * 100), isPositive: true }
+        : undefined,
+      description: `${stats?.activeStudents || 0} active`,
+    },
+    {
+      title: "Active Programs",
+      value: stats?.activePrograms.toString() || "0",
+      icon: BookOpen,
+      color: "text-blue-600 dark:text-blue-400",
+      bgColor: "bg-blue-50 dark:bg-blue-950",
+      description: `of ${stats?.totalPrograms || 0} total`,
+    },
+    {
+      title: "Supervisors",
+      value: stats?.totalSupervisors.toString() || "0",
+      icon: UserCheck,
+      color: "text-violet-600 dark:text-violet-400",
+      bgColor: "bg-violet-50 dark:bg-violet-950",
     },
     {
       title: "Active Internships",
       value: stats?.activeInternships.toString() || "0",
       icon: Briefcase,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-    },
-    {
-      title: "Pending Approvals",
-      value: stats?.pendingApprovals.toString() || "0",
-      icon: Clock,
-      color: "text-amber-600",
-      bgColor: "bg-amber-50",
-    },
-    {
-      title: "Completed",
-      value: stats?.completedInternships.toString() || "0",
-      icon: CheckCircle2,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
+      color: "text-orange-600 dark:text-orange-400",
+      bgColor: "bg-orange-50 dark:bg-orange-950",
+      trend: stats?.completedInternships !== undefined 
+        ? { value: stats.completedInternships, isPositive: true }
+        : undefined,
+      description: `${stats?.completedInternships || 0} completed`,
     },
   ];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Department Coordinator Dashboard</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Department Coordinator
+          </h1>
           <p className="text-muted-foreground mt-1">
             Welcome back, {profile?.full_name || user?.email || "Coordinator"}
+            {profile?.department_id && (
+              <Badge variant="outline" className="ml-2">
+                <Building2 className="h-3 w-3 mr-1" />
+                Department View
+              </Badge>
+            )}
           </p>
         </div>
-        <Button variant="outline" onClick={fetchDepartmentStats} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchDashboardData} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button asChild>
+            <Link href="/department-coordinator/students">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Manage Students
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      {/* Pending Items Alert */}
+      {stats?.pendingAssignments > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-amber-800 dark:text-amber-200">
+                    Action Required
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    You have{" "}
+                    <span className="font-semibold">{stats.pendingAssignments}</span> student(s) 
+                    that may need supervisor assignments or attention.
+                  </p>
+                  <Button variant="link" className="p-0 h-auto text-amber-700 dark:text-amber-300 mt-2" asChild>
+                    <Link href="/department-coordinator/students?filter=no_supervisor">
+                      Review now <ArrowRight className="h-3 w-3 ml-1" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatsGrid columns={4}>
         {statCards.map((card, index) => (
-          <motion.div
+          <StatsCard
             key={card.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.title}</p>
-                    <p className="text-3xl font-bold mt-1">{card.value}</p>
-                  </div>
-                  <div className={`p-3 rounded-full ${card.bgColor}`}>
-                    <card.icon className={`h-6 w-6 ${card.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+            title={card.title}
+            value={card.value}
+            icon={card.icon}
+            trend={card.trend}
+            description={card.description}
+            index={index}
+          />
         ))}
-      </div>
+      </StatsGrid>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-blue-50">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Programs Overview */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="lg:col-span-2"
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <p className="font-semibold">Students</p>
-                <p className="text-sm text-muted-foreground">{stats?.totalStudents || 0} enrolled</p>
+                <CardTitle className="text-lg">Programs Overview</CardTitle>
+                <CardDescription>Programs in your department</CardDescription>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-green-50">
-                <Briefcase className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="font-semibold">Internships</p>
-                <p className="text-sm text-muted-foreground">{stats?.activeInternships || 0} active</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-amber-50">
-                <Clock className="h-6 w-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="font-semibold">Pending</p>
-                <p className="text-sm text-muted-foreground">{stats?.pendingApprovals || 0} reviews</p>
-              </div>
-              {stats?.pendingApprovals ? (
-                <Badge variant="destructive" className="ml-auto">{stats.pendingApprovals}</Badge>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-lg bg-purple-50">
-                <BarChart3 className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="font-semibold">Reports</p>
-                <p className="text-sm text-muted-foreground">View analytics</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Department Overview</CardTitle>
-          <CardDescription>Summary of your department's internship program</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!stats ? (
-            <div className="flex items-center justify-center py-12">
-              <Clock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4 animate-pulse" />
-              <p className="text-muted-foreground ml-4">Loading data...</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {stats.pendingApprovals > 0 && (
-                <div className="flex items-center gap-2 p-4 rounded-lg bg-amber-50 border border-amber-200">
-                  <AlertCircle className="h-5 w-5 text-amber-600" />
-                  <span className="font-medium text-amber-800">
-                    You have {stats.pendingApprovals} pending approval(s) requiring attention.
-                  </span>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/department-coordinator/programs">
+                  View all <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 animate-pulse">
+                      <div className="h-10 w-10 rounded-lg bg-muted" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-32 bg-muted rounded" />
+                        <div className="h-3 w-20 bg-muted rounded" />
+                      </div>
+                      <div className="h-6 w-16 bg-muted rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : programs.length === 0 ? (
+                <div className="text-center py-8">
+                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
+                  <p className="text-muted-foreground font-medium">No programs yet</p>
+                  <p className="text-sm text-muted-foreground/70 mb-4">
+                    Create your first program to get started
+                  </p>
+                  <Button size="sm" asChild>
+                    <Link href="/department-coordinator/programs">
+                      <Plus className="h-4 w-4 mr-1" /> Create Program
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {programs.map((program) => (
+                    <div
+                      key={program.id}
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <BookOpen className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{program.name}</p>
+                          <p className="text-sm text-muted-foreground">{program.code}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right hidden sm:block">
+                          <p className="text-sm font-medium">{program.student_count}</p>
+                          <p className="text-xs text-muted-foreground">students</p>
+                        </div>
+                        <Badge variant={program.is_active ? "default" : "secondary"}>
+                          {program.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <GraduationCap className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                  <p className="text-2xl font-bold">{stats.totalStudents}</p>
-                  <p className="text-sm text-muted-foreground">Total Students</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Quick Actions & Pending Items */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="space-y-6"
+        >
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-auto py-4 flex-col gap-2" asChild>
+                <Link href="/department-coordinator/students">
+                  <GraduationCap className="h-5 w-5" />
+                  <span className="text-xs">Students</span>
+                </Link>
+              </Button>
+              <Button variant="outline" className="h-auto py-4 flex-col gap-2" asChild>
+                <Link href="/department-coordinator/programs">
+                  <BookOpen className="h-5 w-5" />
+                  <span className="text-xs">Programs</span>
+                </Link>
+              </Button>
+              <Button variant="outline" className="h-auto py-4 flex-col gap-2" asChild>
+                <Link href="/department-coordinator/supervisors">
+                  <UserCheck className="h-5 w-5" />
+                  <span className="text-xs">Supervisors</span>
+                </Link>
+              </Button>
+              <Button variant="outline" className="h-auto py-4 flex-col gap-2" asChild>
+                <Link href="/department-coordinator/reports">
+                  <BarChart3 className="h-5 w-5" />
+                  <span className="text-xs">Reports</span>
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Recent Activity */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Recent Activity</CardTitle>
+              <CardDescription>Latest in your department</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {recentActivities.length === 0 ? (
+                <div className="text-center py-6">
+                  <Activity className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <Briefcase className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                  <p className="text-2xl font-bold">{stats.activeInternships}</p>
-                  <p className="text-sm text-muted-foreground">Active Internships</p>
+              ) : (
+                <div className="space-y-3">
+                  {recentActivities.map((activity) => (
+                    <div key={activity.id} className="flex items-start gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm truncate">{activity.message}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(activity.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <Clock className="h-8 w-8 mx-auto mb-2 text-amber-600" />
-                  <p className="text-2xl font-bold">{stats.pendingApprovals}</p>
-                  <p className="text-sm text-muted-foreground">Pending Review</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pending Items Preview */}
+          {pendingItems.length > 0 && (
+            <Card className="border-amber-200 dark:border-amber-900">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <CardTitle className="text-base">Needs Attention</CardTitle>
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50 text-center">
-                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                  <p className="text-2xl font-bold">{stats.completedInternships}</p>
-                  <p className="text-sm text-muted-foreground">Completed</p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {pendingItems.slice(0, 3).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between text-sm">
+                      <span className="truncate mr-2">{item.student_name}</span>
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
+                        {item.type === "no_supervisor" ? "No Supervisor" : "No Program"}
+                      </Badge>
+                    </div>
+                  ))}
                 </div>
+                <Button variant="link" className="w-full mt-3 text-sm" asChild>
+                  <Link href="/department-coordinator/students">
+                    View all ({pendingItems.length}) <ArrowRight className="h-3 w-3 ml-1" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Performance Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Department Performance Summary</CardTitle>
+            <CardDescription>Key metrics at a glance</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
+                <GraduationCap className="h-8 w-8 mx-auto text-emerald-600" />
+                <p className="text-2xl font-bold">{stats?.totalStudents || 0}</p>
+                <p className="text-sm text-muted-foreground">Total Enrolled</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
+                <Briefcase className="h-8 w-8 mx-auto text-blue-600" />
+                <p className="text-2xl font-bold">{stats?.activeInternships || 0}</p>
+                <p className="text-sm text-muted-foreground">Active Internships</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
+                <CheckCircle2 className="h-8 w-8 mx-auto text-violet-600" />
+                <p className="text-2xl font-bold">{stats?.completedInternships || 0}</p>
+                <p className="text-sm text-muted-foreground">Completed</p>
+              </div>
+              <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
+                <TrendingUp className="h-8 w-8 mx-auto text-orange-600" />
+                <p className="text-2xl font-bold">
+                  {stats?.activeInternships && stats?.totalStudents > 0
+                    ? Math.round((stats.activeInternships / stats.totalStudents) * 100)
+                    : 0}%
+                </p>
+                <p className="text-sm text-muted-foreground">Participation Rate</p>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }

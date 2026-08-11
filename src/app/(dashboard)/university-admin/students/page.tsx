@@ -1,67 +1,756 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  GraduationCap,
+  Search,
+  Download,
+  Filter,
+  Users,
+  Mail,
+  Building2,
+  BookOpen,
+  Briefcase,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Loader2,
+  FileSpreadsheet,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { GraduationCap, Search, Plus, Users, Mail, MoreVertical } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
+import type { Profile, Department } from "@/types";
 
-const mockStudents = [
-  { id: "1", name: "Sarah Johnson", email: "sarah.j@university.edu", major: "Computer Science", gpa: 3.8, status: "active" },
-  { id: "2", name: "Mike Chen", email: "mike.chen@university.edu", major: "Software Engineering", gpa: 3.6, status: "active" },
-  { id: "3", name: "Emily Davis", email: "emily.d@university.edu", major: "Data Science", gpa: 3.9, status: "on_internship" },
-];
+interface StudentWithDetails extends Profile {
+  departmentName?: string | null;
+  departmentCode?: string | null;
+  enrollmentNumber?: string | null;
+  programName?: string | null;
+  internshipStatus?: string | null;
+  gpa?: number | null;
+}
+
+interface StudentFilters {
+  search: string;
+  department_id: string;
+  status: string;
+  program: string;
+}
+
+const emptyFilters: StudentFilters = {
+  search: "",
+  department_id: "",
+  status: "",
+  program: "",
+};
 
 export default function UniversityAdminStudentsPage() {
+  const { profile, university } = useAuth();
+  const { toast } = useToast();
+  
+  const [students, setStudents] = useState<StudentWithDetails[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filters, setFilters] = useState<StudentFilters>(emptyFilters);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<StudentWithDetails | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Stats derived from students
+  const activeStudents = students.filter(s => s.is_active).length;
+  const onInternship = students.filter(s => s.internshipStatus === "active").length;
+
+  const fetchStudents = useCallback(async () => {
+    if (!profile?.university_id && !university?.id) return;
+
+    try {
+      setIsLoading(true);
+      const supabase = createClient();
+      const universityId = profile?.university_id || university?.id;
+
+      // Build base query for student profiles
+      let query = supabase
+        .from("profiles")
+        .select("*")
+        .eq("university_id", universityId)
+        .eq("role", "student")
+        .order("created_at", { ascending: false });
+
+      // Apply status filter
+      if (filters.status === "active") {
+        query = query.eq("is_active", true);
+      } else if (filters.status === "inactive") {
+        query = query.eq("is_active", false);
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) throw error;
+
+      // Enrich with department info
+      const studentsWithDetails: StudentWithDetails[] = [];
+      
+      for (const student of (data || [])) {
+        let deptInfo = null;
+        
+        if (student.department_id) {
+          const { data: dept } = await supabase
+            .from("departments")
+            .select("name, code")
+            .eq("id", student.department_id)
+            .single();
+          
+          deptInfo = dept;
+        }
+
+        // Get student-specific details if available
+        let studentDetails = null;
+        try {
+          const { data: details } = await supabase
+            .from("students")
+            .select("enrollment_number, program_id, cgpa, status")
+            .eq("user_id", student.user_id)
+            .single();
+          studentDetails = details;
+        } catch (e) {
+          // Students table might not have this user yet
+        }
+
+        // Get program name if available
+        let programName = null;
+        if (studentDetails?.program_id) {
+          const { data: program } = await supabase
+            .from("programs")
+            .select("name")
+            .eq("id", studentDetails.program_id)
+            .single();
+          programName = program?.name || null;
+        }
+
+        // Check for active internships
+        let internshipStatus = null;
+        try {
+          const { data: internship } = await supabase
+            .from("internships")
+            .select("status")
+            .eq("student_id", student.user_id)
+            .in("status", ["active", "pending"])
+            .limit(1)
+            .single();
+          internshipStatus = internship?.status || null;
+        } catch (e) {
+          // No active internships
+        }
+
+        studentsWithDetails.push({
+          ...student,
+          departmentName: deptInfo?.name || null,
+          departmentCode: deptInfo?.code || null,
+          enrollmentNumber: studentDetails?.enrollment_number || null,
+          programName: programName,
+          internshipStatus: internshipStatus,
+          gpa: studentDetails?.cgpa || null,
+        });
+      }
+
+      // Apply filters client-side
+      let filtered = studentsWithDetails;
+
+      // Search filter
+      if (filters.search) {
+        const query = filters.search.toLowerCase();
+        filtered = filtered.filter(
+          (s) =>
+            (s.full_name && s.full_name.toLowerCase().includes(query)) ||
+            s.email.toLowerCase().includes(query) ||
+            (s.enrollmentNumber && s.enrollmentNumber.toLowerCase().includes(query))
+        );
+      }
+
+      // Department filter
+      if (filters.department_id) {
+        filtered = filtered.filter(s => s.department_id === filters.department_id);
+      }
+
+      // Program filter (basic - would need more data for proper filtering)
+      if (filters.program) {
+        filtered = filtered.filter(s => 
+          s.programName?.toLowerCase().includes(filters.program.toLowerCase())
+        );
+      }
+
+      setStudents(filtered);
+      setTotalCount(count || 0);
+    } catch (error) {
+      console.error("Error fetching students:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load students",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [profile?.university_id, university?.id, filters, toast]);
+
+  const fetchDepartments = useCallback(async () => {
+    if (!profile?.university_id && !university?.id) return;
+
+    try {
+      const supabase = createClient();
+      const universityId = profile?.university_id || university?.id;
+
+      const { data, error } = await supabase
+        .from("departments")
+        .select("*")
+        .eq("university_id", universityId)
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      setDepartments(data || []);
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+    }
+  }, [profile?.university_id, university?.id]);
+
+  useEffect(() => {
+    fetchStudents();
+    fetchDepartments();
+  }, [fetchStudents, fetchDepartments]);
+
+  const exportToCSV = () => {
+    if (students.length === 0) {
+      toast({
+        title: "No Data",
+        description: "There are no students to export",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create CSV content
+    const headers = ["Name", "Email", "Enrollment #", "Department", "Program", "Status", "GPA", "Internship Status"];
+    const rows = students.map(s => [
+      s.full_name || "",
+      s.email,
+      s.enrollmentNumber || "",
+      s.departmentName || "",
+      s.programName || "",
+      s.is_active ? "Active" : "Inactive",
+      s.gpa?.toString() || "",
+      s.internshipStatus || "None",
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    // Create download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `students_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Export Complete",
+      description: `${students.length} students exported to CSV`,
+    });
+  };
+
+  const openStudentDetail = (student: StudentWithDetails) => {
+    setSelectedStudent(student);
+    setIsDetailOpen(true);
+  };
+
+  const getInitials = (name: string | null, email: string) => {
+    if (name) {
+      return name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    }
+    return email.slice(0, 2).toUpperCase();
+  };
+
+  const getStatusBadge = (student: StudentWithDetails) => {
+    if (student.internshipStatus === "active") {
+      return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400">On Internship</Badge>;
+    }
+    if (!student.is_active) {
+      return <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>;
+    }
+    return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400">Active</Badge>;
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-6 lg:px-8">
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Students</h1>
-              <p className="mt-2 text-muted-foreground">Manage all university students</p>
-            </div>
-            <Button className="gap-2"><Plus className="h-4 w-4" /> Add Student</Button>
-          </motion.div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
+            Students Overview
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            View all enrolled students in {university?.name || "your university"}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={exportToCSV}
+            disabled={isLoading || students.length === 0}
+            className="gap-2"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6 lg:px-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-6">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search students..." className="pl-10" />
-          </div>
-        </motion.div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-primary/10">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{totalCount}</p>
+              <p className="text-xs text-muted-foreground">Total Students</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50">
+              <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{activeStudents}</p>
+              <p className="text-xs text-muted-foreground">Active Students</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/50">
+              <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{onInternship}</p>
+              <p className="text-xs text-muted-foreground">On Internship</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {mockStudents.map((student) => (
-            <Card key={student.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 rounded-full"><GraduationCap className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <h3 className="font-semibold">{student.name}</h3>
-                      <p className="text-sm text-muted-foreground">{student.email}</p>
+      {/* Filters */}
+      <Card>
+        <CardHeader className="pb-4 cursor-pointer" onClick={() => setShowFilters(!showFilters)}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Filters & Search</CardTitle>
+              {(filters.search || filters.department_id || filters.status) && (
+                <Badge variant="secondary" className="text-xs">
+                  {[filters.search, filters.department_id, filters.status].filter(Boolean).length} active
+                </Badge>
+              )}
+            </div>
+            {showFilters ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+        </CardHeader>
+        {showFilters && (
+          <CardContent className="pt-0 pb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="relative sm:col-span-2 lg:col-span-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, email..."
+                  value={filters.search}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  className="pl-10"
+                />
+              </div>
+
+              <Select
+                value={filters.department_id}
+                onValueChange={(value) => setFilters({ ...filters, department_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Departments</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.status}
+                onValueChange={(value) => setFilters({ ...filters, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFilters(emptyFilters)}
+                className="gap-2"
+              >
+                Clear Filters
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* View Toggle */}
+      <div className="flex justify-end gap-2">
+        <Button
+          variant={viewMode === "table" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("table")}
+        >
+          Table View
+        </Button>
+        <Button
+          variant={viewMode === "grid" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setViewMode("grid")}
+        >
+          Grid View
+        </Button>
+      </div>
+
+      {/* Loading State */}
+      {isLoading && (
+        viewMode === "table" ? (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead className="hidden md:table-cell">Enrollment #</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">GPA</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...Array(5)].map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-9 w-9 rounded-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-3 w-40" />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                    <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-10" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton className="h-5 w-32" />
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-6 w-20 rounded-full mt-2" />
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <span className="px-2 py-1 bg-secondary rounded text-xs">{student.major}</span>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">GPA: {student.gpa}</span>
-                  <span className={`px-2 py-1 rounded text-xs ${student.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'}`}>
-                    {student.status.replace('_', ' ')}
-                  </span>
-                </div>
-              </CardContent>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Empty State */}
+      {!isLoading && students.length === 0 && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center justify-center text-center">
+              <GraduationCap className="h-16 w-16 text-muted-foreground/40 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No students found</h3>
+              <p className="text-muted-foreground mb-4 max-w-md">
+                {filters.search || filters.department_id || filters.status
+                  ? "No students match your current filters. Try adjusting your search criteria."
+                  : "No students are currently enrolled in your university."}
+              </p>
+              {(filters.search || filters.department_id || filters.status) && (
+                <Button variant="outline" onClick={() => setFilters(emptyFilters)}>
+                  Clear All Filters
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Data Views */}
+      {!isLoading && students.length > 0 && (
+        <>
+          {viewMode === "table" ? (
+            /* Table View */
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead className="hidden md:table-cell">Enrollment #</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="hidden sm:table-cell">GPA</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {students.map((student) => (
+                    <TableRow key={student.user_id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                              {getInitials(student.full_name, student.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{student.full_name || "Unnamed"}</p>
+                            <p className="text-xs text-muted-foreground truncate">{student.email}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <span className="font-mono text-sm">{student.enrollmentNumber || "-"}</span>
+                      </TableCell>
+                      <TableCell>
+                        {student.departmentName ? (
+                          <span className="text-sm">{student.departmentName}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(student)}</TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {student.gpa ? (
+                          <span className="font-medium">{student.gpa.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openStudentDetail(student)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View Details</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </Card>
-          ))}
-        </motion.div>
-      </div>
+          ) : (
+            /* Grid View */
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {students.map((student, index) => (
+                <motion.div
+                  key={student.user_id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                >
+                  <Card 
+                    className="hover:shadow-md transition-all cursor-pointer h-full"
+                    onClick={() => openStudentDetail(student)}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        <Avatar className="h-12 w-12 flex-shrink-0">
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {getInitials(student.full_name, student.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold truncate">{student.full_name || "Unnamed Student"}</h3>
+                          <p className="text-sm text-muted-foreground truncate">{student.email}</p>
+                          
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {getStatusBadge(student)}
+                            
+                            {student.departmentName && (
+                              <Badge variant="outline" className="text-xs">
+                                <Building2 className="h-3 w-3 mr-1" />
+                                {student.departmentCode || student.departmentName.slice(0, 3)}
+                              </Badge>
+                            )}
+
+                            {student.enrollmentNumber && (
+                              <Badge variant="secondary" className="text-xs font-mono">
+                                #{student.enrollmentNumber}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {student.gpa && (
+                            <div className="mt-3 pt-3 border-t">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">GPA</span>
+                                <span className="font-medium">{student.gpa.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Student Detail Dialog */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Student Profile</DialogTitle>
+            <DialogDescription>
+              Detailed information about this student
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedStudent && (
+            <div className="space-y-6 py-4">
+              {/* Header Info */}
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16">
+                  <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                    {getInitials(selectedStudent.full_name, selectedStudent.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="text-xl font-semibold">{selectedStudent.full_name || "Unnamed"}</h3>
+                  <p className="text-muted-foreground">{selectedStudent.email}</p>
+                  <div className="mt-1">{getStatusBadge(selectedStudent)}</div>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Enrollment Number</p>
+                  <p className="font-medium font-mono">{selectedStudent.enrollmentNumber || "N/A"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">GPA</p>
+                  <p className="font-medium">{selectedStudent.gpa ? selectedStudent.gpa.toFixed(2) : "N/A"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Department</p>
+                  <p className="font-medium">{selectedStudent.departmentName || "Unassigned"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Program</p>
+                  <p className="font-medium">{selectedStudent.programName || "N/A"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Internship Status</p>
+                  <p className="font-medium capitalize">{selectedStudent.internshipStatus || "None"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Joined</p>
+                  <p className="font-medium">{new Date(selectedStudent.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {/* Read-only Notice */}
+              <div className="bg-muted/30 border rounded-lg p-4">
+                <p className="text-sm text-muted-foreground text-center">
+                  University admins have read-only access to student profiles.
+                  Contact the system administrator or the student's department coordinator for modifications.
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

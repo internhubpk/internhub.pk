@@ -1,0 +1,498 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+import { cookies } from "next/headers";
+import type { ApiResponse, UserRole } from "@/types";
+import {
+  requireAuth,
+  authorizationError,
+  authenticationError,
+} from "@/lib/authorization";
+
+// Roles that can access department reports
+const VIEW_REPORT_ROLES: UserRole[] = [
+  "super_admin",
+  "university_admin",
+  "department_coordinator",
+];
+
+interface DepartmentStats {
+  totalStudents: number;
+  activeStudents: number;
+  completedInternships: number;
+  activeInternships: number;
+  pendingAssignments: number;
+  totalSupervisors: number;
+  totalPrograms: number;
+  activePrograms: number;
+}
+
+interface ProgramPerformance {
+  program_id: string;
+  program_name: string;
+  program_code: string;
+  total_students: number;
+  active_internships: number;
+  completed_internships: number;
+  completion_rate: number;
+}
+
+interface SupervisorWorkload {
+  supervisor_id: string;
+  supervisor_name: string;
+  supervisor_email: string;
+  assigned_students: number;
+  active_supervisions: number;
+  completed_supervisions: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  internships_started: number;
+  internships_completed: number;
+  students_enrolled: number;
+}
+
+/**
+ * GET /api/department-coordinator/reports
+ * Generate department-scoped reports and analytics
+ * SECURITY: Department coordinators can ONLY see their department's data
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const authContext = await requireAuth();
+    
+    if (!authContext.profile || !VIEW_REPORT_ROLES.includes(authContext.profile.role as UserRole)) {
+      return authorizationError("Forbidden: Insufficient permissions to view reports");
+    }
+
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    const { searchParams } = new URL(request.url);
+    const reportType = searchParams.get("type") || "overview";
+    const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
+
+    // CRITICAL SCOPING - Get user's department context
+    const userRole = authContext.profile.role;
+    const userUniversityId = authContext.profile.university_id;
+    const userDepartmentId = authContext.profile.department_id;
+
+    // For department coordinators, enforce department scope
+    if (userRole === "department_coordinator" && !userDepartmentId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "No department assigned to your account" },
+        { status: 403 }
+      );
+    }
+
+    // Build filters based on role
+    const deptFilter = userRole === "department_coordinator" 
+      ? { department_id: userDepartmentId, university_id: userUniversityId }
+      : userRole === "university_admin"
+      ? { university_id: userUniversityId }
+      : {};
+
+    switch (reportType) {
+      case "overview":
+        return await getOverviewStats(supabase, deptFilter);
+      case "programs":
+        return await getProgramPerformance(supabase, deptFilter);
+      case "supervisors":
+        return await getSupervisorWorkload(supabase, deptFilter);
+      case "trends":
+        return await getMonthlyTrends(supabase, deptFilter, year);
+      case "students":
+        return await getStudentReport(supabase, deptFilter, searchParams);
+      default:
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Invalid report type" },
+          { status: 400 }
+        );
+    }
+  } catch (error) {
+    console.error("Error in GET /api/department-coordinator/reports:", error);
+    
+    if (error instanceof Error && error.message.includes("Authentication")) {
+      return authenticationError(error.message);
+    }
+    
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Get overview statistics for the department
+ */
+async function getOverviewStats(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>
+): Promise<NextResponse<ApiResponse<DepartmentStats>>> {
+  // Build base queries with department filter
+  let studentQuery = supabase
+    .from("students")
+    .select("id, status", { count: "exact" });
+
+  let programQuery = supabase
+    .from("programs")
+    .select("id, is_active", { count: "exact" });
+
+  let supervisorQuery = supabase
+    .from("supervisors")
+    .select("id", { count: "exact" })
+    .eq("type", "faculty");
+
+  let internshipQuery = supabase
+    .from("student_internships")
+    .select("id, status", { count: "exact" });
+
+  // Apply department/university filters
+  if (filters.department_id) {
+    studentQuery = studentQuery.eq("department_id", filters.department_id);
+    programQuery = programQuery.eq("department_id", filters.department_id);
+    supervisorQuery = supervisorQuery.eq("department_id", filters.department_id);
+    
+    // For internships, we need to join through students
+    const { data: deptStudents } = await supabase
+      .from("students")
+      .select("id")
+      .eq("department_id", filters.department_id!);
+    
+    const studentIds = deptStudents?.map(s => s.id) || [];
+    if (studentIds.length > 0) {
+      internshipQuery = internshipQuery.in("student_id", studentIds);
+    }
+  }
+
+  if (filters.university_id && !filters.department_id) {
+    studentQuery = studentQuery.eq("university_id", filters.university_id);
+    programQuery = programQuery.eq("university_id", filters.university_id);
+    supervisorQuery = supervisorQuery.eq("university_id", filters.university_id);
+  }
+
+  // Execute all queries in parallel
+  const [
+    studentsResult,
+    activeStudentsResult,
+    programsResult,
+    activeProgramsResult,
+    supervisorsResult,
+    activeInternshipsResult,
+    completedInternshipsResult,
+  ] = await Promise.all([
+    studentQuery,
+    studentQuery.eq("status", "active"),
+    programQuery,
+    programQuery.eq("is_active", true),
+    supervisorQuery,
+    internshipQuery.eq("status", "active"),
+    internshipQuery.eq("status", "completed"),
+  ]);
+
+  // Count students without supervisors (pending assignments)
+  let pendingAssignmentsCount = 0;
+  if (filters.department_id) {
+    const { data: studentsWithoutSupervisor } = await supabase
+      .from("students")
+      .select("id")
+      .eq("department_id", filters.department_id!)
+      .not("program_id", "is", null);
+
+    if (studentsWithoutSupervisor && studentsWithoutSupervisor.length > 0) {
+      const studentIds = studentsWithoutSupervisor.map(s => s.id);
+      
+      const { count: assignedCount } = await supabase
+        .from("student_internships")
+        .select("id", { count: "exact" })
+        .in("student_id", studentIds)
+        .not("faculty_supervisor_id", "is", null);
+
+      pendingAssignmentsCount = (studentsWithoutSupervisor.length) - (assignedCount || 0);
+    }
+  }
+
+  const stats: DepartmentStats = {
+    totalStudents: studentsResult.count || 0,
+    activeStudents: activeStudentsResult.count || 0,
+    totalPrograms: programsResult.count || 0,
+    activePrograms: activeProgramsResult.count || 0,
+    totalSupervisors: supervisorsResult.count || 0,
+    activeInternships: activeInternshipsResult.count || 0,
+    completedInternships: completedInternshipsResult.count || 0,
+    pendingAssignments: pendingAssignmentsCount,
+  };
+
+  return NextResponse.json<ApiResponse<DepartmentStats>>({
+    success: true,
+    data: stats,
+  });
+}
+
+/**
+ * Get performance metrics by program
+ */
+async function getProgramPerformance(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>
+): Promise<NextResponse<ApiResponse<ProgramPerformance[]>>> {
+  let programQuery = supabase
+    .from("programs")
+    .select(`
+      id,
+      name,
+      code
+    `);
+
+  if (filters.department_id) {
+    programQuery = programQuery.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    programQuery = programQuery.eq("university_id", filters.university_id);
+  }
+
+  const { data: programs, error: programsError } = await programQuery;
+
+  if (programsError) {
+    throw programsError;
+  }
+
+  // Get stats for each program
+  const performanceData: ProgramPerformance[] = [];
+
+  for (const program of programs || []) {
+    const [studentsResult, activeInternshipsResult, completedInternshipsResult] = await Promise.all([
+      supabase.from("students").select("id", { count: "exact" }).eq("program_id", program.id),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("status", "active"),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("status", "completed"),
+    ]);
+
+    const totalStudents = studentsResult.count || 0;
+    const completed = completedInternshipsResult.count || 0;
+    const completionRate = totalStudents > 0 ? Math.round((completed / totalStudents) * 100) : 0;
+
+    performanceData.push({
+      program_id: program.id,
+      program_name: program.name,
+      program_code: program.code,
+      total_students: totalStudents,
+      active_internships: activeInternshipsResult.count || 0,
+      completed_internships: completed,
+      completion_rate: completionRate,
+    });
+  }
+
+  return NextResponse.json<ApiResponse<ProgramPerformance[]>>({
+    success: true,
+    data: performanceData,
+  });
+}
+
+/**
+ * Get supervisor workload distribution
+ */
+async function getSupervisorWorkload(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>
+): Promise<NextResponse<ApiResponse<SupervisorWorkload[]>>> {
+  let supervisorQuery = supabase
+    .from("supervisors")
+    .select(`
+      id,
+      title,
+      specialization,
+      profiles:user_id(first_name, last_name, email)
+    `)
+    .eq("type", "faculty");
+
+  if (filters.department_id) {
+    supervisorQuery = supervisorQuery.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    supervisorQuery = supervisorQuery.eq("university_id", filters.university_id);
+  }
+
+  const { data: supervisors, error: supervisorsError } = await supervisorQuery;
+
+  if (supervisorsError) {
+    throw supervisorsError;
+  }
+
+  // Get assignment counts for each supervisor
+  const workloadData: SupervisorWorkload[] = [];
+
+  for (const supervisor of supervisors || []) {
+    const [assignedResult, activeResult, completedResult] = await Promise.all([
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id).eq("status", "active"),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id).eq("status", "completed"),
+    ]);
+
+    const profile = supervisor.profiles as any;
+    workloadData.push({
+      supervisor_id: supervisor.id,
+      supervisor_name: `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || supervisor.title || "Unknown",
+      supervisor_email: profile?.email || "",
+      assigned_students: assignedResult.count || 0,
+      active_supervisions: activeResult.count || 0,
+      completed_supervisions: completedResult.count || 0,
+    });
+  }
+
+  // Sort by assigned students descending
+  workloadData.sort((a, b) => b.assigned_students - a.assigned_students);
+
+  return NextResponse.json<ApiResponse<SupervisorWorkload[]>>({
+    success: true,
+    data: workloadData,
+  });
+}
+
+/**
+ * Get monthly trends for charts
+ */
+async function getMonthlyTrends(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>,
+  year: number
+): Promise<NextResponse<ApiResponse<MonthlyTrend[]>>> {
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+
+  // Get monthly data
+  const trends: MonthlyTrend[] = [];
+  
+  for (let month = 1; month <= 12; month++) {
+    const monthStr = month.toString().padStart(2, "0");
+    const monthStart = `${year}-${monthStr}-01`;
+    const monthEnd = new Date(year, month, 0).toISOString().split("T")[0];
+
+    // Get student enrollments this month
+    let enrollmentQuery = supabase
+      .from("students")
+      .select("id", { count: "exact" })
+      .gte("created_at", monthStart)
+      .lte("created_at", `${monthEnd}T23:59:59`);
+
+    // Get internships started this month
+    let startedQuery = supabase
+      .from("student_internships")
+      .select("id", { count: "exact" })
+      .gte("created_at", monthStart)
+      .lte("created_at", `${monthEnd}T23:59:59`);
+
+    // Get internships completed this month
+    let completedQuery = supabase
+      .from("student_internships")
+      .select("id", { count: "exact" })
+      .gte("updated_at", monthStart)
+      .lte("updated_at", `${monthEnd}T23:59:59`)
+      .eq("status", "completed");
+
+    if (filters.department_id) {
+      enrollmentQuery = enrollmentQuery.eq("department_id", filters.department_id);
+    }
+    if (filters.university_id) {
+      enrollmentQuery = enrollmentQuery.eq("university_id", filters.university_id);
+    }
+
+    const [enrollments, started, completed] = await Promise.all([
+      enrollmentQuery,
+      startedQuery,
+      completedQuery,
+    ]);
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    trends.push({
+      month: `${monthNames[month - 1]} ${year}`,
+      internships_started: started.count || 0,
+      internships_completed: completed.count || 0,
+      students_enrolled: enrollments.count || 0,
+    });
+  }
+
+  return NextResponse.json<ApiResponse<MonthlyTrend[]>>({
+    success: true,
+    data: trends,
+  });
+}
+
+/**
+ * Get detailed student report (for CSV export)
+ */
+async function getStudentReport(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>,
+  searchParams: URLSearchParams
+): Promise<NextResponse<ApiResponse<any>>> {
+  const status = searchParams.get("status");
+  const programId = searchParams.get("program_id");
+  const hasSupervisor = searchParams.get("has_supervisor");
+
+  let query = supabase
+    .from("students")
+    .select(`
+      id,
+      enrollment_number,
+      status,
+      semester,
+      cgpa,
+      created_at,
+      profiles:user_id(first_name, last_name, email, phone),
+      programs:program_id(name, code),
+      departments:department_id(name, code)
+    `);
+
+  if (filters.department_id) {
+    query = query.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    query = query.eq("university_id", filters.university_id);
+  }
+  if (status) {
+    query = query.eq("status", status);
+  }
+  if (programId) {
+    query = query.eq("program_id", programId);
+  }
+
+  const { data: students, error } = await query.order("enrollment_number", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  // Enrich with supervisor info if needed
+  let enrichedStudents = students || [];
+
+  if (hasSupervisor === "true" || hasSupervisor === "false") {
+    const studentIds = enrichedStudents.map(s => s.id);
+    
+    if (studentIds.length > 0) {
+      const { data: assignments } = await supabase
+        .from("student_internships")
+        .select("student_id, faculty_supervisor_id")
+        .in("student_id", studentIds)
+        .not("faculty_supervisor_id", "is", null);
+
+      const studentsWithSupervisor = new Set(assignments?.map(a => a.student_id) || []);
+
+      if (hasSupervisor === "true") {
+        enrichedStudents = enrichedStudents.filter(s => studentsWithSupervisor.has(s.id));
+      } else {
+        enrichedStudents = enrichedStudents.filter(s => !studentsWithSupervisor.has(s.id));
+      }
+    }
+  }
+
+  return NextResponse.json<ApiResponse<any>>({
+    success: true,
+    data: {
+      students: enrichedStudents,
+      total: enrichedStudents.length,
+      generated_at: new Date().toISOString(),
+    },
+  });
+}
