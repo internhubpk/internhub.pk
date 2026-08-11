@@ -16,12 +16,14 @@ import {
   AlertCircle,
   Loader2,
   Database,
+  Key,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +68,10 @@ interface FormData {
   website: string;
   domain: string;
   status: "active" | "inactive";
+  // Admin account fields
+  adminEmail: string;
+  adminPassword: string;
+  adminName: string;
 }
 
 const emptyForm: FormData = {
@@ -75,6 +81,9 @@ const emptyForm: FormData = {
   website: "",
   domain: "",
   status: "active",
+  adminEmail: "",
+  adminPassword: "",
+  adminName: "",
 };
 
 export default function SuperAdminUniversitiesPage() {
@@ -171,6 +180,9 @@ export default function SuperAdminUniversitiesPage() {
   function openCreateDialog() {
     setEditingUniversity(null);
     setFormData(emptyForm);
+    // Generate default password
+    const defaultPass = "Admin@" + Math.random().toString(36).substring(2, 8);
+    setFormData(prev => ({ ...prev, adminPassword: defaultPass }));
     setIsDialogOpen(true);
   }
 
@@ -183,6 +195,10 @@ export default function SuperAdminUniversitiesPage() {
       website: university.website || "",
       domain: university.domain || "",
       status: (university.status === "suspended" ? "inactive" : university.status) || "active",
+      // Don't populate admin fields on edit (they're only for new creation)
+      adminEmail: "",
+      adminPassword: "",
+      adminName: "",
     });
     setIsDialogOpen(true);
   }
@@ -191,6 +207,22 @@ export default function SuperAdminUniversitiesPage() {
     if (!formData.name.trim()) {
       setMessage({ type: "error", text: "University name is required" });
       return;
+    }
+
+    // For new universities, validate admin fields
+    if (!editingUniversity) {
+      if (!formData.adminEmail.trim()) {
+        setMessage({ type: "error", text: "Admin email is required" });
+        return;
+      }
+      if (!formData.adminEmail.includes("@")) {
+        setMessage({ type: "error", text: "Please enter a valid email address" });
+        return;
+      }
+      if (!formData.adminPassword || formData.adminPassword.length < 6) {
+        setMessage({ type: "error", text: "Admin password must be at least 6 characters" });
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -267,22 +299,61 @@ export default function SuperAdminUniversitiesPage() {
         
         if (error) throw error;
 
-        // Create a default admin profile for this university
+        // Create admin account for this university
         if (data?.id) {
           try {
-            await supabase.from("profiles").insert({
-              user_id: crypto.randomUUID(), // Will be updated when admin registers
-              university_id: data.id,
-              role: "university_admin",
-              full_name: `${data.name} Admin`,
-            }).ignoreDuplicates();
-          } catch (profileError) {
-            console.log("Could not create default admin profile:", profileError);
-            // Non-critical - continue anyway
-          }
-        }
+            // 1. Create the auth user in Supabase Auth
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+              email: formData.adminEmail.trim(),
+              password: formData.adminPassword,
+              options: {
+                data: {
+                  full_name: formData.adminName.trim() || `${data.name} Admin`,
+                  role: 'university_admin',
+                  university_id: data.id,
+                  university_name: data.name,
+                },
+              },
+            });
 
-        setMessage({ type: "success", text: "University created successfully!" });
+            if (authError) {
+              console.error("Auth error:", authError);
+              // If auth fails, still keep the university but warn about admin
+              setMessage({ 
+                type: "warning", 
+                text: `University created but failed to create admin account: ${authError.message}. You can add the admin later.` 
+              });
+            } else if (authData.user) {
+              // 2. Create the profile record
+              const { error: profileError } = await supabase.from("profiles").insert({
+                user_id: authData.user.id,
+                email: formData.adminEmail.trim(),
+                full_name: formData.adminName.trim() || `${data.name} Admin`,
+                role: "university_admin",
+                university_id: data.id,
+                is_active: true,
+              });
+
+              if (profileError) {
+                console.log("Profile creation warning:", profileError);
+                // Profile might be created by trigger, non-critical
+              }
+
+              setMessage({ 
+                type: "success", 
+                text: `University created! Admin account created for ${formData.adminEmail}. Default password: ${formData.adminPassword}` 
+              });
+            }
+          } catch (adminError) {
+            console.error("Admin creation error:", adminError);
+            setMessage({ 
+              type: "warning", 
+              text: "University created but admin account setup encountered an error. Please check Users page." 
+            });
+          }
+        } else {
+          setMessage({ type: "success", text: "University created successfully!" });
+        }
       }
 
       setIsDialogOpen(false);
@@ -359,10 +430,14 @@ export default function SuperAdminUniversitiesPage() {
         <div className={`flex items-center gap-3 p-4 rounded-lg border ${
           message.type === "success" 
             ? "bg-green-50 border-green-200 text-green-800" 
+            : message.type === "warning"
+            ? "bg-amber-50 border-amber-200 text-amber-800"
             : "bg-red-50 border-red-200 text-red-800"
         }`}>
           {message.type === "success" ? (
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+          ) : message.type === "warning" ? (
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-amber-600" />
           ) : (
             <AlertCircle className="h-5 w-5 flex-shrink-0" />
           )}
@@ -575,77 +650,151 @@ export default function SuperAdminUniversitiesPage() {
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">University Name *</Label>
-              <Input
-                id="name"
-                placeholder="e.g., International Islamic University"
-                value={formData.name}
-                onChange={(e) => handleNameChange(e.target.value)}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="slug">URL Slug *</Label>
-              <Input
-                id="slug"
-                placeholder="e.g., iiui"
-                value={formData.slug}
-                onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Used in subdomain: {formData.slug || 'slug'}.internhub.pk
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Brief description of the university..."
-                rows={3}
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  placeholder="https://..."
-                  value={formData.website}
-                  onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
-                />
-              </div>
+            {/* University Details Section */}
+            <div className="space-y-3">
+              <h4 className="font-semibold text-sm text-primary flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                University Details
+              </h4>
               
               <div className="grid gap-2">
-                <Label htmlFor="domain">Domain</Label>
+                <Label htmlFor="name">University Name *</Label>
                 <Input
-                  id="domain"
-                  placeholder="iiui.edu.pk"
-                  value={formData.domain}
-                  onChange={(e) => setFormData(prev => ({ ...prev, domain: e.target.value }))}
+                  id="name"
+                  placeholder="e.g., International Islamic University"
+                  value={formData.name}
+                  onChange={(e) => handleNameChange(e.target.value)}
                 />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="slug">URL Slug *</Label>
+                <Input
+                  id="slug"
+                  placeholder="e.g., iiui"
+                  value={formData.slug}
+                  onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used in subdomain: {formData.slug || 'slug'}.internhub.pk
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Brief description of the university..."
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="website">Website</Label>
+                  <Input
+                    id="website"
+                    placeholder="https://..."
+                    value={formData.website}
+                    onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="domain">Domain</Label>
+                  <Input
+                    id="domain"
+                    placeholder="iiui.edu.pk"
+                    value={formData.domain}
+                    onChange={(e) => setFormData(prev => ({ ...prev, domain: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Divider */}
+            <Separator />
+
+            {/* Admin Account Section - Only show for new universities */}
+            {!editingUniversity && (
+              <div className="space-y-3 bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  University Admin Account
+                </h4>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mb-3">
+                  An admin account will be created with access to manage this university.
+                </p>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="adminName">Admin Full Name</Label>
+                  <Input
+                    id="adminName"
+                    placeholder="e.g., Ahmed Khan (Optional)"
+                    value={formData.adminName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, adminName: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="adminEmail">Admin Email *</Label>
+                  <Input
+                    id="adminEmail"
+                    type="email"
+                    placeholder="admin@university.edu.pk"
+                    value={formData.adminEmail}
+                    onChange={(e) => setFormData(prev => ({ ...prev, adminEmail: e.target.value }))}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="adminPassword">Default Password *</Label>
+                  <div className="relative">
+                    <Input
+                      id="adminPassword"
+                      type="password"
+                      placeholder="Min 6 characters"
+                      value={formData.adminPassword}
+                      onChange={(e) => setFormData(prev => ({ ...prev, adminPassword: e.target.value }))}
+                      className="pr-20"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs"
+                      onClick={() => {
+                        const newPass = "Admin@" + Math.random().toString(36).substring(2, 8);
+                        setFormData(prev => ({ ...prev, adminPassword: newPass }));
+                      }}
+                    >
+                      🎲 Generate
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Share this password with the university administrator. They can change it after login.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

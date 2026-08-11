@@ -416,10 +416,10 @@ function SidebarContent({
                     <CollapsibleTrigger asChild>
                       <button
                         className={cn(
-                          "flex items-center w-full gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group",
+                          "flex items-center w-full gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group border",
                           childActive && !collapsed
-                            ? "bg-primary/10 text-primary"
-                            : "text-slate-400 hover:text-white hover:bg-white/5",
+                            ? "bg-blue-500/15 text-blue-300 border-blue-400/30"
+                            : "text-slate-400 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
                           collapsed &&
                             !isMobile &&
                             "justify-center px-2"
@@ -432,7 +432,7 @@ function SidebarContent({
                         {(childActive || active) && !collapsed && (
                           <motion.div
                             layoutId="activeIndicator"
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-blue-400 rounded-r-full"
                             transition={{
                               type: "spring",
                               stiffness: 350,
@@ -443,10 +443,10 @@ function SidebarContent({
 
                         <item.icon
                           className={cn(
-                            "h-5 w-5 shrink-0 relative z-10",
+                            "h-5 w-5 shrink-0 relative z-10 transition-colors",
                             childActive && !collapsed
-                              ? "text-primary"
-                              : "group-hover:text-white"
+                              ? "text-blue-300"
+                              : "text-slate-500 group-hover:text-blue-300"
                           )}
                         />
 
@@ -497,16 +497,16 @@ function SidebarContent({
                                   href={child.href}
                                   onClick={onClose}
                                   className={cn(
-                                    "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 relative group",
+                                    "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 relative group border",
                                     childIsActive
-                                      ? "bg-primary text-white shadow-lg shadow-primary/25"
-                                      : "text-slate-500 hover:text-white hover:bg-white/5"
+                                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-blue-400/50"
+                                      : "text-slate-500 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent"
                                   )}
                                 >
                                   {childIsActive && (
                                     <motion.div
                                       layoutId={`activeChild-${item.title}`}
-                                      className="absolute inset-0 bg-primary rounded-md"
+                                      className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-500 rounded-md shadow-lg shadow-blue-500/30"
                                       transition={{
                                         type: "spring",
                                         stiffness: 350,
@@ -516,10 +516,10 @@ function SidebarContent({
                                   )}
                                   <ChildIcon
                                     className={cn(
-                                      "h-4 w-4 shrink-0 relative z-10",
+                                      "h-4 w-4 shrink-0 relative z-10 transition-colors",
                                       childIsActive
-                                        ? "text-white"
-                                        : "group-hover:text-white"
+                                        ? "text-blue-100"
+                                        : "text-slate-500 group-hover:text-blue-300"
                                     )}
                                   />
                                   <span className="relative z-10 truncate">
@@ -571,18 +571,18 @@ function SidebarContent({
                   href={item.href}
                   onClick={onClose}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group",
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group border",
                     active
-                      ? "bg-primary text-white shadow-lg shadow-primary/25"
-                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-blue-400/50"
+                      : "text-slate-400 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
                     collapsed && !isMobile && "justify-center px-2"
                   )}
                 >
-                  {/* Active indicator bar */}
+                  {/* Active indicator bar - Blue left accent */}
                   {active && !collapsed && (
                     <motion.div
                       layoutId="activeIndicator"
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-blue-300 rounded-r-full"
                       transition={{
                         type: "spring",
                         stiffness: 350,
@@ -591,10 +591,11 @@ function SidebarContent({
                     />
                   )}
 
+                  {/* Active background with blue gradient */}
                   {active && (
                     <motion.div
                       layoutId="activeBg"
-                      className="absolute inset-0 bg-primary rounded-lg shadow-lg shadow-primary/25"
+                      className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-500 rounded-lg shadow-lg shadow-blue-500/30"
                       transition={{
                         type: "spring",
                         stiffness: 350,
@@ -605,10 +606,10 @@ function SidebarContent({
 
                   <item.icon
                     className={cn(
-                      "h-5 w-5 shrink-0 relative z-10",
+                      "h-5 w-5 shrink-0 relative z-10 transition-colors",
                       active
-                        ? "text-white"
-                        : "group-hover:text-white"
+                        ? "text-blue-100"
+                        : "text-slate-500 group-hover:text-blue-300"
                     )}
                   />
 
