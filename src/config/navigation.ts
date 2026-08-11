@@ -214,6 +214,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: Award,
     },
     {
+      title: "Notifications",
+      href: "/student/notifications",
+      icon: Inbox,
+    },
+    {
       title: "Profile",
       href: "/student/profile",
       icon: UserCircle,

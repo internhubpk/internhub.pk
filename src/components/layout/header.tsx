@@ -40,7 +40,6 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/utils/supabase/client";
 
 interface HeaderProps {
   className?: string;
@@ -393,36 +392,35 @@ export function Header({ className }: HeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
   
-  // Fetch actual notification count from database
+  // Fetch notification count from API (uses server client with proper auth)
   useEffect(() => {
-    // Skip on server-side
-    if (typeof window === "undefined") return;
+    // Skip on server-side or if no user
+    if (typeof window === "undefined" || !user?.id) return;
     
     async function fetchNotificationCount() {
       try {
-        if (!user?.id) return;
+        const response = await fetch("/api/notifications/count");
         
-        const supabase = createClient();
-        if (!supabase) return;
-
-        const { count, error } = await supabase
-          .from("notifications")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("is_read", false);
+        if (!response.ok) {
+          console.debug("Notification count API returned:", response.status);
+          return; // Keep current count on error
+        }
         
-        // Only update if successful - 403/permission errors are silently ignored
-        if (!error && count !== null) {
-          setNotificationCount(count);
+        const data = await response.json();
+        if (typeof data.count === "number") {
+          setNotificationCount(data.count);
         }
       } catch (error) {
-        // Silently fail - notification count is not critical
-        // This handles RLS permission issues gracefully
-        console.debug("Notifications unavailable:", error instanceof Error ? error.message : "unknown error");
+        // Network errors shouldn't break the UI - badge will show 0 or cached value
+        console.debug("Failed to fetch notification count:", error instanceof Error ? error.message : error);
       }
     }
     
     fetchNotificationCount();
+    
+    // Refresh count every 60 seconds for real-time feel
+    const interval = setInterval(fetchNotificationCount, 60000);
+    return () => clearInterval(interval);
   }, [user?.id]);
   const [breadcrumbs, setBreadcrumbs] = useState<
     { label: string; href?: string }[]
