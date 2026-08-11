@@ -336,7 +336,7 @@ export default function RegisterPage() {
 
           <p className="text-xs text-muted-foreground/70 leading-relaxed px-4">
             Are you a university administrator?{" "}
-            <Link href="/contact" className="hover:text-foreground underline font-medium">
+            <Link href="/support" className="hover:text-foreground underline font-medium">
               Contact us
             </Link>{" "}
             to set up your institution.

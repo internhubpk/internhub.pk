@@ -750,20 +750,44 @@ BEGIN
 END;
 $$;
 
--- Auto-create a profile row whenever a new auth user signs up
+-- Auto-create a profile row whenever a new auth user signs up.
+--
+-- IMPORTANT: the app's /register page sends role: "pending_assignment"
+-- in the signup metadata (see src/app/(auth)/register/page.tsx) -- a
+-- placeholder that is NOT one of the public.user_role enum values
+-- (real roles are assigned later by an admin). Casting an unrecognized
+-- string straight to the enum raises "invalid input value for enum
+-- user_role", which aborts the whole auth.users INSERT and surfaces to
+-- the client as a 500 "Database error saving new user". This version
+-- treats any unrecognized/placeholder role as "no role yet" (defaults
+-- to 'student' + status 'pending_setup') instead of raising, and wraps
+-- the whole thing in an exception handler so a profile-provisioning
+-- hiccup can never block account creation.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  resolved_role public.user_role;
 BEGIN
+  BEGIN
+    resolved_role := NULLIF(NEW.raw_user_meta_data->>'role', '')::public.user_role;
+  EXCEPTION WHEN invalid_text_representation THEN
+    resolved_role := NULL; -- unrecognized/placeholder role (e.g. "pending_assignment")
+  END;
+
   INSERT INTO public.profiles (user_id, role, email, full_name, status, is_active)
   VALUES (
     NEW.id,
-    COALESCE((NEW.raw_user_meta_data->>'role')::public.user_role, 'student'),
+    COALESCE(resolved_role, 'student'),
     NEW.email,
-    NEW.raw_user_meta_data->>'full_name',
+    NULLIF(NEW.raw_user_meta_data->>'full_name', ''),
     'pending_setup',
     true
   )
   ON CONFLICT (user_id) DO NOTHING;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'handle_new_auth_user failed for user %: %', NEW.id, SQLERRM;
   RETURN NEW;
 END;
 $$;
