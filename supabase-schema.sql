@@ -237,7 +237,7 @@ CREATE INDEX idx_supervisors_user ON public.supervisors(user_id);
 CREATE INDEX idx_supervisors_type ON public.supervisors(type);
 CREATE INDEX idx_supervisors_department ON public.supervisors(department_id);
 CREATE INDEX idx_supervisors_company ON public.supervisors(company_id);
-CREATE INDEX idx_supervisors_programs USING gin(public.supervisors.program_ids);
+CREATE INDEX idx_supervisors_programs ON public.supervisors USING gin(program_ids);
 
 -- ============================================================================
 -- PHASE 3: INTERNSHIP-RELATED TABLES
@@ -274,7 +274,7 @@ CREATE TABLE IF NOT EXISTS public.internships (
 
 CREATE INDEX idx_internships_company ON public.internships(company_id);
 CREATE INDEX idx_internships_status ON public.internships(status);
-CREATE INDEX idx_internships_departments USING gin(public.internships.department_ids);
+CREATE INDEX idx_internships_departments ON public.internships USING gin(department_ids);
 
 -- Internship Applications
 CREATE TABLE IF NOT EXISTS public.internship_applications (
