@@ -8,6 +8,9 @@
  * 4. Redirect unauthorized users to appropriate pages
  * 
  * This runs on EVERY request before it reaches the page.
+ * 
+ * CRITICAL: Does NOT depend on profiles table for basic routing.
+ * Uses user_metadata.role which is available immediately after auth.
  */
 
 import { createServerClient } from "@supabase/ssr";
@@ -101,6 +104,26 @@ function isRoleAllowed(role: UserRole | null, pathname: string): boolean {
 function getDashboardPath(role: UserRole | null): string {
   if (!role) return "/dashboard";
   return ROLE_DASHBOARDS[role] || "/dashboard";
+}
+
+/**
+ * Extract role from user object WITHOUT database call
+ * Checks user_metadata first (set during registration), then app_metadata
+ */
+function getRoleFromUser(user: any): UserRole | null {
+  // Priority 1: user_metadata (set when creating user via admin API or metadata)
+  const metaRole = user?.user_metadata?.role;
+  if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
+    return metaRole as UserRole;
+  }
+  
+  // Priority 2: app_metadata (set by triggers or admin operations)
+  const appRole = user?.app_metadata?.role;
+  if (appRole && ROLE_DASHBOARDS[appRole as UserRole]) {
+    return appRole as UserRole;
+  }
+  
+  return null;
 }
 
 /** Extract subdomain from hostname */
@@ -225,49 +248,71 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // User is authenticated - get their profile/role
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role, university_id")
-      .eq("user_id", user.id)
-      .single();
+    // ==========================================
+    // GET ROLE FROM USER METADATA (NO DB CALL!)
+    // ==========================================
+    // This is the KEY FIX: Get role from JWT metadata, not from profiles table
+    // This works immediately after auth and doesn't trigger RLS issues
+    let userRole = getRoleFromUser(user);
 
-    // Handle profile fetch errors - redirect to student dashboard as safe default
-    if (profileError) {
-      console.error("Middleware Profile Error:", profileError.message, "for user:", user.id);
-      // Don't redirect to /dashboard here - that causes infinite loops!
-      // Instead, redirect to a concrete page that won't loop
-      return NextResponse.redirect(new URL("/student", origin));
+    // ONLY try profiles table if we don't have role in metadata
+    // AND we need it for route authorization
+    if (!userRole) {
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role, university_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (!profileError && profile?.role) {
+          userRole = profile.role as UserRole;
+          // Set university ID if we got it
+          if (profile.university_id) {
+            supabaseResponse.headers.set("x-user-university-id", profile.university_id);
+          }
+        }
+        // If profile fetch fails, we continue WITHOUT role - will use fallback below
+        // This prevents 403 errors from causing redirect loops!
+      } catch (profileErr) {
+        // Profiles table error - continue without profile data
+        console.log("Middleware: Profile fetch failed, continuing without role:", 
+          profileErr instanceof Error ? profileErr.message : profileErr);
+      }
     }
-
-    const userRole = profile?.role as UserRole | null;
-    const universityId = profile?.university_id as string | null;
 
     // ==========================================
     // ROLE-BASED ROUTE AUTHORIZATION
     // ==========================================
-    if (!isRoleAllowed(userRole, pathname)) {
-      if (userRole) {
-        const dashboardPath = getDashboardPath(userRole);
-        
-        if (pathname !== dashboardPath) {
-          const forbiddenUrl = new URL(dashboardPath, origin);
-          forbiddenUrl.searchParams.set("forbidden", "true");
-          forbiddenUrl.searchParams.set("from", pathname);
-          return NextResponse.redirect(forbiddenUrl);
-        }
-      }
+    
+    // If we have a role and it's not allowed for this route, redirect to their dashboard
+    if (userRole && !isRoleAllowed(userRole, pathname)) {
+      const dashboardPath = getDashboardPath(userRole);
       
-      // Safe fallback - don't use /dashboard to avoid loops
-      return NextResponse.redirect(new URL("/student", origin));
+      if (pathname !== dashboardPath) {
+        const forbiddenUrl = new URL(dashboardPath, origin);
+        forbiddenUrl.searchParams.set("forbidden", "true");
+        forbiddenUrl.searchParams.set("from", pathname);
+        return NextResponse.redirect(forbiddenUrl);
+      }
+    }
+    
+    // If we DON'T have a role at all (no metadata, no profile access), 
+    // still allow access to default student dashboard rather than looping
+    // The client-side code can handle showing proper UI based on what it can fetch
+    if (!userRole) {
+      // Only redirect if they're not already going to a safe default page
+      const safePaths = ["/student", "/dashboard", "/onboarding"];
+      if (!safePaths.some(p => pathname === p || pathname.startsWith(p + "/"))) {
+        return NextResponse.redirect(new URL("/student", origin));
+      }
+      // Set a default role for header propagation
+      userRole = "student";
     }
 
     // ==========================================
     // TENANT CONTEXT PROPAGATION
     // ==========================================
-    if (universityId) {
-      supabaseResponse.headers.set("x-user-university-id", universityId);
-    }
     if (userRole) {
       supabaseResponse.headers.set("x-user-role", userRole);
     }
