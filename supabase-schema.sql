@@ -1,8 +1,8 @@
 -- ============================================================================
--- INTERNHUB.PK - COMPLETE DATABASE SCHEMA
+-- INTERNHUB.PK - COMPLETE DATABASE SCHEMA (CORRECTED)
 -- ============================================================================
--- This script sets up the complete database schema for InternHub.pk
--- Run this in your Supabase SQL Editor before using the application
+-- Run this ENTIRE script in Supabase SQL Editor
+-- Copy ALL content from line 1 to end and paste into SQL Editor
 -- ============================================================================
 
 -- ============================================================================
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
   logo_url TEXT,
   industry TEXT,
   website TEXT,
-  size TEXT, -- small, medium, large, enterprise
+  size TEXT,
   description TEXT,
   address TEXT,
   city TEXT,
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
 CREATE INDEX idx_companies_slug ON public.companies(slug);
 CREATE INDEX idx_companies_active ON public.companies(is_active);
 
--- Profiles table (extends Supabase auth.users)
+-- Profiles table (extends Supabase auth.users) - CRITICAL FOR LOGIN
 CREATE TABLE IF NOT EXISTS public.profiles (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
@@ -237,6 +237,7 @@ CREATE INDEX idx_supervisors_user ON public.supervisors(user_id);
 CREATE INDEX idx_supervisors_type ON public.supervisors(type);
 CREATE INDEX idx_supervisors_department ON public.supervisors(department_id);
 CREATE INDEX idx_supervisors_company ON public.supervisors(company_id);
+-- CORRECTED GIN INDEX SYNTAX
 CREATE INDEX idx_supervisors_programs ON public.supervisors USING gin(program_ids);
 
 -- ============================================================================
@@ -274,6 +275,7 @@ CREATE TABLE IF NOT EXISTS public.internships (
 
 CREATE INDEX idx_internships_company ON public.internships(company_id);
 CREATE INDEX idx_internships_status ON public.internships(status);
+-- CORRECTED GIN INDEX SYNTAX
 CREATE INDEX idx_internships_departments ON public.internships USING gin(department_ids);
 
 -- Internship Applications
@@ -322,7 +324,7 @@ CREATE INDEX idx_student_internships_supervisor ON public.student_internships(si
 CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   title TEXT NOT NULL,
-  description TEXT, -- Markdown supported
+  description TEXT,
   creator_id UUID NOT NULL REFERENCES public.profiles(user_id),
   program_id UUID REFERENCES public.programs(id),
   due_date DATE,
@@ -360,8 +362,8 @@ CREATE TABLE IF NOT EXISTS public.task_submissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   task_assignment_id UUID NOT NULL REFERENCES public.task_assignments(id) ON DELETE CASCADE,
   student_id UUID NOT NULL REFERENCES public.students(id),
-  notes TEXT, -- Markdown supported
-  submission_url TEXT, -- GitHub repo, demo link
+  notes TEXT,
+  submission_url TEXT,
   attachment_url TEXT,
   submitted_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -383,26 +385,17 @@ CREATE TABLE IF NOT EXISTS public.evaluations (
   evaluator_id UUID NOT NULL REFERENCES auth.users(id),
   evaluator_role public.user_role NOT NULL,
   status public.evaluation_status DEFAULT 'pending',
-  
-  -- Scoring fields (for structured evaluations)
-  scores JSONB DEFAULT '{}', -- { "criteria": score }
+  scores JSONB DEFAULT '{}',
   overall_rating INTEGER CHECK (overall_rating >= 0 AND overall_rating <= 100),
-  
-  -- Comments (Markdown supported)
   comments TEXT,
   feedback_for_student TEXT,
   strengths TEXT,
   areas_for_improvement TEXT,
   recommendations TEXT,
   decision TEXT CHECK (decision IN ('satisfactory', 'needs_improvement', 'unsatisfactory')),
-  
-  -- Signature
-  signature_image TEXT, -- Base64 encoded
-  
-  -- Period info
+  signature_image TEXT,
   evaluation_period_start DATE,
   evaluation_period_end DATE,
-  
   submitted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -506,7 +499,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   is_read BOOLEAN DEFAULT false,
   action_url TEXT,
   metadata JSONB DEFAULT '{}',
-  sender_id UUID REFERENCES auth.users(id), -- Null for system notifications
+  sender_id UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -518,7 +511,7 @@ CREATE INDEX idx_notifications_created ON public.notifications(created_at DESC);
 CREATE TABLE IF NOT EXISTS public.communications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  receiver_id UUID REFERENCES auth.users(id) ON DELETE CASCADE, -- Null for announcements
+  receiver_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   subject TEXT NOT NULL,
   content TEXT NOT NULL,
   type public.message_type DEFAULT 'direct',
@@ -587,7 +580,7 @@ CREATE TABLE IF NOT EXISTS public.platform_settings (
 );
 
 -- ============================================================================
--- PHASE 7: AUTH TRIGGER - Handle new user signup
+-- PHASE 7: AUTH TRIGGER - Handle new user signup (CRITICAL FOR LOGIN)
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
@@ -598,7 +591,7 @@ BEGIN
   BEGIN
     resolved_role := NULLIF(NEW.raw_user_meta_data->>'role', '')::public.user_role;
   EXCEPTION WHEN invalid_text_representation THEN
-    resolved_role := NULL; -- unrecognized/placeholder role
+    resolved_role := NULL;
   END;
 
   INSERT INTO public.profiles (user_id, role, email, full_name, status, is_active)
@@ -629,31 +622,26 @@ CREATE TRIGGER on_auth_user_created
 -- PHASE 8: HELPER FUNCTIONS FOR RLS POLICIES
 -- ============================================================================
 
--- Get current user's university ID
 CREATE OR REPLACE FUNCTION public.get_user_university_id()
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT university_id FROM public.profiles WHERE user_id = auth.uid();
 $$;
 
--- Get current user's role
 CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS public.user_role LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT role FROM public.profiles WHERE user_id = auth.uid();
 $$;
 
--- Get current user's department ID
 CREATE OR REPLACE FUNCTION public.get_user_department_id()
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT department_id FROM public.profiles WHERE user_id = auth.uid();
 $$;
 
--- Get current user's company ID
 CREATE OR REPLACE FUNCTION public.get_user_company_id()
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT company_id FROM public.profiles WHERE user_id = auth.uid();
 $$;
 
--- Role check helper
 CREATE OR REPLACE FUNCTION public.current_role_is(p_role public.user_role)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT public.get_user_role() = p_role;
@@ -780,7 +768,7 @@ CREATE POLICY "profiles_readable" ON public.profiles
   FOR SELECT USING (true);
 
 -- ============================================================================
--- DONE!
+-- DONE! Verification queries:
 -- ============================================================================
--- Verify setup:
 -- SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+-- SELECT indexname FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname;
