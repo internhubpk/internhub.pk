@@ -73,7 +73,8 @@ DROP TYPE IF EXISTS notification_priority CASCADE;
 
 CREATE TYPE user_role_type AS ENUM (
   'super_admin', 'university_admin', 'department_coordinator', 
-  'faculty_supervisor', 'student', 'company_hr', 'site_supervisor', 'external_evaluator'
+  'faculty_supervisor', 'student', 'company_hr', 'site_supervisor', 
+  'external_evaluator', 'pending_assignment'
 );
 
 CREATE TYPE internship_status_type AS ENUM ('draft', 'open', 'active', 'completed', 'cancelled', 'expired');
@@ -1228,6 +1229,64 @@ CREATE TRIGGER update_weekly_logs_updated_at BEFORE UPDATE ON weekly_logs
 
 CREATE TRIGGER update_notifications_updated_at BEFORE UPDATE ON notifications
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ============================================================================
+-- STEP 25.5: AUTO-CREATE PROFILE ON USER SIGNUP (CRITICAL!)
+-- ============================================================================
+
+-- Function to automatically create profile when user signs up
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_role TEXT;
+BEGIN
+  v_role := COALESCE(
+    NEW.raw_user_meta_data->>'role',
+    NEW.raw_user_meta_data->>'user_role',
+    'pending_assignment'
+  );
+  
+  INSERT INTO profiles (
+    user_id, 
+    email, 
+    full_name, 
+    first_name,
+    last_name,
+    role,
+    is_active
+  ) VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
+    COALESCE(NEW.raw_user_meta_data->>'first_name'),
+    COALESCE(NEW.raw_user_meta_data->>'last_name'),
+    v_role::user_role_type,
+    true
+  ) ON CONFLICT (user_id) DO NOTHING;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger on auth.users table
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Fix existing users without profiles
+INSERT INTO profiles (user_id, email, full_name, role, is_active)
+SELECT 
+  id, 
+  email, 
+  COALESCE(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', email),
+  COALESCE(raw_user_meta_data->>'role', 'student')::user_role_type,
+  true
+FROM auth.users au
+WHERE NOT EXISTS (
+  SELECT 1 FROM profiles p WHERE p.user_id = au.id
+);
 
 
 -- ============================================================================
