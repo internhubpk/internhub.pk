@@ -47,7 +47,7 @@ import {
   MapPin,
   ArrowRightLeft,
   Loader2,
-  Timeline,
+  GitBranch,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
@@ -719,7 +719,7 @@ export default function StudentApplicationsPage() {
                 {/* Timeline */}
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
-                    <Timeline className="h-4 w-4" />
+                    <GitBranch className="h-4 w-4" />
                     Application Timeline
                   </h3>
                   

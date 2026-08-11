@@ -201,7 +201,7 @@ export async function GET(request: Request) {
       const totalWeeks = weeklyLogs?.length || 0;
       const totalHours = weeklyLogs?.reduce((sum, log) => sum + (log.hours_worked || 0), 0) || 0;
       const avgScore = allEvaluations?.length > 0 
-        ? allEvaluations.reduce((sum, eval) => sum + ((eval.total_score || 0) / (eval.max_score || 1) * 100), 0) / allEvaluations.length
+        ? allEvaluations.reduce((sum, evaluation) => sum + ((evaluation.total_score || 0) / (evaluation.max_score || 1) * 100), 0) / allEvaluations.length
         : 0;
 
       // Determine final grade
