@@ -84,7 +84,8 @@ export async function generateMetadata(): Promise<Metadata> {
         { url: "/apple-touch-icon.png", sizes: "180x180" },
       ],
     },
-    manifest: "/manifest.json",
+    // Note: manifest.json disabled to prevent Vercel SSO CORS issues
+    // manifest: "/manifest.json",
     openGraph: {
       type: "website",
       locale: "en_US",
@@ -138,8 +139,28 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Detect tenant server-side for initial render
-  const tenantConfig: TenantConfig = await getServerTenantConfig();
+  // Get tenant config with fallback for when Supabase/DB is not available
+  let tenantConfig: TenantConfig;
+  try {
+    tenantConfig = await getServerTenantConfig();
+  } catch (error) {
+    // Fallback to default config if tenant detection fails
+    console.log("Using fallback tenant config:", error instanceof Error ? error.message : error);
+    tenantConfig = {
+      id: "default",
+      name: "InternHub",
+      slug: "main",
+      logo: "/favicon.ico",
+      favicon: "/favicon.ico",
+      primaryColor: "#2563eb",
+      secondaryColor: "#1e40af",
+      domain: "internhub.pk",
+      branding: {
+        tagline: "Internship Management Platform",
+        description: "InternHub is a comprehensive platform for managing university internships.",
+      },
+    };
+  }
   
   // Generate CSS variables for theming
   const tenantThemeVars = `

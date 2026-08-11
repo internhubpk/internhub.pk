@@ -22,8 +22,14 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Get user's profile with role
-  const profile = await getCurrentProfile();
+  // Get user's profile with role - with error handling
+  let profile = null;
+  try {
+    profile = await getCurrentProfile();
+  } catch (error) {
+    console.log("Profile fetch failed in dashboard:", error instanceof Error ? error.message : error);
+    // Continue without profile - will use default path
+  }
   
   // Determine the correct dashboard path
   let dashboardPath: string;

@@ -63,6 +63,15 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
       
+      // Check if Supabase client is available
+      if (!supabase) {
+        toast.error("Configuration error", {
+          description: "Supabase client not initialized. Please check environment variables.",
+        });
+        setIsLoading(false);
+        return;
+      }
+      
       // Determine if user entered email or username
       const isEmail = values.identifier.includes("@");
       let email = values.identifier;
@@ -82,6 +91,7 @@ export default function LoginPage() {
             toast.error("Username not found", {
               description: "No account found with this username. Please check your credentials.",
             });
+            setIsLoading(false);
             return;
           }
 
@@ -89,8 +99,9 @@ export default function LoginPage() {
         } catch (error) {
           console.error("Username lookup error:", error);
           toast.error("Lookup failed", {
-            description: "Unable to verify username. Please try again.",
+            description: "Unable to verify username. Please try again or use email.",
           });
+          setIsLoading(false);
           return;
         }
       }
@@ -115,6 +126,7 @@ export default function LoginPage() {
             description: error.message,
           });
         }
+        setIsLoading(false);
         return;
       }
 
@@ -122,25 +134,39 @@ export default function LoginPage() {
         description: "You have been successfully logged in.",
       });
 
-      // Fetch user profile to determine redirect path
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("user_id", data.user.id)
-        .single();
+      // Fetch user profile to determine redirect path - with fallback
+      let redirectPath = "/dashboard";
+      
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("user_id", data.user.id)
+          .single();
 
-      const rolePaths: Record<string, string> = {
-        super_admin: "/super-admin",
-        university_admin: "/university-admin",
-        department_coordinator: "/department-coordinator",
-        faculty_supervisor: "/faculty-supervisor",
-        student: "/student",
-        company_hr: "/company-hr",
-        site_supervisor: "/site-supervisor",
-        external_evaluator: "/external-evaluator",
-      };
+        const rolePaths: Record<string, string> = {
+          super_admin: "/super-admin",
+          university_admin: "/university-admin",
+          department_coordinator: "/department-coordinator",
+          faculty_supervisor: "/faculty-supervisor",
+          student: "/student",
+          company_hr: "/company-hr",
+          site_supervisor: "/site-supervisor",
+          external_evaluator: "/external-evaluator",
+        };
 
-      const redirectPath = profile?.role ? rolePaths[profile.role] : "/dashboard";
+        if (!profileError && profile?.role && rolePaths[profile.role]) {
+          redirectPath = rolePaths[profile.role];
+        }
+        
+        // Log profile fetch for debugging (remove in production)
+        if (profileError) {
+          console.log("Profile fetch note:", profileError.message);
+        }
+      } catch (profileErr) {
+        // If profile fetch fails, still redirect to /dashboard which will handle routing
+        console.log("Profile fetch failed, using default redirect:", profileErr instanceof Error ? profileErr.message : profileErr);
+      }
 
       setTimeout(() => {
         router.push(redirectPath);
