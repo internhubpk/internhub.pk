@@ -332,7 +332,7 @@ export default function SuperAdminUniversitiesPage() {
           .single());
 
         // If error about unknown column, try minimal insert (pre-migration schema)
-        if (error && (error.code === '42703' || error.message?.includes('column')?.includes('does not exist'))) {
+        if (error && (error.code === '42703' || error.message?.includes('column "') || error.message?.includes('does not exist'))) {
           console.log("Extended columns not found, trying minimal insert...");
           ({ data, error } = await supabase
             .from("universities")
