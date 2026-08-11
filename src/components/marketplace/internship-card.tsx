@@ -67,9 +67,9 @@ export function InternshipCard({
     description,
     created_at,
     status,
-    applicant_count = Math.floor(Math.random() * 50) + 5,
-    rating = (Math.random() * 2 + 3).toFixed(1),
-    review_count = Math.floor(Math.random() * 30) + 1,
+    applicant_count = 0,
+    rating = null,
+    review_count = 0,
   } = internship;
 
   const formatDate = (dateString: string) => {

@@ -390,7 +390,42 @@ export function Header({ className }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [notificationCount] = useState(3); // Mock notification count
+  const [notificationCount, setNotificationCount] = useState(0);
+  
+  // Fetch actual notification count from database
+  useEffect(() => {
+    async function fetchNotificationCount() {
+      try {
+        if (!user) return;
+        
+        const supabase = await import("@supabase/supabase-js").then(mod => {
+          // Dynamic import to avoid SSR issues
+          if (typeof window !== 'undefined') {
+            const { createClient } = require("@/utils/supabase/client");
+            return createClient();
+          }
+          return null;
+        });
+        
+        if (supabase) {
+          const { count, error } = await supabase
+            .from("notifications")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_read", false);
+          
+          if (!error && count !== null) {
+            setNotificationCount(count);
+          }
+        }
+      } catch (error) {
+        // Silently fail - notification count is not critical
+        console.log("Could not fetch notification count:", error instanceof Error ? error.message : error);
+      }
+    }
+    
+    fetchNotificationCount();
+  }, [user]);
   const [breadcrumbs, setBreadcrumbs] = useState<
     { label: string; href?: string }[]
   >([]);
