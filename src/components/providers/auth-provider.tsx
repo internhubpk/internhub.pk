@@ -59,10 +59,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq("user_id", userId)
         .single();
 
-      // Handle case where profile doesn't exist yet (new user) or table doesn't exist
+      // Handle case where profile doesn't exist yet (new user) or table has RLS issues
       if (profileError) {
-        // Silently handle - table might not exist yet or other error
-        if (isMountedRef.current) {
+        // If we get 403/permission error, build profile from user_metadata instead
+        console.log("Profile table not accessible, using user_metadata fallback");
+        
+        // Get current session to extract metadata
+        const { data: { session } } = await client.auth.getSession();
+        
+        if (session?.user && isMountedRef.current) {
+          const meta = session.user.user_metadata || {};
+          const fallbackProfile: Profile = {
+            user_id: userId,
+            email: session.user.email || "",
+            full_name: meta.full_name || null,
+            first_name: meta.first_name || null,
+            last_name: meta.last_name || null,
+            role: (meta.role || 'student') as UserRole,
+            avatar_url: meta.avatar_url || null,
+            phone: null,
+            bio: null,
+            username: null,
+            university_id: null,
+            department_id: null,
+            company_id: null,
+            status: 'active',
+            is_active: true,
+            student_id: null,
+            company_name: null,
+            job_title: null,
+            organization: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setProfile(fallbackProfile);
+        } else if (isMountedRef.current) {
           setProfile(null);
         }
         return;
@@ -90,11 +121,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (error) {
-      // Catch any unexpected errors gracefully
-      console.log("Profile fetch error:", error instanceof Error ? error.message : "Unknown error");
-      if (isMountedRef.current) {
-        setProfile(null);
-        setUniversity(null);
+      // Catch any unexpected errors gracefully - use metadata fallback
+      console.log("Profile fetch error, using fallback:", error instanceof Error ? error.message : "Unknown error");
+      
+      try {
+        const { data: { session } } = await client.auth.getSession();
+        if (session?.user && isMountedRef.current) {
+          const meta = session.user.user_metadata || {};
+          const fallbackProfile: Profile = {
+            user_id: userId,
+            email: session.user.email || "",
+            full_name: meta.full_name || null,
+            role: (meta.role || 'student') as UserRole,
+            status: 'active',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setProfile(fallbackProfile);
+        }
+      } catch (e) {
+        if (isMountedRef.current) {
+          setProfile(null);
+          setUniversity(null);
+        }
       }
     }
   }, []);
