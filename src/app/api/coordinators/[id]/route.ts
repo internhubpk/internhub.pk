@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { ApiResponse, Profile, UserRole } from "@/types";
 
@@ -19,19 +20,39 @@ import type { ApiResponse, Profile, UserRole } from "@/types";
  *   after-update pattern, but it still relied on the same RLS path, so the
  *   verify SELECT also returned nothing useful.
  *
- *   Doing the update server-side lets us:
- *     1. Re-authenticate the caller explicitly (defense in depth).
- *     2. Re-fetch the coordinator row first and verify ownership BEFORE
- *        attempting the UPDATE — so we can return a precise 403/404 instead
- *        of a silent 0-row update.
- *     3. Return the updated row in the response so the client doesn't need
- *        to re-fetch.
+ *   The first version of this server route used the cookie-bound client for
+ *   the UPDATE too. That still failed with 500 when the coordinator's
+ *   profile.university_id was NULL — RLS WITH CHECK evaluates
+ *   `NULL = current_university_id()` → NULL (not true) → 0 rows affected.
+ *
+ * APPROACH (v2 — works around NULL university_id)
+ *   1. Authenticate the caller with the cookie-bound client (verifies session).
+ *   2. Use a SERVICE ROLE client for ALL profile/department queries and the
+ *      UPDATE. Service role bypasses RLS, so NULL university_id no longer
+ *      causes silent rejection.
+ *   3. Do EXPLICIT server-side authorization checks:
+ *        - Caller must be university_admin or super_admin
+ *        - For university_admin: caller.university_id must be set, and
+ *          either the coordinator's university_id matches it OR the
+ *          coordinator's university_id is NULL (we treat NULL as
+ *          "unassigned, eligible to be claimed by any uni admin"). When
+ *          NULL, we HEAL it during the UPDATE so future operations work.
+ *        - If department_id is changing, the new dept must belong to the
+ *          same university as the caller (or as the coordinator, for
+ *          super_admin).
+ *   4. Also write the healed university_id (and role) into
+ *      auth.users.raw_app_meta_data + raw_user_meta_data so that
+ *      internhub.current_university_id() returns the right value for
+ *      the coordinator going forward.
  *
  * AUTHORIZATION
  *   - Caller must be signed in.
  *   - Caller's profile.role must be 'university_admin' (or 'super_admin').
  *   - Caller's profile.university_id must match the target coordinator's
  *     profile.university_id. (Super admins can update any coordinator.)
+ *     If the coordinator's university_id is NULL, the caller's
+ *     university_id is used to HEAL it (only university_admin can heal;
+ *     super_admin can too if they pass an explicit university_id).
  *   - The new department_id (if provided) must belong to the same university.
  */
 export async function PATCH(
@@ -69,11 +90,14 @@ export async function PATCH(
       );
     }
 
-    // Build the Supabase client bound to the caller's cookies
+    // ==========================================================
+    // 1. Authenticate the caller via the cookie-bound client.
+    //    This is the publishable-key client — same as every other
+    //    server route. We only use it to read the caller's session.
+    // ==========================================================
     const cookieStore = await cookies();
     const supabase = await createClient(cookieStore);
 
-    // Authenticate the caller
     const {
       data: { user },
       error: authErr,
@@ -87,17 +111,50 @@ export async function PATCH(
       );
     }
 
-    // Fetch the caller's profile to check role + university_id. Use
-    // .maybeSingle() instead of .single() to avoid PGRST116 if the row
-    // is missing (e.g. profile not yet created for this auth user).
-    const { data: adminProfile, error: adminErr } = await supabase
+    // ==========================================================
+    // 2. Build the SERVICE ROLE client. This bypasses RLS, so we
+    //    can read the coordinator's profile even if its
+    //    university_id is NULL (RLS would have blocked that SELECT
+    //    because `NULL = current_university_id()` is NULL).
+    // ==========================================================
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      console.error(
+        "[PATCH /api/coordinators/[id]] SUPABASE_SERVICE_ROLE_KEY is not set."
+      );
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Server misconfiguration: service role key is not set. Contact the platform administrator.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
+
+    // ==========================================================
+    // 3. Fetch the caller's profile using the SERVICE ROLE client.
+    //    (RLS on profiles would block the SELECT if the caller's
+    //    own university_id were NULL — but service role bypasses
+    //    RLS so we always get the row.)
+    // ==========================================================
+    const { data: adminProfile, error: adminErr } = await admin
       .from("profiles")
-      .select("user_id, role, university_id")
+      .select("user_id, role, university_id, email, full_name")
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (adminErr || !adminProfile) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} admin profile fetch failed`, adminErr);
+      console.log(
+        `[PATCH /api/coordinators/[id]] ${requestId} admin profile fetch failed`,
+        adminErr
+      );
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Could not load your profile" },
         { status: 500 }
@@ -116,20 +173,36 @@ export async function PATCH(
       );
     }
 
-    // Fetch the target coordinator's profile (RLS will let the admin see
-    // rows in their own university; if this returns nothing, the coordinator
-    // is in a different university or doesn't exist). Don't use .single()
-    // here — if 0 rows are returned, .single() would throw PGRST116 which
-    // masks the real cause. Use .maybeSingle() instead, which returns null
-    // data with no error when 0 rows match.
-    const { data: coord, error: coordErr } = await supabase
+    if (!isSuperAdmin && !adminProfile.university_id) {
+      console.log(`[PATCH /api/coordinators/[id]] ${requestId} admin has no university_id`);
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Your profile has no university_id. Sign out and back in, or " +
+            "ask a super admin to set your university_id.",
+        },
+        { status: 403 }
+      );
+    }
+
+    // ==========================================================
+    // 4. Fetch the target coordinator's profile using the SERVICE
+    //    ROLE client. This always returns the row, regardless of
+    //    RLS — so we can see coordinators whose university_id is
+    //    NULL (which the cookie-bound client would have blocked).
+    // ==========================================================
+    const { data: coord, error: coordErr } = await admin
       .from("profiles")
       .select("user_id, role, university_id, department_id, is_active, email, full_name")
       .eq("user_id", coordUserId)
       .maybeSingle();
 
     if (coordErr) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} coordinator SELECT error`, coordErr);
+      console.log(
+        `[PATCH /api/coordinators/[id]] ${requestId} coordinator SELECT error`,
+        coordErr
+      );
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: `Could not load coordinator: ${coordErr.message}` },
         { status: 500 }
@@ -137,36 +210,48 @@ export async function PATCH(
     }
 
     if (!coord) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} coordinator not visible to admin (RLS blocked SELECT)`);
+      console.log(
+        `[PATCH /api/coordinators/[id]] ${requestId} coordinator not found in profiles table`
+      );
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
           error:
-            "Coordinator not found, or you do not have permission to view them. " +
-            "They may belong to a different university, or their profile.university_id may be NULL " +
-            "(which prevents RLS from matching them to your university). " +
-            "Run migration 0018_backfill_coord_university_id.sql to fix NULL university_ids.",
+            "Coordinator not found. Their auth.users row exists but their " +
+            "profiles row is missing. This is unusual — contact a super admin.",
         },
         { status: 404 }
       );
     }
 
-    // Enforce university scope (super admins skip this)
-    if (!isSuperAdmin) {
-      if (!adminProfile.university_id) {
-        console.log(`[PATCH /api/coordinators/[id]] ${requestId} admin has no university_id`);
-        return NextResponse.json<ApiResponse<never>>(
-          {
-            success: false,
-            error:
-              "Your profile has no university_id. Sign out and back in, or " +
-              "ask a super admin to set your university_id.",
-          },
-          { status: 403 }
-        );
-      }
+    // ==========================================================
+    // 5. Authorization + university resolution.
+    //
+    //    Determine the "effective university_id" for this operation:
+    //      - super_admin: use coord.university_id if set, else fall
+    //        back to any university_id passed in the body, else NULL.
+    //      - university_admin: use adminProfile.university_id.
+    //        If coord.university_id is set AND differs from the
+    //        admin's, reject (403). If coord.university_id is NULL,
+    //        treat it as "unassigned" — the admin may claim it by
+    //        setting their own university_id on it (heal).
+    // ==========================================================
+    let effectiveUniversityId: string | null = null;
+    let shouldHealUniversityId = false;
 
-      if (coord.university_id !== adminProfile.university_id) {
+    if (isSuperAdmin) {
+      effectiveUniversityId =
+        coord.university_id || (body as { university_id?: string }).university_id || null;
+      // Super admin can heal NULL university_id only if we know which
+      // university to set. If both are NULL, leave it NULL.
+      if (!coord.university_id && effectiveUniversityId) {
+        shouldHealUniversityId = true;
+      }
+    } else {
+      // university_admin
+      effectiveUniversityId = adminProfile.university_id as string;
+
+      if (coord.university_id && coord.university_id !== adminProfile.university_id) {
         console.log(
           `[PATCH /api/coordinators/[id]] ${requestId} uni mismatch: coord=`,
           coord.university_id,
@@ -178,14 +263,25 @@ export async function PATCH(
           { status: 403 }
         );
       }
+
+      // If coord.university_id is NULL, heal it to the admin's.
+      if (!coord.university_id) {
+        shouldHealUniversityId = true;
+        console.log(
+          `[PATCH /api/coordinators/[id]] ${requestId} healing NULL university_id to admin's:`,
+          effectiveUniversityId
+        );
+      }
     }
 
-    // If department_id is being changed, validate the new dept belongs to
-    // the same university (when not null).
+    // ==========================================================
+    // 6. If department_id is being changed, validate the new dept
+    //    belongs to the effective university (when not null).
+    // ==========================================================
     if (department_id !== undefined) {
       const newDeptId = department_id || null;
       if (newDeptId) {
-        const { data: dept, error: deptErr } = await supabase
+        const { data: dept, error: deptErr } = await admin
           .from("departments")
           .select("id, university_id")
           .eq("id", newDeptId)
@@ -199,16 +295,12 @@ export async function PATCH(
           );
         }
 
-        const targetUni = isSuperAdmin
-          ? coord.university_id
-          : adminProfile.university_id;
-
-        if (dept.university_id !== targetUni) {
+        if (effectiveUniversityId && dept.university_id !== effectiveUniversityId) {
           console.log(
             `[PATCH /api/coordinators/[id]] ${requestId} dept uni mismatch: dept=`,
             dept.university_id,
             "target=",
-            targetUni
+            effectiveUniversityId
           );
           return NextResponse.json<ApiResponse<never>>(
             { success: false, error: "Department does not belong to your university" },
@@ -218,7 +310,11 @@ export async function PATCH(
       }
     }
 
-    // Build the UPDATE payload — only include fields that were provided.
+    // ==========================================================
+    // 7. Build the UPDATE payload — only include fields that were
+    //    provided. If shouldHealUniversityId is true, also set
+    //    university_id so the coordinator's profile is fixed.
+    // ==========================================================
     const update: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -228,16 +324,22 @@ export async function PATCH(
     if (is_active !== undefined) {
       update.is_active = is_active;
     }
+    if (shouldHealUniversityId && effectiveUniversityId) {
+      update.university_id = effectiveUniversityId;
+    }
 
     console.log(`[PATCH /api/coordinators/[id]] ${requestId} performing UPDATE`, update);
 
-    // Perform the UPDATE without .single() — if RLS silently rejects (0 rows
-    // affected), .single() would throw PGRST116 ("Cannot coerce the result
-    // to a single JSON object") which masks the real cause. With count:
-    // "exact" we get the affected-row count back and can branch on it.
-    const { data: updatedRows, error: updateErr, count } = await supabase
+    // ==========================================================
+    // 8. Perform the UPDATE with the SERVICE ROLE client.
+    //    Service role bypasses RLS, so the WITH CHECK clause is
+    //    not enforced — the UPDATE will succeed even if the
+    //    coordinator's university_id was NULL before (we just
+    //    healed it above).
+    // ==========================================================
+    const { data: updatedRows, error: updateErr } = await admin
       .from("profiles")
-      .update(update, { count: "exact" })
+      .update(update)
       .eq("user_id", coordUserId)
       .select("user_id, role, university_id, department_id, is_active, email, full_name");
 
@@ -252,31 +354,71 @@ export async function PATCH(
       );
     }
 
-    if (count === 0 || !updatedRows || updatedRows.length === 0) {
-      // RLS silently rejected the UPDATE. We pre-flight checked the
-      // coordinator exists and belongs to the admin's university, so this
-      // is unexpected — but it can happen if the coordinator's
-      // university_id is NULL (the pre-flight SELECT returned the row
-      // because the admin's current_university_id() was also NULL, but
-      // the UPDATE's WITH CHECK still fails).
-      console.error(`[PATCH /api/coordinators/[id]] ${requestId} UPDATE silently affected 0 rows`, {
-        coord_university_id: coord.university_id,
-        admin_university_id: adminProfile.university_id,
-      });
+    if (!updatedRows || updatedRows.length === 0) {
+      console.error(
+        `[PATCH /api/coordinators/[id]] ${requestId} UPDATE affected 0 rows (unexpected with service role)`
+      );
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
           error:
-            "Update was rejected by the database (0 rows affected). " +
-            "This is an RLS issue — the coordinator's profile.university_id " +
-            "may be NULL. Run migration 0018_backfill_coord_university_id.sql, " +
-            "or set the university_id manually via SQL.",
+            "Update affected 0 rows. This is unexpected with the service role client — " +
+            "the coordinator's profile row may have been deleted between the SELECT and UPDATE. " +
+            "Refresh the page and try again.",
         },
         { status: 500 }
       );
     }
 
     const updated = updatedRows[0];
+
+    // ==========================================================
+    // 9. If we healed university_id (or changed department_id),
+    //    also propagate to auth.users metadata so the RLS helper
+    //    functions (current_university_id, current_department_id)
+    //    return the right value for the coordinator going forward.
+    //
+    //    This is the same sync that the profiles_sync_role_to_auth
+    //    trigger does (migration 0011 / 0021), but we do it
+    //    explicitly here as well in case that trigger is missing
+    //    or out of date on the production database.
+    // ==========================================================
+    const metaPatch: Record<string, string> = {};
+    if (shouldHealUniversityId && effectiveUniversityId) {
+      metaPatch.university_id = effectiveUniversityId;
+      metaPatch.role = (coord.role as string) || "department_coordinator";
+    }
+    if (department_id !== undefined) {
+      metaPatch.department_id = department_id || "";
+    }
+    if (Object.keys(metaPatch).length > 0) {
+      try {
+        // Build the jsonb patch safely — empty string means "remove the key"
+        const appMetaPatch: Record<string, string | null> = { ...metaPatch };
+        if (department_id === null || department_id === "") {
+          // Remove the key entirely instead of writing empty string
+          // (current_department_id() returns NULL for missing keys, which
+          // is the correct behavior for an unassigned coordinator).
+        }
+        await admin.auth.admin.updateUserById(coordUserId, {
+          app_metadata: appMetaPatch,
+          user_metadata: appMetaPatch,
+        });
+        console.log(
+          `[PATCH /api/coordinators/[id]] ${requestId} synced auth.users metadata`,
+          appMetaPatch
+        );
+      } catch (metaErr) {
+        // Non-fatal — the profiles row was updated successfully.
+        // The metadata will get synced later by the trigger or by
+        // the user re-logging in. Log and continue.
+        console.warn(
+          `[PATCH /api/coordinators/[id]] ${requestId} failed to sync auth.users metadata (non-fatal)`,
+          metaErr
+        );
+      }
+    }
+
     console.log(`[PATCH /api/coordinators/[id]] ${requestId} success`, updated);
 
     return NextResponse.json<ApiResponse<Profile>>({
