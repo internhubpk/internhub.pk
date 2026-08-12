@@ -66,6 +66,16 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: Building2,
     },
     {
+      title: "Companies",
+      href: "/super-admin/companies",
+      icon: Briefcase,
+    },
+    {
+      title: "Company HR",
+      href: "/super-admin/company-hr",
+      icon: UserCheck,
+    },
+    {
       title: "Users",
       href: "/super-admin/users",
       icon: Users,

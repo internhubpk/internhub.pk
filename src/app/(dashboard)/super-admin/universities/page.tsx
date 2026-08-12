@@ -275,72 +275,54 @@ export default function SuperAdminUniversitiesPage() {
     try {
       const supabase = createClient();
 
+      // Auto-generate slug from name if user didn't fill it in.
+      // (universities.slug is NOT NULL UNIQUE in the actual schema — the form
+      //  used to send an empty string which caused a 400 from PostgREST.)
+      const slug =
+        formData.slug.trim() ||
+        formData.name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80);
+
+      // The ACTUAL universities table has these columns (see
+      // supabase/migrations/0001_initial_schema.sql):
+      //   id, name, slug, domain, logo_url, address, city, state, country,
+      //   contact_email, contact_phone, is_active, license_tier,
+      //   license_expires_at, max_students, settings, created_at, updated_at
+      // The form fields `description`, `website`, `status`, `created_by` do
+      // NOT exist on this table — sending them caused a 400. We only send
+      // columns that exist.
       if (editingUniversity) {
-        // Update existing university - build update object dynamically
-        // to handle schemas with or without extended columns
-        const updateData: Record<string, any> = {
-          name: formData.name.trim(),
-          domain: formData.domain.trim() || null,
-        };
-        
-        // Only add these fields if they might exist (after migration)
-        // Supabase will ignore unknown columns in some cases, but let's be safe
-        try {
-          await supabase
-            .from("universities")
-            .update({
-              ...updateData,
-              slug: formData.slug.trim(),
-              description: formData.description.trim() || null,
-              website: formData.website.trim() || null,
-              status: formData.status,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", editingUniversity.id);
-        } catch (e) {
-          // Fallback: try without the extra columns (for pre-migration schema)
-          const { error } = await supabase
-            .from("universities")
-            .update(updateData)
-            .eq("id", editingUniversity.id);
-          if (error) throw error;
-        }
+        const { error } = await supabase
+          .from("universities")
+          .update({
+            name: formData.name.trim(),
+            slug,
+            domain: formData.domain.trim() || null,
+            is_active: formData.status === "active",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingUniversity.id);
+
+        if (error) throw error;
 
         setMessage({ type: "success", text: "University updated successfully!" });
       } else {
-        // Create new university - start with base fields that always exist
-        const baseData = {
-          name: formData.name.trim(),
-          domain: formData.domain.trim() || null,
-        };
-        
-        let data: any;
-        let error: any;
-        
-        // Try full insert first (post-migration schema)
-        ({ data, error } = await supabase
+        // Insert — only columns that exist on the live schema.
+        const { data, error } = await supabase
           .from("universities")
           .insert({
-            ...baseData,
-            slug: formData.slug.trim(),
-            description: formData.description.trim() || null,
-            website: formData.website.trim() || null,
-            status: formData.status,
-            created_by: user?.id,
+            name: formData.name.trim(),
+            slug,
+            domain: formData.domain.trim() || null,
+            is_active: formData.status === "active",
           })
           .select()
-          .single());
+          .single();
 
-        // If error about unknown column, try minimal insert (pre-migration schema)
-        if (error && (error.code === '42703' || error.message?.includes('column "') || error.message?.includes('does not exist'))) {
-          console.log("Extended columns not found, trying minimal insert...");
-          ({ data, error } = await supabase
-            .from("universities")
-            .insert(baseData)
-            .select()
-            .single());
-        }
-        
         if (error) throw error;
 
         // Create admin account for this university

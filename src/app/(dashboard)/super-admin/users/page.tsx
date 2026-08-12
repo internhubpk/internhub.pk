@@ -424,10 +424,13 @@ export default function SuperAdminUsersPage() {
             View and manage all registered users across universities
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)} disabled={!tablesExist}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create User
-        </Button>
+        {/* Read-only view — super admin can browse users but not create them.
+            New users join via the public /register page; their role is assigned
+            by their university admin (or via the dedicated Companies → Company HR
+            management page for company_hr accounts). */}
+        <Badge variant="outline" className="text-sm px-3 py-1">
+          Read-only
+        </Badge>
       </div>
 
       {/* Message Banner */}
@@ -604,12 +607,8 @@ export default function SuperAdminUsersPage() {
                   : "Once universities register their admins, users will appear here."
                 }
               </p>
-              {!searchTerm && roleFilter === "all" && statusFilter === "all" && (
-                <Button className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Create First User
-                </Button>
-              )}
+              {/* Read-only — no "Create First User" button. New users self-register
+                  via /register and are assigned a role by their university admin. */}
             </div>
           </CardContent>
         </Card>
@@ -705,7 +704,8 @@ export default function SuperAdminUsersPage() {
         </Card>
       )}
 
-      {/* Create User Dialog */}
+      {/* (Create User dialog removed — page is read-only. New users join via /register. */}
+      {false && (
       <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
         setIsCreateDialogOpen(open);
         if (!open) resetCreateForm();
@@ -887,6 +887,7 @@ export default function SuperAdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* View User Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>

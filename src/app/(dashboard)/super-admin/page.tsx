@@ -373,8 +373,8 @@ export default function SuperAdminDashboard() {
 
   const quickActions = [
     {
-      title: "Manage Users",
-      description: "View and manage all platform users",
+      title: "Users",
+      description: "View all platform users (read-only)",
       icon: Users,
       href: "/super-admin/users",
       color: "bg-blue-50 text-blue-600",
@@ -382,10 +382,26 @@ export default function SuperAdminDashboard() {
     },
     {
       title: "Universities",
-      description: "Manage university tenants",
+      description: "Add / edit / delete university tenants",
       icon: Building2,
       href: "/super-admin/universities",
       color: "bg-emerald-50 text-emerald-600",
+      disabled: dataState !== "ready",
+    },
+    {
+      title: "Companies",
+      description: "Add / edit / delete host organizations",
+      icon: Briefcase,
+      href: "/super-admin/companies",
+      color: "bg-amber-50 text-amber-600",
+      disabled: dataState !== "ready",
+    },
+    {
+      title: "Company HR Accounts",
+      description: "Create HR accounts for companies",
+      icon: UserCheck,
+      href: "/super-admin/company-hr",
+      color: "bg-orange-50 text-orange-600",
       disabled: dataState !== "ready",
     },
     {
