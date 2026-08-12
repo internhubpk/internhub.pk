@@ -70,6 +70,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
+import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 interface ActiveIntern {
@@ -113,24 +114,28 @@ const programs = [
 ];
 
 export default function CompanyHRInternsPage() {
+  const { profile } = useAuth();
   const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchInterns();
-  }, []);
+  }, [profile?.company_id]);
 
   async function fetchInterns() {
+    if (!profile?.company_id) { setIsLoading(false); return; }
     try {
       const supabase = createClient();
       const { data, error } = await supabase
-        .from('internships')
+        .from('student_internships')
         .select(`
           *,
-          students!inner(student_name, email, phone, university, department),
-          site_supervisors(first_name, last_name)
+          student:profiles!student_user_id(full_name, email, phone),
+          internships!inner(title),
+          site_supervisor:profiles!site_supervisor_id(full_name)
         `)
-        .in('status', ['active', 'on_leave', 'completed'])
+        .eq('company_id', profile.company_id)
+        .in('status', ['assigned', 'active', 'on_leave', 'completed'])
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -138,18 +143,16 @@ export default function CompanyHRInternsPage() {
       if (data && data.length > 0) {
         const internList: ActiveIntern[] = data.map((intern: any) => ({
           id: intern.id,
-          student_id: intern.student_id,
-          student_name: intern.students?.student_name || 'Unknown',
-          student_email: intern.students?.email || '',
-          phone: intern.students?.phone,
-          university: intern.students?.university,
-          department: intern.students?.department,
-          internship_id: intern.id,
-          internship_title: intern.title || 'Unknown Program',
-          supervisor_id: intern.supervisor_id,
-          supervisor_name: intern.site_supervisors 
-            ? `${intern.site_supervisors.first_name} ${intern.site_supervisors.last_name}` 
-            : null,
+          student_id: intern.student_user_id,
+          student_name: intern.student?.full_name || 'Unknown',
+          student_email: intern.student?.email || '',
+          phone: intern.student?.phone,
+          university: '',
+          department: '',
+          internship_id: intern.internship_id,
+          internship_title: intern.internships?.title || 'Unknown Program',
+          supervisor_id: intern.site_supervisor_id,
+          supervisor_name: intern.site_supervisor?.full_name || null,
           start_date: intern.start_date,
           end_date: intern.end_date,
           status: intern.status || 'active',

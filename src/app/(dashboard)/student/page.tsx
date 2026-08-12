@@ -123,7 +123,7 @@ export default function StudentDashboard() {
         supabase
           .from("applications")
           .select("id", { count: "exact" })
-          .eq("student_id", user.id),
+          .eq("student_user_id", user.id),
 
         // Fetch tasks with status
         supabase
@@ -144,7 +144,7 @@ export default function StudentDashboard() {
           return supabase
             .from("attendance")
             .select("*")
-            .eq("student_id", user.id)
+            .eq("student_user_id", user.id)
             .gte("date", startOfMonth);
         })(),
 
@@ -152,7 +152,7 @@ export default function StudentDashboard() {
         supabase
           .from("task_submissions")
           .select("*, tasks:task_id(title)")
-          .eq("student_id", user.id)
+          .eq("student_user_id", user.id)
           .order("submitted_at", { ascending: false })
           .limit(5),
 

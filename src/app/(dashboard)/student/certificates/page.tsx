@@ -52,9 +52,9 @@ export default function StudentCertificatesPage() {
         .from('certificates')
         .select(`
           *,
-          internships!inner(title, companies(name))
+          internships(title, companies(name))
         `)
-        .eq('student_id', user.id)
+        .eq('student_user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;

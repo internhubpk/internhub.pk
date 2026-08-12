@@ -203,7 +203,7 @@ export default function FacultySupervisorStudentsPage() {
             ),
             internship:internships(title, company, location)
           `)
-          .eq("faculty_supervisor_id", supervisor.id);
+          .eq("faculty_supervisor_id", user.id);
 
         const studentList: Student[] = (studentData || []).map((s: any) => ({
           id: s.student?.id || s.id,

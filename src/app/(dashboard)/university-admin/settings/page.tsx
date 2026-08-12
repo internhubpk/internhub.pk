@@ -76,6 +76,9 @@ export default function UniversityAdminSettingsPage() {
     is_active: true,
   });
   const [notifications, setNotifications] = useState<NotificationPrefs>(defaultNotifications);
+  // Preserve any other keys already stored in universities.settings so
+  // saving notification prefs doesn't wipe out unrelated settings data.
+  const [rawSettings, setRawSettings] = useState<Record<string, unknown>>({});
   const [notFound, setNotFound] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
@@ -125,6 +128,7 @@ export default function UniversityAdminSettingsPage() {
 
         // Load notification prefs from jsonb settings column if present
         const settings = (data.settings as Record<string, unknown> | null) ?? {};
+        setRawSettings(settings);
         const notif = (settings.notifications as Partial<NotificationPrefs> | null) ?? {};
         setNotifications({
           email_notifications: notif.email_notifications ?? true,
@@ -218,16 +222,21 @@ export default function UniversityAdminSettingsPage() {
       setIsSaving(true);
       const supabase = createClient();
 
-      // Merge the new notification prefs into the existing settings jsonb.
+      // Merge the new notification prefs into the existing settings jsonb
+      // instead of overwriting the whole column, so other keys that may
+      // live under `settings` aren't lost.
+      const mergedSettings = { ...rawSettings, notifications };
       const { error } = await supabase
         .from("universities")
         .update({
-          settings: { notifications },
+          settings: mergedSettings,
           updated_at: new Date().toISOString(),
         })
         .eq("id", universityId);
 
       if (error) throw error;
+
+      setRawSettings(mergedSettings);
 
       toast({
         title: "Saved",

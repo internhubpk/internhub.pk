@@ -112,9 +112,7 @@ export default function StudentInternshipsPage() {
       // If profile has department_id, filter internships that accept this department
       // This would depend on your schema - using contains for array field
       if (profile?.department_id) {
-        // Try to filter by department_ids array or department_id
-        // Adjust based on actual schema
-        query = query.or(`department_id.eq.${profile.department_id},department_ids.cs.{${profile.department_id}}`);
+        query = query.eq("department_id", profile.department_id);
       }
 
       const { data: internshipsData, error } = await query;
@@ -130,7 +128,7 @@ export default function StudentInternshipsPage() {
         const { data: applications } = await supabase
           .from("applications")
           .select("id, internship_id, status")
-          .eq("student_id", user.id)
+          .eq("student_user_id", user.id)
           .in("internship_id", internshipIds);
 
         (applications || []).forEach((app: any) => {
@@ -281,9 +279,8 @@ export default function StudentInternshipsPage() {
         .from("applications")
         .insert({
           internship_id: selectedInternship.id,
-          student_id: user.id,
-          student_name: `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim(),
-          student_email: user.email,
+          student_user_id: user.id,
+          company_id: selectedInternship.company_id,
           cover_letter: coverLetter.trim() || null,
           status: "pending",
         });

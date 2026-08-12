@@ -254,8 +254,8 @@ export default function SuperAdminUsersPage() {
       setMessage({ type: "error", text: "Please enter a valid email address" });
       return;
     }
-    if (!createForm.password || createForm.password.length < 6) {
-      setMessage({ type: "error", text: "Password must be at least 6 characters" });
+    if (!createForm.password || createForm.password.length < 8) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters" });
       return;
     }
     if (!createForm.full_name.trim()) {
@@ -292,45 +292,29 @@ export default function SuperAdminUsersPage() {
         return;
       }
 
-      // Create auth user using signUp (works on client side)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: createForm.email.trim(),
-        password: createForm.password,
-        options: {
-          data: {
-            full_name: createForm.full_name.trim(),
-            role: createForm.role,
-          },
-        },
+      // Call the server-side admin route. This uses the service role key
+      // to create the auth user via supabase.auth.admin.createUser(),
+      // which does NOT establish a session for the new user — so the
+      // currently-signed-in Super Admin stays signed in.
+      // (Previous flow called supabase.auth.signUp() from the browser,
+      //  which logged the Super Admin IN as the new account. Bad.)
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: createForm.email.trim(),
+          password: createForm.password,
+          full_name: createForm.full_name.trim(),
+          role: createForm.role,
+          university_id: createForm.university_id || undefined,
+          company_id: createForm.company_id || undefined,
+        }),
       });
 
-      if (authError) {
-        throw new Error(authError.message || "Failed to create auth account");
-      }
+      const json = await res.json();
 
-      if (!authData.user) {
-        throw new Error("Failed to create user account");
-      }
-
-      // Create profile
-      const { error: profileError } = await supabase.from("profiles").insert({
-        user_id: authData.user.id,
-        email: createForm.email.trim(),
-        full_name: createForm.full_name.trim(),
-        first_name: createForm.full_name.trim().split(" ")[0],
-        last_name: createForm.full_name.trim().split(" ").slice(1).join(" ") || null,
-        role: createForm.role,
-        university_id: createForm.university_id || null,
-        company_id: createForm.company_id || null,
-        status: "active",
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-      if (profileError) {
-        console.log("Profile creation note:", profileError);
-        // Profile might be created by trigger
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
       }
 
       setMessage({
@@ -745,11 +729,11 @@ export default function SuperAdminUsersPage() {
                 <Input
                   id="create-password"
                   type="password"
-                  placeholder="Min. 6 characters"
+                  placeholder="Min. 8 characters"
                   value={createForm.password}
                   onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
                 />
-                <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
+                <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
               </div>
 
               <div className="space-y-2">

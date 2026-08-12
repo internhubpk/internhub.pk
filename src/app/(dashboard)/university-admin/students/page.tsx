@@ -110,7 +110,7 @@ export default function UniversityAdminStudentsPage() {
       // Build base query for student profiles
       let query = supabase
         .from("profiles")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("university_id", universityId)
         .eq("role", "student")
         .order("created_at", { ascending: false });
@@ -166,14 +166,18 @@ export default function UniversityAdminStudentsPage() {
           programName = program?.name || null;
         }
 
-        // Check for active internships
+        // Check for active internships. NOTE: `internships` has no
+        // `student_id` column — the student <-> internship link lives in
+        // the `student_internships` junction table, keyed by
+        // `student_user_id`, with its own status enum (assigned/active/
+        // paused/completed/terminated).
         let internshipStatus: string | null = null;
         try {
           const { data: internship } = await supabase
-            .from("internships")
+            .from("student_internships")
             .select("status")
-            .eq("student_id", student.user_id)
-            .in("status", ["active", "pending"])
+            .eq("student_user_id", student.user_id)
+            .in("status", ["assigned", "active"])
             .limit(1)
             .single();
           internshipStatus = internship?.status || null;

@@ -54,10 +54,10 @@ export default function StudentEvaluationsPage() {
         .from('evaluations')
         .select(`
           *,
-          evaluators!inner(full_name, type),
+          evaluator:profiles!evaluator_id(full_name),
           internships!inner(title)
         `)
-        .eq('student_id', user.id)
+        .eq('student_user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -73,7 +73,7 @@ export default function StudentEvaluationsPage() {
           score: ev.overall_rating,
           feedback: ev.comments,
           date: ev.evaluated_at || ev.created_at,
-          evaluator: ev.evaluators?.full_name || 'Unknown',
+          evaluator: ev.evaluator?.full_name || 'Unknown',
         }));
         setEvaluations(evals);
       }

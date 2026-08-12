@@ -406,7 +406,7 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/programs
- * Delete program - Super Admin only
+ * Delete program - Super Admin or the owning Department Coordinator
  *
  * University Admin can VIEW programs but cannot create/edit/delete them.
  * Programs are created and managed by Department Coordinators. The
@@ -416,8 +416,8 @@ export async function DELETE(request: NextRequest) {
   try {
     const authContext = await requireAuth();
 
-    if (authContext.profile?.role !== "super_admin") {
-      return authorizationError("Only super admins can delete programs");
+    if (!authContext.profile || !MANAGE_PROGRAM_ROLES.includes(authContext.profile.role as UserRole)) {
+      return authorizationError("Forbidden: Insufficient permissions to delete programs");
     }
 
     const cookieStore = await cookies();
@@ -434,6 +434,26 @@ export async function DELETE(request: NextRequest) {
         { success: false, error: "Program ID is required" },
         { status: 400 }
       );
+    }
+
+    // Department coordinators can only delete programs in their own department
+    if (authContext.profile.role === "department_coordinator") {
+      const { data: existingProgram } = await supabase
+        .from("programs")
+        .select("department_id")
+        .eq("id", id)
+        .single();
+
+      if (!existingProgram) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Program not found" },
+          { status: 404 }
+        );
+      }
+
+      if (existingProgram.department_id !== authContext.profile.department_id) {
+        return authorizationError("Cannot delete programs from another department");
+      }
     }
 
     // Check if program has enrolled students

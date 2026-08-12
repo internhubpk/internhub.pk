@@ -118,10 +118,15 @@ export default function UniversityAdminDashboard() {
           .eq("university_id", universityId)
           .eq("status", "active"),
         
-        // Pending applications (applications is a view; the base table is
-        // internship_applications. Both work but the view name is shorter.)
+        // Pending applications. NOTE: use the base table
+        // `internship_applications`, not the `applications` compatibility
+        // view — the view is owned by a role that bypasses RLS, so
+        // querying it returns pending applications across ALL
+        // universities instead of just this one (a cross-tenant data
+        // leak). RLS on the base table correctly scopes rows to
+        // internships belonging to the current university admin.
         supabase
-          .from("applications")
+          .from("internship_applications")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
         

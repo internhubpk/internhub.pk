@@ -83,7 +83,7 @@ export default function StudentWeeklyLogsPage() {
       const { data, error } = await supabase
         .from('weekly_logs')
         .select('*')
-        .eq('student_id', user.id)
+        .eq('student_user_id', user.id)
         .order('week_start_date', { ascending: false });
       
       if (error) throw error;

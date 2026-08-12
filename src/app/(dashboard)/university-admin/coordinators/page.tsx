@@ -557,7 +557,7 @@ export default function CoordinatorsPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                       {/* Quick Department Assignment — shows full dept name,
                           wide enough to read, and refetches departments on
                           open in case the admin just created one. */}

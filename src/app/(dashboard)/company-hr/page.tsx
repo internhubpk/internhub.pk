@@ -124,22 +124,26 @@ export default function CompanyHRDashboard() {
         supabase
           .from('internships')
           .select('id', { count: 'exact' })
-          .eq('company_id', user.id)
+          .eq('company_id', profile?.company_id)
           .in('status', ['active', 'open']),
         
         // Fetch applications count
         supabase
           .from('applications')
-          .select('id', { count: 'exact' }),
+          .select('id', { count: 'exact' })
+          .eq('company_id', profile?.company_id),
           
         // Fetch recent applications with details
         supabase
           .from('applications')
           .select(`
             id,
-            students!inner(student_name, email, university),
+            status,
+            created_at,
+            student:profiles!student_user_id(full_name, email),
             internships!inner(title)
           `)
+          .eq('company_id', profile?.company_id)
           .order('created_at', { ascending: false })
           .limit(5),
         
@@ -147,7 +151,7 @@ export default function CompanyHRDashboard() {
         supabase
           .from('internships')
           .select('*')
-          .eq('company_id', user.id)
+          .eq('company_id', profile?.company_id)
           .in('status', ['active', 'open'])
           .order('created_at', { ascending: false })
           .limit(5),
@@ -173,12 +177,11 @@ export default function CompanyHRDashboard() {
       if (recentAppsResult.status === 'fulfilled' && recentAppsResult.value.data) {
         const apps: RecentApplication[] = recentAppsResult.value.data.map((app: any) => ({
           id: app.id,
-          student_name: app.students?.student_name || 'Unknown',
-          student_email: app.students?.email || '',
+          student_name: app.student?.full_name || 'Unknown',
+          student_email: app.student?.email || '',
           internship_title: app.internships?.title || 'Unknown Program',
           status: app.status || 'pending',
           applied_at: app.created_at,
-          university: app.students?.university,
         }));
         setRecentApplications(apps);
       }

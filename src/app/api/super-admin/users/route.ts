@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     // Apply pagination
     const start = (page - 1) * pageSize;
-    const end = page + pageSize - 1;
+    const end = start + pageSize - 1;
 
     const { data: users, error } = await query.range(start, end);
 
@@ -126,17 +126,23 @@ export async function GET(request: NextRequest) {
             .single();
           universityName = uni?.name || null;
         }
-        return { ...profile, university_name: universityName };
+        return { ...userProfile, university_name: universityName };
       })
     );
 
+    // `count` reflects the total rows matching the role/status filters
+    // (from the DB, before pagination). When a search term is supplied,
+    // fall back to the current page's filtered length since search is
+    // applied client-side on the already-paginated results above.
+    const total = search ? filteredUsers.length : count ?? filteredUsers.length;
+
     const response: PaginatedResponse<Profile> = {
       items: enrichedUsers as Profile[],
-      total: filteredUsers.length,
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((filteredUsers.length) / pageSize),
-      hasNextPage: end < (filteredUsers.length - 1),
+      totalPages: Math.ceil(total / pageSize),
+      hasNextPage: page * pageSize < total,
       hasPrevPage: page > 1,
     };
 

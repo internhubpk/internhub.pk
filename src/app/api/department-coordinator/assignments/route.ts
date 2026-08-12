@@ -211,11 +211,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch supervisor and verify department access
+    // Fetch supervisor and verify department access.
+    // NOTE: faculty_supervisor_id here (and on student_internships) refers to
+    // the supervisor's profiles.user_id, NOT the supervisors.id surrogate key.
     const { data: supervisor } = await supabase
       .from("supervisors")
       .select("*")
-      .eq("id", faculty_supervisor_id)
+      .eq("user_id", faculty_supervisor_id)
       .single();
 
     if (!supervisor) {

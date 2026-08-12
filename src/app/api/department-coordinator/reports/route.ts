@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build filters based on role
-    const deptFilter = userRole === "department_coordinator" 
+    const deptFilter: Record<string, string | null> = userRole === "department_coordinator" 
       ? { department_id: userDepartmentId, university_id: userUniversityId }
       : userRole === "university_admin"
       ? { university_id: userUniversityId }
@@ -265,23 +265,42 @@ async function getProgramPerformance(
   const performanceData: ProgramPerformance[] = [];
 
   for (const program of programs || []) {
-    const [studentsResult, activeInternshipsResult, completedInternshipsResult] = await Promise.all([
-      supabase.from("students").select("id", { count: "exact" }).eq("program_id", program.id),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("status", "active"),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("status", "completed"),
-    ]);
+    const { data: programStudents } = await supabase
+      .from("students")
+      .select("id")
+      .eq("program_id", program.id);
 
-    const totalStudents = studentsResult.count || 0;
-    const completed = completedInternshipsResult.count || 0;
-    const completionRate = totalStudents > 0 ? Math.round((completed / totalStudents) * 100) : 0;
+    const programStudentIds = programStudents?.map((s) => s.id) || [];
+    const totalStudents = programStudentIds.length;
+
+    let activeCount = 0;
+    let completedCount = 0;
+    if (programStudentIds.length > 0) {
+      const [activeInternshipsResult, completedInternshipsResult] = await Promise.all([
+        supabase
+          .from("student_internships")
+          .select("id", { count: "exact" })
+          .eq("status", "active")
+          .in("student_id", programStudentIds),
+        supabase
+          .from("student_internships")
+          .select("id", { count: "exact" })
+          .eq("status", "completed")
+          .in("student_id", programStudentIds),
+      ]);
+      activeCount = activeInternshipsResult.count || 0;
+      completedCount = completedInternshipsResult.count || 0;
+    }
+
+    const completionRate = totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0;
 
     performanceData.push({
       program_id: program.id,
       program_name: program.name,
       program_code: program.code,
       total_students: totalStudents,
-      active_internships: activeInternshipsResult.count || 0,
-      completed_internships: completed,
+      active_internships: activeCount,
+      completed_internships: completedCount,
       completion_rate: completionRate,
     });
   }
@@ -303,6 +322,7 @@ async function getSupervisorWorkload(
     .from("supervisors")
     .select(`
       id,
+      user_id,
       title,
       specialization,
       profiles:user_id(first_name, last_name, email)
@@ -322,14 +342,16 @@ async function getSupervisorWorkload(
     throw supervisorsError;
   }
 
-  // Get assignment counts for each supervisor
+  // Get assignment counts for each supervisor.
+  // NOTE: student_internships.faculty_supervisor_id references
+  // profiles.user_id, NOT the supervisors.id surrogate key.
   const workloadData: SupervisorWorkload[] = [];
 
   for (const supervisor of supervisors || []) {
     const [assignedResult, activeResult, completedResult] = await Promise.all([
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id).eq("status", "active"),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.id).eq("status", "completed"),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id).eq("status", "active"),
+      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id).eq("status", "completed"),
     ]);
 
     const profile = supervisor.profiles as any;

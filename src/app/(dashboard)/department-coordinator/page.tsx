@@ -214,7 +214,7 @@ export default function DepartmentCoordinatorDashboard() {
       </div>
 
       {/* Pending Items Alert */}
-      {stats?.pendingAssignments > 0 && (
+      {(stats?.pendingAssignments || 0) > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -229,7 +229,7 @@ export default function DepartmentCoordinatorDashboard() {
                   </p>
                   <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                     You have{" "}
-                    <span className="font-semibold">{stats.pendingAssignments}</span> student(s) 
+                    <span className="font-semibold">{stats?.pendingAssignments}</span> student(s) 
                     that may need supervisor assignments or attention.
                   </p>
                   <Button variant="link" className="p-0 h-auto text-amber-700 dark:text-amber-300 mt-2" asChild>
@@ -474,7 +474,7 @@ export default function DepartmentCoordinatorDashboard() {
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <TrendingUp className="h-8 w-8 mx-auto text-orange-600" />
                 <p className="text-2xl font-bold">
-                  {stats?.activeInternships && stats?.totalStudents > 0
+                  {stats?.activeInternships && stats.totalStudents > 0
                     ? Math.round((stats.activeInternships / stats.totalStudents) * 100)
                     : 0}%
                 </p>

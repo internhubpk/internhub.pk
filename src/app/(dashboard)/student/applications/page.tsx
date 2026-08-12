@@ -118,7 +118,7 @@ export default function StudentApplicationsPage() {
             application_deadline
           )
         `)
-        .eq("student_id", user.id)
+        .eq("student_user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (!error && data) {
@@ -296,7 +296,7 @@ export default function StudentApplicationsPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", selectedApplication.id)
-        .eq("student_id", user.id);
+        .eq("student_user_id", user.id);
 
       if (error) throw error;
 

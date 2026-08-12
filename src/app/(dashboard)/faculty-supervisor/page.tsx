@@ -105,29 +105,37 @@ export default function FacultySupervisorDashboard() {
 
   useEffect(() => {
     fetchFacultyData();
-  }, []);
+  }, [user]);
 
   async function fetchFacultyData() {
     if (!user) return;
 
     try {
       const supabase = createClient();
-      
+
+      // Get this supervisor's assigned students first (via student_internships,
+      // since faculty_supervisor_id references profiles.user_id).
+      const { data: assignedInternships } = await supabase
+        .from("student_internships")
+        .select("id, student_user_id, status")
+        .eq("faculty_supervisor_id", user.id);
+
+      const supervisedStudentIds = Array.from(
+        new Set((assignedInternships || []).map((a) => a.student_user_id))
+      );
+      const activeInternshipsCount = (assignedInternships || []).filter(
+        (a) => a.status === "active"
+      ).length;
+
       // Fetch faculty supervisor stats
-      const [studentsRes, activeRes, pendingRes, completedRes] = await Promise.all([
-        supabase
-          .from("internships")
-          .select("id", { count: "exact" })
-          .eq("faculty_supervisor_id", user.id),
-        supabase
-          .from("internships")
-          .select("id", { count: "exact" })
-          .eq("faculty_supervisor_id", user.id)
-          .eq("status", "active"),
-        supabase
-          .from("weekly_logs")
-          .select("id", { count: "exact" })
-          .eq("status", "pending"),
+      const [pendingRes, completedRes] = await Promise.all([
+        supervisedStudentIds.length > 0
+          ? supabase
+              .from("weekly_logs")
+              .select("id", { count: "exact" })
+              .eq("status", "submitted")
+              .in("student_user_id", supervisedStudentIds)
+          : Promise.resolve({ count: 0 }),
         supabase
           .from("evaluations")
           .select("id", { count: "exact" })
@@ -137,8 +145,8 @@ export default function FacultySupervisorDashboard() {
 
       // Set stats from actual database counts
       setStats({
-        supervisedStudents: studentsRes.count || 0,
-        activeInternships: activeRes.count || 0,
+        supervisedStudents: supervisedStudentIds.length,
+        activeInternships: activeInternshipsCount,
         pendingReviews: pendingRes.count || 0,
         evaluationsCompleted: completedRes.count || 0,
         tasksPending: 0,

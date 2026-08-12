@@ -71,7 +71,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface InternshipProgram {
@@ -132,14 +131,13 @@ export default function CompanyHRInternshipsPage() {
 
   async function fetchInternships() {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('internships')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
+      const response = await fetch('/api/company-hr/internships');
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to fetch internships');
+
+      const data = result.data;
+
       if (data && data.length > 0) {
         const progList: InternshipProgram[] = data.map((prog: any) => ({
           id: prog.id,
@@ -217,64 +215,73 @@ export default function CompanyHRInternshipsPage() {
     });
   };
 
-  const handleCreateInternship = () => {
-    // In production, this would call API
-    const newInternship: InternshipProgram = {
-      id: Date.now().toString(),
-      title: formData.title,
-      description: formData.description,
-      status: "draft",
-      location_type: formData.location_type,
-      location: formData.location || null,
-      is_paid: formData.is_paid,
-      stipend: formData.stipend ? parseFloat(formData.stipend) : null,
-      duration_weeks: parseInt(formData.duration_weeks) || 8,
-      target_departments: formData.target_departments,
-      target_university: formData.target_university || null,
-      max_applicants: formData.max_applicants ? parseInt(formData.max_applicants) : null,
-      current_applicants: 0,
-      start_date: formData.start_date || null,
-      end_date: formData.end_date || null,
-      application_deadline: formData.application_deadline || null,
-      required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    setInternships([newInternship, ...internships]);
-    setIsCreateOpen(false);
-    resetForm();
+  const handleCreateInternship = async () => {
+    try {
+      const response = await fetch('/api/company-hr/internships', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          location_type: formData.location_type,
+          location: formData.location || null,
+          is_paid: formData.is_paid,
+          stipend: formData.stipend ? parseFloat(formData.stipend) : null,
+          duration_weeks: parseInt(formData.duration_weeks) || 8,
+          max_applicants: formData.max_applicants ? parseInt(formData.max_applicants) : null,
+          start_date: formData.start_date || null,
+          end_date: formData.end_date || null,
+          application_deadline: formData.application_deadline || null,
+          required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to create internship');
+
+      setIsCreateOpen(false);
+      resetForm();
+      fetchInternships();
+    } catch (error) {
+      console.error("Error creating internship:", error);
+      alert(error instanceof Error ? error.message : "Failed to create internship. Please try again.");
+    }
   };
 
-  const handleEditInternship = () => {
+  const handleEditInternship = async () => {
     if (!editingInternship) return;
-    
-    setInternships(internships.map(i => 
-      i.id === editingInternship.id 
-        ? {
-            ...i,
-            title: formData.title,
-            description: formData.description,
-            location_type: formData.location_type,
-            location: formData.location || null,
-            is_paid: formData.is_paid,
-            stipend: formData.stipend ? parseFloat(formData.stipend) : null,
-            duration_weeks: parseInt(formData.duration_weeks) || i.duration_weeks,
-            target_departments: formData.target_departments,
-            target_university: formData.target_university || null,
-            max_applicants: formData.max_applicants ? parseInt(formData.max_applicants) : null,
-            start_date: formData.start_date || null,
-            end_date: formData.end_date || null,
-            application_deadline: formData.application_deadline || null,
-            required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
-            updated_at: new Date().toISOString(),
-          }
-        : i
-    ));
-    
-    setIsEditOpen(false);
-    setEditingInternship(null);
-    resetForm();
+
+    try {
+      const response = await fetch(`/api/company-hr/internships/${editingInternship.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          location_type: formData.location_type,
+          location: formData.location || null,
+          is_paid: formData.is_paid,
+          stipend: formData.stipend ? parseFloat(formData.stipend) : null,
+          duration_weeks: parseInt(formData.duration_weeks) || editingInternship.duration_weeks,
+          max_applicants: formData.max_applicants ? parseInt(formData.max_applicants) : null,
+          start_date: formData.start_date || null,
+          end_date: formData.end_date || null,
+          application_deadline: formData.application_deadline || null,
+          required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to update internship');
+
+      setIsEditOpen(false);
+      setEditingInternship(null);
+      resetForm();
+      fetchInternships();
+    } catch (error) {
+      console.error("Error updating internship:", error);
+      alert(error instanceof Error ? error.message : "Failed to update internship. Please try again.");
+    }
   };
 
   const openEditDialog = (internship: InternshipProgram) => {
@@ -299,33 +306,55 @@ export default function CompanyHRInternshipsPage() {
     setIsEditOpen(true);
   };
 
-  const handleDeleteInternship = (id: string) => {
-    setInternships(internships.filter(i => i.id !== id));
+  const handleDeleteInternship = async (id: string) => {
+    try {
+      const response = await fetch(`/api/company-hr/internships/${id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to delete internship');
+      fetchInternships();
+    } catch (error) {
+      console.error("Error deleting internship:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete internship. Please try again.");
+    }
   };
 
   const handleDuplicateInternship = (internship: InternshipProgram) => {
-    const duplicated: InternshipProgram = {
-      ...internship,
-      id: Date.now().toString(),
+    // Prefill the create form with the source program's details for the user to review and save.
+    setFormData({
       title: `${internship.title} (Copy)`,
+      description: internship.description,
+      location_type: internship.location_type,
+      location: internship.location || "",
+      is_paid: internship.is_paid,
+      stipend: internship.stipend?.toString() || "",
+      duration_weeks: internship.duration_weeks.toString(),
+      target_departments: internship.target_departments,
+      target_university: internship.target_university || "",
+      max_applicants: internship.max_applicants?.toString() || "",
+      start_date: "",
+      end_date: "",
+      application_deadline: "",
+      required_skills: internship.required_skills.join(", "),
       status: "draft",
-      current_applicants: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setInternships([duplicated, ...internships]);
+    });
+    setIsCreateOpen(true);
   };
 
-  const togglePublishStatus = (id: string) => {
-    setInternships(internships.map(i => 
-      i.id === id 
-        ? { 
-            ...i, 
-            status: i.status === 'draft' ? 'open' : i.status === 'open' ? 'closed' : 'open',
-            updated_at: new Date().toISOString()
-          }
-        : i
-    ));
+  const togglePublishStatus = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'draft' ? 'open' : currentStatus === 'open' ? 'closed' : 'open';
+    try {
+      const response = await fetch(`/api/company-hr/internships/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to update status');
+      fetchInternships();
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert(error instanceof Error ? error.message : "Failed to update status. Please try again.");
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -890,7 +919,7 @@ export default function CompanyHRInternshipsPage() {
                           <DropdownMenuItem onClick={() => handleDuplicateInternship(internship)}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => togglePublishStatus(internship.id)}>
+                          <DropdownMenuItem onClick={() => togglePublishStatus(internship.id, internship.status)}>
                             {internship.status === 'draft' ? (
                               <>
                                 <Send className="mr-2 h-4 w-4" /> Publish

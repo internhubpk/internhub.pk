@@ -120,7 +120,7 @@ const DEFAULT_STUDENTS: StudentForReport[] = [];
 const DEFAULT_MARKSHEET: MarksheetEntry[] = [];
 
 export default function FacultySupervisorReportsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   // State
   const [students, setStudents] = useState<StudentForReport[]>(DEFAULT_STUDENTS);
   const [marksheet, setMarksheet] = useState<MarksheetEntry[]>(DEFAULT_MARKSHEET);
@@ -161,7 +161,9 @@ export default function FacultySupervisorReportsPage() {
           return;
         }
 
-        // Fetch supervised students with their internship details
+        // Fetch supervised students with their internship details.
+        // NOTE: faculty_supervisor_id references profiles.user_id, not the
+        // supervisors.id surrogate key, so we filter by the auth user id.
         const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
@@ -179,7 +181,7 @@ export default function FacultySupervisorReportsPage() {
             ),
             internship:internships(title, company)
           `)
-          .eq("faculty_supervisor_id", supervisor.id);
+          .eq("faculty_supervisor_id", user.id);
 
         const studentList: StudentForReport[] = (studentData || []).map((s: any) => ({
           id: s.student?.id || s.id,
@@ -923,7 +925,7 @@ export default function FacultySupervisorReportsPage() {
                       startDate: selectedStudent.startDate,
                       endDate: selectedStudent.endDate,
                       finalGrade: selectedStudent.finalGrade || getLetterGrade(calculateFinalScore()),
-                      supervisorName: "Dr. Smith",
+                      supervisorName: profile?.full_name || "Supervisor",
                       coordinatorName: certificateForm.coordinatorName || "Pending",
                       issueDate: new Date().toISOString(),
                       certificateId: `CERT-${Date.now()}-${selectedStudent.id.toUpperCase()}`,
@@ -985,10 +987,10 @@ export default function FacultySupervisorReportsPage() {
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Supervisor Name</Label>
-                          <Input defaultValue="Dr. Smith" disabled />
+                          <Input value={profile?.full_name || ""} disabled />
                           <p className="text-xs text-muted-foreground">Auto-filled from your profile</p>
                         </div>
                         <div className="space-y-2">
@@ -1005,7 +1007,7 @@ export default function FacultySupervisorReportsPage() {
                   <div className="flex justify-end gap-2">
                     <Button 
                       variant="outline"
-                      onClick={() => document.querySelector('[value="preview"]')?.click()}
+                      onClick={() => (document.querySelector('[value="preview"]') as HTMLElement | null)?.click()}
                     >
                       Preview Changes
                     </Button>

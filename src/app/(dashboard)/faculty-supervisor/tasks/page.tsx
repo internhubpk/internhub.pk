@@ -182,7 +182,7 @@ function TaskForm({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="priority">Priority</Label>
           <Select 
@@ -312,11 +312,12 @@ export default function FacultySupervisorTasksPage() {
           return;
         }
 
-        // Fetch supervised students
+        // Fetch supervised students. NOTE: the FK column is student_user_id,
+        // not student_id.
         const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
-            student_id,
+            student_user_id,
             student:students(
               id,
               full_name,
@@ -324,12 +325,12 @@ export default function FacultySupervisorTasksPage() {
               program:programs(id, name)
             )
           `)
-          .eq("faculty_supervisor_id", supervisor.id)
+          .eq("faculty_supervisor_id", user.id)
           .in("status", ["active", "in_progress"]);
 
         const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
-          id: s.student?.id || s.student_id,
-          name: s.student?.full_name || `Student ${s.student_id?.slice(0, 6)}`,
+          id: s.student?.id || s.student_user_id,
+          name: s.student?.full_name || `Student ${s.student_user_id?.slice(0, 6)}`,
           email: s.student?.email || "",
           program: s.student?.program?.name || "Unknown Program",
         }));

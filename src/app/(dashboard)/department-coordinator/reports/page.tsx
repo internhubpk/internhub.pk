@@ -298,7 +298,7 @@ export default function ReportsPage() {
   };
 
   // Calculate participation rate
-  const participationRate = stats?.totalStudents > 0 
+  const participationRate = stats && stats.totalStudents > 0 
     ? Math.round(((stats.activeInternships || 0) / stats.totalStudents) * 100)
     : 0;
 
@@ -326,7 +326,7 @@ export default function ReportsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[2024, 2023, 2022].map(year => (
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
                 <SelectItem key={year} value={year.toString()}>
                   {year}
                 </SelectItem>
@@ -378,8 +378,6 @@ export default function ReportsPage() {
           value={stats?.pendingAssignments.toString() || "0"}
           icon={AlertCircle}
           description="Need attention"
-          color={stats?.pendingAssignments ? "text-amber-600 dark:text-amber-400" : undefined}
-          bgColor={stats?.pendingAssignments ? "bg-amber-50 dark:bg-amber-950" : undefined}
           index={3}
         />
       </StatsGrid>
@@ -551,7 +549,7 @@ export default function ReportsPage() {
                               Action Required
                             </p>
                             <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                              {stats.pendingAssignments} item(s) need your attention
+                              {stats?.pendingAssignments} item(s) need your attention
                             </p>
                           </div>
                         </div>

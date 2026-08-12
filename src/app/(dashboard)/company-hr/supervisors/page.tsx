@@ -71,7 +71,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createClient } from "@/utils/supabase/client";
 
 // Types
 interface SiteSupervisor {
@@ -120,31 +119,32 @@ export default function CompanyHRSupervisorsPage() {
 
   async function fetchSupervisors() {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('site_supervisors')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
+      const response = await fetch('/api/company-hr/supervisors?include_inactive=true');
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to fetch supervisors');
+
+      const data = result.data;
+
       if (data && data.length > 0) {
         const sups: SiteSupervisor[] = data.map((sup: any) => ({
           id: sup.id,
           user_id: sup.user_id,
-          first_name: sup.first_name || '',
-          last_name: sup.last_name || '',
-          email: sup.email || '',
-          phone: sup.phone,
+          first_name: sup.first_name || sup.profiles?.first_name || '',
+          last_name: sup.last_name || sup.profiles?.last_name || '',
+          email: sup.email || sup.profiles?.email || '',
+          phone: sup.phone || sup.profiles?.phone,
           department_focus: sup.department_focus,
           specialization: sup.specialization,
-          assigned_programs: sup.assigned_programs || [],
+          assigned_programs: sup.program_ids || [],
           is_active: sup.is_active ?? true,
           assigned_interns_count: sup.assigned_interns_count || 0,
           created_at: sup.created_at,
           last_login: sup.last_login,
         }));
         setSupervisors(sups);
+      } else {
+        setSupervisors([]);
       }
     } catch (error) {
       console.error("Error fetching supervisors:", error);
@@ -185,27 +185,33 @@ export default function CompanyHRSupervisorsPage() {
     });
   };
 
-  const handleCreateSupervisor = () => {
-    // In production, this would call API to create supervisor account
-    const newSupervisor: SiteSupervisor = {
-      id: Date.now().toString(),
-      user_id: `user_${Date.now()}`,
-      first_name: formData.first_name,
-      last_name: formData.last_name,
-      email: formData.email,
-      phone: formData.phone || null,
-      department_focus: formData.department_focus || null,
-      specialization: formData.specialization || null,
-      assigned_programs: formData.assigned_programs,
-      is_active: true,
-      assigned_interns_count: 0,
-      created_at: new Date().toISOString(),
-      last_login: null,
-    };
-    
-    setSupervisors([newSupervisor, ...supervisors]);
-    setIsCreateOpen(false);
-    resetForm();
+  const handleCreateSupervisor = async () => {
+    try {
+      const response = await fetch('/api/company-hr/supervisors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+          password: formData.password,
+          phone: formData.phone || null,
+          department_focus: formData.department_focus || null,
+          specialization: formData.specialization || null,
+          program_ids: formData.assigned_programs,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to create supervisor');
+
+      setIsCreateOpen(false);
+      resetForm();
+      fetchSupervisors();
+    } catch (error) {
+      console.error("Error creating supervisor:", error);
+      alert(error instanceof Error ? error.message : "Failed to create supervisor. Please try again.");
+    }
   };
 
   const openEditDialog = (supervisor: SiteSupervisor) => {
@@ -223,37 +229,62 @@ export default function CompanyHRSupervisorsPage() {
     setIsEditOpen(true);
   };
 
-  const handleEditSupervisor = () => {
+  const handleEditSupervisor = async () => {
     if (!selectedSupervisor) return;
-    
-    setSupervisors(supervisors.map(s => 
-      s.id === selectedSupervisor.id 
-        ? {
-            ...s,
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            email: formData.email,
-            phone: formData.phone || null,
-            department_focus: formData.department_focus || null,
-            specialization: formData.specialization || null,
-            assigned_programs: formData.assigned_programs,
-          }
-        : s
-    ));
-    
-    setIsEditOpen(false);
-    setSelectedSupervisor(null);
-    resetForm();
+
+    try {
+      const response = await fetch(`/api/company-hr/supervisors/${selectedSupervisor.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          phone: formData.phone || null,
+          department_focus: formData.department_focus || null,
+          specialization: formData.specialization || null,
+          program_ids: formData.assigned_programs,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to update supervisor');
+
+      setIsEditOpen(false);
+      setSelectedSupervisor(null);
+      resetForm();
+      fetchSupervisors();
+    } catch (error) {
+      console.error("Error updating supervisor:", error);
+      alert(error instanceof Error ? error.message : "Failed to update supervisor. Please try again.");
+    }
   };
 
-  const toggleSupervisorStatus = (id: string) => {
-    setSupervisors(supervisors.map(s => 
-      s.id === id ? { ...s, is_active: !s.is_active } : s
-    ));
+  const toggleSupervisorStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch(`/api/company-hr/supervisors/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !currentStatus }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to update status');
+      fetchSupervisors();
+    } catch (error) {
+      console.error("Error updating supervisor status:", error);
+      alert(error instanceof Error ? error.message : "Failed to update status. Please try again.");
+    }
   };
 
-  const handleDeleteSupervisor = (id: string) => {
-    setSupervisors(supervisors.filter(s => s.id !== id));
+  const handleDeleteSupervisor = async (id: string) => {
+    try {
+      const response = await fetch(`/api/company-hr/supervisors/${id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error?.message || 'Failed to remove supervisor');
+      fetchSupervisors();
+    } catch (error) {
+      console.error("Error removing supervisor:", error);
+      alert(error instanceof Error ? error.message : "Failed to remove supervisor. Please try again.");
+    }
   };
 
   const filteredSupervisors = supervisors.filter((supervisor) => {
@@ -583,7 +614,7 @@ export default function CompanyHRSupervisorsPage() {
                         <DropdownMenuItem onClick={() => openEditDialog(supervisor)}>
                           <Edit className="mr-2 h-4 w-4" /> Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toggleSupervisorStatus(supervisor.id)}>
+                        <DropdownMenuItem onClick={() => toggleSupervisorStatus(supervisor.id, supervisor.is_active)}>
                           {supervisor.is_active ? (
                             <>
                               <UserX className="mr-2 h-4 w-4" /> Deactivate

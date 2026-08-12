@@ -150,36 +150,34 @@ export default function SupervisorsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const supervisorsList = data.data.data || [];
-          
-          // Fetch workload for each supervisor
-          const enrichedSupervisors = await Promise.all(
-            supervisorsList.map(async (sup: Supervisor) => {
-              try {
-                const workRes = await fetch(`/api/department-coordinator/reports?type=supervisors`);
-                if (workRes.ok) {
-                  const workData = await workRes.json();
-                  if (workData.success && Array.isArray(workData.data)) {
-                    const workloadInfo = workData.data.find(
-                      (w: any) => w.supervisor_id === sup.id
-                    );
-                    return {
-                      ...sup,
-                      workload: workloadInfo || {
-                        assigned_students: 0,
-                        active_supervisions: 0,
-                        completed_supervisions: 0,
-                      },
-                    };
-                  }
-                }
-              } catch (e) {
-                console.error("Error fetching workload:", e);
+          const supervisorsList: Supervisor[] = data.data.data || [];
+
+          // Fetch workload for all supervisors in a single request
+          let workloadData: any[] = [];
+          try {
+            const workRes = await fetch(`/api/department-coordinator/reports?type=supervisors`);
+            if (workRes.ok) {
+              const workJson = await workRes.json();
+              if (workJson.success && Array.isArray(workJson.data)) {
+                workloadData = workJson.data;
               }
-              return sup;
-            })
-          );
-          
+            }
+          } catch (e) {
+            console.error("Error fetching workload:", e);
+          }
+
+          const enrichedSupervisors = supervisorsList.map((sup) => {
+            const workloadInfo = workloadData.find((w) => w.supervisor_id === sup.id);
+            return {
+              ...sup,
+              workload: workloadInfo || {
+                assigned_students: 0,
+                active_supervisions: 0,
+                completed_supervisions: 0,
+              },
+            };
+          });
+
           setSupervisors(enrichedSupervisors);
         }
       }
@@ -289,7 +287,7 @@ export default function SupervisorsPage() {
               </DialogHeader>
 
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name *</Label>
                     <Input
@@ -343,7 +341,7 @@ export default function SupervisorsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="title">Title</Label>
                     <Select
@@ -620,7 +618,7 @@ export default function SupervisorsPage() {
                           className="flex-1"
                           asChild
                         >
-                          <a href={`/department-coordinator/students?supervisor=${supervisor.id}`}>
+                          <a href={`/department-coordinator/students?supervisor=${supervisor.user_id}`}>
                             <Users className="h-3 w-3 mr-1" /> View Students
                           </a>
                         </Button>
@@ -735,7 +733,7 @@ export default function SupervisorsPage() {
                               )}
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <a href={`/department-coordinator/students?supervisor=${supervisor.id}`}>
+                              <a href={`/department-coordinator/students?supervisor=${supervisor.user_id}`}>
                                 <Users className="h-4 w-4 mr-2" /> View Students
                               </a>
                             </DropdownMenuItem>

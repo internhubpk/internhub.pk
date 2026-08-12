@@ -80,6 +80,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
+import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 interface Application {
@@ -115,23 +116,26 @@ const availablePrograms = [
 ];
 
 export default function CompanyHRApplicationsPage() {
+  const { profile } = useAuth();
   const [applications, setApplications] = useState<Application[]>(DEFAULT_APPLICATIONS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchApplications();
-  }, []);
+  }, [profile?.company_id]);
 
   async function fetchApplications() {
+    if (!profile?.company_id) { setIsLoading(false); return; }
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('applications')
         .select(`
           *,
-          students!inner(student_name, email, university, department),
+          student:profiles!student_user_id(full_name, email),
           internships!inner(title)
         `)
+        .eq('company_id', profile.company_id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -139,16 +143,16 @@ export default function CompanyHRApplicationsPage() {
       if (data && data.length > 0) {
         const apps: Application[] = data.map((app: any) => ({
           id: app.id,
-          student_id: app.student_id,
-          student_name: app.students?.student_name || 'Unknown',
-          student_email: app.students?.email || '',
+          student_id: app.student_user_id,
+          student_name: app.student?.full_name || 'Unknown',
+          student_email: app.student?.email || '',
           internship_id: app.internship_id,
           internship_title: app.internships?.title || 'Unknown Program',
           status: app.status || 'pending',
           applied_at: app.created_at,
           updated_at: app.updated_at || app.created_at,
-          university: app.students?.university,
-          department: app.students?.department,
+          university: '',
+          department: '',
           gpa: app.gpa || 'N/A',
           match_score: app.match_score || 0,
           cover_letter: app.cover_letter,
@@ -215,23 +219,40 @@ export default function CompanyHRApplicationsPage() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase();
   };
 
-  const handleAccept = (appId: string) => {
-    setApplications(apps => apps.map(app => 
-      app.id === appId ? { ...app, status: "accepted" as const, updated_at: new Date().toISOString() } : app
+  const updateApplicationStatus = async (appIds: string[], status: Application["status"]) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('applications')
+      .update({ status, updated_at: new Date().toISOString() })
+      .in('id', appIds);
+
+    if (error) {
+      console.error("Error updating application status:", error);
+      alert("Failed to update application. Please try again.");
+      return false;
+    }
+
+    setApplications(apps => apps.map(app =>
+      appIds.includes(app.id) ? { ...app, status, updated_at: new Date().toISOString() } : app
     ));
-    setIsDetailOpen(false);
+    return true;
   };
 
-  const handleReject = () => {
+  const handleAccept = async (appId: string) => {
+    if (await updateApplicationStatus([appId], "accepted")) {
+      setIsDetailOpen(false);
+    }
+  };
+
+  const handleReject = async () => {
     if (!rejectingAppId) return;
-    
-    setApplications(apps => apps.map(app => 
-      app.id === rejectingAppId ? { ...app, status: "rejected" as const, updated_at: new Date().toISOString() } : app
-    ));
-    setIsRejectDialogOpen(false);
-    setRejectReason("");
-    setRejectingAppId(null);
-    setIsDetailOpen(false);
+
+    if (await updateApplicationStatus([rejectingAppId], "rejected")) {
+      setIsRejectDialogOpen(false);
+      setRejectReason("");
+      setRejectingAppId(null);
+      setIsDetailOpen(false);
+    }
   };
 
   const openRejectDialog = (appId: string) => {
@@ -239,11 +260,10 @@ export default function CompanyHRApplicationsPage() {
     setIsRejectDialogOpen(true);
   };
 
-  const handleBatchAccept = () => {
-    setApplications(apps => apps.map(app => 
-      selectedForBatch.includes(app.id) ? { ...app, status: "accepted" as const, updated_at: new Date().toISOString() } : app
-    ));
-    setSelectedForBatch([]);
+  const handleBatchAccept = async () => {
+    if (await updateApplicationStatus(selectedForBatch, "accepted")) {
+      setSelectedForBatch([]);
+    }
   };
 
   const toggleSelectForBatch = (id: string) => {

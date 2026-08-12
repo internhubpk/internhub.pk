@@ -66,7 +66,8 @@ interface University {
   subdomain?: string;         // In original schema
   primary_color?: string;     // Added by migration
   secondary_color?: string;   // Added by migration
-  status?: "active" | "inactive" | "suspended";  // Added by migration
+  status?: "active" | "inactive" | "suspended";  // Added by migration (NOT on live schema)
+  is_active?: boolean;        // The actual column on the live schema — use this for status
   created_at: string;
   updated_at?: string;        // Added by migration
   created_by?: string;        // Added by migration
@@ -118,6 +119,9 @@ export default function SuperAdminUniversitiesPage() {
   
   // Password visibility state
   const [showPassword, setShowPassword] = useState(false);
+
+  // user_id of the existing university_admin profile being edited (if any)
+  const [editingAdminUserId, setEditingAdminUserId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUniversities();
@@ -200,6 +204,7 @@ export default function SuperAdminUniversitiesPage() {
 
   function openCreateDialog() {
     setEditingUniversity(null);
+    setEditingAdminUserId(null);
     setFormData(emptyForm);
     // Generate default password
     const defaultPass = "Admin@" + Math.random().toString(36).substring(2, 8);
@@ -215,7 +220,7 @@ export default function SuperAdminUniversitiesPage() {
       description: university.description || "",
       website: university.website || "",
       domain: university.domain || "",
-      status: (university.status === "suspended" ? "inactive" : university.status) || "active",
+      status: university.is_active !== false ? "active" : "inactive",
       // Initialize empty - will fetch admin info below
       adminEmail: "",
       adminPassword: "",
@@ -223,6 +228,7 @@ export default function SuperAdminUniversitiesPage() {
     });
     
     // Fetch existing admin user for this university
+    setEditingAdminUserId(null);
     try {
       const supabase = createClient();
       const { data: adminProfile } = await supabase
@@ -239,6 +245,7 @@ export default function SuperAdminUniversitiesPage() {
           adminEmail: adminProfile.email || "",
           adminName: adminProfile.full_name || "",
         }));
+        setEditingAdminUserId(adminProfile.user_id);
       }
     } catch (e) {
       console.log("Could not fetch admin info:", e);
@@ -263,8 +270,8 @@ export default function SuperAdminUniversitiesPage() {
         setMessage({ type: "error", text: "Please enter a valid email address" });
         return;
       }
-      if (!formData.adminPassword || formData.adminPassword.length < 6) {
-        setMessage({ type: "error", text: "Admin password must be at least 6 characters" });
+      if (!formData.adminPassword || formData.adminPassword.length < 8) {
+        setMessage({ type: "error", text: "Admin password must be at least 8 characters" });
         return;
       }
     }
@@ -308,6 +315,56 @@ export default function SuperAdminUniversitiesPage() {
           .eq("id", editingUniversity.id);
 
         if (error) throw error;
+
+        // Persist any admin-account changes (name/email/password) via the
+        // server-side admin route — this uses the service role key, which
+        // is required to update auth.users email/password. Previously
+        // these fields were editable in the UI but silently discarded.
+        if (editingAdminUserId) {
+          const wantsAdminUpdate =
+            formData.adminName.trim() || formData.adminEmail.trim() || formData.adminPassword;
+
+          if (formData.adminPassword && formData.adminPassword.length < 8) {
+            setMessage({ type: "error", text: "New admin password must be at least 8 characters" });
+            setIsSaving(false);
+            return;
+          }
+
+          if (wantsAdminUpdate) {
+            try {
+              const res = await fetch("/api/super-admin/update-admin-account", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user_id: editingAdminUserId,
+                  full_name: formData.adminName.trim() || undefined,
+                  email: formData.adminEmail.trim() || undefined,
+                  password: formData.adminPassword || undefined,
+                }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json?.success) {
+                setMessage({
+                  type: "warning",
+                  text: `University updated, but the admin account update failed: ${json?.error || `Request failed (${res.status})`}`,
+                });
+                setIsDialogOpen(false);
+                fetchUniversities();
+                setIsSaving(false);
+                return;
+              }
+            } catch (adminError: any) {
+              setMessage({
+                type: "warning",
+                text: `University updated, but the admin account update encountered an error: ${adminError?.message || "Unknown error"}`,
+              });
+              setIsDialogOpen(false);
+              fetchUniversities();
+              setIsSaving(false);
+              return;
+            }
+          }
+        }
 
         setMessage({ type: "success", text: "University updated successfully!" });
       } else {
@@ -554,7 +611,7 @@ export default function SuperAdminUniversitiesPage() {
             <div>
               <p className="text-sm text-muted-foreground">Active</p>
               <p className="text-3xl font-bold">
-                {universities.filter(u => !u.status || u.status === "active").length}
+                {universities.filter(u => u.is_active !== false).length}
               </p>
             </div>
           </CardContent>
@@ -636,11 +693,8 @@ export default function SuperAdminUniversitiesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant={
-                        university.status === "active" ? "default" :
-                        university.status === "suspended" ? "destructive" : "secondary"
-                      }>
-                        {university.status || "active"}
+                      <Badge variant={university.is_active !== false ? "default" : "secondary"}>
+                        {university.is_active !== false ? "active" : "inactive"}
                       </Badge>
                       <Button
                         variant="ghost"
@@ -807,7 +861,7 @@ export default function SuperAdminUniversitiesPage() {
                     <Input
                       id="adminPassword"
                       type={showPassword ? "text" : "password"}
-                      placeholder={editingUniversity ? "Leave blank to keep current" : "Min 6 characters"}
+                      placeholder={editingUniversity ? "Leave blank to keep current" : "Min 8 characters"}
                       value={formData.adminPassword}
                       onChange={(e) => setFormData(prev => ({ ...prev, adminPassword: e.target.value }))}
                       className="pr-24"
@@ -895,7 +949,7 @@ export default function SuperAdminUniversitiesPage() {
                   <div className="text-sm text-muted-foreground space-y-1">
                     {deleteTarget.slug && <p>Slug: <code className="bg-background px-1 rounded">{deleteTarget.slug}</code></p>}
                     <p>Students: <strong>{deleteTarget.student_count || 0}</strong></p>
-                    <p>Status: <Badge variant={deleteTarget.status === 'active' ? 'default' : 'secondary'} className="text-xs">{deleteTarget.status || 'active'}</Badge></p>
+                    <p>Status: <Badge variant={deleteTarget.is_active !== false ? 'default' : 'secondary'} className="text-xs">{deleteTarget.is_active !== false ? 'active' : 'inactive'}</Badge></p>
                   </div>
                 </div>
               )}

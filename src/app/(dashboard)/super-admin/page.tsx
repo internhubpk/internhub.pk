@@ -67,6 +67,7 @@ interface UniversityData {
   name: string;
   students: number;
   internships: number;
+  [key: string]: string | number;
 }
 
 type DataState = "loading" | "ready" | "error" | "no_tables";
@@ -181,7 +182,7 @@ export default function SuperAdminDashboard() {
             supabase.from("profiles").select("user_id", { count: "exact", head: true })
               .eq("role", "student").eq("university_id", uni.id),
             supabase.from("internships").select("id", { count: "exact", head: true })
-              .eq("company_id", uni.id), // This might need adjustment based on schema
+              .eq("university_id", uni.id),
           ]);
           
           return {
@@ -249,7 +250,7 @@ export default function SuperAdminDashboard() {
         .select("created_at")
         .gte("created_at", sixMonthsAgo.toISOString());
       
-      const months = [];
+      const months: { month: string; users: number; universities: number; internships: number }[] = [];
       const now = new Date();
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);

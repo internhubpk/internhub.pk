@@ -70,6 +70,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 type AttendanceStatus = "present" | "absent" | "late" | "half_day" | "leave" | "holiday";
@@ -109,24 +110,27 @@ const DEFAULT_SUMMARIES: AttendanceSummary[] = [];
 const programs = ["All Programs", "Marketing Intern", "Software Engineering Intern", "Data Science Intern", "UI/UX Design Intern"];
 
 export default function CompanyHRAttendancePage() {
+  const { profile } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>(DEFAULT_RECORDS);
   const [summaries, setSummaries] = useState<AttendanceSummary[]>(DEFAULT_SUMMARIES);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchAttendance();
-  }, []);
+  }, [profile?.company_id]);
 
   async function fetchAttendance() {
+    if (!profile?.company_id) { setIsLoading(false); return; }
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('attendance')
         .select(`
           *,
-          students!inner(student_name, email),
-          internships!inner(title)
+          student:profiles!student_user_id(full_name, email),
+          internships!inner(title, company_id)
         `)
+        .eq('internships.company_id', profile.company_id)
         .order('date', { ascending: false })
         .limit(50);
       
@@ -135,9 +139,9 @@ export default function CompanyHRAttendancePage() {
       if (data && data.length > 0) {
         const recs: AttendanceRecord[] = data.map((rec: any) => ({
           id: rec.id,
-          intern_id: rec.student_id,
-          intern_name: rec.students?.student_name || 'Unknown',
-          intern_email: rec.students?.email || '',
+          intern_id: rec.student_user_id,
+          intern_name: rec.student?.full_name || 'Unknown',
+          intern_email: rec.student?.email || '',
           program: rec.internships?.title || 'Unknown Program',
           date: rec.date,
           check_in: rec.check_in,

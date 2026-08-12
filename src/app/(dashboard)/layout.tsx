@@ -76,9 +76,14 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-background">
       {/* ============================================ */}
-      {/* SIDEBAR - flex item, takes its natural width */}
+      {/* SIDEBAR - flex item, takes its natural width      */}
+      {/* Desktop only: the mobile hamburger trigger lives   */}
+      {/* inside <Header/> (lg:hidden), so hide this instance */}
+      {/* on mobile to avoid rendering two menu icons.       */}
       {/* ============================================ */}
-      <Sidebar />
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
 
       {/* ============================================ */}
       {/* MAIN CONTENT AREA                            */}

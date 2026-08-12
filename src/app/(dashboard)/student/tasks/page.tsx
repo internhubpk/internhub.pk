@@ -116,7 +116,7 @@ export default function StudentTasksPage() {
       const { data: tasksData, error } = await supabase
         .from("tasks")
         .select("*")
-        .eq("student_id", user.id)
+        .eq("student_user_id", user.id)
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -130,7 +130,7 @@ export default function StudentTasksPage() {
         const { data: submissionsData } = await supabase
           .from("task_submissions")
           .select("*")
-          .eq("student_id", user.id)
+          .eq("student_user_id", user.id)
           .in("task_id", taskIds);
 
         (submissionsData || []).forEach((sub: any) => {
@@ -280,7 +280,7 @@ export default function StudentTasksPage() {
       // Create or update submission
       const submissionData = {
         task_id: selectedTask.id,
-        student_id: user.id,
+        student_user_id: user.id,
         notes: submissionNotes,
         url: submissionUrl || null,
         file_url: fileUrl,
@@ -292,7 +292,7 @@ export default function StudentTasksPage() {
       const { error: submitError } = await supabase
         .from("task_submissions")
         .upsert(submissionData, {
-          onConflict: "task_id,student_id",
+          onConflict: "task_id,student_user_id",
         });
 
       if (submitError) throw submitError;

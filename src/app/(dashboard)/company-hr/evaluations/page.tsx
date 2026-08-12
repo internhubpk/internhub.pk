@@ -72,6 +72,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "submitted" | "approved" | "rejected";
@@ -106,23 +107,26 @@ const DEFAULT_EVALUATIONS: FinalEvaluation[] = [];
 const programs = ["All Programs", "Software Engineering Intern", "Marketing Intern", "Data Science Intern", "UI/UX Design Intern"];
 
 export default function CompanyHREvaluationsPage() {
+  const { profile } = useAuth();
   const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchEvaluations();
-  }, []);
+  }, [profile?.company_id]);
 
   async function fetchEvaluations() {
+    if (!profile?.company_id) { setIsLoading(false); return; }
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('evaluations')
         .select(`
           *,
-          students!inner(student_name, email),
-          internships!inner(title)
+          student:profiles!student_user_id(full_name, email),
+          internships!inner(title, company_id)
         `)
+        .eq('internships.company_id', profile.company_id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -130,9 +134,9 @@ export default function CompanyHREvaluationsPage() {
       if (data && data.length > 0) {
         const evals: FinalEvaluation[] = data.map((ev: any) => ({
           id: ev.id,
-          intern_id: ev.intern_id,
-          intern_name: ev.students?.student_name || 'Unknown',
-          intern_email: ev.students?.email || '',
+          intern_id: ev.student_user_id,
+          intern_name: ev.student?.full_name || 'Unknown',
+          intern_email: ev.student?.email || '',
           internship_id: ev.internship_id,
           internship_title: ev.internships?.title || 'Unknown Program',
           supervisor_name: ev.supervisor_name,

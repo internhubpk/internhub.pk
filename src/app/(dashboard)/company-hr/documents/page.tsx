@@ -64,6 +64,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
 interface InternDocument {
@@ -99,6 +100,7 @@ const DEFAULT_TEMPLATES: DocumentTemplate[] = [
 ];
 
 export default function CompanyHRDocumentsPage() {
+  const { profile } = useAuth();
   const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
   const [interns, setInterns] = useState(DEFAULT_INTERNS);
   const [templates] = useState<DocumentTemplate[]>(DEFAULT_TEMPLATES);
@@ -106,32 +108,50 @@ export default function CompanyHRDocumentsPage() {
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [profile?.company_id]);
 
   async function fetchDocuments() {
+    if (!profile?.company_id) { setIsLoading(false); return; }
     try {
       const supabase = createClient();
+
+      // Documents are scoped to students generically (entity_type/entity_id), so
+      // first resolve which students belong to this company's internships.
+      const { data: companyStudents } = await supabase
+        .from('student_internships')
+        .select('student_user_id')
+        .eq('company_id', profile.company_id);
+
+      const studentIds = [...new Set((companyStudents || []).map((s: any) => s.student_user_id))];
+
+      if (studentIds.length === 0) {
+        setDocuments([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('documents')
         .select(`
           *,
-          students!inner(student_name, email)
+          student:profiles!uploaded_by(full_name, email)
         `)
-        .order('uploaded_at', { ascending: false });
+        .eq('entity_type', 'student')
+        .in('entity_id', studentIds)
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
       if (data && data.length > 0) {
         const docs: InternDocument[] = data.map((doc: any) => ({
           id: doc.id,
-          intern_id: doc.student_id,
-          intern_name: doc.students?.student_name || 'Unknown',
-          intern_email: doc.students?.email || '',
-          document_type: doc.document_type || 'offer_letter',
-          file_name: doc.file_name || 'document.pdf',
-          file_url: doc.file_url,
-          file_size: doc.file_size || 0,
-          uploaded_at: doc.uploaded_at || doc.created_at,
+          intern_id: doc.entity_id,
+          intern_name: doc.student?.full_name || 'Unknown',
+          intern_email: doc.student?.email || '',
+          document_type: doc.type || 'offer_letter',
+          file_name: doc.name || 'document.pdf',
+          file_url: doc.url,
+          file_size: doc.size || 0,
+          uploaded_at: doc.created_at,
           uploaded_by: doc.uploaded_by,
           status: doc.status || 'pending',
         }));

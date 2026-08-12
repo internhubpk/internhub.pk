@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -102,13 +103,18 @@ interface SupervisorOption {
 
 export default function StudentsPage() {
   const { profile } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorOption[]>([]);
+  const [assignedSupervisorByStudent, setAssignedSupervisorByStudent] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterProgram, setFilterProgram] = useState<string>("all");
-  const [filterSupervisor, setFilterSupervisor] = useState<string>("all");
+  const [filterSupervisor, setFilterSupervisor] = useState<string>(
+    searchParams.get("filter") === "no_supervisor" ? "unassigned" : "all"
+  );
   
   // Selection state
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -154,8 +160,11 @@ export default function StudentsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.data?.data)) {
+          // NOTE: faculty_supervisor_id on student_internships references
+          // profiles.user_id, not the supervisors.id surrogate key, so we
+          // must use the supervisor's user_id here.
           const supervisorOptions = data.data.data.map((s: any) => ({
-            id: s.id,
+            id: s.user_id,
             name: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.title || "Unknown",
             email: s.profiles?.email || "",
             assigned_count: 0,
@@ -168,6 +177,28 @@ export default function StudentsPage() {
     }
   }, []);
 
+  // Fetch which students already have a faculty supervisor assigned,
+  // so we can support filtering by supervisor assignment status/identity.
+  const fetchAssignedSupervisors = useCallback(async () => {
+    try {
+      const res = await fetch("/api/department-coordinator/assignments?pageSize=500");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data?.data)) {
+          const map = new Map<string, string>();
+          data.data.data.forEach((a: any) => {
+            if (a.faculty_supervisor_id) {
+              map.set(a.student_id, a.faculty_supervisor_id);
+            }
+          });
+          setAssignedSupervisorByStudent(map);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching assignment status:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStudents();
   }, [fetchStudents]);
@@ -176,13 +207,29 @@ export default function StudentsPage() {
     fetchSupervisors();
   }, [fetchSupervisors]);
 
+  useEffect(() => {
+    fetchAssignedSupervisors();
+  }, [fetchAssignedSupervisors]);
+
+  // Support linking directly to a specific supervisor's students, e.g.
+  // /department-coordinator/students?supervisor=<id> from the Supervisors page.
+  const supervisorIdParam = searchParams.get("supervisor");
+
+  // Students to display, honoring the supervisor-assignment filter
+  const displayedStudents = students.filter((s) => {
+    if (supervisorIdParam) return assignedSupervisorByStudent.get(s.id) === supervisorIdParam;
+    if (filterSupervisor === "unassigned") return !assignedSupervisorByStudent.has(s.id);
+    if (filterSupervisor === "assigned") return assignedSupervisorByStudent.has(s.id);
+    return true;
+  });
+
   // Handle select all
   const handleSelectAll = () => {
     if (isSelectAll) {
       setSelectedStudents(new Set());
       setIsSelectAll(false);
     } else {
-      setSelectedStudents(new Set(students.map(s => s.id)));
+      setSelectedStudents(new Set(displayedStudents.map(s => s.id)));
       setIsSelectAll(true);
     }
   };
@@ -196,7 +243,7 @@ export default function StudentsPage() {
       newSelected.add(studentId);
     }
     setSelectedStudents(newSelected);
-    setIsSelectAll(newSelected.size === students.length);
+    setIsSelectAll(newSelected.size === displayedStudents.length);
   };
 
   // Handle bulk assignment
@@ -275,7 +322,7 @@ export default function StudentsPage() {
       "Enrolled Date",
     ];
 
-    const csvData = students.map((student) => [
+    const csvData = displayedStudents.map((student) => [
       student.enrollment_number,
       student.profiles?.first_name || "",
       student.profiles?.last_name || "",
@@ -346,7 +393,7 @@ export default function StudentsPage() {
         </div>
         
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportToCSV} disabled={isLoading || students.length === 0}>
+          <Button variant="outline" onClick={exportToCSV} disabled={isLoading || displayedStudents.length === 0}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
@@ -421,6 +468,25 @@ export default function StudentsPage() {
         </Card>
       </div>
 
+      {/* Active supervisor link filter banner */}
+      {supervisorIdParam && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/50 px-4 py-2 text-sm">
+          <span>
+            Showing students assigned to{" "}
+            <span className="font-medium">
+              {supervisors.find((s) => s.id === supervisorIdParam)?.name || "this supervisor"}
+            </span>
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/department-coordinator/students")}
+          >
+            <X className="h-4 w-4 mr-1" /> Clear
+          </Button>
+        </div>
+      )}
+
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -447,14 +513,27 @@ export default function StudentsPage() {
                   <SelectItem value="graduated">Graduated</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Select value={filterSupervisor} onValueChange={setFilterSupervisor}>
+                <SelectTrigger className="w-[150px]">
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Supervisor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Supervisors</SelectItem>
+                  <SelectItem value="assigned">Assigned</SelectItem>
+                  <SelectItem value="unassigned">Not Assigned</SelectItem>
+                </SelectContent>
+              </Select>
               
-              {(searchQuery || filterStatus !== "all") && (
+              {(searchQuery || filterStatus !== "all" || filterSupervisor !== "all") && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => {
                     setSearchQuery("");
                     setFilterStatus("all");
+                    setFilterSupervisor("all");
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -484,12 +563,12 @@ export default function StudentsPage() {
             </div>
           </CardContent>
         </Card>
-      ) : students.length === 0 ? (
+      ) : displayedStudents.length === 0 ? (
         <EmptyState
           icon={<GraduationCap className="h-10 w-10 text-muted-foreground" />}
           title="No students found"
           description={
-            searchQuery || filterStatus !== "all"
+            searchQuery || filterStatus !== "all" || filterSupervisor !== "all"
               ? "Try adjusting your search or filters"
               : "No students are enrolled in this department yet"
           }
@@ -499,7 +578,7 @@ export default function StudentsPage() {
           {/* Cards View for Mobile */}
           <div className="md:hidden space-y-3">
             <AnimatePresence mode="popLayout">
-              {students.map((student) => (
+              {displayedStudents.map((student) => (
                 <motion.div
                   key={student.id}
                   layout
@@ -599,7 +678,7 @@ export default function StudentsPage() {
               </TableHeader>
               <TableBody>
                 <AnimatePresence mode="popLayout">
-                  {students.map((student) => (
+                  {displayedStudents.map((student) => (
                     <motion.tr
                       key={student.id}
                       layout
@@ -683,7 +762,7 @@ export default function StudentsPage() {
           {/* Summary */}
           <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
             <span>
-              Showing {students.length} student{students.length !== 1 ? "s" : ""}
+              Showing {displayedStudents.length} student{displayedStudents.length !== 1 ? "s" : ""}
             </span>
             {selectedStudents.size > 0 && (
               <Button

@@ -106,7 +106,7 @@ export default function StudentAttendancePage() {
       const { data, error } = await supabase
         .from("attendance")
         .select("*")
-        .eq("student_id", user.id)
+        .eq("student_user_id", user.id)
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: false});
