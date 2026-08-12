@@ -69,8 +69,11 @@ server.log
 credentials*
 secrets*
 
-# Supabase local config
-/supabase/
+# Supabase local config (CLI-generated)
+# Allow migrations/ and tests/ to be committed; ignore CLI-generated branches.
+/supabase/.branches
+/supabase/.temp
+/supabase/config.toml
 
 # Upload directory (user files)
 upload/
