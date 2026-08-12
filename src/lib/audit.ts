@@ -72,7 +72,8 @@ export interface AuditLogEntry {
 export async function auditLog(entry: AuditLogEntry): Promise<void> {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return;
     
     // Get current user if available
     const { data: { user } } = await supabase.auth.getUser();
@@ -107,7 +108,7 @@ export async function auditLog(entry: AuditLogEntry): Promise<void> {
 
 export const audit = {
   // Authentication
-  login: (userId: string, universityId?: string) =>
+  login: (userId: string, universityId: string | null = null) =>
     auditLog({
       action: "auth.login",
       entityType: "user",
@@ -120,9 +121,10 @@ export const audit = {
       action: "auth.logout",
       entityType: "user",
       entityId: userId,
+      universityId: null,
     }),
   
-  register: (userId: string, role: string, universityId?: string) =>
+  register: (userId: string, role: string, universityId: string | null = null) =>
     auditLog({
       action: "auth.register",
       entityType: "profile",
@@ -182,6 +184,7 @@ export const audit = {
       action: "application.submit",
       entityType: "application",
       entityId: applicationId,
+      universityId: null,
       details: { student_id: studentId, internship_id: internshipId },
     }),
   
@@ -190,6 +193,7 @@ export const audit = {
       action: "application.approve",
       entityType: "application",
       entityId: applicationId,
+      universityId: null,
       details: { approved_by: approvedBy },
     }),
   
@@ -198,6 +202,7 @@ export const audit = {
       action: "application.reject",
       entityType: "application",
       entityId: applicationId,
+      universityId: null,
       details: { rejected_by: rejectedBy, reason },
     }),
   
@@ -207,6 +212,7 @@ export const audit = {
       action: "evaluation.submit",
       entityType: "evaluation",
       entityId: evaluationId,
+      universityId: null,
       details: { evaluator_id: evaluatorId, evaluator_type: evaluatorType },
     }),
   
@@ -289,7 +295,8 @@ export async function queryAuditLogs(filters: {
 }) {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { data: [], total: 0, limit: filters.limit || 50, offset: 0 };
     
     let query = supabase
       .from("audit_logs")

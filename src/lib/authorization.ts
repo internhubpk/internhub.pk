@@ -211,7 +211,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
 export async function getServerAuthContext(): Promise<AuthContext> {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return { user: null, profile: null, isAuthenticated: false };
+    }
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     

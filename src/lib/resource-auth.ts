@@ -62,7 +62,8 @@ export interface ResourceAccessRequest {
 export async function getResourceAuthContext(): Promise<ResourceAuthContext | null> {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return null;
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -123,7 +124,8 @@ export async function canAccessStudentData(
   if (["university_admin", "department_coordinator"].includes(role!)) {
     // Verify target student is in same university
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { allowed: false, reason: "Server unavailable" };
     
     const { data: targetProfile } = await supabase
       .from("profiles")
@@ -152,7 +154,8 @@ export async function canAccessStudentData(
   // Faculty/site supervisor - check assignment
   if (["faculty_supervisor", "site_supervisor"].includes(role!)) {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { allowed: false, reason: "Server unavailable" };
 
     // Check if supervisor is assigned to this student
     const { data: assignment } = await supabase
@@ -172,7 +175,8 @@ export async function canAccessStudentData(
   // Company HR - check if student applied to their company's internship
   if (role === "company_hr") {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { allowed: false, reason: "Server unavailable" };
 
     const { data: application } = await supabase
       .from("internship_applications")
@@ -191,7 +195,8 @@ export async function canAccessStudentData(
   // External evaluator - check evaluation assignment
   if (role === "external_evaluator") {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { allowed: false, reason: "Server unavailable" };
 
     const { data: evaluation } = await supabase
       .from("evaluations")
@@ -269,7 +274,8 @@ export async function canAccessCompanyData(
   // University admin - check if company belongs to their university
   if (role === "university_admin") {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) return { allowed: false, reason: "Server unavailable" };
 
     const { data: company } = await supabase
       .from("companies")
