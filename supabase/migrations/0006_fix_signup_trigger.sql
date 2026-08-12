@@ -146,14 +146,12 @@ CREATE OR REPLACE FUNCTION public.internhub_handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
-AS $$
+SET search_path TO 'public'
+AS $function$
 DECLARE
   meta_role       text;
   assigned_role   user_role;
 BEGIN
-  -- Prefer role from raw_user_meta_data (set by the app at signUp time),
-  -- fall back to raw_app_meta_data (set by admin), finally 'pending_assignment'.
   meta_role := COALESCE(
     NEW.raw_user_meta_data->>'role',
     NEW.raw_app_meta_data->>'role',
@@ -185,15 +183,17 @@ BEGIN
     assigned_role,
     NEW.raw_user_meta_data->>'avatar_url',
     NEW.raw_user_meta_data->>'phone',
-    CASE WHEN assigned_role = 'pending_assignment' THEN 'pending'
-         ELSE 'active' END,
+    CASE
+      WHEN assigned_role = 'pending_assignment' THEN 'pending'::profile_status
+      ELSE 'active'::profile_status
+    END,
     true
   )
   ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
-$$;
+$function$;
 
 -- ----------------------------------------------------------------------------
 -- 5. Recreate the trigger on auth.users.
