@@ -19,7 +19,6 @@ const VIEW_PROGRAM_ROLES: UserRole[] = [
   "department_coordinator",
   "faculty_supervisor",
   "student",
-  "company_hr",
 ];
 
 // Roles that can create/edit programs
@@ -78,7 +77,7 @@ export async function GET(request: NextRequest) {
       // Department coordinators can ONLY see their department's programs
       if (userDepartmentId) {
         query = query.eq("department_id", userDepartmentId);
-        
+
         // Also enforce university scope
         if (userUniversityId) {
           query = query.eq("university_id", userUniversityId);
@@ -103,11 +102,7 @@ export async function GET(request: NextRequest) {
       // Faculty supervisors see programs in their university
       query = query.eq("university_id", userUniversityId);
     }
-    // company_hr: no university/department filter — companies hire interns
-    //   from many universities, so the HR needs to see the full catalog of
-    //   active programs to pick from when assigning supervisors. Only the
-    //   `is_active=true` filter (if explicitly requested) applies.
-    // super_admin: can see all programs
+    // Super admins can see all programs
 
     // Apply additional filters
     if (search) {

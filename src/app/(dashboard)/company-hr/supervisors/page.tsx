@@ -87,7 +87,6 @@ interface SiteSupervisor {
   phone?: string | null;
   department_focus?: string | null;
   specialization?: string | null;
-  assigned_programs: string[];
   is_active: boolean;
   assigned_interns_count: number;
   created_at: string;
@@ -104,167 +103,11 @@ interface CompanyIntern {
   status: string;
 }
 
-// ===========================================================================
-// ProgramMultiSelect — chip picker for `assigned_programs`.
-// Fetches the real catalog of academic programs from /api/programs (so the
-// HR picks from actual programs that exist on the platform, not a fixed
-// 5–6 item dropdown). Each program is a toggleable chip; a search box lets
-// the HR filter when there are many programs. Other fields (department_focus,
-// specialization, etc.) remain free-text inputs.
-//
-// `value` is an array of program NAMES (strings) for backward compatibility
-// with existing display logic and stored `program_ids` JSON data.
-// ===========================================================================
-function ProgramMultiSelect({
-  label,
-  values,
-  onChange,
-  helperText,
-}: {
-  label: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-  helperText?: string;
-}) {
-  const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [isLoadingPrograms, setIsLoadingPrograms] = useState(true);
-  const [programSearch, setProgramSearch] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // Pull a large page of active programs so the HR sees the full
-        // catalog (the typical platform has dozens, not thousands).
-        const res = await fetch("/api/programs?pageSize=200&is_active=true", { cache: "no-store" });
-        if (!res.ok) return;
-        const j = await res.json();
-        const list: { id: string; name: string; code: string }[] = (j?.data?.data || j?.data || []).map(
-          (p: any) => ({
-            id: p.id,
-            name: p.name || p.title || "Unnamed program",
-            code: p.code || "",
-          })
-        );
-        if (!cancelled) setPrograms(list);
-      } catch (e) {
-        console.error("Error fetching programs:", e);
-      } finally {
-        if (!cancelled) setIsLoadingPrograms(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const toggle = (name: string) => {
-    if (values.some((v) => v.toLowerCase() === name.toLowerCase())) {
-      onChange(values.filter((v) => v.toLowerCase() !== name.toLowerCase()));
-    } else {
-      onChange([...values, name]);
-    }
-  };
-
-  const remove = (name: string) => {
-    onChange(values.filter((v) => v !== name));
-  };
-
-  // Programs whose name doesn't already match a known catalog entry are
-  // shown as "legacy" chips so historical free-text data isn't lost.
-  const knownNames = new Set(programs.map((p) => p.name.toLowerCase()));
-  const legacyValues = values.filter((v) => !knownNames.has(v.toLowerCase()));
-
-  const filtered = programs.filter(
-    (p) =>
-      p.name.toLowerCase().includes(programSearch.toLowerCase()) ||
-      p.code.toLowerCase().includes(programSearch.toLowerCase())
-  );
-
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-
-      {/* Selected chips (with X to remove) */}
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {values.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
-            >
-              {v}
-              <button
-                type="button"
-                onClick={() => remove(v)}
-                className="hover:bg-primary/20 rounded-full p-0.5"
-                aria-label={`Remove ${v}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Search box (only show if there are programs to search) */}
-      {programs.length > 8 && (
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search programs…"
-            value={programSearch}
-            onChange={(e) => setProgramSearch(e.target.value)}
-            className="h-9 pl-8 text-sm"
-          />
-        </div>
-      )}
-
-      {/* Chip picker */}
-      <div className="flex flex-wrap gap-1.5 p-3 rounded-lg border bg-background max-h-[180px] overflow-y-auto">
-        {isLoadingPrograms ? (
-          <span className="text-xs text-muted-foreground">Loading programs…</span>
-        ) : filtered.length === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {programs.length === 0
-              ? "No programs available yet. Coordinators must create programs first."
-              : "No programs match your search."}
-          </span>
-        ) : (
-          filtered.map((p) => {
-            const selected = values.some((v) => v.toLowerCase() === p.name.toLowerCase());
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => toggle(p.name)}
-                className={`px-2.5 py-1 rounded-full text-xs transition-colors border ${
-                  selected
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-secondary hover:bg-secondary/80 border-transparent"
-                }`}
-                title={p.code ? `${p.name} (${p.code})` : p.name}
-              >
-                {p.name.length > 32 ? p.name.substring(0, 29) + "…" : p.name}
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      {/* Legacy / free-text values that aren't in the catalog anymore */}
-      {legacyValues.length > 0 && (
-        <p className="text-xs text-amber-600">
-          {legacyValues.length} previously assigned program(s) no longer exist in the catalog — they are kept
-          for reference but can be removed by clicking their × above.
-        </p>
-      )}
-
-      {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
-    </div>
-  );
-}
+// (Site supervisors are NOT tied to university programs — they are tied to
+// internships via intern_supervisor_assignments. So there is no
+// program-picker on this page. The "Assign Interns" dialog handles the
+// real assignment: it lets the HR pick which company interns / internships
+// this supervisor is responsible for.)
 
 export default function CompanyHRSupervisorsPage() {
   const [supervisors, setSupervisors] = useState<SiteSupervisor[]>([]);
@@ -291,7 +134,6 @@ export default function CompanyHRSupervisorsPage() {
         phone: sup.phone || sup.profiles?.phone,
         department_focus: sup.department_focus,
         specialization: sup.specialization,
-        assigned_programs: sup.program_ids || [],
         is_active: sup.is_active ?? true,
         assigned_interns_count: sup.assigned_interns_count || 0,
         created_at: sup.created_at,
@@ -322,7 +164,6 @@ export default function CompanyHRSupervisorsPage() {
     password: "",
     department_focus: "",
     specialization: "",
-    assigned_programs: [] as string[],
   });
 
   // Assignment dialog state
@@ -341,7 +182,6 @@ export default function CompanyHRSupervisorsPage() {
       password: "",
       department_focus: "",
       specialization: "",
-      assigned_programs: [],
     });
   };
 
@@ -358,7 +198,6 @@ export default function CompanyHRSupervisorsPage() {
           phone: formData.phone || null,
           department_focus: formData.department_focus || null,
           specialization: formData.specialization || null,
-          program_ids: formData.assigned_programs,
         }),
       });
 
@@ -384,7 +223,6 @@ export default function CompanyHRSupervisorsPage() {
       password: "",
       department_focus: supervisor.department_focus || "",
       specialization: supervisor.specialization || "",
-      assigned_programs: supervisor.assigned_programs,
     });
     setIsEditOpen(true);
   };
@@ -403,7 +241,6 @@ export default function CompanyHRSupervisorsPage() {
           phone: formData.phone || null,
           department_focus: formData.department_focus || null,
           specialization: formData.specialization || null,
-          program_ids: formData.assigned_programs,
         }),
       });
 
@@ -720,13 +557,6 @@ export default function CompanyHRSupervisorsPage() {
                 />
               </div>
 
-              <ProgramMultiSelect
-                label="Assigned Programs"
-                values={formData.assigned_programs}
-                onChange={(next) => setFormData({ ...formData, assigned_programs: next })}
-                helperText="Pick the academic programs this supervisor can mentor interns from."
-              />
-
               <DialogFooter className="pt-4 border-t">
                 <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
                   Cancel
@@ -823,7 +653,7 @@ export default function CompanyHRSupervisorsPage() {
               <TableRow>
                 <TableHead>Supervisor</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Programs</TableHead>
+                <TableHead>Specialization</TableHead>
                 <TableHead>Interns</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Login</TableHead>
@@ -852,19 +682,9 @@ export default function CompanyHRSupervisorsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {supervisor.assigned_programs.slice(0, 2).map((program) => (
-                        <span key={program} className="text-xs text-muted-foreground truncate max-w-[180px]" title={program}>
-                          • {program}
-                        </span>
-                      ))}
-                      {supervisor.assigned_programs.length > 2 && (
-                        <span className="text-xs text-primary">+{supervisor.assigned_programs.length - 2} more</span>
-                      )}
-                      {supervisor.assigned_programs.length === 0 && (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </div>
+                    <span className="text-xs text-muted-foreground truncate max-w-[180px] block" title={supervisor.specialization || ""}>
+                      {supervisor.specialization || "—"}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <span className={`font-semibold ${supervisor.assigned_interns_count > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -1024,22 +844,6 @@ export default function CompanyHRSupervisorsPage() {
                   </div>
                 </div>
 
-                {/* Assigned Programs */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" /> Assigned Programs / Areas
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedSupervisor.assigned_programs.length > 0 ? (
-                      selectedSupervisor.assigned_programs.map((program) => (
-                        <Badge key={program} variant="secondary" className="py-1 px-3">{program}</Badge>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No programs assigned</p>
-                    )}
-                  </div>
-                </div>
-
                 {/* Account Info */}
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center gap-2">
@@ -1133,13 +937,6 @@ export default function CompanyHRSupervisorsPage() {
                 onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
               />
             </div>
-
-            <ProgramMultiSelect
-              label="Assigned Programs"
-              values={formData.assigned_programs}
-              onChange={(next) => setFormData({ ...formData, assigned_programs: next })}
-              helperText="Pick the academic programs this supervisor can mentor interns from."
-            />
 
             <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }}>

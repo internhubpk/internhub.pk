@@ -98,6 +98,23 @@ interface InternshipProgram {
 // Default empty state - internships will be fetched from database
 const DEFAULT_INTERNSHIPS: InternshipProgram[] = [];
 
+// Convert any date-like value (ISO timestamp, date string, null) to the
+// yyyy-MM-dd format required by <input type="date">. Returns "" for null /
+// unparseable input so the input stays blank instead of throwing
+// "The specified value does not conform to the required format".
+function toDateInputValue(value?: string | null): string {
+  if (!value) return "";
+  // Already in yyyy-MM-dd form
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  // ISO timestamp like "2026-08-10T00:00:00+00:00" → take first 10 chars
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 // Free-text tag input for target departments. Departments are stored as
 // free-text labels in a jsonb array, so HR can enter anything relevant
 // to their internship offering — no fixed dropdown.
@@ -284,9 +301,9 @@ export default function CompanyHRInternshipsPage() {
       target_departments: internship.target_departments,
       target_university: internship.target_university || "",
       max_applicants: internship.max_applicants?.toString() || "",
-      start_date: internship.start_date || "",
-      end_date: internship.end_date || "",
-      application_deadline: internship.application_deadline || "",
+      start_date: toDateInputValue(internship.start_date),
+      end_date: toDateInputValue(internship.end_date),
+      application_deadline: toDateInputValue(internship.application_deadline),
       required_skills: internship.required_skills.join(", "),
       status: internship.status,
     });

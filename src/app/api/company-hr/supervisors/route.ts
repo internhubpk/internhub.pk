@@ -402,7 +402,9 @@ export async function POST(request: NextRequest) {
         phone: phone?.trim() || null,
         department_focus: department_focus?.trim() || null,
         specialization: specialization?.trim() || null,
-        program_ids: Array.isArray(program_ids) ? program_ids : [],
+        // program_ids intentionally omitted — site supervisors are assigned
+        // to internships (via intern_supervisor_assignments), NOT to
+        // university programs. The column exists for backward compat.
         is_active: true,
       })
       .select()
