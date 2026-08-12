@@ -305,28 +305,65 @@ export default function CoordinatorsPage() {
   const handleToggleStatus = async (coordinator: CoordinatorWithDetails) => {
     try {
       const supabase = createClient();
-      
+      const nextActive = !coordinator.is_active;
+
       const { error } = await supabase
         .from("profiles")
         .update({
-          is_active: !coordinator.is_active,
+          is_active: nextActive,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", coordinator.user_id);
 
-      if (error) throw error;
+      if (error) {
+        console.error(
+          "[handleToggleStatus] RLS / DB error:",
+          JSON.stringify(error, null, 2)
+        );
+        throw error;
+      }
+
+      // Re-read to detect silent RLS rejection (UPDATE returned success
+      // but 0 rows affected). Same pattern as handleUpdateDepartment.
+      const { data: verify, error: verifyErr } = await supabase
+        .from("profiles")
+        .select("is_active, university_id")
+        .eq("user_id", coordinator.user_id)
+        .single();
+
+      if (verifyErr) {
+        console.error(
+          "[handleToggleStatus] verify read failed:",
+          JSON.stringify(verifyErr, null, 2)
+        );
+      } else if (verify?.is_active !== nextActive) {
+        toast({
+          title: "Status change failed (silent)",
+          description:
+            "The database accepted the update but is_active didn't change. " +
+            "This usually means the coordinator's profile is missing a " +
+            "university_id (RLS WITH CHECK failed). Check that the " +
+            "coordinator's auth.users metadata has a valid university_id.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
         title: "Status Updated",
-        description: `${coordinator.full_name || coordinator.email} has been ${!coordinator.is_active ? 'activated' : 'deactivated'}`,
+        description: `${coordinator.full_name || coordinator.email} has been ${nextActive ? 'activated' : 'deactivated'}`,
       });
 
       fetchCoordinators();
     } catch (error) {
       console.error("Error updating status:", error);
+      const err = error as { code?: string; message?: string } | null;
       toast({
         title: "Error",
-        description: "Failed to update status",
+        description:
+          err?.code === "42501"
+            ? "Permission denied (RLS blocked the update). The coordinator's profile may be missing university_id."
+            : err?.message || "Failed to update status",
         variant: "destructive",
       });
     }

@@ -113,6 +113,16 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: BookOpen,
     },
     {
+      title: "Companies",
+      href: "/university-admin/companies",
+      icon: Briefcase,
+    },
+    {
+      title: "Internships",
+      href: "/university-admin/internships",
+      icon: FileText,
+    },
+    {
       title: "Reports",
       href: "/university-admin/reports",
       icon: BarChart3,
