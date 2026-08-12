@@ -279,7 +279,7 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
-  
+
   /* Base Body Styles */
   body {
     @apply bg-background text-foreground antialiased;
@@ -289,6 +289,24 @@
     font-weight: 400;
     letter-spacing: -0.01em;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "ss03" 1;
+  }
+
+  /*
+   * Dashboard layout lock — applied to <body> when the dashboard shell is
+   * mounted. Prevents the document itself from scrolling so the in-page
+   * scroll region (the <main> element) is the only thing that scrolls.
+   * Without this, the whole page can scroll on some setups (especially
+   * when a Radix Dialog portal briefly mounts at the document root), which
+   * makes the footer drift away from the bottom of the viewport.
+   */
+  body.dashboard-layout-lock {
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
+  }
+  body.dashboard-layout-lock #root,
+  body.dashboard-layout-lock > div {
+    height: 100%;
   }
   
   /* Display - Hero text, marketing headers (48-64px) */

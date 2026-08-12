@@ -53,6 +53,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading, isAuthenticated, router]);
 
+  // Lock the document scroll while the dashboard shell is mounted. The
+  // only scrollable element should be the <main> region inside the shell.
+  // Without this lock, some setups (especially when a Radix Dialog portal
+  // briefly mounts at the document root) let the whole body scroll, which
+  // makes the footer drift away from the bottom of the viewport.
+  useEffect(() => {
+    document.body.classList.add("dashboard-layout-lock");
+    return () => {
+      document.body.classList.remove("dashboard-layout-lock");
+    };
+  }, []);
+
   // Show the loading skeleton while the session is resolving, and keep
   // showing it while we redirect an unauthenticated visitor away — the
   // dashboard shell (and any page-specific data fetching) must never
@@ -62,17 +74,19 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh w-screen overflow-hidden bg-background">
       {/* ============================================ */}
-      {/* SIDEBAR - Fixed Position                     */}
+      {/* SIDEBAR - flex item, takes its natural width */}
       {/* ============================================ */}
       <Sidebar />
 
       {/* ============================================ */}
       {/* MAIN CONTENT AREA                            */}
       {/* ============================================ */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* HEADER - Sticky */}
+      <div className="flex-1 flex flex-col h-dvh overflow-hidden min-w-0">
+        {/* HEADER — non-sticky block at top of the flex column. (sticky
+            has no effect here because the parent has overflow-hidden and
+            is not the scroll container; main below is.) */}
         <Header />
 
         {/* SCROLLABLE MAIN CONTENT
@@ -100,15 +114,18 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </main>
 
         {/* ============================================ */}
-        {/* FOOTER - pinned to the bottom of the flex column.
-            Because the parent is h-screen overflow-hidden and main is the
-            only scrollable element, this footer never moves when the user
-            scrolls the main content. shrink-0 prevents it from collapsing,
-            bg-background gives it a solid backdrop so content scrolling
-            underneath doesn't show through, and relative z-10 keeps it
-            above any transiently-positioned UI. */}
+        {/* FOOTER — pinned to the bottom of the flex column with shrink-0.
+            Because:
+              • the outer div is h-dvh + overflow-hidden
+              • the body has dashboard-layout-lock (overflow:hidden)
+              • the inner column is h-dvh + overflow-hidden + flex-col
+              • main is flex-1 min-h-0 overflow-y-auto (the ONLY scroll region)
+            this footer can never move when the user scrolls. The body
+            scroll-lock above is the key — without it, some setups (Radix
+            Dialog portals mounting at document root) let the whole body
+            scroll, which made the footer drift. */}
         {/* ============================================ */}
-        <footer className="border-t border-border py-4 px-6 shrink-0 bg-background relative z-10">
+        <footer className="border-t border-border py-4 px-6 shrink-0 bg-background">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
             <p>© {new Date().getFullYear()} InternHub. All rights reserved.</p>
             <div className="flex items-center gap-4">

@@ -303,82 +303,28 @@ export default function CoordinatorsPage() {
   };
 
   const handleToggleStatus = async (coordinator: CoordinatorWithDetails) => {
+    const nextActive = !coordinator.is_active;
+    console.log("[coordinators.handleToggleStatus] start", {
+      user_id: coordinator.user_id,
+      email: coordinator.email,
+      current: coordinator.is_active,
+      next: nextActive,
+    });
+
     try {
-      const supabase = createClient();
-      const nextActive = !coordinator.is_active;
+      const res = await fetch(`/api/coordinators/${coordinator.user_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
 
-      // Pass { count: "exact" } so Supabase tells us how many rows were
-      // actually updated. RLS silent rejection returns success with 0 rows
-      // affected — without `count` we'd have no way to detect that.
-      const { error, count } = await supabase
-        .from("profiles")
-        .update(
-          {
-            is_active: nextActive,
-            updated_at: new Date().toISOString(),
-          },
-          { count: "exact" }
-        )
-        .eq("user_id", coordinator.user_id);
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      console.log("[coordinators.handleToggleStatus] response", { status: res.status, json });
 
-      if (error) {
-        console.error(
-          "[handleToggleStatus] RLS / DB error:",
-          JSON.stringify(error, null, 2)
-        );
-        throw error;
-      }
-
-      // 0 rows affected = RLS silently rejected the UPDATE. The most
-      // common cause is the coordinator's profile.university_id being
-      // NULL or different from the admin's current_university_id() —
-      // the WITH CHECK clause `university_id = current_university_id()`
-      // fails, so no row is updated.
-      if (count === 0) {
+      if (!res.ok || !json?.success) {
         toast({
-          title: "Status change blocked",
-          description:
-            "The database rejected the update (0 rows affected). This " +
-            "usually means the coordinator's profile is missing a " +
-            "university_id, or it doesn't match your university. " +
-            "Check the coordinator's auth.users metadata.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Belt-and-suspenders: re-read the row to confirm the value
-      // actually changed. (count > 0 but value unchanged would indicate
-      // a trigger interfering with the write.)
-      const { data: verify, error: verifyErr } = await supabase
-        .from("profiles")
-        .select("is_active, university_id")
-        .eq("user_id", coordinator.user_id)
-        .single();
-
-      if (verifyErr) {
-        // Verify SELECT itself failed — this shouldn't happen since we
-        // just confirmed the UPDATE landed, but if it does, surface the
-        // error instead of silently falling through to the success toast.
-        console.error(
-          "[handleToggleStatus] verify read failed:",
-          JSON.stringify(verifyErr, null, 2)
-        );
-        toast({
-          title: "Status updated (verify failed)",
-          description:
-            "The update reported success but we couldn't re-read the " +
-            "row to confirm. Refresh the page to see the current state.",
-          variant: "destructive",
-        });
-        fetchCoordinators();
-        return;
-      } else if (verify?.is_active !== nextActive) {
-        toast({
-          title: "Status change failed (silent)",
-          description:
-            "The database accepted the update but is_active didn't change. " +
-            "A trigger or RLS WITH CHECK may be interfering.",
+          title: "Status change failed",
+          description: json?.error || `Request failed (${res.status})`,
           variant: "destructive",
         });
         return;
@@ -386,98 +332,42 @@ export default function CoordinatorsPage() {
 
       toast({
         title: "Status Updated",
-        description: `${coordinator.full_name || coordinator.email} has been ${nextActive ? 'activated' : 'deactivated'}`,
+        description: `${coordinator.full_name || coordinator.email} has been ${nextActive ? "activated" : "deactivated"}`,
       });
 
       fetchCoordinators();
     } catch (error) {
-      console.error("Error updating status:", error);
-      const err = error as { code?: string; message?: string } | null;
+      console.error("[coordinators.handleToggleStatus] unhandled", error);
       toast({
         title: "Error",
-        description:
-          err?.code === "42501"
-            ? "Permission denied (RLS blocked the update). The coordinator's profile may be missing university_id."
-            : err?.message || "Failed to update status",
+        description: error instanceof Error ? error.message : "Failed to update status",
         variant: "destructive",
       });
     }
   };
 
   const handleUpdateDepartment = async (coordinator: CoordinatorWithDetails, departmentId: string) => {
+    console.log("[coordinators.handleUpdateDepartment] start", {
+      user_id: coordinator.user_id,
+      email: coordinator.email,
+      current_dept: coordinator.department_id,
+      new_dept: departmentId || null,
+    });
+
     try {
-      const supabase = createClient();
+      const res = await fetch(`/api/coordinators/${coordinator.user_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ department_id: departmentId || null }),
+      });
 
-      // Build the update payload. We send `department_id: null` when the
-      // caller picked "Unassigned" so the column actually clears
-      // (sending an empty string would fail the uuid FK check).
-      const update: Record<string, unknown> = {
-        department_id: departmentId || null,
-        updated_at: new Date().toISOString(),
-      };
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      console.log("[coordinators.handleUpdateDepartment] response", { status: res.status, json });
 
-      // { count: "exact" } lets us detect silent RLS rejection (UPDATE
-      // returns success with 0 rows affected).
-      const { error, count } = await supabase
-        .from("profiles")
-        .update(update, { count: "exact" })
-        .eq("user_id", coordinator.user_id);
-
-      if (error) {
-        console.error(
-          "[handleUpdateDepartment] RLS / DB error:",
-          JSON.stringify(error, null, 2)
-        );
-        throw error;
-      }
-
-      // 0 rows affected = RLS silently rejected. Same root cause as
-      // handleToggleStatus: the coordinator's profile.university_id is
-      // NULL or doesn't match the admin's current_university_id().
-      if (count === 0) {
+      if (!res.ok || !json?.success) {
         toast({
-          title: "Assignment blocked",
-          description:
-            "The database rejected the update (0 rows affected). This " +
-            "usually means the coordinator's profile is missing a " +
-            "university_id, or it doesn't match your university. " +
-            "Check the coordinator's auth.users metadata.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Re-fetch the row to confirm the write actually landed.
-      const { data: verify, error: verifyErr } = await supabase
-        .from("profiles")
-        .select("department_id, university_id")
-        .eq("user_id", coordinator.user_id)
-        .single();
-
-      if (verifyErr) {
-        // Verify SELECT failed — don't fall through to the success toast.
-        // Surface the error so the admin knows something is off.
-        console.error(
-          "[handleUpdateDepartment] verify read failed:",
-          JSON.stringify(verifyErr, null, 2)
-        );
-        toast({
-          title: "Assignment updated (verify failed)",
-          description:
-            "The update reported success but we couldn't re-read the " +
-            "row to confirm. Refresh the page to see the current state.",
-          variant: "destructive",
-        });
-        fetchCoordinators();
-        return;
-      } else if (
-        (verify?.department_id || null) !== (departmentId || null)
-      ) {
-        toast({
-          title: "Assignment failed (silent)",
-          description:
-            "The database accepted the update but the value didn't change. " +
-            "A trigger or RLS WITH CHECK may be interfering.",
+          title: "Assignment failed",
+          description: json?.error || `Request failed (${res.status})`,
           variant: "destructive",
         });
         return;
@@ -492,14 +382,10 @@ export default function CoordinatorsPage() {
 
       fetchCoordinators();
     } catch (error) {
-      console.error("Error updating department:", error);
-      const err = error as { code?: string; message?: string } | null;
+      console.error("[coordinators.handleUpdateDepartment] unhandled", error);
       toast({
         title: "Error",
-        description:
-          err?.code === "42501"
-            ? "Permission denied (RLS blocked the update). The coordinator's profile may be missing university_id."
-            : err?.message || "Failed to update department assignment",
+        description: error instanceof Error ? error.message : "Failed to update department assignment",
         variant: "destructive",
       });
     }
