@@ -267,18 +267,27 @@ export async function POST(request: NextRequest) {
     );
 
     // ---- 4. Check for duplicate email ----
-    const { data: existingUser, error: listErr } = await adminClient.auth.admin.listUsers({
-      page: 1,
-      perPage: 1,
-      ...( { filter: `email.eq.${email.trim()}` } as any ),
-    } as any);
+    //    The previous implementation used `auth.admin.listUsers({ filter })`
+    //    but PostgREST-style filters are silently ignored by that endpoint —
+    //    the call returned the first page of users unconditionally, so the
+    //    check fired on EVERY request (the admin user is always there).
+    //    `auth.admin.getUserByEmail` exists at runtime but is missing from
+    //    the TypeScript types in older SDK versions, so we query the
+    //    `profiles` table by email instead. Profiles has a `email` column
+    //    that mirrors `auth.users.email` (kept in sync by triggers).
+    const trimmedEmailForCheck = email.trim().toLowerCase();
+    const { data: existingProfile, error: existingProfileErr } = await adminClient
+      .from("profiles")
+      .select("user_id, email")
+      .ilike("email", trimmedEmailForCheck)
+      .maybeSingle();
 
-    if (listErr) {
-      console.error("Error checking existing user:", listErr);
-      // Continue anyway — the createUser call below will return a clear error
-      // if the email is taken.
+    if (existingProfileErr) {
+      console.error("Error checking existing profile email:", existingProfileErr);
+      // Continue — the createUser call below will return a clear error if
+      // the email is taken.
     }
-    if (existingUser && existingUser.users && existingUser.users.length > 0) {
+    if (existingProfile) {
       return NextResponse.json(
         { error: { code: "EMAIL_EXISTS", message: "An account with this email already exists" } },
         { status: 409 }
@@ -324,11 +333,20 @@ export async function POST(request: NextRequest) {
 
     if (createAuthError || !newUser?.user) {
       console.error("Error creating auth user:", createAuthError);
+      // Supabase returns `User already registered` when the email exists.
+      // Surface it as a 409 so the UI can show a friendly message.
+      const errMsg = createAuthError?.message || "";
+      if (/already registered|already exists|email.*exists/i.test(errMsg)) {
+        return NextResponse.json(
+          { error: { code: "EMAIL_EXISTS", message: "An account with this email already exists" } },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         {
           error: {
             code: "AUTH_ERROR",
-            message: createAuthError?.message || "Failed to create user account",
+            message: errMsg || "Failed to create user account",
           },
         },
         { status: 500 }

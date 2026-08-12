@@ -105,78 +105,162 @@ interface CompanyIntern {
 }
 
 // ===========================================================================
-// Reusable free-text tag input — type a value, press Enter to add.
-// Used for `assigned_programs` on supervisors and `target_departments`
-// on internships. Lets the HR enter anything they want instead of being
-// constrained to a fixed dropdown.
+// ProgramMultiSelect — chip picker for `assigned_programs`.
+// Fetches the real catalog of academic programs from /api/programs (so the
+// HR picks from actual programs that exist on the platform, not a fixed
+// 5–6 item dropdown). Each program is a toggleable chip; a search box lets
+// the HR filter when there are many programs. Other fields (department_focus,
+// specialization, etc.) remain free-text inputs.
+//
+// `value` is an array of program NAMES (strings) for backward compatibility
+// with existing display logic and stored `program_ids` JSON data.
 // ===========================================================================
-function TagInput({
+function ProgramMultiSelect({
   label,
-  placeholder,
   values,
   onChange,
   helperText,
 }: {
   label: string;
-  placeholder: string;
   values: string[];
   onChange: (next: string[]) => void;
   helperText?: string;
 }) {
-  const [text, setText] = useState("");
+  const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [isLoadingPrograms, setIsLoadingPrograms] = useState(true);
+  const [programSearch, setProgramSearch] = useState("");
 
-  const addTag = () => {
-    const v = text.trim();
-    if (!v) return;
-    if (values.some((x) => x.toLowerCase() === v.toLowerCase())) {
-      setText("");
-      return;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // Pull a large page of active programs so the HR sees the full
+        // catalog (the typical platform has dozens, not thousands).
+        const res = await fetch("/api/programs?pageSize=200&is_active=true", { cache: "no-store" });
+        if (!res.ok) return;
+        const j = await res.json();
+        const list: { id: string; name: string; code: string }[] = (j?.data?.data || j?.data || []).map(
+          (p: any) => ({
+            id: p.id,
+            name: p.name || p.title || "Unnamed program",
+            code: p.code || "",
+          })
+        );
+        if (!cancelled) setPrograms(list);
+      } catch (e) {
+        console.error("Error fetching programs:", e);
+      } finally {
+        if (!cancelled) setIsLoadingPrograms(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = (name: string) => {
+    if (values.some((v) => v.toLowerCase() === name.toLowerCase())) {
+      onChange(values.filter((v) => v.toLowerCase() !== name.toLowerCase()));
+    } else {
+      onChange([...values, name]);
     }
-    onChange([...values, v]);
-    setText("");
   };
 
-  const removeTag = (idx: number) => {
-    onChange(values.filter((_, i) => i !== idx));
+  const remove = (name: string) => {
+    onChange(values.filter((v) => v !== name));
   };
+
+  // Programs whose name doesn't already match a known catalog entry are
+  // shown as "legacy" chips so historical free-text data isn't lost.
+  const knownNames = new Set(programs.map((p) => p.name.toLowerCase()));
+  const legacyValues = values.filter((v) => !knownNames.has(v.toLowerCase()));
+
+  const filtered = programs.filter(
+    (p) =>
+      p.name.toLowerCase().includes(programSearch.toLowerCase()) ||
+      p.code.toLowerCase().includes(programSearch.toLowerCase())
+  );
 
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="flex flex-wrap gap-2 p-2 rounded-lg border bg-background min-h-[42px]">
-        {values.map((v, idx) => (
-          <span
-            key={`${v}-${idx}`}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
-          >
-            {v}
-            <button
-              type="button"
-              onClick={() => removeTag(idx)}
-              className="hover:bg-primary/20 rounded-full p-0.5"
-              aria-label={`Remove ${v}`}
+
+      {/* Selected chips (with X to remove) */}
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {values.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
             >
-              <X className="h-3 w-3" />
-            </button>
+              {v}
+              <button
+                type="button"
+                onClick={() => remove(v)}
+                className="hover:bg-primary/20 rounded-full p-0.5"
+                aria-label={`Remove ${v}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Search box (only show if there are programs to search) */}
+      {programs.length > 8 && (
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search programs…"
+            value={programSearch}
+            onChange={(e) => setProgramSearch(e.target.value)}
+            className="h-9 pl-8 text-sm"
+          />
+        </div>
+      )}
+
+      {/* Chip picker */}
+      <div className="flex flex-wrap gap-1.5 p-3 rounded-lg border bg-background max-h-[180px] overflow-y-auto">
+        {isLoadingPrograms ? (
+          <span className="text-xs text-muted-foreground">Loading programs…</span>
+        ) : filtered.length === 0 ? (
+          <span className="text-xs text-muted-foreground">
+            {programs.length === 0
+              ? "No programs available yet. Coordinators must create programs first."
+              : "No programs match your search."}
           </span>
-        ))}
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              addTag();
-            } else if (e.key === "Backspace" && !text && values.length > 0) {
-              removeTag(values.length - 1);
-            }
-          }}
-          onBlur={addTag}
-          placeholder={values.length === 0 ? placeholder : ""}
-          className="flex-1 min-w-[120px] bg-transparent outline-none text-sm px-1"
-        />
+        ) : (
+          filtered.map((p) => {
+            const selected = values.some((v) => v.toLowerCase() === p.name.toLowerCase());
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggle(p.name)}
+                className={`px-2.5 py-1 rounded-full text-xs transition-colors border ${
+                  selected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-secondary hover:bg-secondary/80 border-transparent"
+                }`}
+                title={p.code ? `${p.name} (${p.code})` : p.name}
+              >
+                {p.name.length > 32 ? p.name.substring(0, 29) + "…" : p.name}
+              </button>
+            );
+          })
+        )}
       </div>
+
+      {/* Legacy / free-text values that aren't in the catalog anymore */}
+      {legacyValues.length > 0 && (
+        <p className="text-xs text-amber-600">
+          {legacyValues.length} previously assigned program(s) no longer exist in the catalog — they are kept
+          for reference but can be removed by clicking their × above.
+        </p>
+      )}
+
       {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
     </div>
   );
@@ -636,12 +720,11 @@ export default function CompanyHRSupervisorsPage() {
                 />
               </div>
 
-              <TagInput
-                label="Assigned Programs / Areas"
-                placeholder="Type a program or area, then press Enter"
+              <ProgramMultiSelect
+                label="Assigned Programs"
                 values={formData.assigned_programs}
                 onChange={(next) => setFormData({ ...formData, assigned_programs: next })}
-                helperText="Free-text: enter anything relevant to this supervisor's coverage."
+                helperText="Pick the academic programs this supervisor can mentor interns from."
               />
 
               <DialogFooter className="pt-4 border-t">
@@ -1051,12 +1134,11 @@ export default function CompanyHRSupervisorsPage() {
               />
             </div>
 
-            <TagInput
-              label="Assigned Programs / Areas"
-              placeholder="Type a program or area, then press Enter"
+            <ProgramMultiSelect
+              label="Assigned Programs"
               values={formData.assigned_programs}
               onChange={(next) => setFormData({ ...formData, assigned_programs: next })}
-              helperText="Free-text: enter anything relevant to this supervisor's coverage."
+              helperText="Pick the academic programs this supervisor can mentor interns from."
             />
 
             <DialogFooter className="pt-4 border-t">
