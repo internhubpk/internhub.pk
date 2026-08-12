@@ -387,8 +387,22 @@ export async function POST(request: NextRequest) {
       console.error("Error creating profile:", profileInsertError);
       // Rollback auth user
       await adminClient.auth.admin.deleteUser(newUserId);
+      // Include the actual PostgREST error details so the client can see
+      // WHAT failed (column missing, FK violation, trigger exception, etc.)
+      // instead of a generic "Failed to create user profile".
       return NextResponse.json(
-        { error: { code: "DATABASE_ERROR", message: "Failed to create user profile" } },
+        {
+          error: {
+            code: "DATABASE_ERROR",
+            message: "Failed to create user profile",
+            details: {
+              code: profileInsertError.code,
+              message: profileInsertError.message,
+              details: profileInsertError.details,
+              hint: profileInsertError.hint,
+            },
+          },
+        },
         { status: 500 }
       );
     }
@@ -420,7 +434,18 @@ export async function POST(request: NextRequest) {
       await adminClient.from("profiles").delete().eq("user_id", newUserId);
       await adminClient.auth.admin.deleteUser(newUserId);
       return NextResponse.json(
-        { error: { code: "DATABASE_ERROR", message: "Failed to create supervisor record" } },
+        {
+          error: {
+            code: "DATABASE_ERROR",
+            message: "Failed to create supervisor record",
+            details: {
+              code: supervisorInsertError.code,
+              message: supervisorInsertError.message,
+              details: supervisorInsertError.details,
+              hint: supervisorInsertError.hint,
+            },
+          },
+        },
         { status: 500 }
       );
     }
