@@ -295,18 +295,27 @@
    * Dashboard layout lock — applied to <body> when the dashboard shell is
    * mounted. Prevents the document itself from scrolling so the in-page
    * scroll region (the <main> element) is the only thing that scrolls.
-   * Without this, the whole page can scroll on some setups (especially
-   * when a Radix Dialog portal briefly mounts at the document root), which
-   * makes the footer drift away from the bottom of the viewport.
+   *
+   * Why we DO NOT add `> div { height: 100% }` here:
+   *   In Next.js App Router, body's direct children are <main id="main-content">
+   *   (from app/layout.tsx) and <section> (Sonner toaster). When a Radix
+   *   Select / DropdownMenu / Dialog opens, Radix appends a <div> portal
+   *   wrapper as ANOTHER direct child of body. A blanket `> div { height: 100% }`
+   *   rule forces those portal wrappers to 100vh, which breaks their layout:
+   *   the portal wrapper becomes a 100vh-tall static block below the viewport,
+   *   and its absolutely-positioned children (the actual menu content) lose
+   *   their containing block, causing menus to either not appear or not
+   *   register clicks. This was the root cause of "no dropdown working, not
+   *   clickable now even" reported on the coordinators and departments pages.
+   *
+   *   The dashboard's outer div already uses `h-dvh` on itself, so it fills
+   *   the viewport without needing this rule. The `overflow: hidden` below
+   *   is sufficient to prevent body scroll and keep the footer pinned.
    */
   body.dashboard-layout-lock {
     overflow: hidden;
     height: 100vh;
     height: 100dvh;
-  }
-  body.dashboard-layout-lock #root,
-  body.dashboard-layout-lock > div {
-    height: 100%;
   }
   
   /* Display - Hero text, marketing headers (48-64px) */
