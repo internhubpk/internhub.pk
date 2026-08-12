@@ -170,7 +170,12 @@ CREATE TABLE IF NOT EXISTS departments (
   is_active       boolean NOT NULL DEFAULT true,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (university_id, code)
+  UNIQUE (university_id, code),
+  -- Composite uniqueness on (id, university_id) so that downstream tables (programs,
+  -- students, supervisors, internships) can use a composite foreign key to enforce
+  -- "this department belongs to the same university" at the database level without
+  -- relying on a CHECK subquery (which PostgreSQL does not support).
+  UNIQUE (id, university_id)
 );
 
 -- Defensive: ensure every column of `departments` exists (idempotent against older partial deployments).
@@ -183,6 +188,19 @@ ALTER TABLE departments ADD COLUMN IF NOT EXISTS is_active boolean;
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS created_at timestamptz;
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_departments_university ON departments(university_id);
+
+-- Idempotently add the composite uniqueness constraint required by the programs
+-- composite FK below. Older deployments of this migration did not include it.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'departments'::regclass
+        AND conname = 'departments_id_university_id_key'
+  ) THEN
+    ALTER TABLE departments
+      ADD CONSTRAINT departments_id_university_id_key UNIQUE (id, university_id);
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 4. Programs
@@ -198,10 +216,15 @@ CREATE TABLE IF NOT EXISTS programs (
   is_active       boolean NOT NULL DEFAULT true,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
-  -- A program must belong to a department that is in the same university
-  CONSTRAINT programs_dept_in_uni CHECK (
-    EXISTS (SELECT 1 FROM departments d WHERE d.id = department_id AND d.university_id = university_id)
-  )
+  -- Enforce that the program's department belongs to the SAME university.
+  -- Implemented as a composite foreign key (preferred over a CHECK subquery,
+  -- which PostgreSQL does not support — SQLSTATE 0A000).
+  -- Together with the (department_id → departments.id) FK above, this guarantees
+  -- both: department exists, AND department.university_id = programs.university_id.
+  FOREIGN KEY (department_id, university_id)
+    REFERENCES departments(id, university_id)
+    ON DELETE CASCADE,
+  UNIQUE (id, department_id)
 );
 
 -- Defensive: ensure every column of `programs` exists (idempotent against older partial deployments).
@@ -217,6 +240,47 @@ ALTER TABLE programs ADD COLUMN IF NOT EXISTS created_at timestamptz;
 ALTER TABLE programs ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_programs_university ON programs(university_id);
 CREATE INDEX IF NOT EXISTS idx_programs_department ON programs(department_id);
+
+-- Idempotently add the composite uniqueness constraint required by downstream
+-- composite FKs (students, supervisors, internships reference programs via
+-- (program_id, department_id)).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'programs'::regclass
+        AND conname = 'programs_id_department_id_key'
+  ) THEN
+    ALTER TABLE programs
+      ADD CONSTRAINT programs_id_department_id_key UNIQUE (id, department_id);
+  END IF;
+END $$;
+
+-- Idempotently add the composite FK from programs(department_id, university_id)
+-- to departments(id, university_id). Older deployments of this migration used
+-- an invalid CHECK subquery instead; if that legacy constraint still exists on
+-- the table, drop it first. We also skip adding the FK if any equivalent
+-- composite FK already exists (e.g. created inline by CREATE TABLE on a fresh
+-- database).
+DO $$ BEGIN
+  ALTER TABLE programs DROP CONSTRAINT IF EXISTS programs_dept_in_uni;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'programs'::regclass
+        AND confrelid = 'departments'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'programs'::regclass AND attname IN ('department_id', 'university_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'departments'::regclass AND attname IN ('id', 'university_id'))
+  ) THEN
+    ALTER TABLE programs
+      ADD CONSTRAINT programs_dept_in_uni_fk
+      FOREIGN KEY (department_id, university_id)
+      REFERENCES departments(id, university_id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 5. Companies (a.k.a. host organizations)
@@ -358,7 +422,18 @@ CREATE TABLE IF NOT EXISTS students (
   cgpa                numeric(3,2),
   student_id_number   text,
   created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now()
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  -- Composite FKs enforce cross-table integrity at the DB level:
+  --  * if department_id is set, it must belong to the same university
+  --  * if program_id is set, it must belong to the same department
+  -- (PostgreSQL MATCH SIMPLE allows NULL columns to skip the check, which is
+  -- the desired behavior since department_id / program_id are optional.)
+  FOREIGN KEY (department_id, university_id)
+    REFERENCES departments(id, university_id)
+    ON DELETE SET NULL,
+  FOREIGN KEY (program_id, department_id)
+    REFERENCES programs(id, department_id)
+    ON DELETE SET NULL
 );
 
 -- Defensive: ensure every column of `students` exists (idempotent against older partial deployments).
@@ -376,6 +451,43 @@ CREATE INDEX IF NOT EXISTS idx_students_university ON students(university_id);
 CREATE INDEX IF NOT EXISTS idx_students_department ON students(department_id);
 CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);
 
+-- Idempotently add composite FKs for students (older deployments lacked them).
+-- Skip if an equivalent composite FK already exists (created inline by
+-- CREATE TABLE on a fresh database).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'students'::regclass
+        AND confrelid = 'departments'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'students'::regclass AND attname IN ('department_id', 'university_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'departments'::regclass AND attname IN ('id', 'university_id'))
+  ) THEN
+    ALTER TABLE students
+      ADD CONSTRAINT students_dept_in_uni_fk
+      FOREIGN KEY (department_id, university_id)
+      REFERENCES departments(id, university_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'students'::regclass
+        AND confrelid = 'programs'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'students'::regclass AND attname IN ('program_id', 'department_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'programs'::regclass AND attname IN ('id', 'department_id'))
+  ) THEN
+    ALTER TABLE students
+      ADD CONSTRAINT students_prog_in_dept_fk
+      FOREIGN KEY (program_id, department_id)
+      REFERENCES programs(id, department_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
 -- ----------------------------------------------------------------------------
 -- 8. Supervisors — extension table for supervisor-type users
 -- ----------------------------------------------------------------------------
@@ -390,7 +502,16 @@ CREATE TABLE IF NOT EXISTS supervisors (
   employee_id     text,
   is_active       boolean NOT NULL DEFAULT true,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  -- Composite FKs enforce cross-table integrity (NULLs skip per MATCH SIMPLE):
+  --  * if department_id is set, it must belong to the same university
+  --  * if program_id is set, it must belong to the same department
+  FOREIGN KEY (department_id, university_id)
+    REFERENCES departments(id, university_id)
+    ON DELETE SET NULL,
+  FOREIGN KEY (program_id, department_id)
+    REFERENCES programs(id, department_id)
+    ON DELETE SET NULL
 );
 
 -- Defensive: ensure every column of `supervisors` exists (idempotent against older partial deployments).
@@ -411,6 +532,43 @@ CREATE INDEX IF NOT EXISTS idx_supervisors_university ON supervisors(university_
 CREATE INDEX IF NOT EXISTS idx_supervisors_company ON supervisors(company_id);
 CREATE INDEX IF NOT EXISTS idx_supervisors_department ON supervisors(department_id);
 CREATE INDEX IF NOT EXISTS idx_supervisors_program ON supervisors(program_id);
+
+-- Idempotently add composite FKs for supervisors (older deployments lacked them).
+-- Skip if an equivalent composite FK already exists (created inline by
+-- CREATE TABLE on a fresh database).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'supervisors'::regclass
+        AND confrelid = 'departments'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'supervisors'::regclass AND attname IN ('department_id', 'university_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'departments'::regclass AND attname IN ('id', 'university_id'))
+  ) THEN
+    ALTER TABLE supervisors
+      ADD CONSTRAINT supervisors_dept_in_uni_fk
+      FOREIGN KEY (department_id, university_id)
+      REFERENCES departments(id, university_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'supervisors'::regclass
+        AND confrelid = 'programs'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'supervisors'::regclass AND attname IN ('program_id', 'department_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'programs'::regclass AND attname IN ('id', 'department_id'))
+  ) THEN
+    ALTER TABLE supervisors
+      ADD CONSTRAINT supervisors_prog_in_dept_fk
+      FOREIGN KEY (program_id, department_id)
+      REFERENCES programs(id, department_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 9. Company users (membership table)
@@ -463,7 +621,16 @@ CREATE TABLE IF NOT EXISTS internships (
   application_deadline timestamptz,
   created_by      uuid NOT NULL REFERENCES profiles(user_id) ON DELETE SET NULL,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+  -- Composite FKs enforce cross-table integrity (NULLs skip per MATCH SIMPLE):
+  --  * if department_id is set, it must belong to the same university
+  --  * if program_id is set, it must belong to the same department
+  FOREIGN KEY (department_id, university_id)
+    REFERENCES departments(id, university_id)
+    ON DELETE SET NULL,
+  FOREIGN KEY (program_id, department_id)
+    REFERENCES programs(id, department_id)
+    ON DELETE SET NULL
 );
 
 -- Defensive: ensure every column of `internships` exists (idempotent against older partial deployments).
@@ -498,6 +665,43 @@ CREATE INDEX IF NOT EXISTS idx_internships_department ON internships(department_
 CREATE INDEX IF NOT EXISTS idx_internships_program ON internships(program_id);
 CREATE INDEX IF NOT EXISTS idx_internships_status ON internships(status);
 CREATE INDEX IF NOT EXISTS idx_internships_created_by ON internships(created_by);
+
+-- Idempotently add composite FKs for internships (older deployments lacked them).
+-- Skip if an equivalent composite FK already exists (created inline by
+-- CREATE TABLE on a fresh database).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'internships'::regclass
+        AND confrelid = 'departments'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'internships'::regclass AND attname IN ('department_id', 'university_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'departments'::regclass AND attname IN ('id', 'university_id'))
+  ) THEN
+    ALTER TABLE internships
+      ADD CONSTRAINT internships_dept_in_uni_fk
+      FOREIGN KEY (department_id, university_id)
+      REFERENCES departments(id, university_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'internships'::regclass
+        AND confrelid = 'programs'::regclass
+        AND contype = 'f'
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(conkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'internships'::regclass AND attname IN ('program_id', 'department_id'))
+        AND (SELECT array_agg(x ORDER BY x) FROM unnest(confkey::int2[]) AS x) = (SELECT array_agg(attnum ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'programs'::regclass AND attname IN ('id', 'department_id'))
+  ) THEN
+    ALTER TABLE internships
+      ADD CONSTRAINT internships_prog_in_dept_fk
+      FOREIGN KEY (program_id, department_id)
+      REFERENCES programs(id, department_id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 11. Internship applications (alias `applications`)
@@ -1272,9 +1476,16 @@ CREATE INDEX IF NOT EXISTS idx_sr_student ON supervisor_remarks(student_user_id)
 -- 32. External evaluators (extension table — mirrors supervisor rows of type='external')
 -- ----------------------------------------------------------------------------
 -- A simple view to satisfy any code that queries `external_evaluators` directly.
+-- Note: we explicitly list columns to avoid duplicate-column errors (both
+-- `supervisors` and `profiles` have university_id / department_id). The
+-- supervisor row is the source of truth for scoping; the profile columns
+-- (email, full_name) are joined in for convenience.
 DROP VIEW IF EXISTS external_evaluators;
 CREATE VIEW external_evaluators AS
-  SELECT s.*, p.email, p.full_name, p.university_id, p.department_id
+  SELECT
+    s.id, s.user_id, s.type, s.university_id, s.department_id, s.program_id,
+    s.company_id, s.employee_id, s.is_active, s.created_at, s.updated_at,
+    p.email, p.full_name
   FROM supervisors s
   JOIN profiles p ON p.user_id = s.user_id
   WHERE s.type = 'external';
@@ -1282,9 +1493,15 @@ CREATE VIEW external_evaluators AS
 -- ----------------------------------------------------------------------------
 -- 33. site_supervisors view (alias for supervisors of type='site')
 -- ----------------------------------------------------------------------------
+-- Same approach: explicit columns to avoid duplicates. The profile's
+-- company_id is exposed as `company_id_profile` for callers that need to
+-- distinguish the supervisor's own company_id from the profile's company_id.
 DROP VIEW IF EXISTS site_supervisors;
 CREATE VIEW site_supervisors AS
-  SELECT s.*, p.email, p.full_name, p.company_id AS company_id_profile
+  SELECT
+    s.id, s.user_id, s.type, s.university_id, s.department_id, s.program_id,
+    s.company_id, s.employee_id, s.is_active, s.created_at, s.updated_at,
+    p.email, p.full_name, p.company_id AS company_id_profile
   FROM supervisors s
   JOIN profiles p ON p.user_id = s.user_id
   WHERE s.type = 'site';

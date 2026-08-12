@@ -73,7 +73,10 @@ secrets*
 # Allow migrations/ and tests/ to be committed; ignore CLI-generated branches.
 /supabase/.branches
 /supabase/.temp
-/supabase/config.toml
+# NOTE: supabase/config.toml is intentionally committed — it contains the
+# project-level CLI configuration needed for `supabase db lint`, `supabase db
+# push`, and the Supabase Preview GitHub integration. It does NOT contain any
+# secrets; all sensitive values are pulled from the linked project env.
 
 # Upload directory (user files)
 upload/
