@@ -365,13 +365,83 @@ export async function POST(request: NextRequest) {
     }
 
     // ==========================================================
+    // 6b. VERIFY the profile was actually written with the correct
+    //     university_id. If the upsert silently failed (trigger
+    //     inserted a row with NULL university_id and the upsert
+    //     somehow didn't overwrite it), the new coordinator won't
+    //     be visible to the university admin's RLS-scoped SELECT.
+    //     In that case, do a forceful UPDATE with the service role
+    //     client to fix the profile row.
+    // ==========================================================
+    let profileFixed = false;
+    let verifyError: string | null = null;
+
+    if (effectiveUniversityId) {
+      const { data: verifyRow, error: verifyErr } = await adminClient
+        .from("profiles")
+        .select("user_id, university_id, role, is_active")
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
+
+      if (verifyErr) {
+        verifyError = `Profile verify SELECT failed: ${verifyErr.message}`;
+      } else if (!verifyRow) {
+        // Profile row doesn't exist at all — INSERT it directly with the
+        // service role client (bypasses RLS).
+        const { error: insertErr } = await adminClient
+          .from("profiles")
+          .insert({
+            user_id: authData.user.id,
+            email: email.trim(),
+            full_name: full_name?.trim() || null,
+            first_name: firstName,
+            last_name: lastName,
+            role,
+            status: "active",
+            is_active: true,
+            university_id: effectiveUniversityId,
+            ...(company_id ? { company_id } : {}),
+            ...(effectiveDepartmentId ? { department_id: effectiveDepartmentId } : {}),
+            ...(job_title ? { job_title: job_title.trim() } : {}),
+            ...(phone ? { phone: phone.trim() } : {}),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        if (insertErr) {
+          verifyError = `Profile INSERT failed: ${insertErr.message}`;
+        } else {
+          profileFixed = true;
+        }
+      } else if (verifyRow.university_id !== effectiveUniversityId) {
+        // Profile exists but university_id is wrong/NULL — force UPDATE
+        // with service role client.
+        const { error: fixErr } = await adminClient
+          .from("profiles")
+          .update({
+            university_id: effectiveUniversityId,
+            role,
+            is_active: true,
+            ...(effectiveDepartmentId ? { department_id: effectiveDepartmentId } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", authData.user.id);
+        if (fixErr) {
+          verifyError = `Profile university_id fix failed: ${fixErr.message}`;
+        } else {
+          profileFixed = true;
+        }
+      }
+    }
+
+    // ==========================================================
     // 7. Return the new user's id. The caller's session is NOT
     //    affected — they remain signed in as super_admin /
     //    university_admin.
     //
-    //    If the profile upsert failed, we include a `warning` field
-    //    with the error message. The caller can display this so the
-    //    admin knows the profile may be incomplete.
+    //    If the profile upsert failed AND the verify/fix step also
+    //    failed, we include a `warning` field with the error message.
+    //    If the verify/fix step SUCCEEDED (profileFixed=true), the
+    //    warning is suppressed — the coordinator will be visible.
     // ==========================================================
     const upsertErrMsg =
       profileUpsertError instanceof Error
@@ -379,6 +449,17 @@ export async function POST(request: NextRequest) {
         : profileUpsertError && typeof profileUpsertError === "object" && "message" in profileUpsertError
           ? String((profileUpsertError as { message: unknown }).message)
           : null;
+
+    // Build the warning: only surface if there was a real problem the
+    // verify/fix step couldn't recover from.
+    let warning: string | undefined;
+    if (verifyError) {
+      // Verify/fix failed — this is the most important error to surface
+      // because it means the new coordinator likely won't show up.
+      warning = `Profile issue: ${verifyError}. The coordinator was created in auth but their profile may be missing university_id — they will not appear in the coordinators list until this is fixed.`;
+    } else if (upsertErrMsg && !profileFixed) {
+      warning = `Profile save issue: ${upsertErrMsg}`;
+    }
 
     return NextResponse.json<
       ApiResponse<{ id: string; email: string; role: string; profile?: Record<string, unknown> | null }> & {
@@ -394,7 +475,7 @@ export async function POST(request: NextRequest) {
           profile: profileAfterUpsert,
         },
         message: "Account created. The new user can sign in with their email and password.",
-        ...(upsertErrMsg ? { warning: `Profile save issue: ${upsertErrMsg}` } : {}),
+        ...(warning ? { warning } : {}),
       },
       { status: 201 }
     );

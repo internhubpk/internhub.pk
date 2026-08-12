@@ -87,12 +87,14 @@ export async function PATCH(
       );
     }
 
-    // Fetch the caller's profile to check role + university_id
+    // Fetch the caller's profile to check role + university_id. Use
+    // .maybeSingle() instead of .single() to avoid PGRST116 if the row
+    // is missing (e.g. profile not yet created for this auth user).
     const { data: adminProfile, error: adminErr } = await supabase
       .from("profiles")
       .select("user_id, role, university_id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (adminErr || !adminProfile) {
       console.log(`[PATCH /api/coordinators/[id]] ${requestId} admin profile fetch failed`, adminErr);
@@ -116,21 +118,34 @@ export async function PATCH(
 
     // Fetch the target coordinator's profile (RLS will let the admin see
     // rows in their own university; if this returns nothing, the coordinator
-    // is in a different university or doesn't exist).
+    // is in a different university or doesn't exist). Don't use .single()
+    // here — if 0 rows are returned, .single() would throw PGRST116 which
+    // masks the real cause. Use .maybeSingle() instead, which returns null
+    // data with no error when 0 rows match.
     const { data: coord, error: coordErr } = await supabase
       .from("profiles")
       .select("user_id, role, university_id, department_id, is_active, email, full_name")
       .eq("user_id", coordUserId)
-      .single();
+      .maybeSingle();
 
-    if (coordErr || !coord) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} coordinator not visible to admin`, coordErr);
+    if (coordErr) {
+      console.log(`[PATCH /api/coordinators/[id]] ${requestId} coordinator SELECT error`, coordErr);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: `Could not load coordinator: ${coordErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!coord) {
+      console.log(`[PATCH /api/coordinators/[id]] ${requestId} coordinator not visible to admin (RLS blocked SELECT)`);
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
           error:
             "Coordinator not found, or you do not have permission to view them. " +
-            "They may belong to a different university, or their profile.university_id may be NULL.",
+            "They may belong to a different university, or their profile.university_id may be NULL " +
+            "(which prevents RLS from matching them to your university). " +
+            "Run migration 0018_backfill_coord_university_id.sql to fix NULL university_ids.",
         },
         { status: 404 }
       );
@@ -174,7 +189,7 @@ export async function PATCH(
           .from("departments")
           .select("id, university_id")
           .eq("id", newDeptId)
-          .single();
+          .maybeSingle();
 
         if (deptErr || !dept) {
           console.log(`[PATCH /api/coordinators/[id]] ${requestId} dept not found`, deptErr);
@@ -216,15 +231,15 @@ export async function PATCH(
 
     console.log(`[PATCH /api/coordinators/[id]] ${requestId} performing UPDATE`, update);
 
-    // Perform the UPDATE. RLS will still apply (this client uses the caller's
-    // cookies, not the service role), but since we've already verified
-    // ownership above, the UPDATE should affect exactly 1 row.
-    const { data: updated, error: updateErr, count } = await supabase
+    // Perform the UPDATE without .single() — if RLS silently rejects (0 rows
+    // affected), .single() would throw PGRST116 ("Cannot coerce the result
+    // to a single JSON object") which masks the real cause. With count:
+    // "exact" we get the affected-row count back and can branch on it.
+    const { data: updatedRows, error: updateErr, count } = await supabase
       .from("profiles")
       .update(update, { count: "exact" })
       .eq("user_id", coordUserId)
-      .select("user_id, role, university_id, department_id, is_active, email, full_name")
-      .single();
+      .select("user_id, role, university_id, department_id, is_active, email, full_name");
 
     if (updateErr) {
       console.error(`[PATCH /api/coordinators/[id]] ${requestId} UPDATE error`, updateErr);
@@ -237,22 +252,31 @@ export async function PATCH(
       );
     }
 
-    if (count === 0 || !updated) {
-      // RLS silently rejected the UPDATE. This shouldn't happen now that we
-      // pre-flight check, but if it does, surface it explicitly.
-      console.error(`[PATCH /api/coordinators/[id]] ${requestId} UPDATE silently affected 0 rows`);
+    if (count === 0 || !updatedRows || updatedRows.length === 0) {
+      // RLS silently rejected the UPDATE. We pre-flight checked the
+      // coordinator exists and belongs to the admin's university, so this
+      // is unexpected — but it can happen if the coordinator's
+      // university_id is NULL (the pre-flight SELECT returned the row
+      // because the admin's current_university_id() was also NULL, but
+      // the UPDATE's WITH CHECK still fails).
+      console.error(`[PATCH /api/coordinators/[id]] ${requestId} UPDATE silently affected 0 rows`, {
+        coord_university_id: coord.university_id,
+        admin_university_id: adminProfile.university_id,
+      });
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
           error:
             "Update was rejected by the database (0 rows affected). " +
-            "This is almost always an RLS issue — the coordinator's profile.university_id " +
-            "may be NULL or mismatched. Run the backfill migration 0018.",
+            "This is an RLS issue — the coordinator's profile.university_id " +
+            "may be NULL. Run migration 0018_backfill_coord_university_id.sql, " +
+            "or set the university_id manually via SQL.",
         },
         { status: 500 }
       );
     }
 
+    const updated = updatedRows[0];
     console.log(`[PATCH /api/coordinators/[id]] ${requestId} success`, updated);
 
     return NextResponse.json<ApiResponse<Profile>>({
