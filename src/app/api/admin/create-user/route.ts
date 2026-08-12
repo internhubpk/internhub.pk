@@ -74,6 +74,10 @@ const UNI_ADMIN_TARGET_ROLES: UserRole[] = [
   "student",
 ];
 
+// Roles a Department Coordinator can create — only students, and only in
+// their own department + university.
+const COORD_TARGET_ROLES: UserRole[] = ["student"];
+
 export async function POST(request: NextRequest) {
   try {
     // ==========================================================
@@ -116,11 +120,11 @@ export async function POST(request: NextRequest) {
       (user.app_metadata?.role as UserRole | undefined) ??
       (user.user_metadata?.role as UserRole | undefined);
 
-    if (callerRole !== "super_admin" && callerRole !== "university_admin") {
+    if (callerRole !== "super_admin" && callerRole !== "university_admin" && callerRole !== "department_coordinator") {
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
-          error: "Forbidden: Super Admin or University Admin access required",
+          error: "Forbidden: Super Admin, University Admin, or Department Coordinator access required",
         },
         { status: 403 }
       );
@@ -169,7 +173,9 @@ export async function POST(request: NextRequest) {
     const allowedTargetRoles =
       callerRole === "super_admin"
         ? SUPER_ADMIN_TARGET_ROLES
-        : UNI_ADMIN_TARGET_ROLES;
+        : callerRole === "university_admin"
+        ? UNI_ADMIN_TARGET_ROLES
+        : COORD_TARGET_ROLES;
 
     if (!role || !allowedTargetRoles.includes(role)) {
       return NextResponse.json<ApiResponse<never>>(
@@ -182,11 +188,14 @@ export async function POST(request: NextRequest) {
     }
 
     // ==========================================================
-    // 3. Resolve the effective university_id.
-    //    - super_admin: use the value passed in the body (must be set).
-    //    - university_admin: FORCE it to be the caller's own
-    //      university_id (read from the profiles table) — ignore the
-    //      body value entirely. This prevents privilege escalation.
+    // 3. Resolve the effective university_id and department_id.
+    //    - super_admin: use the values passed in the body (must be set).
+    //    - university_admin: FORCE university_id to be the caller's own
+    //      university_id. department_id is taken from the body (validated
+    //      against the university by RLS).
+    //    - department_coordinator: FORCE BOTH university_id and
+    //      department_id to be the caller's own — ignore the body values
+    //      entirely. This prevents privilege escalation.
     // ==========================================================
     let effectiveUniversityId: string | undefined;
     let effectiveDepartmentId: string | undefined = department_id;
@@ -196,7 +205,8 @@ export async function POST(request: NextRequest) {
       // super_admin creating a company_hr — university_id may be unset,
       // company_id may be set instead. That's fine.
     } else {
-      // university_admin: fetch their profile to get university_id.
+      // university_admin OR department_coordinator: fetch their profile to
+      // get university_id (and department_id for coordinators).
       const { data: callerProfile, error: profileErr } = await supabase
         .from("profiles")
         .select("university_id, department_id")
@@ -214,11 +224,26 @@ export async function POST(request: NextRequest) {
         );
       }
       effectiveUniversityId = callerProfile.university_id;
-      // If department_id was passed, validate it belongs to the same
-      // university. (We rely on RLS to also enforce this — departments
-      // outside the caller's university would not be SELECT-able, so the
-      // INSERT below with that department_id would fail the composite FK
-      // constraint.)
+
+      // Department coordinators are forced to their own department.
+      if (callerRole === "department_coordinator") {
+        if (!callerProfile?.department_id) {
+          return NextResponse.json<ApiResponse<never>>(
+            {
+              success: false,
+              error:
+                "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.",
+            },
+            { status: 403 }
+          );
+        }
+        effectiveDepartmentId = callerProfile.department_id;
+      }
+      // For university_admin: if department_id was passed, validate it
+      // belongs to the same university. (We rely on RLS to also enforce
+      // this — departments outside the caller's university would not be
+      // SELECT-able, so the INSERT below with that department_id would
+      // fail the composite FK constraint.)
     }
 
     // ==========================================================

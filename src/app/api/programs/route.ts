@@ -204,7 +204,18 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id } = body;
+    let { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id } = body;
+
+    const userRole = authContext.profile.role;
+    const userUniversityId = authContext.profile.university_id;
+    const userDepartmentId = authContext.profile.department_id;
+
+    // Department coordinators don't see a department picker in the form
+    // (they only manage their own department), so default department_id
+    // from their profile when not provided in the body.
+    if (!department_id && userRole === "department_coordinator" && userDepartmentId) {
+      department_id = userDepartmentId;
+    }
 
     // Validate required fields
     if (!name || !code || !duration_weeks || !department_id) {
@@ -213,10 +224,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const userRole = authContext.profile.role;
-    const userUniversityId = authContext.profile.university_id;
-    const userDepartmentId = authContext.profile.department_id;
 
     // Determine university_id based on role.
     // University Admin is NOT in MANAGE_PROGRAM_ROLES (they can only

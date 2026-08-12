@@ -33,7 +33,7 @@ const VIEW_STUDENT_ROLES: UserRole[] = [
 ];
 
 // Roles that can create students
-const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin"];
+const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin", "department_coordinator"];
 
 // Allowed sort fields to prevent SQL injection
 const ALLOWED_SORT_FIELDS = [
@@ -261,25 +261,40 @@ export async function POST(request: NextRequest) {
     // SECURITY: Validate that university_id matches authenticated user's university
     const userRole = authContext.profile?.role;
     const userUniversityId = authContext.profile?.university_id;
+    const userDepartmentId = authContext.profile?.department_id;
 
     if (userRole === "university_admin") {
       // Uni admins can ONLY create students in their own university
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account");
       }
-      
+
       if (studentData.university_id !== userUniversityId) {
         // Audit log this security violation attempt
         await audit.studentCreate(
           "unknown",
           studentData.university_id
         );
-        
+
         return authorizationError("Cannot create student in another university");
       }
-      
+
       // Override with user's university ID for extra security
       studentData.university_id = userUniversityId;
+    }
+
+    if (userRole === "department_coordinator") {
+      // Coordinators can ONLY create students in their own university AND department
+      if (!userUniversityId) {
+        return authorizationError("No university assigned to your account");
+      }
+      if (!userDepartmentId) {
+        return authorizationError("No department assigned to your account");
+      }
+
+      // Force both university_id and department_id from the caller's profile
+      studentData.university_id = userUniversityId;
+      studentData.department_id = userDepartmentId;
     }
 
     // For super admins, verify the university exists
@@ -313,40 +328,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify that the referenced entities exist and belong to same university
-    const [departmentCheck, programCheck] = await Promise.all([
-      supabase
+    // Verify that the referenced entities exist and belong to same university.
+    // department_id and program_id are optional (a student can be created
+    // without a program/department and assigned later).
+    let departmentCheck: { data: any } = { data: null };
+    let programCheck: { data: any } = { data: null };
+
+    if (studentData.department_id) {
+      const deptRes = await supabase
         .from("departments")
         .select("id, university_id")
         .eq("id", studentData.department_id)
-        .single(),
-      supabase
+        .single();
+      departmentCheck = { data: deptRes.data };
+    }
+    if (studentData.program_id) {
+      const progRes = await supabase
         .from("programs")
         .select("id, university_id")
         .eq("id", studentData.program_id)
-        .single(),
-    ]);
-
-    // SECURITY: Verify department belongs to the same university
-    if (!departmentCheck.data) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Referenced department does not exist" },
-        { status: 400 }
-      );
-    }
-    
-    if (departmentCheck.data.university_id !== studentData.university_id) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Department does not belong to the specified university" },
-        { status: 400 }
-      );
+        .single();
+      programCheck = { data: progRes.data };
     }
 
-    if (!programCheck.data) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Referenced program does not exist" },
-        { status: 400 }
-      );
+    // SECURITY: Verify department belongs to the same university (only if set)
+    if (studentData.department_id) {
+      if (!departmentCheck.data) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Referenced department does not exist" },
+          { status: 400 }
+        );
+      }
+
+      if (departmentCheck.data.university_id !== studentData.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Department does not belong to the specified university" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Verify program belongs to the same university (only if set)
+    if (studentData.program_id) {
+      if (!programCheck.data) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Referenced program does not exist" },
+          { status: 400 }
+        );
+      }
+
+      if (programCheck.data.university_id !== studentData.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Program does not belong to the specified university" },
+          { status: 400 }
+        );
+      }
     }
 
     // Get client info for audit log

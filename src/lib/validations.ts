@@ -24,8 +24,8 @@ export const UpdateUniversitySchema = CreateUniversitySchema.partial();
 export const CreateStudentSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
   university_id: z.string().uuid("Invalid university ID"),
-  department_id: z.string().uuid("Invalid department ID"),
-  program_id: z.string().uuid("Invalid program ID"),
+  department_id: z.string().uuid("Invalid department ID").optional().nullable(),
+  program_id: z.string().uuid("Invalid program ID").optional().nullable(),
   student_id_number: z.string()
     .min(3, "Student ID number must be at least 3 characters")
     .max(50),

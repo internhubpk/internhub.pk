@@ -19,6 +19,7 @@ import {
   MoreVertical,
   FileSpreadsheet,
   UserPlus,
+  Upload,
   CheckSquare,
   Square,
   Loader2,
@@ -128,6 +129,181 @@ export default function StudentsPage() {
   // Student detail view
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+
+  // Add Student dialog
+  const [isAddStudentDialogOpen, setIsAddStudentDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isCreatingStudent, setIsCreatingStudent] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [newStudent, setNewStudent] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    student_id_number: "",
+    program_code: "",
+  });
+  const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    errors: number;
+    details: { created: any[]; errors: any[] };
+  } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [csvFileName, setCsvFileName] = useState("");
+  const [csvText, setCsvText] = useState("");
+
+  // Fetch programs for the dropdown
+  const fetchPrograms = useCallback(async () => {
+    try {
+      const res = await fetch("/api/programs?pageSize=100");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data?.data)) {
+          setPrograms(data.data.data.map((p: any) => ({ id: p.id, name: p.name, code: p.code })));
+        } else if (Array.isArray(data.data)) {
+          setPrograms(data.data.map((p: any) => ({ id: p.id, name: p.name, code: p.code })));
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching programs:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPrograms();
+  }, [fetchPrograms]);
+
+  // Handle single student creation (form)
+  const handleCreateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStudent.first_name.trim() || !newStudent.last_name.trim() || !newStudent.email.trim() || !newStudent.student_id_number.trim()) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+
+    setIsCreatingStudent(true);
+    try {
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: newStudent.email.trim(),
+          password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + "A1!",
+          full_name: `${newStudent.first_name.trim()} ${newStudent.last_name.trim()}`,
+          role: "student",
+          // university_id and department_id are FORCED server-side from the caller's profile
+        }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        alert(data.error || "Failed to create student");
+        return;
+      }
+
+      // Now insert the students extension row
+      const userId = data.data?.user_id || data.user_id;
+      if (!userId) {
+        alert("Student auth account created but could not link student record. Please contact support.");
+        return;
+      }
+
+      // Find the program_id from the code
+      const program = programs.find((p) => p.code.toLowerCase() === newStudent.program_code.trim().toLowerCase());
+
+      const studentRes = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          university_id: profile?.university_id,
+          department_id: profile?.department_id,
+          program_id: program?.id || null,
+          student_id_number: newStudent.student_id_number.trim(),
+          enrollment_year: new Date().getFullYear(),
+        }),
+      });
+      const studentData = await studentRes.json();
+
+      if (!studentData.success) {
+        // Profile was created but student record failed — surface the error
+        alert(`Auth + profile created, but student record failed: ${studentData.error || studentData.message || "Unknown error"}`);
+        return;
+      }
+
+      // Success — close dialog, reset form, refresh list
+      setIsAddStudentDialogOpen(false);
+      setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_code: "" });
+      await fetchStudents();
+      alert(`Student ${newStudent.first_name} ${newStudent.last_name} created. They can sign in with their email at ${newStudent.email}.`);
+    } catch (error) {
+      console.error("Error creating student:", error);
+      alert("Failed to create student");
+    } finally {
+      setIsCreatingStudent(false);
+    }
+  };
+
+  // Handle CSV file selection
+  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setCsvText((ev.target?.result as string) || "");
+      setImportResult(null);
+    };
+    reader.readAsText(file);
+  };
+
+  // Handle CSV import
+  const handleImportCsv = async () => {
+    if (!csvText.trim()) {
+      alert("Please select a CSV file first.");
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const res = await fetch("/api/department-coordinator/students/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: csvText,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportResult(data.data);
+        await fetchStudents();
+      } else {
+        alert(data.error || "Import failed");
+      }
+    } catch (error) {
+      console.error("Error importing CSV:", error);
+      alert("Import failed");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const downloadCsvTemplate = () => {
+    const template = "first_name,last_name,email,student_id_number,program_code\nJohn,Doe,john.doe@university.edu,FA21-BSCS-001,CS-INT\nJane,Smith,jane.smith@university.edu,FA21-BSCS-002,CS-INT\n";
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "students_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const resetImportDialog = () => {
+    setIsImportDialogOpen(false);
+    setCsvFileName("");
+    setCsvText("");
+    setImportResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   // Fetch students
   const fetchStudents = useCallback(async () => {
@@ -392,12 +568,22 @@ export default function StudentsPage() {
           </p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={exportToCSV} disabled={isLoading || displayedStudents.length === 0}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
-          
+
+          <Button variant="outline" onClick={() => { setCsvFileName(""); setCsvText(""); setImportResult(null); setIsImportDialogOpen(true); }}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
+
+          <Button onClick={() => setIsAddStudentDialogOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Student
+          </Button>
+
           <Button
             onClick={() => setIsAssignDialogOpen(true)}
             disabled={selectedStudents.size === 0}
@@ -941,6 +1127,201 @@ export default function StudentsPage() {
                 Assign Supervisor
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Student Dialog */}
+      <Dialog open={isAddStudentDialogOpen} onOpenChange={setIsAddStudentDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleCreateStudent}>
+            <DialogHeader>
+              <DialogTitle>Add New Student</DialogTitle>
+              <DialogDescription>
+                Create a student account. The student will be enrolled in your department
+                ({profile?.department_id ? "linked" : "—"}). They can sign in with their email
+                and the auto-generated password.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="student-first-name">First Name *</Label>
+                  <Input
+                    id="student-first-name"
+                    value={newStudent.first_name}
+                    onChange={(e) => setNewStudent({ ...newStudent, first_name: e.target.value })}
+                    required
+                    placeholder="John"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-last-name">Last Name *</Label>
+                  <Input
+                    id="student-last-name"
+                    value={newStudent.last_name}
+                    onChange={(e) => setNewStudent({ ...newStudent, last_name: e.target.value })}
+                    required
+                    placeholder="Doe"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="student-email">Email *</Label>
+                <Input
+                  id="student-email"
+                  type="email"
+                  value={newStudent.email}
+                  onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
+                  required
+                  placeholder="john.doe@university.edu"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="student-id">Student ID Number *</Label>
+                  <Input
+                    id="student-id"
+                    value={newStudent.student_id_number}
+                    onChange={(e) => setNewStudent({ ...newStudent, student_id_number: e.target.value })}
+                    required
+                    placeholder="FA21-BSCS-001"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-program">Program</Label>
+                  <Select
+                    value={newStudent.program_code}
+                    onValueChange={(val) => setNewStudent({ ...newStudent, program_code: val === "__none__" ? "" : val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="No program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No program</SelectItem>
+                      {programs.map((p) => (
+                        <SelectItem key={p.id} value={p.code}>
+                          {p.name} ({p.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddStudentDialogOpen(false)} disabled={isCreatingStudent}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isCreatingStudent}>
+                {isCreatingStudent ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Student"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import CSV Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Import Students from CSV</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with the following columns (header row required, case-insensitive):
+              <code className="block mt-2 p-2 bg-muted rounded text-xs">
+                first_name, last_name, email, student_id_number, program_code
+              </code>
+              <span className="block mt-2">
+                <code>program_code</code> is optional — match it to a program code in your university.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={downloadCsvTemplate}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Template
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="csv-file">CSV File</Label>
+              <Input
+                id="csv-file"
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleCsvFile}
+              />
+              {csvFileName && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: <span className="font-medium">{csvFileName}</span>
+                </p>
+              )}
+            </div>
+
+            {importResult && (
+              <div className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="h-4 w-4 text-emerald-600" />
+                    <span className="font-medium">{importResult.created} created</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <X className="h-4 w-4 text-destructive" />
+                    <span className="font-medium">{importResult.errors} errors</span>
+                  </div>
+                </div>
+                {importResult.details.errors.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto text-sm">
+                    <p className="font-medium text-muted-foreground mb-1">Errors:</p>
+                    <ul className="space-y-1">
+                      {importResult.details.errors.slice(0, 20).map((err, i) => (
+                        <li key={i} className="text-xs text-destructive">
+                          Row {err.row} ({err.email}): {err.error}
+                        </li>
+                      ))}
+                      {importResult.details.errors.length > 20 && (
+                        <li className="text-xs text-muted-foreground">
+                          ...and {importResult.details.errors.length - 20} more
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={resetImportDialog} disabled={isImporting}>
+              Close
+            </Button>
+            <Button type="button" onClick={handleImportCsv} disabled={isImporting || !csvText.trim()}>
+              {isImporting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
