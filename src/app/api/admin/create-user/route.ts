@@ -251,9 +251,17 @@ export async function POST(request: NextRequest) {
     // ==========================================================
     // 5. Create the auth.users row. email_confirm: true so the new
     //    user can sign in immediately without clicking an email link.
-    //    raw_user_meta_data carries the role + full_name + tenant ids
-    //    — the on_auth_user_created trigger reads role from there and
-    //    inserts the profiles row with the correct role.
+    //
+    //    We populate BOTH raw_user_meta_data (via user_metadata) AND
+    //    raw_app_meta_data (via app_metadata) with the tenant ids.
+    //    - user_metadata is read by the on_auth_user_created trigger
+    //      to populate the profiles row.
+    //    - app_metadata is system-managed and tamper-proof. The
+    //      internhub.current_university_id/department_id/company_id
+    //      helpers (migration 0013) read app_metadata FIRST, so the
+    //      new user's RLS policies resolve to the correct tenant
+    //      immediately — even before the profiles row is upserted
+    //      in step 6 below.
     // ==========================================================
     const firstName = full_name?.trim().split(" ")[0] || null;
     const lastName = full_name?.trim().split(" ").slice(1).join(" ") || null;
@@ -270,12 +278,21 @@ export async function POST(request: NextRequest) {
     if (job_title) userMetadata.job_title = job_title?.trim() || null;
     if (phone) userMetadata.phone = phone?.trim() || null;
 
+    // app_metadata: system-managed, tamper-proof. Only the role + tenant
+    // ids go here (no display fields like full_name — those belong in
+    // user_metadata only).
+    const appMetadata: Record<string, unknown> = { role };
+    if (effectiveUniversityId) appMetadata.university_id = effectiveUniversityId;
+    if (company_id) appMetadata.company_id = company_id;
+    if (effectiveDepartmentId) appMetadata.department_id = effectiveDepartmentId;
+
     const { data: authData, error: authError2 } =
       await adminClient.auth.admin.createUser({
         email: email.trim(),
         password,
         email_confirm: true,
         user_metadata: userMetadata,
+        app_metadata: appMetadata,
       });
 
     if (authError2) {

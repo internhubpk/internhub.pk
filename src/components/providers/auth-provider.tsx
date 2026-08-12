@@ -95,9 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       phone: meta.phone || null,
       bio: null,
       username: meta.username || null,
-      university_id: meta.university_id || null,
-      department_id: meta.department_id || null,
-      company_id: meta.company_id || null,
+      // Read tenant ids from app_metadata FIRST (system-managed, kept in
+      // sync with profiles by the profiles_sync_auth_metadata trigger,
+      // migration 0013), then fall back to user_metadata. Same priority
+      // order as the role resolution above and the proxy / dashboard
+      // server code.
+      university_id: appMeta.university_id || meta.university_id || null,
+      department_id: appMeta.department_id || meta.department_id || null,
+      company_id: appMeta.company_id || meta.company_id || null,
       status: 'active',
       is_active: true,
       student_id: null,
