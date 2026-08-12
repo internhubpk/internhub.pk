@@ -57,85 +57,95 @@ DECLARE
   v_full_name     text;
   v_status        profile_status;
 BEGIN
-  -- Role from metadata (priority: app_meta first, then user_meta)
-  meta_role := COALESCE(
-    NEW.raw_app_meta_data->>'role',
-    NEW.raw_user_meta_data->>'role',
-    'pending_assignment'
-  );
-  assigned_role := CASE
-    WHEN meta_role = 'super_admin' THEN 'super_admin'
-    WHEN meta_role = 'university_admin' THEN 'university_admin'
-    WHEN meta_role = 'department_coordinator' THEN 'department_coordinator'
-    WHEN meta_role = 'faculty_supervisor' THEN 'faculty_supervisor'
-    WHEN meta_role = 'student' THEN 'student'
-    WHEN meta_role = 'company_hr' THEN 'company_hr'
-    WHEN meta_role = 'site_supervisor' THEN 'site_supervisor'
-    WHEN meta_role = 'external_evaluator' THEN 'external_evaluator'
-    ELSE 'pending_assignment'
-  END;
-
-  -- Tenant IDs from metadata — validate UUID format before casting
-  v_university_id := COALESCE(
-    CASE
-      WHEN NEW.raw_app_meta_data->>'university_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_app_meta_data->>'university_id'
-      ELSE NULL
-    END,
-    CASE
-      WHEN NEW.raw_user_meta_data->>'university_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_user_meta_data->>'university_id'
-      ELSE NULL
-    END
-  );
-
-  v_department_id := COALESCE(
-    CASE
-      WHEN NEW.raw_app_meta_data->>'department_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_app_meta_data->>'department_id'
-      ELSE NULL
-    END,
-    CASE
-      WHEN NEW.raw_user_meta_data->>'department_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_user_meta_data->>'department_id'
-      ELSE NULL
-    END
-  );
-
-  v_company_id := COALESCE(
-    CASE
-      WHEN NEW.raw_app_meta_data->>'company_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_app_meta_data->>'company_id'
-      ELSE NULL
-    END,
-    CASE
-      WHEN NEW.raw_user_meta_data->>'company_id'
-           ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
-      THEN NEW.raw_user_meta_data->>'company_id'
-      ELSE NULL
-    END
-  );
-
-  v_full_name := COALESCE(
-    NEW.raw_user_meta_data->>'full_name',
-    NEW.raw_user_meta_data->>'name',
-    NEW.raw_user_meta_data->>'first_name' || ' ' || NEW.raw_user_meta_data->>'last_name'
-  );
-
-  v_status := CASE WHEN assigned_role = 'pending_assignment' THEN 'pending' ELSE 'active' END;
-
   -- ----------------------------------------------------------------------
-  -- Best-effort profiles INSERT. If ANYTHING goes wrong (RLS, FK, enum,
-  -- unique constraint, downstream trigger recursion, etc.) we log it and
-  -- RETURN NEW anyway so auth.users INSERT succeeds. The API route is
-  -- responsible for upserting the full profiles row afterwards.
+  -- ENTIRE body wrapped in a single EXCEPTION block. ANY failure (enum
+  -- cast, FK, RLS, regex, downstream trigger recursion) is logged and
+  -- swallowed so the auth.users INSERT always succeeds. The API route
+  -- is responsible for upserting the full profiles row afterwards using
+  -- the service role client.
+  --
+  -- This is critical because Supabase Auth surfaces any uncaught trigger
+  -- exception as a generic "Database error creating new user" HTTP 500,
+  -- which rolls back the auth.users INSERT entirely.
   -- ----------------------------------------------------------------------
   BEGIN
+    -- Role from metadata (priority: app_meta first, then user_meta)
+    meta_role := COALESCE(
+      NEW.raw_app_meta_data->>'role',
+      NEW.raw_user_meta_data->>'role',
+      'pending_assignment'
+    );
+    -- Defensive: if the meta_role doesn't match a known enum value, fall
+    -- back to pending_assignment instead of raising. This guards against
+    -- a stale production enum that's missing newer values like
+    -- site_supervisor (migration 0026 fixes this defensively, but this
+    -- belt-and-suspenders ensures the trigger never breaks auth.users).
+    assigned_role := CASE
+      WHEN meta_role = 'super_admin' THEN 'super_admin'::user_role
+      WHEN meta_role = 'university_admin' THEN 'university_admin'::user_role
+      WHEN meta_role = 'department_coordinator' THEN 'department_coordinator'::user_role
+      WHEN meta_role = 'faculty_supervisor' THEN 'faculty_supervisor'::user_role
+      WHEN meta_role = 'student' THEN 'student'::user_role
+      WHEN meta_role = 'company_hr' THEN 'company_hr'::user_role
+      WHEN meta_role = 'site_supervisor' THEN 'site_supervisor'::user_role
+      WHEN meta_role = 'external_evaluator' THEN 'external_evaluator'::user_role
+      ELSE 'pending_assignment'::user_role
+    END;
+
+    -- Tenant IDs from metadata — validate UUID format before casting
+    v_university_id := COALESCE(
+      CASE
+        WHEN NEW.raw_app_meta_data->>'university_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_app_meta_data->>'university_id'
+        ELSE NULL
+      END,
+      CASE
+        WHEN NEW.raw_user_meta_data->>'university_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_user_meta_data->>'university_id'
+        ELSE NULL
+      END
+    );
+
+    v_department_id := COALESCE(
+      CASE
+        WHEN NEW.raw_app_meta_data->>'department_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_app_meta_data->>'department_id'
+        ELSE NULL
+      END,
+      CASE
+        WHEN NEW.raw_user_meta_data->>'department_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_user_meta_data->>'department_id'
+        ELSE NULL
+      END
+    );
+
+    v_company_id := COALESCE(
+      CASE
+        WHEN NEW.raw_app_meta_data->>'company_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_app_meta_data->>'company_id'
+        ELSE NULL
+      END,
+      CASE
+        WHEN NEW.raw_user_meta_data->>'company_id'
+             ~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+        THEN NEW.raw_user_meta_data->>'company_id'
+        ELSE NULL
+      END
+    );
+
+    v_full_name := COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      NEW.raw_user_meta_data->>'first_name' || ' ' || NEW.raw_user_meta_data->>'last_name'
+    );
+
+    v_status := CASE WHEN assigned_role = 'pending_assignment' THEN 'pending' ELSE 'active' END;
+
     INSERT INTO public.profiles (
       user_id, email, full_name, first_name, last_name, role,
       avatar_url, phone, status, is_active,
