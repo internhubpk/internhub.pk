@@ -520,14 +520,16 @@ export default function CoordinatorsPage() {
                     <div className="flex items-center gap-2 sm:gap-3">
                       {/* Quick Department Assignment */}
                       <Select
-                        value={coordinator.department_id || ""}
-                        onValueChange={(value) => handleUpdateDepartment(coordinator, value)}
+                        value={coordinator.department_id || "__none__"}
+                        onValueChange={(value) =>
+                          handleUpdateDepartment(coordinator, value === "__none__" ? "" : value)
+                        }
                       >
                         <SelectTrigger className="w-[140px] h-9 text-xs">
                           <SelectValue placeholder="Assign Dept" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Unassigned</SelectItem>
+                          <SelectItem value="__none__">Unassigned</SelectItem>
                           {departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
                               {dept.code || dept.name.slice(0, 3)}
@@ -648,14 +650,16 @@ export default function CoordinatorsPage() {
             <div className="space-y-2">
               <Label htmlFor="coord-department">Assign to Department</Label>
               <Select
-                value={formData.department_id}
-                onValueChange={(value) => setFormData({ ...formData, department_id: value })}
+                value={formData.department_id || "__none__"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, department_id: value === "__none__" ? "" : value })
+                }
               >
                 <SelectTrigger id="coord-department">
                   <SelectValue placeholder="Select a department (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="__none__">Unassigned</SelectItem>
                   {departments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name} {dept.code && `(${dept.code})`}

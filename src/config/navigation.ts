@@ -98,9 +98,9 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: GraduationCap,
     },
     {
-      title: "Companies",
-      href: "/university-admin/companies",
-      icon: Briefcase,
+      title: "Coordinators",
+      href: "/university-admin/coordinators",
+      icon: UserCheck,
     },
     {
       title: "Departments",

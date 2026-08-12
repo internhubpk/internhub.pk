@@ -425,14 +425,16 @@ export default function UniversityAdminStudentsPage() {
               </div>
 
               <Select
-                value={filters.department_id}
-                onValueChange={(value) => setFilters({ ...filters, department_id: value })}
+                value={filters.department_id || "__none__"}
+                onValueChange={(value) =>
+                  setFilters({ ...filters, department_id: value === "__none__" ? "" : value })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All Departments" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Departments</SelectItem>
+                  <SelectItem value="__none__">All Departments</SelectItem>
                   {departments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
@@ -442,14 +444,16 @@ export default function UniversityAdminStudentsPage() {
               </Select>
 
               <Select
-                value={filters.status}
-                onValueChange={(value) => setFilters({ ...filters, status: value })}
+                value={filters.status || "__none__"}
+                onValueChange={(value) =>
+                  setFilters({ ...filters, status: value === "__none__" ? "" : value })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value="__none__">All Statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>

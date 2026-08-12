@@ -591,14 +591,16 @@ export default function DepartmentsPage() {
             <div className="space-y-2">
               <Label htmlFor="head">Department Head</Label>
               <Select
-                value={formData.head_id}
-                onValueChange={(value) => setFormData({ ...formData, head_id: value })}
+                value={formData.head_id || "__none__"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, head_id: value === "__none__" ? "" : value })
+                }
               >
                 <SelectTrigger id="head">
                   <SelectValue placeholder="Select a department head" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None assigned</SelectItem>
+                  <SelectItem value="__none__">None assigned</SelectItem>
                   {potentialHeads.map((head) => (
                     <SelectItem key={head.user_id} value={head.user_id}>
                       {head.full_name || head.email} ({head.role.replace('_', ' ')})

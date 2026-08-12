@@ -108,7 +108,7 @@ const breadcrumbMap: Record<string, string> = {
   // University admin routes
   "/university-admin": "University Admin",
   "/university-admin/students": "Students",
-  "/university-admin/companies": "Companies",
+  "/university-admin/coordinators": "Coordinators",
   "/university-admin/departments": "Departments",
   "/university-admin/reports": "Reports",
   "/university-admin/settings": "Settings",
