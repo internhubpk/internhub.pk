@@ -101,20 +101,22 @@ export default function UniversityAdminReportsPage() {
         acceptedAppsRes,
         rejectedAppsRes,
       ] = await Promise.all([
+        // profiles uses user_id (no `id` column). head:true returns only
+        // the count, no rows, which is all we need for stat cards.
         supabase
           .from("profiles")
-          .select("id", { count: "exact", head: true })
+          .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student"),
         supabase
           .from("profiles")
-          .select("id", { count: "exact", head: true })
+          .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student")
           .eq("is_active", true),
         supabase
           .from("profiles")
-          .select("id", { count: "exact", head: true })
+          .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "department_coordinator"),
         supabase
@@ -186,7 +188,7 @@ export default function UniversityAdminReportsPage() {
             const [studentCount, activeCount] = await Promise.all([
               supabase
                 .from("profiles")
-                .select("id", { count: "exact", head: true })
+                .select("user_id", { count: "exact", head: true })
                 .eq("department_id", dept.id)
                 .eq("role", "student"),
               supabase

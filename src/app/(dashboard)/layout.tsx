@@ -75,8 +75,12 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         {/* HEADER - Sticky */}
         <Header />
 
-        {/* SCROLLABLE MAIN CONTENT */}
-        <main className="flex-1 overflow-auto">
+        {/* SCROLLABLE MAIN CONTENT
+            - flex-1 + min-h-0 lets it shrink within the flex column so the
+              footer below always stays visible at the bottom of the viewport.
+            - overflow-y-auto makes only this element scroll, not the whole
+              page, so the footer never moves when the user scrolls. */}
+        <main className="flex-1 min-h-0 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -96,9 +100,15 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         </main>
 
         {/* ============================================ */}
-        {/* FOOTER - Optional                             */}
+        {/* FOOTER - pinned to the bottom of the flex column.
+            Because the parent is h-screen overflow-hidden and main is the
+            only scrollable element, this footer never moves when the user
+            scrolls the main content. shrink-0 prevents it from collapsing,
+            bg-background gives it a solid backdrop so content scrolling
+            underneath doesn't show through, and relative z-10 keeps it
+            above any transiently-positioned UI. */}
         {/* ============================================ */}
-        <footer className="border-t border-border py-4 px-6 mt-auto shrink-0">
+        <footer className="border-t border-border py-4 px-6 shrink-0 bg-background relative z-10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
             <p>© {new Date().getFullYear()} InternHub. All rights reserved.</p>
             <div className="flex items-center gap-4">

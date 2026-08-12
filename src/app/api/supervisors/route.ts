@@ -267,11 +267,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify user exists and belongs to this university
+    // Verify user exists and belongs to this university.
+    // `profiles` uses `user_id` (no `id` column) — filter by user_id, not id.
     const { data: userProfile } = await supabase
       .from("profiles")
-      .select("id, university_id, role")
-      .eq("id", supervisorData.user_id)
+      .select("user_id, university_id, role")
+      .eq("user_id", supervisorData.user_id)
       .single();
 
     if (!userProfile) {

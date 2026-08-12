@@ -12,10 +12,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get sender's profile
+    // Get sender's profile.
+    // NOTE: `profiles` uses `user_id` (uuid PK mirroring auth.users.id) —
+    // there is no `id` column. Selecting `id` would make PostgREST return
+    // HTTP 400. Use `user_id` instead.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name")
+      .select("user_id, role, full_name")
       .eq("user_id", user.id)
       .single();
 
@@ -110,10 +113,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get sender's profile
+    // Get sender's profile (user_id, not id — profiles has no `id` column)
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name, university_id, department_id")
+      .select("user_id, role, full_name, university_id, department_id")
       .eq("user_id", user.id)
       .single();
 

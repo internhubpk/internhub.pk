@@ -101,30 +101,34 @@ export default function UniversityAdminDashboard() {
         departmentsRes,
         coordinatorsRes,
       ] = await Promise.all([
-        // Total students in this university
+        // Total students in this university.
+        // NOTE: `profiles` uses `user_id` (uuid PK mirroring auth.users.id)
+        // — there is no `id` column. Selecting `id` makes PostgREST return
+        // HTTP 400 (schema validation fails). Use `user_id` instead.
         supabase
           .from("profiles")
-          .select("id", { count: "exact" })
+          .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student"),
         
         // Active internships
         supabase
           .from("internships")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "active"),
         
-        // Pending applications
+        // Pending applications (applications is a view; the base table is
+        // internship_applications. Both work but the view name is shorter.)
         supabase
           .from("applications")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
         
         // Completed internships
         supabase
           .from("internships")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "completed"),
         
@@ -136,10 +140,10 @@ export default function UniversityAdminDashboard() {
           .eq("is_active", true)
           .order("name"),
         
-        // Total coordinators
+        // Total coordinators (same note as above — profiles has user_id, not id)
         supabase
           .from("profiles")
-          .select("id", { count: "exact" })
+          .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "department_coordinator"),
       ]);
@@ -166,14 +170,15 @@ export default function UniversityAdminDashboard() {
         
         for (const dept of departmentsRes.data) {
           const [studentCount, activeCount] = await Promise.all([
+            // profiles has user_id, not id — use head:true so we only fetch the count
             supabase
               .from("profiles")
-              .select("id", { count: "exact" })
+              .select("user_id", { count: "exact", head: true })
               .eq("department_id", dept.id)
               .eq("role", "student"),
             supabase
               .from("internships")
-              .select("id", { count: "exact" })
+              .select("id", { count: "exact", head: true })
               .eq("department_id", dept.id)
               .eq("status", "active"),
           ]);

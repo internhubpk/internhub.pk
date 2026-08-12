@@ -307,12 +307,18 @@ export default function CoordinatorsPage() {
       const supabase = createClient();
       const nextActive = !coordinator.is_active;
 
-      const { error } = await supabase
+      // Pass { count: "exact" } so Supabase tells us how many rows were
+      // actually updated. RLS silent rejection returns success with 0 rows
+      // affected — without `count` we'd have no way to detect that.
+      const { error, count } = await supabase
         .from("profiles")
-        .update({
-          is_active: nextActive,
-          updated_at: new Date().toISOString(),
-        })
+        .update(
+          {
+            is_active: nextActive,
+            updated_at: new Date().toISOString(),
+          },
+          { count: "exact" }
+        )
         .eq("user_id", coordinator.user_id);
 
       if (error) {
@@ -323,8 +329,27 @@ export default function CoordinatorsPage() {
         throw error;
       }
 
-      // Re-read to detect silent RLS rejection (UPDATE returned success
-      // but 0 rows affected). Same pattern as handleUpdateDepartment.
+      // 0 rows affected = RLS silently rejected the UPDATE. The most
+      // common cause is the coordinator's profile.university_id being
+      // NULL or different from the admin's current_university_id() —
+      // the WITH CHECK clause `university_id = current_university_id()`
+      // fails, so no row is updated.
+      if (count === 0) {
+        toast({
+          title: "Status change blocked",
+          description:
+            "The database rejected the update (0 rows affected). This " +
+            "usually means the coordinator's profile is missing a " +
+            "university_id, or it doesn't match your university. " +
+            "Check the coordinator's auth.users metadata.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Belt-and-suspenders: re-read the row to confirm the value
+      // actually changed. (count > 0 but value unchanged would indicate
+      // a trigger interfering with the write.)
       const { data: verify, error: verifyErr } = await supabase
         .from("profiles")
         .select("is_active, university_id")
@@ -332,18 +357,28 @@ export default function CoordinatorsPage() {
         .single();
 
       if (verifyErr) {
+        // Verify SELECT itself failed — this shouldn't happen since we
+        // just confirmed the UPDATE landed, but if it does, surface the
+        // error instead of silently falling through to the success toast.
         console.error(
           "[handleToggleStatus] verify read failed:",
           JSON.stringify(verifyErr, null, 2)
         );
+        toast({
+          title: "Status updated (verify failed)",
+          description:
+            "The update reported success but we couldn't re-read the " +
+            "row to confirm. Refresh the page to see the current state.",
+          variant: "destructive",
+        });
+        fetchCoordinators();
+        return;
       } else if (verify?.is_active !== nextActive) {
         toast({
           title: "Status change failed (silent)",
           description:
             "The database accepted the update but is_active didn't change. " +
-            "This usually means the coordinator's profile is missing a " +
-            "university_id (RLS WITH CHECK failed). Check that the " +
-            "coordinator's auth.users metadata has a valid university_id.",
+            "A trigger or RLS WITH CHECK may be interfering.",
           variant: "destructive",
         });
         return;
@@ -381,9 +416,11 @@ export default function CoordinatorsPage() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      // { count: "exact" } lets us detect silent RLS rejection (UPDATE
+      // returns success with 0 rows affected).
+      const { error, count } = await supabase
         .from("profiles")
-        .update(update)
+        .update(update, { count: "exact" })
         .eq("user_id", coordinator.user_id);
 
       if (error) {
@@ -394,12 +431,23 @@ export default function CoordinatorsPage() {
         throw error;
       }
 
-      // Re-fetch the row to confirm the write actually landed. If RLS
-      // silently rejected the update (e.g. because the target profile's
-      // university_id doesn't match the caller's current_university_id()),
-      // Supabase returns success with 0 rows affected. Catching that
-      // here lets us show a precise error to the admin instead of a
-      // silent no-op that looks like "unable to assign".
+      // 0 rows affected = RLS silently rejected. Same root cause as
+      // handleToggleStatus: the coordinator's profile.university_id is
+      // NULL or doesn't match the admin's current_university_id().
+      if (count === 0) {
+        toast({
+          title: "Assignment blocked",
+          description:
+            "The database rejected the update (0 rows affected). This " +
+            "usually means the coordinator's profile is missing a " +
+            "university_id, or it doesn't match your university. " +
+            "Check the coordinator's auth.users metadata.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Re-fetch the row to confirm the write actually landed.
       const { data: verify, error: verifyErr } = await supabase
         .from("profiles")
         .select("department_id, university_id")
@@ -407,10 +455,21 @@ export default function CoordinatorsPage() {
         .single();
 
       if (verifyErr) {
+        // Verify SELECT failed — don't fall through to the success toast.
+        // Surface the error so the admin knows something is off.
         console.error(
           "[handleUpdateDepartment] verify read failed:",
           JSON.stringify(verifyErr, null, 2)
         );
+        toast({
+          title: "Assignment updated (verify failed)",
+          description:
+            "The update reported success but we couldn't re-read the " +
+            "row to confirm. Refresh the page to see the current state.",
+          variant: "destructive",
+        });
+        fetchCoordinators();
+        return;
       } else if (
         (verify?.department_id || null) !== (departmentId || null)
       ) {
@@ -418,9 +477,7 @@ export default function CoordinatorsPage() {
           title: "Assignment failed (silent)",
           description:
             "The database accepted the update but the value didn't change. " +
-            "This usually means the coordinator's profile is missing a " +
-            "university_id (RLS WITH CHECK failed). Check that the " +
-            "coordinator's auth.users metadata has a valid university_id.",
+            "A trigger or RLS WITH CHECK may be interfering.",
           variant: "destructive",
         });
         return;

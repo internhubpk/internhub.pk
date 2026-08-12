@@ -122,17 +122,18 @@ export default function DepartmentsPage() {
       
       for (const dept of (data || [])) {
         const [studentCountRes, coordinatorCountRes, headProfile] = await Promise.all([
+          // profiles uses user_id (no `id` column) — use head:true for count-only
           supabase
             .from("profiles")
-            .select("id", { count: "exact" })
+            .select("user_id", { count: "exact", head: true })
             .eq("department_id", dept.id)
             .eq("role", "student"),
           supabase
             .from("profiles")
-            .select("id", { count: "exact" })
+            .select("user_id", { count: "exact", head: true })
             .eq("department_id", dept.id)
             .eq("role", "department_coordinator"),
-          dept.head_id 
+          dept.head_id
             ? supabase
                 .from("profiles")
                 .select("full_name")

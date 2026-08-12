@@ -249,7 +249,8 @@ export async function getServerAuthContext(): Promise<AuthContext> {
         email: user.email || ""
       },
       profile: {
-        id: profile.id,
+        // `profiles` uses `user_id` (no `id` column) — use user_id here.
+        id: profile.user_id,
         role: profile.role as UserRole,
         university_id: profile.university_id,
         department_id: (profile as any).department_id || null

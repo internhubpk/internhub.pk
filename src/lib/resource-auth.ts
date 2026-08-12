@@ -83,7 +83,9 @@ export async function getResourceAuthContext(): Promise<ResourceAuthContext | nu
         email: user.email || "",
       },
       profile: {
-        id: profile.id,
+        // `profiles` table uses `user_id` (uuid PK mirroring auth.users.id).
+        // There is no `id` column — `profile.id` would be undefined.
+        id: profile.user_id,
         role: profile.role as UserRole,
         university_id: profile.university_id,
         department_id: (profile as any).department_id || null,
