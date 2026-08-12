@@ -335,28 +335,77 @@ export default function CoordinatorsPage() {
   const handleUpdateDepartment = async (coordinator: CoordinatorWithDetails, departmentId: string) => {
     try {
       const supabase = createClient();
-      
+
+      // Build the update payload. We send `department_id: null` when the
+      // caller picked "Unassigned" so the column actually clears
+      // (sending an empty string would fail the uuid FK check).
+      const update: Record<string, unknown> = {
+        department_id: departmentId || null,
+        updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("profiles")
-        .update({
-          department_id: departmentId || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(update)
         .eq("user_id", coordinator.user_id);
 
-      if (error) throw error;
+      if (error) {
+        console.error(
+          "[handleUpdateDepartment] RLS / DB error:",
+          JSON.stringify(error, null, 2)
+        );
+        throw error;
+      }
+
+      // Re-fetch the row to confirm the write actually landed. If RLS
+      // silently rejected the update (e.g. because the target profile's
+      // university_id doesn't match the caller's current_university_id()),
+      // Supabase returns success with 0 rows affected. Catching that
+      // here lets us show a precise error to the admin instead of a
+      // silent no-op that looks like "unable to assign".
+      const { data: verify, error: verifyErr } = await supabase
+        .from("profiles")
+        .select("department_id, university_id")
+        .eq("user_id", coordinator.user_id)
+        .single();
+
+      if (verifyErr) {
+        console.error(
+          "[handleUpdateDepartment] verify read failed:",
+          JSON.stringify(verifyErr, null, 2)
+        );
+      } else if (
+        (verify?.department_id || null) !== (departmentId || null)
+      ) {
+        toast({
+          title: "Assignment failed (silent)",
+          description:
+            "The database accepted the update but the value didn't change. " +
+            "This usually means the coordinator's profile is missing a " +
+            "university_id (RLS WITH CHECK failed). Check that the " +
+            "coordinator's auth.users metadata has a valid university_id.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
         title: "Department Updated",
-        description: `Coordinator assigned to ${departmentId ? 'department' : 'no department'}`,
+        description: departmentId
+          ? `Coordinator assigned to ${departments.find((d) => d.id === departmentId)?.name || "department"}`
+          : "Coordinator unassigned from department",
       });
 
       fetchCoordinators();
     } catch (error) {
       console.error("Error updating department:", error);
+      const err = error as { code?: string; message?: string } | null;
       toast({
         title: "Error",
-        description: "Failed to update department assignment",
+        description:
+          err?.code === "42501"
+            ? "Permission denied (RLS blocked the update). The coordinator's profile may be missing university_id."
+            : err?.message || "Failed to update department assignment",
         variant: "destructive",
       });
     }
@@ -529,23 +578,40 @@ export default function CoordinatorsPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 sm:gap-3">
-                      {/* Quick Department Assignment */}
+                      {/* Quick Department Assignment — shows full dept name,
+                          wide enough to read, and refetches departments on
+                          open in case the admin just created one. */}
                       <Select
                         value={coordinator.department_id || "__none__"}
                         onValueChange={(value) =>
                           handleUpdateDepartment(coordinator, value === "__none__" ? "" : value)
                         }
+                        onOpenChange={(open) => {
+                          if (open) fetchDepartments();
+                        }}
                       >
-                        <SelectTrigger className="w-[140px] h-9 text-xs">
-                          <SelectValue placeholder="Assign Dept" />
+                        <SelectTrigger className="w-[200px] h-9 text-xs">
+                          <SelectValue placeholder="Assign to department">
+                            {coordinator.department_id
+                              ? (departments.find((d) => d.id === coordinator.department_id)?.name ||
+                                 coordinator.departmentName ||
+                                 "Assigned")
+                              : "Unassigned"}
+                          </SelectValue>
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Unassigned</SelectItem>
+                        <SelectContent className="max-h-[320px]">
+                          <SelectItem value="__none__">— Unassigned —</SelectItem>
                           {departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
-                              {dept.code || dept.name.slice(0, 3)}
+                              {dept.name}{dept.code ? ` (${dept.code})` : ""}
                             </SelectItem>
                           ))}
+                          {departments.length === 0 && (
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
+                              No departments yet. Create one first on the
+                              Departments page.
+                            </div>
+                          )}
                         </SelectContent>
                       </Select>
 
