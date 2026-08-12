@@ -41,10 +41,12 @@ interface Program {
   is_active: boolean;
   university_id: string;
   department_id: string;
+  default_faculty_supervisor_id: string | null;
   student_count?: number;
   created_at: string;
   updated_at: string;
   departments?: { name: string; code: string | null }[] | null;
+  supervisor?: { full_name: string | null; email: string }[] | null;
 }
 
 export default function UniversityAdminProgramsPage() {
@@ -85,8 +87,10 @@ export default function UniversityAdminProgramsPage() {
         .from("programs")
         .select(
           `id, name, code, description, duration_weeks, is_active,
-           university_id, department_id, created_at, updated_at,
-           departments:department_id ( name, code )`
+           university_id, department_id, default_faculty_supervisor_id,
+           created_at, updated_at,
+           departments:department_id ( name, code ),
+           supervisor:default_faculty_supervisor_id ( full_name, email )`
         )
         .eq("university_id", universityId)
         .order("created_at", { ascending: false });
@@ -190,6 +194,13 @@ export default function UniversityAdminProgramsPage() {
     if (joinCode) return joinCode;
     const dept = departments.find((d) => d.id === program.department_id);
     return dept?.code || null;
+  };
+
+  const supervisorNameFor = (program: Program): string | null => {
+    const sup = program.supervisor?.[0];
+    if (sup?.full_name) return sup.full_name;
+    if (sup?.email) return sup.email;
+    return null;
   };
 
   if (!universityId) {
@@ -368,6 +379,13 @@ export default function UniversityAdminProgramsPage() {
                           {program.student_count || 0} students
                         </span>
                       </div>
+
+                      <div className="text-sm text-muted-foreground mt-2 truncate">
+                        <span className="font-medium">Supervisor:</span>{" "}
+                        {supervisorNameFor(program) || (
+                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -383,6 +401,7 @@ export default function UniversityAdminProgramsPage() {
                   <tr>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Program</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Department</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Supervisor</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Duration</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Students</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
@@ -431,6 +450,15 @@ export default function UniversityAdminProgramsPage() {
                             <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                             {deptNameFor(program)}
                           </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {supervisorNameFor(program) ? (
+                            <span className="text-sm">{supervisorNameFor(program)}</span>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              Not allotted
+                            </Badge>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-sm">{program.duration_weeks} weeks</td>
                         <td className="py-3 px-4">

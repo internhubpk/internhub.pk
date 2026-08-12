@@ -59,6 +59,8 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
+import { createClient } from "@/utils/supabase/client";
+import type { Profile } from "@/types";
 
 interface Program {
   id: string;
@@ -69,9 +71,11 @@ interface Program {
   is_active: boolean;
   university_id: string;
   department_id: string;
+  default_faculty_supervisor_id: string | null;
   student_count?: number;
   created_at: string;
   updated_at: string;
+  supervisor?: { full_name: string | null; email: string } | null;
 }
 
 interface ProgramFormData {
@@ -79,6 +83,7 @@ interface ProgramFormData {
   code: string;
   description: string;
   duration_weeks: number;
+  default_faculty_supervisor_id: string;
   is_active: boolean;
 }
 
@@ -87,12 +92,14 @@ const emptyForm: ProgramFormData = {
   code: "",
   description: "",
   duration_weeks: 8,
+  default_faculty_supervisor_id: "",
   is_active: true,
 };
 
 export default function ProgramsPage() {
   const { profile } = useAuth();
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [supervisors, setSupervisors] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActive, setFilterActive] = useState<string>("all");
@@ -102,6 +109,32 @@ export default function ProgramsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedProgram, setExpandedProgram] = useState<string | null>(null);
+
+  // Fetch faculty supervisors available to this coordinator's department.
+  // Faculty supervisors are profiles with role='faculty_supervisor' in
+  // the same university (and optionally same department). They're the
+  // pool the coordinator can allot to a program.
+  const fetchSupervisors = useCallback(async () => {
+    if (!profile?.university_id) return;
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("university_id", profile.university_id)
+        .eq("role", "faculty_supervisor")
+        .eq("is_active", true)
+        .order("full_name");
+      if (error) throw error;
+      setSupervisors(data || []);
+    } catch (error) {
+      console.error("Error fetching faculty supervisors:", error);
+    }
+  }, [profile?.university_id]);
+
+  useEffect(() => {
+    fetchSupervisors();
+  }, [fetchSupervisors]);
 
   // Fetch programs
   const fetchPrograms = useCallback(async () => {
@@ -197,9 +230,25 @@ export default function ProgramsPage() {
       code: program.code,
       description: program.description || "",
       duration_weeks: program.duration_weeks,
+      default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
       is_active: program.is_active,
     });
     setIsDialogOpen(true);
+  };
+
+  // Get the supervisor display name for a program.
+  // Tries the joined `supervisor` object first (from the API), then
+  // falls back to looking up the supervisors list we fetched.
+  const supervisorNameFor = (program: Program): string | null => {
+    if (program.supervisor?.full_name) return program.supervisor.full_name;
+    if (program.supervisor?.email) return program.supervisor.email;
+    if (program.default_faculty_supervisor_id) {
+      const sup = supervisors.find(
+        (s) => s.user_id === program.default_faculty_supervisor_id
+      );
+      if (sup) return sup.full_name || sup.email;
+    }
+    return null;
   };
 
   return (
@@ -300,6 +349,42 @@ export default function ProgramsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
+                  <Select
+                    value={formData.default_faculty_supervisor_id || "__none__"}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        default_faculty_supervisor_id:
+                          value === "__none__" ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger id="supervisor">
+                      <SelectValue placeholder="Select a faculty supervisor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None allotted</SelectItem>
+                      {supervisors.map((sup) => (
+                        <SelectItem key={sup.user_id} value={sup.user_id}>
+                          {sup.full_name || sup.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    The allotted supervisor will be the default faculty supervisor
+                    for students enrolling in this program. You can change this later.
+                    {supervisors.length === 0 && (
+                      <span className="text-amber-600 block mt-1">
+                        No faculty supervisors found in your university. Ask the
+                        University Admin to create a faculty supervisor account first.
+                      </span>
+                    )}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-3">
@@ -460,6 +545,13 @@ export default function ProgramsPage() {
                         </span>
                       </div>
 
+                      <div className="text-sm text-muted-foreground mb-3 truncate">
+                        <span className="font-medium">Supervisor:</span>{" "}
+                        {supervisorNameFor(program) || (
+                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                        )}
+                      </div>
+
                       <div className="flex gap-2 pt-3 border-t">
                         <Button
                           variant="outline"
@@ -492,6 +584,7 @@ export default function ProgramsPage() {
                 <TableRow>
                   <TableHead>Program</TableHead>
                   <TableHead>Code</TableHead>
+                  <TableHead>Supervisor</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Students</TableHead>
                   <TableHead>Status</TableHead>
@@ -532,6 +625,15 @@ export default function ProgramsPage() {
                         <code className="text-sm bg-muted px-2 py-1 rounded">
                           {program.code}
                         </code>
+                      </TableCell>
+                      <TableCell>
+                        {supervisorNameFor(program) ? (
+                          <span className="text-sm">{supervisorNameFor(program)}</span>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            Not allotted
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>{program.duration_weeks} weeks</TableCell>
                       <TableCell>

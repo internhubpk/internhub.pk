@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         departments:department_id(name, code),
-        universities:university_id(name, slug)
+        universities:university_id(name, slug),
+        supervisor:default_faculty_supervisor_id(full_name, email)
       `, { count: "exact" });
 
     // Apply role-based filtering - CRITICAL SCOPING
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { name, code, description, duration_weeks, department_id, is_active } = body;
+    const { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id } = body;
 
     // Validate required fields
     if (!name || !code || !duration_weeks || !department_id) {
@@ -257,6 +258,7 @@ export async function POST(request: NextRequest) {
         duration_weeks,
         university_id: universityId,
         department_id,
+        default_faculty_supervisor_id: default_faculty_supervisor_id || null,
         is_active: is_active !== undefined ? is_active : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
