@@ -252,8 +252,8 @@ export async function POST(request: Request) {
     }
 
     // Calculate total score from criteria
-    let totalScore = null;
-    let maxScore = null;
+    let totalScore: number | null = null;
+    let maxScore: number | null = null;
     if (criteria_scores && typeof criteria_scores === "object") {
       const scores = Object.values(criteria_scores) as number[];
       totalScore = scores.reduce((sum, s) => sum + s, 0);

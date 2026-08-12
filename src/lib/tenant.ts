@@ -255,3 +255,12 @@ export function getTenantOpenGraph(tenant: TenantConfig) {
     siteName: tenant.name,
   };
 }
+
+// ============================================================
+// NOTE: Server-side tenant security helpers (validateTenantOwnership,
+// getServerTenantContext, buildTenantQuery) live in `./tenant-server.ts`,
+// NOT here. This file is imported by client components (via
+// tenant-provider.tsx), so it must NOT transitively import `next/headers`
+// or any other server-only module. See `./tenant-server.ts` for the
+// server-side helpers.
+// ============================================================

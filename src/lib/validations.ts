@@ -157,7 +157,7 @@ export const EvaluationSchema = z.object({
   student_internship_id: z.string().uuid("Invalid student internship ID"),
   evaluator_type: z.enum(["faculty", "site", "external", "company"]),
   evaluation_period: z.string().min(2, "Evaluation period required"),
-  criteria_scores: z.record(z.number()
+  criteria_scores: z.record(z.string(), z.number()
     .min(0, "Score cannot be negative")
     .max(10, "Score cannot exceed 10")),
   total_score: z.number()
@@ -169,6 +169,9 @@ export const EvaluationSchema = z.object({
   comments: z.string().max(5000).optional(),
   strengths: z.string().max(2000).optional(),
   areas_for_improvement: z.string().max(2000).optional(),
+  // Back-compat aliases used by some UI/API code.
+  feedback: z.string().max(5000).optional(),
+  recommendations: z.string().max(5000).optional(),
   status: z.enum(["pending", "in_progress", "completed", "approved"])
     .default("in_progress"),
 });

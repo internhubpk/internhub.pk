@@ -108,7 +108,7 @@ export async function GET(
     ]);
 
     // Calculate days remaining
-    let daysRemaining = null;
+    let daysRemaining: number | null = null;
     let isExpiringSoon = false;
     
     if (license.expires_at) {
@@ -200,7 +200,7 @@ export async function PUT(
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );

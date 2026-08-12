@@ -18,6 +18,7 @@ export type UserRole =
 export interface Profile {
   user_id: string;
   email: string;
+  username?: string | null;
   full_name: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -27,15 +28,19 @@ export interface Profile {
   bio?: string | null;
   university_id: string | null;
   department_id: string | null;
+  program_id?: string | null;
   company_id?: string | null;
   status?: string;
   created_at: string;
   updated_at: string;
   // Role-specific fields
   student_id?: string | null;
+  student_id_number?: string | null;
   company_name?: string | null;
   job_title?: string | null;
   organization?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
   is_active: boolean;
 }
 
@@ -79,20 +84,26 @@ export interface Department {
 
 // ============ INTERNSHIP TYPES ============
 
-export type InternshipStatus = 
+export type InternshipStatus =
   | "draft"
   | "open"
   | "active"
   | "completed"
   | "cancelled"
-  | "expired";
+  | "expired"
+  // Back-compat: some legacy code/UI uses "published" as a status value.
+  // New code should use "open".
+  | "published";
 
-export type ApplicationStatus = 
+export type ApplicationStatus =
   | "pending"
   | "reviewing"
   | "accepted"
   | "rejected"
-  | "withdrawn";
+  | "withdrawn"
+  // Back-compat: legacy code uses "under_review" as a status value.
+  // New code should use "reviewing".
+  | "under_review";
 
 export interface Internship {
   id: string;
@@ -101,17 +112,24 @@ export interface Internship {
   company_id: string;
   company_name: string;
   department_id: string | null;
+  program_id?: string | null;
   location: string | null;
   remote: boolean;
+  /** Back-compat alias for `remote`. */
+  is_remote?: boolean;
   is_paid: boolean;
   stipend: number | null;
   stipend_currency: string;
   duration_weeks: number;
   status: InternshipStatus;
   required_skills: string[];
+  /** Back-compat alias for `required_skills`. */
+  skills?: string[];
   requirements: string[];
   benefits: string[];
   max_applicants: number | null;
+  /** Back-compat alias for `max_applicants`. */
+  vacancies?: number | null;
   current_applicants: number;
   start_date: string | null;
   end_date: string | null;
@@ -119,6 +137,16 @@ export interface Internship {
   created_by: string;
   created_at: string;
   updated_at: string;
+  // Joined fields commonly attached by API routes.
+  company_logo_url?: string | null;
+  company_description?: string | null;
+  company_website?: string | null;
+  company_size?: string | null;
+  about_team?: string | null;
+  is_saved?: boolean;
+  applicant_count?: number;
+  rating?: number | null;
+  review_count?: number;
 }
 
 export interface Application {
@@ -326,6 +354,23 @@ export interface DashboardStats {
   // Time-series data for charts
   monthlyData: MonthlyDataPoint[];
   statusDistribution: StatusBreakdown[];
+  // Optional fields used by some dashboards.
+  storageUsed?: number;
+  storageLimit?: number;
+  totalUniversities?: number;
+  totalUsers?: number;
+  totalDepartments?: number;
+  totalPrograms?: number;
+  totalSupervisors?: number;
+  totalEvaluations?: number;
+  pendingTasks?: number;
+  totalTasks?: number;
+  totalCertificates?: number;
+  totalDocuments?: number;
+  activeUsers?: number;
+  newUsersThisMonth?: number;
+  newInternshipsThisMonth?: number;
+  newApplicationsThisMonth?: number;
 }
 
 export interface MonthlyDataPoint {
@@ -333,6 +378,14 @@ export interface MonthlyDataPoint {
   internshipsStarted: number;
   internshipsCompleted: number;
   applicationsSubmitted: number;
+  // Optional fields used by some dashboards.
+  users?: number;
+  universities?: number;
+  internships?: number;
+  applications?: number;
+  weeklyLogs?: number;
+  evaluations?: number;
+  tasks?: number;
 }
 
 export interface StatusBreakdown {
@@ -374,8 +427,13 @@ export interface AuditLogEntry {
   action: string;
   entity_type: string;
   entity_id: string | null;
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
+  // Optional — present when the audit event is scoped to a university.
+  // Not all events (e.g. global super_admin actions) have a university.
+  universityId?: string | null;
+  university_id?: string | null;
+  old_values?: Record<string, unknown> | null;
+  new_values?: Record<string, unknown> | null;
+  details?: Record<string, unknown> | null;
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
@@ -432,11 +490,18 @@ export interface BreadcrumbItem {
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
-  error?: {
+  // Accept both a plain string error message and a structured error object,
+  // because different parts of the codebase use both forms. This keeps the
+  // type permissive enough for existing API routes while still allowing
+  // structured error reporting.
+  error?: string | {
     code: string;
     message: string;
     details?: unknown;
   };
+  // Optional human-readable message (used by some routes for both success
+  // and error responses).
+  message?: string;
   meta?: {
     page: number;
     limit: number;
@@ -446,13 +511,16 @@ export interface ApiResponse<T> {
 }
 
 export interface PaginatedResponse<T> {
-  items: T[];
+  // `items` is the canonical field name; `data` is accepted as an alias for
+  // routes that were written before this type was introduced.
+  items?: T[];
+  data?: T[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
+  hasNextPage?: boolean;
+  hasPrevPage?: boolean;
 }
 
 // ============ FORM TYPES ============
@@ -478,21 +546,186 @@ export interface TenantContext {
 
 export interface TenantConfig {
   id: string;
+  // `name`, `slug`, `logo`, `favicon`, `domain` are present for back-compat
+  // with code that predates the `lib/tenant.ts` extension. They are optional
+  // here so the base type is permissive; `lib/tenant.ts` re-declares them as
+  // required.
+  name?: string;
+  slug?: string;
+  logo?: string;
+  favicon?: string;
+  domain?: string;
   primaryColor: string;
   secondaryColor: string;
-  logoUrl: string | null;
-  customDomain: string | null;
+  logoUrl?: string | null;
+  customDomain?: string | null;
   branding: {
     loginBackgroundImage?: string;
     faviconUrl?: string;
     supportEmail?: string;
     supportPhone?: string;
+    tagline?: string;
+    description?: string;
   };
-  features: {
-    enableMarketplace: boolean;
-    enableEvaluations: boolean;
-    enableCertificates: boolean;
-    enableAttendance: boolean;
-    customWorkflow: boolean;
+  features?: {
+    enableMarketplace?: boolean;
+    enableEvaluations?: boolean;
+    enableCertificates?: boolean;
+    enableAttendance?: boolean;
+    customWorkflow?: boolean;
+    enableSSO?: boolean;
+    enableCustomDomain?: boolean;
+    maxStudents?: number;
   };
+}
+
+// ===================================================
+// ALIASES & ADDITIONAL EXPORTS
+// (back-compat for code that imports these names directly)
+// ===================================================
+
+/** Alias for `Application` — used by some API routes under the name `InternshipApplication`. */
+export type InternshipApplication = Application;
+
+/** Alias for `AttendanceRecord` — used by some API routes under the name `Attendance`. */
+export type Attendance = AttendanceRecord;
+
+/** Certificate status enum-like union. */
+export type CertificateStatus =
+  | "draft"
+  | "issued"
+  | "revoked"
+  | "expired"
+  | "not_issued"
+  | "complete"
+  | "not_available"
+  | "pending";
+
+/** Student domain model (extension of Profile with student-specific fields). */
+export interface Student {
+  user_id: string;
+  university_id: string;
+  department_id: string | null;
+  program_id: string | null;
+  enrollment_year: number | null;
+  expected_graduation: string | null;
+  cgpa: number | null;
+  student_id_number: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined profile fields (common)
+  full_name?: string | null;
+  email?: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+}
+
+/** Supervisor domain model. */
+export interface Supervisor {
+  id: string;
+  user_id: string;
+  type: "faculty" | "site" | "external";
+  university_id: string | null;
+  department_id: string | null;
+  program_id: string | null;
+  company_id: string | null;
+  employee_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined profile fields (common)
+  full_name?: string | null;
+  email?: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+}
+
+/** Report domain model. */
+export interface Report {
+  id: string;
+  name: string;
+  type: string;
+  format: string;
+  parameters: Record<string, unknown> | null;
+  created_by: string;
+  university_id: string | null;
+  department_id: string | null;
+  file_url: string | null;
+  created_at: string;
+}
+
+/** Internship progress (computed view for student dashboards). */
+export interface InternshipProgress {
+  internship_id: string;
+  student_internship_id: string;
+  title: string;
+  company_name?: string;
+  start_date: string | null;
+  end_date: string | null;
+  status: string;
+  /** 0-100, percent of duration elapsed. */
+  percent_complete: number;
+  /** Number of weekly logs submitted vs expected. */
+  weekly_logs_submitted: number;
+  weekly_logs_expected: number;
+  /** Number of evaluations completed vs expected. */
+  evaluations_completed: number;
+  evaluations_expected: number;
+  /** Number of tasks completed vs assigned. */
+  tasks_completed: number;
+  tasks_assigned: number;
+  /** Days since start (negative if not started yet). */
+  days_elapsed: number;
+  /** Days until end (negative if already ended). */
+  days_remaining: number;
+  // Back-compat fields used by some UI components.
+  /** Current week number (1-indexed). */
+  currentWeek?: number;
+  /** Total weeks expected. */
+  totalWeeks?: number;
+  /** Next upcoming deadline ISO string, if any. */
+  nextDeadline?: string | null;
+  /** Next deadline label, e.g. "Weekly Log #5". */
+  nextDeadlineLabel?: string | null;
+  /** Student's name (joined). */
+  studentName?: string | null;
+  /** Student's email (joined). */
+  studentEmail?: string | null;
+  /** Company name (joined). */
+  companyName?: string | null;
+  /** Faculty supervisor's name (joined). */
+  facultySupervisorName?: string | null;
+  /** Site supervisor's name (joined). */
+  siteSupervisorName?: string | null;
+  // Camel-case aliases used by some UI components.
+  /** Alias for `evaluations_completed`. */
+  evaluationsCompleted?: number;
+  /** Alias for `evaluations_expected`. */
+  evaluationsRequired?: number;
+  /** Alias for `weekly_logs_submitted`. */
+  weeklyLogsSubmitted?: number;
+  /** Alias for `weekly_logs_expected`. */
+  weeklyLogsRequired?: number;
+  /** Alias for `tasks_completed`. */
+  tasksCompleted?: number;
+  /** Alias for `tasks_assigned`. */
+  tasksAssigned?: number;
+  /** Alias for `percent_complete`. */
+  percentComplete?: number;
+  /** Alias for `percent_complete` (used by some UI components). */
+  percentage?: number;
+  /** Alias for `days_elapsed`. */
+  daysElapsed?: number;
+  /** Alias for `days_remaining`. */
+  daysRemaining?: number;
+}
+
+/** Evaluation criteria (rubric line item). */
+export interface EvaluationCriteria {
+  id: string;
+  name: string;
+  description: string | null;
+  max_score: number;
+  weight: number;
+  category?: string | null;
 }

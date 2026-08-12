@@ -844,6 +844,6 @@ export function Sidebar({ className }: SidebarProps) {
   );
 }
 
-// Export hook for accessing sidebar state
-export { useSidebar };
+// `useSidebar` is already exported above (line 84).
+// Re-exporting here would cause a "Cannot redeclare exported variable" error.
 export default Sidebar;

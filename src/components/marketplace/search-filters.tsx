@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/sheet";
 import {
   Slider,
-  SliderSingleProps,
 } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import {

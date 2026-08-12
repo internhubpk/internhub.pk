@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(searchParams)
     );
 
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : LicenseFilterSchema.parse({});
     const page = paginationResult.success ? paginationResult.data.page : 1;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
 
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Calculate days remaining
-        let daysRemaining = null;
+        let daysRemaining: number | null = null;
         if (license.expires_at) {
           const expiryDate = new Date(license.expires_at);
           const now = new Date();
@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );

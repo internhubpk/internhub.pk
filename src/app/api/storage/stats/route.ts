@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
  * Get platform-wide storage statistics (Super Admin only)
  */
 async function getPlatformStorageStats(
-  supabase: ReturnType<typeof createClient>
+  supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<NextResponse<ApiResponse<PlatformStorageStats>>> {
   try {
     // Get all universities with their storage allocations
@@ -219,7 +219,7 @@ async function getPlatformStorageStats(
  * Get single university's storage statistics
  */
 async function getUniversityStorageStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string
 ): Promise<NextResponse<ApiResponse<UniversityStorageStats>>> {
   try {

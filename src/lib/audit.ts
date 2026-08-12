@@ -60,7 +60,9 @@ export interface AuditLogEntry {
   action: AuditAction;
   entityType: string;
   entityId: string | null;
-  universityId: string | null;
+  // Optional — not all audit events are scoped to a university (e.g. global
+  // super_admin actions). When omitted, `null` is stored in the DB.
+  universityId?: string | null;
   details?: Record<string, any>;
   ipAddress?: string;
   userAgent?: string;

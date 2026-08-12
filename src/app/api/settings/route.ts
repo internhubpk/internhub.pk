@@ -260,7 +260,12 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(searchParams)
     );
 
-    const filters = filterResult.success ? filterResult.data : {};
+    // Use a typed fallback so TS knows about the available filter keys even
+    // when validation fails (in which case we fall back to the schema's
+    // defaults via `.parse({})`).
+    const filters = filterResult.success
+      ? filterResult.data
+      : SettingsFilterSchema.parse({});
     const userRole = authContext.profile?.role as UserRole;
     const universityId = authContext.profile?.university_id;
 
@@ -365,7 +370,7 @@ export async function PUT(request: NextRequest) {
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );
@@ -520,7 +525,7 @@ export async function PUT(request: NextRequest) {
  * Fetch settings from database
  */
 async function fetchSettings(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string | null,
   category?: string,
   keys?: string[]

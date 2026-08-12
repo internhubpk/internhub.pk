@@ -5,9 +5,10 @@ import type { CookieOptions } from "@supabase/ssr";
 /**
  * Create a Supabase server client bound to the current request cookies.
  *
- * Returns `null` ONLY when Supabase environment variables are not configured.
- * In all other cases the returned client is a fully-initialized SupabaseClient
- * (NOT a Promise) — callers do NOT need to await it.
+ * Always returns a fully-initialized `SupabaseClient` (never `null`). If
+ * Supabase environment variables are missing, this throws an Error — that
+ * surfaces misconfiguration loudly instead of causing cascading
+ * "supabase is possibly null" TypeScript errors at every call site.
  *
  * Usage:
  *   const supabase = await createClient();           // recommended
@@ -22,11 +23,9 @@ export async function createClient(
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase environment variables:", {
-      hasUrl: !!supabaseUrl,
-      hasKey: !!supabaseKey,
-    });
-    return null;
+    throw new Error(
+      "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in your environment."
+    );
   }
 
   return createServerClient(supabaseUrl, supabaseKey, {

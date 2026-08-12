@@ -106,6 +106,28 @@ export default function SiteSupervisorNotificationsPage() {
     fetchSentNotifications();
   }, []);
 
+  async function fetchSentNotifications() {
+    try {
+      setIsLoadingSent(true);
+      const res = await fetch("/api/site-supervisor/notifications", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      // API may return either { data: [...] } or [...] — handle both.
+      const list: NotificationRecord[] = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.items)
+            ? json.items
+            : [];
+      setSentNotifications(list);
+    } catch {
+      // Non-fatal — leave the list empty.
+    } finally {
+      setIsLoadingSent(false);
+    }
+  }
+
   async function fetchAssignedStudents() {
     if (!user) return;
 

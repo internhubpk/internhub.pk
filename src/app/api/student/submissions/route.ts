@@ -131,9 +131,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let fileUrl = null;
-    let fileName = null;
-    let fileSize = null;
+    let fileUrl: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
 
     // Handle file upload if provided (base64)
     if (file_data) {

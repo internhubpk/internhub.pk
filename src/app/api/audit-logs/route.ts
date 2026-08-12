@@ -26,7 +26,7 @@ const CreateAuditLogSchema = z.object({
   entity_type: z.string().min(1),
   entity_id: z.string().uuid().nullable().optional(),
   university_id: z.string().uuid().nullable().optional(),
-  details: z.record(z.any()).optional(),
+  details: z.record(z.string(), z.any()).optional(),
 });
 
 const PaginationSchema = z.object({
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(searchParams)
     );
 
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : AuditLogFilterSchema.parse({});
     const page = paginationResult.success ? paginationResult.data.page : 1;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
 
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );

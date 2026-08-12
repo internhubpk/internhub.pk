@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
  * - Host organizations count
  */
 async function getEnhancedStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   universityId: string | null,
   userId: string
@@ -221,7 +221,7 @@ async function getEnhancedStats(
 // ============ ENHANCED STAT HELPERS ============
 
 async function getStorageUsagePercentage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string | null
 ): Promise<{ percentage: number; usedBytes: number; allocatedBytes: number }> {
   try {
@@ -250,7 +250,7 @@ async function getStorageUsagePercentage(
 }
 
 async function getLicenseInfo(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string | null
 ): Promise<LicenseInfo | null> {
   try {
@@ -321,7 +321,7 @@ async function getLicenseInfo(
 }
 
 async function getRecentAuditLogCount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string | null
 ): Promise<number> {
   try {
@@ -347,7 +347,7 @@ async function getRecentAuditLogCount(
 }
 
 async function getUnreadMessagesCount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
 ): Promise<number> {
   try {
@@ -365,7 +365,7 @@ async function getUnreadMessagesCount(
 }
 
 async function getHostOrganizationsCount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string | null
 ): Promise<number> {
   try {
@@ -390,7 +390,7 @@ async function getHostOrganizationsCount(
 // ============ ROLE-SPECIFIC STATS FUNCTIONS ============
 
 async function getSuperAdminStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats
 ): Promise<void> {
   const [
@@ -429,7 +429,7 @@ async function getSuperAdminStats(
 }
 
 async function getUniversityAdminStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   universityId: string
 ): Promise<void> {
@@ -514,7 +514,7 @@ async function getUniversityAdminStats(
 }
 
 async function getDepartmentCoordinatorStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   universityId: string,
   departmentId: string
@@ -572,7 +572,7 @@ async function getDepartmentCoordinatorStats(
 }
 
 async function getFacultySupervisorStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   userId: string
 ): Promise<void> {
@@ -638,7 +638,7 @@ async function getFacultySupervisorStats(
 }
 
 async function getStudentStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   userId: string
 ): Promise<void> {
@@ -704,7 +704,7 @@ async function getStudentStats(
 }
 
 async function getCompanyHRStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   userId: string
 ): Promise<void> {
@@ -771,7 +771,7 @@ async function getCompanyHRStats(
 }
 
 async function getSiteSupervisorStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   userId: string
 ): Promise<void> {
@@ -858,7 +858,7 @@ async function getSiteSupervisorStats(
 }
 
 async function getExternalEvaluatorStats(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   stats: DashboardStats,
   userId: string
 ): Promise<void> {

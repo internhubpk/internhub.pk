@@ -135,6 +135,26 @@ CREATE TABLE IF NOT EXISTS universities (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `universities` exists (idempotent against older partial deployments).
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS slug text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS domain text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS logo_url text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS city text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS state text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS country text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS contact_email text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS contact_phone text;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS license_tier license_tier;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS license_expires_at timestamptz;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS max_students integer;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS settings jsonb;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE universities ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_universities_slug ON universities(slug);
 CREATE INDEX IF NOT EXISTS idx_universities_active ON universities(is_active);
 
@@ -152,6 +172,16 @@ CREATE TABLE IF NOT EXISTS departments (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (university_id, code)
 );
+
+-- Defensive: ensure every column of `departments` exists (idempotent against older partial deployments).
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS code text;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS head_id uuid;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_departments_university ON departments(university_id);
 
 -- ----------------------------------------------------------------------------
@@ -173,6 +203,18 @@ CREATE TABLE IF NOT EXISTS programs (
     EXISTS (SELECT 1 FROM departments d WHERE d.id = department_id AND d.university_id = university_id)
   )
 );
+
+-- Defensive: ensure every column of `programs` exists (idempotent against older partial deployments).
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS code text;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS duration_weeks integer;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_programs_university ON programs(university_id);
 CREATE INDEX IF NOT EXISTS idx_programs_department ON programs(department_id);
 
@@ -200,6 +242,27 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `companies` exists (idempotent against older partial deployments).
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS slug text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS industry text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS website text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS size text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS city text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS country text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS contact_person text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS contact_email text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS contact_phone text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_verified boolean;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_companies_university ON companies(university_id);
 CREATE INDEX IF NOT EXISTS idx_companies_active ON companies(is_active);
 CREATE INDEX IF NOT EXISTS idx_companies_verified ON companies(is_verified);
@@ -234,6 +297,39 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `profiles` exists (idempotent against older partial deployments).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS full_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role user_role;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status profile_status;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS student_id_number text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS company_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS job_title text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS organization text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS github_url text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS linkedin_url text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz;
+
+-- Make sure the unique constraint on username exists (idempotent).
+DO $$ BEGIN
+  ALTER TABLE profiles ADD CONSTRAINT profiles_username_key UNIQUE (username);
+EXCEPTION WHEN duplicate_table THEN NULL;
+         WHEN duplicate_object THEN NULL; END $$;
+
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_university ON profiles(university_id);
@@ -264,6 +360,18 @@ CREATE TABLE IF NOT EXISTS students (
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `students` exists (idempotent against older partial deployments).
+ALTER TABLE students ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS enrollment_year integer;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS expected_graduation date;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS cgpa numeric(3,2);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS student_id_number text;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_students_university ON students(university_id);
 CREATE INDEX IF NOT EXISTS idx_students_department ON students(department_id);
 CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);
@@ -284,6 +392,19 @@ CREATE TABLE IF NOT EXISTS supervisors (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `supervisors` exists (idempotent against older partial deployments).
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS type supervisor_type;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS employee_id text;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE supervisors ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_supervisors_user ON supervisors(user_id);
 CREATE INDEX IF NOT EXISTS idx_supervisors_type ON supervisors(type);
 CREATE INDEX IF NOT EXISTS idx_supervisors_university ON supervisors(university_id);
@@ -303,6 +424,14 @@ CREATE TABLE IF NOT EXISTS company_users (
   created_at  timestamptz NOT NULL DEFAULT now(),
   UNIQUE (company_id, user_id)
 );
+
+-- Defensive: ensure every column of `company_users` exists (idempotent against older partial deployments).
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS role text;
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE company_users ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_company_users_company ON company_users(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_users_user ON company_users(user_id);
 
@@ -336,6 +465,33 @@ CREATE TABLE IF NOT EXISTS internships (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `internships` exists (idempotent against older partial deployments).
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS location text;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS remote boolean;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS is_paid boolean;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS stipend numeric(12,2);
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS stipend_currency text;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS duration_weeks integer;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS status internship_status;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS required_skills text[];
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS requirements text[];
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS benefits text[];
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS max_applicants integer;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS current_applicants integer;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS start_date date;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS end_date date;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS application_deadline timestamptz;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE internships ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_internships_company ON internships(company_id);
 CREATE INDEX IF NOT EXISTS idx_internships_university ON internships(university_id);
 CREATE INDEX IF NOT EXISTS idx_internships_department ON internships(department_id);
@@ -358,6 +514,17 @@ CREATE TABLE IF NOT EXISTS internship_applications (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (internship_id, student_user_id)
 );
+
+-- Defensive: ensure every column of `internship_applications` exists (idempotent against older partial deployments).
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS cover_letter text;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS resume_url text;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS status application_status;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS applied_at timestamptz;
+ALTER TABLE internship_applications ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_applications_internship ON internship_applications(internship_id);
 CREATE INDEX IF NOT EXISTS idx_applications_student ON internship_applications(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_company ON internship_applications(company_id);
@@ -388,6 +555,23 @@ CREATE TABLE IF NOT EXISTS student_internships (
   updated_at               timestamptz NOT NULL DEFAULT now(),
   UNIQUE (student_user_id, internship_id)
 );
+
+-- Defensive: ensure every column of `student_internships` exists (idempotent against older partial deployments).
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS application_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS faculty_supervisor_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS site_supervisor_id uuid;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS start_date date;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS end_date date;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS status student_internship_status;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE student_internships ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_si_student ON student_internships(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_si_internship ON student_internships(internship_id);
 CREATE INDEX IF NOT EXISTS idx_si_company ON student_internships(company_id);
@@ -409,6 +593,15 @@ CREATE TABLE IF NOT EXISTS intern_supervisor_assignments (
   ended_at            timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `intern_supervisor_assignments` exists (idempotent against older partial deployments).
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS student_internship_id uuid;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS supervisor_id uuid;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS type supervisor_type;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS assigned_at timestamptz;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS ended_at timestamptz;
+ALTER TABLE intern_supervisor_assignments ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_isa_student_internship ON intern_supervisor_assignments(student_internship_id);
 CREATE INDEX IF NOT EXISTS idx_isa_supervisor ON intern_supervisor_assignments(supervisor_id);
 
@@ -432,6 +625,21 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- A task must be scoped to either a program OR an internship
   CONSTRAINT tasks_scope_check CHECK (program_id IS NOT NULL OR internship_id IS NOT NULL)
 );
+
+-- Defensive: ensure every column of `tasks` exists (idempotent against older partial deployments).
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS program_id uuid;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS instructions text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date timestamptz;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS max_score numeric(5,2);
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_published boolean;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status task_status;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_tasks_program ON tasks(program_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_internship ON tasks(internship_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
@@ -451,6 +659,16 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (task_id, student_user_id)
 );
+
+-- Defensive: ensure every column of `task_assignments` exists (idempotent against older partial deployments).
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS task_id uuid;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS assigned_by uuid;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS due_date timestamptz;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS status task_submission_status;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE task_assignments ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_ta_task ON task_assignments(task_id);
 CREATE INDEX IF NOT EXISTS idx_ta_student ON task_assignments(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_ta_assigned_by ON task_assignments(assigned_by);
@@ -474,6 +692,22 @@ CREATE TABLE IF NOT EXISTS task_submissions (
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `task_submissions` exists (idempotent against older partial deployments).
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS task_assignment_id uuid;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS task_id uuid;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS content text;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS attachment_urls text[];
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS status task_submission_status;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS score numeric(5,2);
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS feedback text;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS reviewed_at timestamptz;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS reviewed_by uuid;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_ts_assignment ON task_submissions(task_assignment_id);
 CREATE INDEX IF NOT EXISTS idx_ts_task ON task_submissions(task_id);
 CREATE INDEX IF NOT EXISTS idx_ts_student ON task_submissions(student_user_id);
@@ -495,6 +729,16 @@ CREATE TABLE IF NOT EXISTS task_attachments (
   uploaded_by uuid NOT NULL REFERENCES profiles(user_id) ON DELETE SET NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `task_attachments` exists (idempotent against older partial deployments).
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS task_id uuid;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS file_size integer;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS mime_type text;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS uploaded_by uuid;
+ALTER TABLE task_attachments ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_tatt_task ON task_attachments(task_id);
 
 -- ----------------------------------------------------------------------------
@@ -522,6 +766,27 @@ CREATE TABLE IF NOT EXISTS weekly_logs (
   updated_at          timestamptz NOT NULL DEFAULT now(),
   UNIQUE (student_user_id, week_start_date, internship_id)
 );
+
+-- Defensive: ensure every column of `weekly_logs` exists (idempotent against older partial deployments).
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS student_internship_id uuid;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS week_number integer;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS week_start_date date;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS week_end_date date;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS tasks_completed text[];
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS challenges text;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS learnings text;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS next_week_goals text;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS hours_worked numeric(5,2);
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS status weekly_log_status;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS supervisor_feedback text;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS supervisor_id uuid;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS reviewed_at timestamptz;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE weekly_logs ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_wl_student ON weekly_logs(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_wl_internship ON weekly_logs(internship_id);
 CREATE INDEX IF NOT EXISTS idx_wl_supervisor ON weekly_logs(supervisor_id);
@@ -551,6 +816,24 @@ CREATE TABLE IF NOT EXISTS evaluations (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `evaluations` exists (idempotent against older partial deployments).
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS type evaluation_type;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS student_internship_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS task_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS task_submission_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS evaluator_id uuid;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS evaluator_role user_role;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS status evaluation_status;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS scores jsonb;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS comments text;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS rating numeric(3,2);
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS submitted_at timestamptz;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_eval_student ON evaluations(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_eval_internship ON evaluations(internship_id);
 CREATE INDEX IF NOT EXISTS idx_eval_evaluator ON evaluations(evaluator_id);
@@ -584,6 +867,21 @@ CREATE TABLE IF NOT EXISTS attendance (
   created_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (student_user_id, internship_id, date)
 );
+
+-- Defensive: ensure every column of `attendance` exists (idempotent against older partial deployments).
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS student_internship_id uuid;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS date date;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_in timestamptz;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS check_out timestamptz;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS status attendance_status;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS location_lat numeric(9,6);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS location_lng numeric(9,6);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS verified boolean;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_att_student ON attendance(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_att_internship ON attendance(internship_id);
 CREATE INDEX IF NOT EXISTS idx_att_date ON attendance(date);
@@ -607,6 +905,22 @@ CREATE TABLE IF NOT EXISTS certificates (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `certificates` exists (idempotent against older partial deployments).
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS company_id uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS certificate_number text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS issued_at timestamptz;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS issued_by uuid;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS status certificate_status;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS metadata jsonb;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_certs_student ON certificates(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_certs_internship ON certificates(internship_id);
 CREATE INDEX IF NOT EXISTS idx_certs_university ON certificates(university_id);
@@ -631,6 +945,22 @@ CREATE TABLE IF NOT EXISTS documents (
   expires_at      timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `documents` exists (idempotent against older partial deployments).
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS type document_type;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS url text;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS size bigint;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS mime_type text;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS uploaded_by uuid;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS entity_type text;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS entity_id uuid;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status document_status;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS verified_by uuid;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_docs_uploaded_by ON documents(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_docs_entity ON documents(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_docs_type ON documents(type);
@@ -648,6 +978,15 @@ CREATE TABLE IF NOT EXISTS cv_uploads (
   is_active       boolean NOT NULL DEFAULT true,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `cv_uploads` exists (idempotent against older partial deployments).
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS file_size bigint;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS file_name text;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE cv_uploads ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_cv_student ON cv_uploads(student_user_id);
 CREATE INDEX IF NOT EXISTS idx_cv_active ON cv_uploads(is_active);
 
@@ -667,6 +1006,19 @@ CREATE TABLE IF NOT EXISTS notifications (
   metadata        jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `notifications` exists (idempotent against older partial deployments).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id uuid;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS category notification_category;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority notification_priority;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read boolean;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_url text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS metadata jsonb;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notif_sender ON notifications(sender_id);
 CREATE INDEX IF NOT EXISTS idx_notif_read ON notifications(user_id, is_read);
@@ -694,6 +1046,18 @@ CREATE TABLE IF NOT EXISTS messages (
   attachments     text[] NOT NULL DEFAULT '{}',
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `messages` exists (idempotent against older partial deployments).
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS receiver_id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS subject text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS content text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS type message_type;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read boolean;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS thread_id uuid;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachments text[];
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_msg_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_msg_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_msg_thread ON messages(thread_id);
@@ -713,6 +1077,18 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   user_agent      text,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `audit_logs` exists (idempotent against older partial deployments).
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id uuid;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS action text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_type text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS entity_id uuid;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS details jsonb;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS ip_address text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_agent text;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id);
@@ -730,6 +1106,14 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   updated_by      uuid REFERENCES profiles(user_id) ON DELETE SET NULL,
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `platform_settings` exists (idempotent against older partial deployments).
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS key text;
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS value jsonb;
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS updated_by uuid;
+ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 DROP VIEW IF EXISTS settings;
 CREATE VIEW settings AS SELECT * FROM platform_settings;
 
@@ -746,6 +1130,15 @@ CREATE TABLE IF NOT EXISTS storage_allocations (
   updated_at      timestamptz NOT NULL DEFAULT now(),
   UNIQUE (university_id, bucket_name)
 );
+
+-- Defensive: ensure every column of `storage_allocations` exists (idempotent against older partial deployments).
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS bucket_name text;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS allocated_bytes bigint;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS used_bytes bigint;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE storage_allocations ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_sa_university ON storage_allocations(university_id);
 
 -- ----------------------------------------------------------------------------
@@ -764,6 +1157,19 @@ CREATE TABLE IF NOT EXISTS licenses (
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `licenses` exists (idempotent against older partial deployments).
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS tier license_tier;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS features jsonb;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS limits jsonb;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS pricing_monthly numeric(12,2);
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS pricing_annually numeric(12,2);
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS is_active boolean;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS updated_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_licenses_university ON licenses(university_id);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -775,6 +1181,15 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   ends_at         timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `subscriptions` exists (idempotent against older partial deployments).
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS license_id uuid;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS status text;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at timestamptz;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS ends_at timestamptz;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_subs_university ON subscriptions(university_id);
 
 -- ----------------------------------------------------------------------------
@@ -790,6 +1205,16 @@ CREATE TABLE IF NOT EXISTS report_templates (
   created_by      uuid REFERENCES profiles(user_id) ON DELETE SET NULL,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `report_templates` exists (idempotent against older partial deployments).
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS type text;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS format text;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS parameters jsonb;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_rt_university ON report_templates(university_id);
 
 CREATE TABLE IF NOT EXISTS reports (
@@ -804,6 +1229,18 @@ CREATE TABLE IF NOT EXISTS reports (
   file_url        text,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `reports` exists (idempotent against older partial deployments).
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS type text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS format text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS parameters jsonb;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_by uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS university_id uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS department_id uuid;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_reports_university ON reports(university_id);
 CREATE INDEX IF NOT EXISTS idx_reports_created_by ON reports(created_by);
 
@@ -819,6 +1256,15 @@ CREATE TABLE IF NOT EXISTS supervisor_remarks (
   rating          numeric(3,2) CHECK (rating IS NULL OR (rating >= 0 AND rating <= 5)),
   created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive: ensure every column of `supervisor_remarks` exists (idempotent against older partial deployments).
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS id uuid;
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS supervisor_id uuid;
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS student_user_id uuid;
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS internship_id uuid;
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS remark text;
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS rating numeric(3,2);
+ALTER TABLE supervisor_remarks ADD COLUMN IF NOT EXISTS created_at timestamptz;
 CREATE INDEX IF NOT EXISTS idx_sr_supervisor ON supervisor_remarks(supervisor_id);
 CREATE INDEX IF NOT EXISTS idx_sr_student ON supervisor_remarks(student_user_id);
 

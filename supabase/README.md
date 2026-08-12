@@ -9,7 +9,8 @@ All SQL migrations live in [`supabase/migrations/`](./supabase/migrations/):
 
 | # | File | Purpose |
 |---|------|---------|
-| 1 | `0001_initial_schema.sql` | Tables, indexes, triggers, auto-profile on signup, auto-attendance on task submission |
+| 0 | `0000_drop_legacy.sql` | Drops any pre-existing tables/types from older incompatible schema versions (DESTRUCTIVE — see warning inside the file). Safe on preview / fresh databases. |
+| 1 | `0001_initial_schema.sql` | Tables, indexes, triggers, auto-profile on signup, auto-attendance on task submission. Includes defensive `ALTER TABLE … ADD COLUMN IF NOT EXISTS` blocks so it is fully idempotent against partial prior deployments. |
 | 2 | `0002_rls_policies.sql` | Row-Level Security on every tenant/private table |
 | 3 | `0003_storage_policies.sql` | Private Storage buckets and Storage RLS policies |
 | 4 | `0004_bootstrap_admin.sql` | Admin-only functions to promote the first super-admin / assign roles |
@@ -22,7 +23,7 @@ Apply migrations **in order**. Each migration is idempotent.
 ### Option A — Supabase Dashboard (SQL Editor)
 
 Open the SQL Editor in your Supabase project and run each file in order:
-`0001` → `0002` → `0003` → `0004` → (optionally) `0005`.
+`0000` → `0001` → `0002` → `0003` → `0004` → (optionally) `0005`.
 
 ### Option B — Supabase CLI
 

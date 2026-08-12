@@ -14,7 +14,7 @@ import {
   authorizationError,
   authenticationError,
 } from "@/lib/authorization";
-import { validateTenantOwnership } from "@/lib/tenant";
+import { validateTenantOwnership } from "@/lib/tenant-server";
 import { audit } from "@/lib/audit";
 import { sanitizeInput, extractClientInfo, validatePaginationParams } from "@/lib/api-security";
 import type {
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
     const validatedPagination = validatePaginationParams(searchParams);
     const page = paginationResult.success ? paginationResult.data.page : validatedPagination.page;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : validatedPagination.pageSize;
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : FilterSchema.parse({});
     
     // Sanitize search input to prevent XSS/injection
     const search = searchParams.get("search") ? sanitizeInput(searchParams.get("search")!) : null;
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );

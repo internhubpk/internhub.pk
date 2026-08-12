@@ -44,7 +44,9 @@ const transcriptStatusConfig: Record<string, { label: string; variant: "default"
 };
 
 export function InternshipProgressCard({ progress, className }: InternshipProgressProps) {
-  const weeksArray = Array.from({ length: progress.totalWeeks }, (_, i) => i + 1);
+  const currentWeek = progress.currentWeek ?? 0;
+  const totalWeeks = progress.totalWeeks ?? 0;
+  const weeksArray = Array.from({ length: totalWeeks }, (_, i) => i + 1);
   
   return (
     <Card className={className}>
@@ -55,7 +57,7 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
             Internship Progress
           </CardTitle>
           <Badge variant="outline" className="text-sm">
-            Week {progress.currentWeek} of {progress.totalWeeks}
+            Week {currentWeek} of {totalWeeks}
           </Badge>
         </div>
       </CardHeader>
@@ -88,15 +90,15 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
                 transition={{ delay: week * 0.05 }}
               >
                 <Badge
-                  variant={week === progress.currentWeek ? "default" : week < progress.currentWeek ? "secondary" : "outline"}
+                  variant={week === currentWeek ? "default" : week < currentWeek ? "secondary" : "outline"}
                   className={`min-w-[40px] justify-center ${
-                    week === progress.currentWeek 
+                    week === currentWeek 
                       ? "bg-primary hover:bg-primary/90 shadow-md" 
                       : ""
                   }`}
                 >
                   W{week}
-                  {week < progress.currentWeek && (
+                  {week < currentWeek && (
                     <span className="ml-1 text-emerald-400">✓</span>
                   )}
                 </Badge>
@@ -219,21 +221,21 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
           <div className="relative h-2 bg-muted rounded-full overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${(progress.currentWeek / progress.totalWeeks) * 100}%` }}
+              animate={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
               transition={{ duration: 1.2, ease: "easeOut" }}
               className="absolute left-0 top-0 h-full bg-gradient-to-r from-primary via-purple-500 to-pink-500 rounded-full"
             />
             {/* Current position indicator */}
             <motion.div
               initial={{ left: 0 }}
-              animate={{ left: `${(progress.currentWeek / progress.totalWeeks) * 100}%` }}
+              animate={{ left: `${(currentWeek / totalWeeks) * 100}%` }}
               transition={{ duration: 1.2, ease: "easeOut" }}
               className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-primary rounded-full shadow-md"
             />
           </div>
           <div className="flex justify-between mt-2 text-xs text-muted-foreground">
             <span>Start</span>
-            <span>{Math.round((progress.currentWeek / progress.totalWeeks) * 100)}% Complete</span>
+            <span>{Math.round((currentWeek / totalWeeks) * 100)}% Complete</span>
             <span>End</span>
           </div>
         </div>

@@ -186,7 +186,7 @@ export async function PUT(
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );
@@ -390,7 +390,7 @@ export async function DELETE(
  * Helper function to check if a user has access to a company's data
  */
 async function checkCompanyAccess(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   companyId: string
 ): Promise<boolean> {

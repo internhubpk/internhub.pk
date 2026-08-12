@@ -254,8 +254,8 @@ export default function StudentTasksPage() {
     try {
       const supabase = createClient();
 
-      let fileUrl = null;
-      let fileName = null;
+      let fileUrl: string | null = null;
+      let fileName: string | null = null;
 
       // Upload file if provided
       if (submissionFile) {

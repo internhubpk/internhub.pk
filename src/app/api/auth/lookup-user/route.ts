@@ -63,12 +63,18 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (supervisor?.profile) {
-        return NextResponse.json({
-          email: supervisor.profile.email,
-          userId: supervisor.user_id,
-          role: supervisor.profile.role,
-          found: true,
-        });
+        // Supabase returns FK joins as arrays; pick the first item.
+        const profile = Array.isArray(supervisor.profile)
+          ? supervisor.profile[0]
+          : supervisor.profile;
+        if (profile) {
+          return NextResponse.json({
+            email: profile.email,
+            userId: supervisor.user_id,
+            role: profile.role,
+            found: true,
+          });
+        }
       }
     }
 

@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     const page = paginationResult.success ? paginationResult.data.page : 1;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : FilterSchema.parse({});
     const entityType = searchParams.get("entity_type");
     const entityId = searchParams.get("entity_id");
     const documentType = searchParams.get("document_type");
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Invalid document metadata",
-          message: metadataValidation.error.errors[0]?.message,
+          message: metadataValidation.error.issues[0]?.message,
         },
         { status: 400 }
       );

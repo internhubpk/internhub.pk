@@ -14,7 +14,7 @@
 
 import { NextRequest } from "next/server";
 import { requireAuth, requireUniversityAccess, requireRole, authorizationError, authenticationError } from "@/lib/authorization";
-import { validateTenantOwnership, getServerTenantContext } from "@/lib/tenant";
+import { validateTenantOwnership, getServerTenantContext } from "@/lib/tenant-server";
 import type { UserRole } from "@/types";
 
 /**

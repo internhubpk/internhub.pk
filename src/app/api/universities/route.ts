@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     const page = paginationResult.success ? paginationResult.data.page : 1;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : FilterSchema.parse({});
     const search = searchParams.get("search");
     const sortBy = searchParams.get("sort_by") || "created_at";
     const sortOrder = searchParams.get("sort_order") === "asc" ? true : false;
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: "Validation failed",
-          message: validation.error.errors[0]?.message,
+          message: validation.error.issues[0]?.message,
         },
         { status: 400 }
       );

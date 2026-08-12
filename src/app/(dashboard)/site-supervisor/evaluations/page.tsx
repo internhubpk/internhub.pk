@@ -64,6 +64,8 @@ import { createClient } from "@/utils/supabase/client";
 // Types
 interface EvaluationStudent {
   id: string;
+  /** Alias for `id` — some handlers use `studentId` for clarity. */
+  studentId?: string;
   name: string;
   email: string;
   avatarUrl?: string | null;

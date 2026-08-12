@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     const page = paginationResult.success ? paginationResult.data.page : 1;
     const pageSize = paginationResult.success ? paginationResult.data.pageSize : 20;
-    const filters = filterResult.success ? filterResult.data : {};
+    const filters = filterResult.success ? filterResult.data : FilterSchema.parse({});
     const search = searchParams.get("search");
     const isActive = searchParams.get("is_active");
     const sortBy = searchParams.get("sort_by") || "created_at";

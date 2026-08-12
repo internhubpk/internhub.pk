@@ -217,9 +217,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let fileUrl = null;
-    let fileSize = 0;
-    let fileName = name || `${type}_${internApplication.profiles?.first_name}_${internApplication.profiles?.last_name}.pdf`;
+    let fileUrl: string | null = null;
+    let fileSize: number = 0;
+    let fileName: string = name || `${type}_${internApplication.profiles?.first_name}_${internApplication.profiles?.last_name}.pdf`;
 
     if (file) {
       // Upload file to storage
