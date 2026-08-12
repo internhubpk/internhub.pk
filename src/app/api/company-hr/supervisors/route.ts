@@ -371,7 +371,11 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
     if (phone?.trim()) profileUpsert.phone = phone.trim();
-    if (department_focus?.trim()) profileUpsert.department_focus = department_focus.trim();
+    // NOTE: department_focus / specialization are columns on the `supervisors`
+    // table (added by migration 0024), NOT on `profiles`. They are written to
+    // the supervisors INSERT below. Do NOT add them to profileUpsert — that
+    // causes PostgREST to reject the upsert with "Could not find the
+    // 'department_focus' column" → 500 "Failed to create user profile".
 
     const { data: newProfile, error: profileInsertError } = await adminClient
       .from("profiles")
