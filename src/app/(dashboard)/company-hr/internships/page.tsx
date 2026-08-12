@@ -98,44 +98,17 @@ interface InternshipProgram {
 // Default empty state - internships will be fetched from database
 const DEFAULT_INTERNSHIPS: InternshipProgram[] = [];
 
-// Curated list of common department names. The form collects target
-// departments as free-text labels (stored in a jsonb column), so this list
-// is purely a convenience picker — not a DB lookup.
-const availableDepartments = [
-  "Computer Science",
-  "Software Engineering",
-  "Data Science",
-  "Information Technology",
-  "Business Administration",
-  "Marketing",
-  "Design",
-  "Statistics",
-  "Electrical Engineering",
-  "Mechanical Engineering",
-];
+// Free-text tag input for target departments. Departments are stored as
+// free-text labels in a jsonb array, so HR can enter anything relevant
+// to their internship offering — no fixed dropdown.
 
 export default function CompanyHRInternshipsPage() {
   const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
   const [isLoading, setIsLoading] = useState(true);
-  const [universities, setUniversities] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     fetchInternships();
-    fetchUniversities();
   }, []);
-
-  async function fetchUniversities() {
-    try {
-      const res = await fetch('/api/universities', { cache: "no-store" });
-      if (!res.ok) return;
-      const j = await res.json();
-      // API may return { data: [...] } or [...]
-      const list = Array.isArray(j) ? j : j.data || [];
-      setUniversities(list.map((u: any) => ({ id: u.id, name: u.name })));
-    } catch {
-      // ignore — keep empty list
-    }
-  }
 
   async function fetchInternships() {
     try {
@@ -428,12 +401,15 @@ export default function CompanyHRInternshipsPage() {
     totalApplicants: internships.reduce((acc, i) => acc + i.current_applicants, 0),
   };
 
-  const toggleDepartment = (dept: string) => {
-    if (formData.target_departments.includes(dept)) {
-      setFormData({ ...formData, target_departments: formData.target_departments.filter(d => d !== dept) });
-    } else {
-      setFormData({ ...formData, target_departments: [...formData.target_departments, dept] });
-    }
+  const addDepartment = (dept: string) => {
+    const v = dept.trim();
+    if (!v) return;
+    if (formData.target_departments.some((x) => x.toLowerCase() === v.toLowerCase())) return;
+    setFormData({ ...formData, target_departments: [...formData.target_departments, v] });
+  };
+
+  const removeDepartment = (idx: number) => {
+    setFormData({ ...formData, target_departments: formData.target_departments.filter((_, i) => i !== idx) });
   };
 
   return (
@@ -573,36 +549,16 @@ export default function CompanyHRInternshipsPage() {
                 </h3>
                 
                 <div className="space-y-2">
-                  <Label>Target University</Label>
-                  <Select value={formData.target_university || "__all__"} onValueChange={(value) => setFormData({ ...formData, target_university: value === "__all__" ? "" : value })}>
-                    <SelectTrigger><SelectValue placeholder="All universities" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Universities</SelectItem>
-                      {universities.map(uni => (
-                        <SelectItem key={uni.id} value={uni.id}>{uni.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Target Departments (select all that apply)</Label>
-                  <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-background">
-                    {availableDepartments.map(dept => (
-                      <button
-                        key={dept}
-                        type="button"
-                        onClick={() => toggleDepartment(dept)}
-                        className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                          formData.target_departments.includes(dept)
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary hover:bg-secondary/80"
-                        }`}
-                      >
-                        {dept}
-                      </button>
-                    ))}
-                  </div>
+                  <Label>Target Departments</Label>
+                  <DepartmentTagInput
+                    values={formData.target_departments}
+                    onAdd={addDepartment}
+                    onRemove={removeDepartment}
+                    placeholder="Type a department name, then press Enter"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Free-text: enter any department relevant to this internship (e.g., Computer Science, Marketing, Mechanical Engineering). Leave empty for general intake.
+                  </p>
                 </div>
               </div>
 
@@ -1111,6 +1067,19 @@ export default function CompanyHRInternshipsPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label>Target Departments</Label>
+              <DepartmentTagInput
+                values={formData.target_departments}
+                onAdd={addDepartment}
+                onRemove={removeDepartment}
+                placeholder="Type a department name, then press Enter"
+              />
+              <p className="text-xs text-muted-foreground">
+                Free-text: enter any department relevant to this internship.
+              </p>
+            </div>
+
             <DialogFooter className="pt-4 border-t">
               <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }}>
                 Cancel
@@ -1122,6 +1091,68 @@ export default function CompanyHRInternshipsPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ===========================================================================
+// DepartmentTagInput — free-text tag input for target_departments.
+// Type a value, press Enter (or comma) to add. Backspace on empty input
+// removes the last tag. Click X on a tag to remove it.
+// ===========================================================================
+function DepartmentTagInput({
+  values,
+  onAdd,
+  onRemove,
+  placeholder,
+}: {
+  values: string[];
+  onAdd: (v: string) => void;
+  onRemove: (idx: number) => void;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState("");
+
+  const commit = () => {
+    if (!text.trim()) return;
+    onAdd(text);
+    setText("");
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2 p-2 rounded-lg border bg-background min-h-[42px]">
+      {values.map((v, idx) => (
+        <span
+          key={`${v}-${idx}`}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
+        >
+          {v}
+          <button
+            type="button"
+            onClick={() => onRemove(idx)}
+            className="hover:bg-primary/20 rounded-full p-0.5"
+            aria-label={`Remove ${v}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Backspace" && !text && values.length > 0) {
+            onRemove(values.length - 1);
+          }
+        }}
+        onBlur={commit}
+        placeholder={values.length === 0 ? placeholder : ""}
+        className="flex-1 min-w-[160px] bg-transparent outline-none text-sm px-1"
+      />
     </div>
   );
 }

@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-// GET: List site supervisors for company
-// POST: Create new site supervisor account
+// ============================================================================
+// GET /api/company-hr/supervisors
+// List site supervisors for the current HR's company.
+// ----------------------------------------------------------------------------
+// Query params:
+//   include_inactive=true  → also include inactive supervisors
+//   page=1                 → 1-indexed page number
+//   limit=20               → page size
+// ============================================================================
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -11,10 +19,8 @@ export async function GET(request: NextRequest) {
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !user) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
@@ -22,12 +28,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user profile with company_id
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("company_id, role")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return NextResponse.json(
@@ -50,17 +55,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Parse query parameters
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
 
-    // Build query
     let query = supabase
       .from("supervisors")
-      .select(`
+      .select(
+        `
         *,
         profiles:user_id (
           first_name,
@@ -69,7 +73,9 @@ export async function GET(request: NextRequest) {
           phone,
           avatar_url
         )
-      `, { count: "exact" })
+      `,
+        { count: "exact" }
+      )
       .eq("company_id", profile.company_id)
       .eq("type", "site")
       .order("created_at", { ascending: false })
@@ -89,26 +95,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get intern counts for each supervisor
-    const supervisorIds = (supervisors || []).map(s => s.id);
-    
+    // ---- Intern counts ---------------------------------------------------
+    // `intern_supervisor_assignments.supervisor_id` is a FK to
+    // `profiles.user_id` (NOT to `supervisors.id`). So we must collect
+    // `user_id` values from the supervisor rows, not `id` values.
+    const supervisorUserIds = (supervisors || [])
+      .map((s: any) => s.user_id)
+      .filter(Boolean) as string[];
+
     let internCounts: Record<string, number> = {};
-    if (supervisorIds.length > 0) {
-      const { data: assignments } = await supabase
+    if (supervisorUserIds.length > 0) {
+      const { data: assignments, error: assignErr } = await supabase
         .from("intern_supervisor_assignments")
         .select("supervisor_id")
-        .in("supervisor_id", supervisorIds)
+        .in("supervisor_id", supervisorUserIds)
         .eq("is_active", true);
 
-      internCounts = (assignments || []).reduce((acc, a) => {
-        acc[a.supervisor_id] = (acc[a.supervisor_id] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      if (assignErr) {
+        console.error("Error fetching assignment counts:", assignErr);
+        // Don't fail the whole request — just return 0 counts.
+      } else {
+        internCounts = (assignments || []).reduce((acc: Record<string, number>, a: any) => {
+          acc[a.supervisor_id] = (acc[a.supervisor_id] || 0) + 1;
+          return acc;
+        }, {});
+      }
     }
 
-    const supervisorsWithCounts = (supervisors || []).map(supervisor => ({
+    const supervisorsWithCounts = (supervisors || []).map((supervisor: any) => ({
       ...supervisor,
-      assigned_interns_count: internCounts[supervisor.id] || 0,
+      assigned_interns_count: internCounts[supervisor.user_id] || 0,
     }));
 
     return NextResponse.json({
@@ -130,6 +146,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ============================================================================
+// POST /api/company-hr/supervisors
+// Create a new site supervisor (auth.users + profiles + supervisors row).
+// ----------------------------------------------------------------------------
+// Requires SUPABASE_SERVICE_ROLE_KEY because `auth.admin.createUser()` is an
+// admin-only API and cannot be called with the publishable (anon) key. The
+// service role client is also used for the profiles + supervisors INSERTs to
+// avoid RLS silently rejecting rows whose `company_id` is set but
+// `university_id` is NULL (RLS WITH CHECK clause on profiles requires
+// university_id = current_university_id() which is NULL for company_hr
+// callers).
+// ============================================================================
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -137,10 +165,9 @@ export async function POST(request: NextRequest) {
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
-    
-    // Get current user
+
+    // ---- 1. Authenticate caller (cookie-bound publishable-key client) ----
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !user) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
@@ -148,12 +175,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user profile with company_id
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("company_id, role")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return NextResponse.json(
@@ -176,7 +202,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse request body
+    // ---- 2. Parse + validate request body ----
     const body = await request.json();
     const {
       first_name,
@@ -189,28 +215,24 @@ export async function POST(request: NextRequest) {
       program_ids = [],
     } = body;
 
-    // Validate required fields
     if (!first_name?.trim()) {
       return NextResponse.json(
         { error: { code: "VALIDATION_ERROR", message: "First name is required" } },
         { status: 400 }
       );
     }
-
     if (!last_name?.trim()) {
       return NextResponse.json(
         { error: { code: "VALIDATION_ERROR", message: "Last name is required" } },
         { status: 400 }
       );
     }
-
     if (!email?.trim()) {
       return NextResponse.json(
         { error: { code: "VALIDATION_ERROR", message: "Email is required" } },
         { status: 400 }
       );
     }
-
     if (!password || password.length < 8) {
       return NextResponse.json(
         { error: { code: "VALIDATION_ERROR", message: "Password must be at least 8 characters" } },
@@ -218,121 +240,188 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if email already exists. The `filter` field is supported by the
-    // underlying GoTrue API but isn't in the typed listUsers() params in some
-    // supabase-js versions, so we cast.
-    const { data: existingUser } = await supabase.auth.admin.listUsers({
+    // ---- 3. Build the service-role admin client ----
+    //    Only used for createUser + profile/supervisor INSERTs. The caller's
+    //    session (cookie-bound publishable-key client) is unaffected.
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      console.error(
+        "[/api/company-hr/supervisors] SUPABASE_SERVICE_ROLE_KEY is not set. " +
+          "Set it in your environment variables (Vercel project settings → Environment Variables → add SUPABASE_SERVICE_ROLE_KEY)."
+      );
+      return NextResponse.json(
+        {
+          error: {
+            code: "SERVER_MISCONFIGURED",
+            message: "Server misconfiguration: service role key is not set. Contact the platform administrator.",
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    const adminClient = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
+
+    // ---- 4. Check for duplicate email ----
+    const { data: existingUser, error: listErr } = await adminClient.auth.admin.listUsers({
       page: 1,
       perPage: 1,
-      ...( { filter: `email.eq.${email}` } as any ),
+      ...( { filter: `email.eq.${email.trim()}` } as any ),
     } as any);
 
-    if (existingUser && existingUser.users.length > 0) {
+    if (listErr) {
+      console.error("Error checking existing user:", listErr);
+      // Continue anyway — the createUser call below will return a clear error
+      // if the email is taken.
+    }
+    if (existingUser && existingUser.users && existingUser.users.length > 0) {
       return NextResponse.json(
         { error: { code: "EMAIL_EXISTS", message: "An account with this email already exists" } },
         { status: 409 }
       );
     }
 
-    // Create auth user
-    const { data: newUser, error: createAuthError } = await supabase.auth.admin.createUser({
-      email,
+    // ---- 5. Create auth.users row ----
+    //    We populate BOTH raw_user_meta_data (via user_metadata) AND
+    //    raw_app_meta_data (via app_metadata) with the role + company_id.
+    //    - user_metadata is read by the on_auth_user_created trigger to
+    //      populate the profiles row.
+    //    - app_metadata is tamper-proof and used by the
+    //      `current_university_id/department_id/company_id` helpers
+    //      (migration 0013/0014) so the new user's RLS resolves correctly
+    //      even before the profiles row is fully populated.
+    const trimmedEmail = email.trim();
+    const trimmedFirst = first_name.trim();
+    const trimmedLast = last_name.trim();
+
+    const userMetadata: Record<string, unknown> = {
+      full_name: `${trimmedFirst} ${trimmedLast}`,
+      first_name: trimmedFirst,
+      last_name: trimmedLast,
+      role: "site_supervisor",
+      company_id: profile.company_id,
+    };
+    if (phone?.trim()) userMetadata.phone = phone.trim();
+    if (department_focus?.trim()) userMetadata.department_focus = department_focus.trim();
+    if (specialization?.trim()) userMetadata.specialization = specialization.trim();
+
+    const appMetadata: Record<string, unknown> = {
+      role: "site_supervisor",
+      company_id: profile.company_id,
+    };
+
+    const { data: newUser, error: createAuthError } = await adminClient.auth.admin.createUser({
+      email: trimmedEmail,
       password,
       email_confirm: true,
-      user_metadata: {
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
-        role: "site_supervisor",
-      },
+      user_metadata: userMetadata,
+      app_metadata: appMetadata,
     });
 
     if (createAuthError || !newUser?.user) {
       console.error("Error creating auth user:", createAuthError);
       return NextResponse.json(
-        { error: { code: "AUTH_ERROR", message: "Failed to create user account" } },
+        {
+          error: {
+            code: "AUTH_ERROR",
+            message: createAuthError?.message || "Failed to create user account",
+          },
+        },
         { status: 500 }
       );
     }
 
-    // Create profile
-    const { data: newProfile, error: profileInsertError } = await supabase
+    const newUserId = newUser.user.id;
+
+    // ---- 6. Upsert the profiles row ----
+    //    The on_auth_user_created trigger should have inserted a minimal row.
+    //    We upsert to ensure all display fields + company_id are set.
+    const profileUpsert: Record<string, unknown> = {
+      user_id: newUserId,
+      email: trimmedEmail,
+      full_name: `${trimmedFirst} ${trimmedLast}`,
+      first_name: trimmedFirst,
+      last_name: trimmedLast,
+      role: "site_supervisor",
+      status: "active",
+      is_active: true,
+      company_id: profile.company_id,
+      updated_at: new Date().toISOString(),
+    };
+    if (phone?.trim()) profileUpsert.phone = phone.trim();
+    if (department_focus?.trim()) profileUpsert.department_focus = department_focus.trim();
+
+    const { data: newProfile, error: profileInsertError } = await adminClient
       .from("profiles")
-      .insert({
-        user_id: newUser.user.id,
-        email,
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
-        full_name: `${first_name.trim()} ${last_name.trim()}`,
-        phone: phone || null,
-        role: "site_supervisor",
-        company_id: profile.company_id,
-        is_active: true,
-      })
+      .upsert(profileUpsert, { onConflict: "user_id" })
       .select()
       .single();
 
     if (profileInsertError) {
-      // Rollback: delete auth user
-      await supabase.auth.admin.deleteUser(newUser.user.id);
-      
       console.error("Error creating profile:", profileInsertError);
+      // Rollback auth user
+      await adminClient.auth.admin.deleteUser(newUserId);
       return NextResponse.json(
         { error: { code: "DATABASE_ERROR", message: "Failed to create user profile" } },
         { status: 500 }
       );
     }
 
-    // Create supervisor record
-    const { data: supervisor, error: supervisorInsertError } = await supabase
+    // ---- 7. Create the supervisors row ----
+    const { data: supervisor, error: supervisorInsertError } = await adminClient
       .from("supervisors")
       .insert({
-        user_id: newUser.user.id,
+        user_id: newUserId,
         company_id: profile.company_id,
         type: "site",
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
-        email,
-        phone: phone || null,
-        department_focus: department_focus || null,
-        specialization: specialization || null,
-        program_ids,
+        first_name: trimmedFirst,
+        last_name: trimmedLast,
+        email: trimmedEmail,
+        phone: phone?.trim() || null,
+        department_focus: department_focus?.trim() || null,
+        specialization: specialization?.trim() || null,
+        program_ids: Array.isArray(program_ids) ? program_ids : [],
         is_active: true,
       })
       .select()
       .single();
 
     if (supervisorInsertError) {
-      // Rollback
-      await supabase.from("profiles").delete().eq("user_id", newUser.user.id);
-      await supabase.auth.admin.deleteUser(newUser.user.id);
-      
       console.error("Error creating supervisor record:", supervisorInsertError);
+      // Rollback profile + auth user
+      await adminClient.from("profiles").delete().eq("user_id", newUserId);
+      await adminClient.auth.admin.deleteUser(newUserId);
       return NextResponse.json(
         { error: { code: "DATABASE_ERROR", message: "Failed to create supervisor record" } },
         { status: 500 }
       );
     }
 
-    // Log audit action
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
-      action: "create_supervisor",
-      entity_type: "supervisor",
-      entity_id: supervisor.id,
-      new_values: { 
-        ...supervisor, 
-        created_user_email: email 
-      },
-    });
+    // ---- 8. Audit log ----
+    try {
+      await adminClient.from("audit_logs").insert({
+        user_id: user.id,
+        action: "create_supervisor",
+        entity_type: "supervisor",
+        entity_id: supervisor.id,
+        new_values: { ...supervisor, created_user_email: trimmedEmail },
+      });
+    } catch (auditErr) {
+      console.error("Audit log insert failed (non-fatal):", auditErr);
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...supervisor,
-        profile: newProfile,
+    return NextResponse.json(
+      {
+        success: true,
+        data: { ...supervisor, profile: newProfile },
+        message: "Site supervisor created successfully",
       },
-      message: "Site supervisor created successfully",
-    }, { status: 201 });
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Unexpected error:", error);
     return NextResponse.json(

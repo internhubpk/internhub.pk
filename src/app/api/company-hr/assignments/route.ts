@@ -482,3 +482,133 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+// ============================================================================
+// DELETE /api/company-hr/assignments
+// Unassign an intern from a supervisor.
+// Body: { supervisor_id, intern_id }   OR   { assignment_id }
+// ============================================================================
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    const body = await request.json().catch(() => ({}));
+    const { supervisor_id, intern_id, assignment_id } = body || {};
+
+    // Case A: direct assignment_id lookup
+    if (assignment_id) {
+      const { data: a } = await supabase
+        .from("intern_supervisor_assignments")
+        .select("id, student_internship_id, supervisor_id")
+        .eq("id", assignment_id)
+        .maybeSingle();
+
+      if (!a) {
+        return NextResponse.json(
+          { error: { code: "NOT_FOUND", message: "Assignment not found" } },
+          { status: 404 }
+        );
+      }
+
+      const { data: si } = await supabase
+        .from("student_internships")
+        .select("id, company_id")
+        .eq("id", a.student_internship_id)
+        .maybeSingle();
+
+      if (!si || si.company_id !== profile.company_id) {
+        return NextResponse.json(
+          { error: { code: "FORBIDDEN", message: "Assignment does not belong to your company" } },
+          { status: 403 }
+        );
+      }
+
+      await supabase
+        .from("intern_supervisor_assignments")
+        .update({
+          ended_at: new Date().toISOString(),
+          is_active: false,
+          unassigned_at: new Date().toISOString(),
+          unassigned_by: user.id,
+        })
+        .eq("id", assignment_id);
+
+      await supabase
+        .from("student_internships")
+        .update({ site_supervisor_id: null, updated_at: new Date().toISOString() })
+        .eq("id", a.student_internship_id)
+        .eq("site_supervisor_id", a.supervisor_id);
+
+      return NextResponse.json({ success: true, message: "Assignment removed" });
+    }
+
+    // Case B: by supervisor_id + intern_id
+    if (!supervisor_id || !intern_id) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Either assignment_id OR (supervisor_id + intern_id) is required",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("id, internship_id, company_id, site_supervisor_id")
+      .eq("student_user_id", intern_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!si) {
+      return NextResponse.json(
+        { error: { code: "INTERN_NOT_FOUND", message: "Intern not found in your company" } },
+        { status: 404 }
+      );
+    }
+
+    await supabase
+      .from("intern_supervisor_assignments")
+      .update({
+        ended_at: new Date().toISOString(),
+        is_active: false,
+        unassigned_at: new Date().toISOString(),
+        unassigned_by: user.id,
+      })
+      .eq("supervisor_id", supervisor_id)
+      .eq("student_internship_id", si.id)
+      .or(`is_active.eq.true,ended_at.is.null`);
+
+    if (si.site_supervisor_id === supervisor_id) {
+      await supabase
+        .from("student_internships")
+        .update({ site_supervisor_id: null, updated_at: new Date().toISOString() })
+        .eq("id", si.id);
+    }
+
+    return NextResponse.json({ success: true, message: "Intern unassigned successfully" });
+  } catch (error) {
+    console.error("Unexpected error:", error);
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
+}
