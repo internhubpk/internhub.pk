@@ -22,9 +22,12 @@ const VIEW_PROGRAM_ROLES: UserRole[] = [
 ];
 
 // Roles that can create/edit programs
+// University Admin can only VIEW programs (see migration 0002 RLS + the
+// university-admin/programs page which is view-only). Programs are created
+// and managed by Department Coordinators, with super_admin as override.
 const MANAGE_PROGRAM_ROLES: UserRole[] = [
   "super_admin",
-  "university_admin",
+  "department_coordinator",
 ];
 
 /**
@@ -214,30 +217,20 @@ export async function POST(request: NextRequest) {
     const userUniversityId = authContext.profile.university_id;
     const userDepartmentId = authContext.profile.department_id;
 
-    // Determine university_id based on role
+    // Determine university_id based on role.
+    // University Admin is NOT in MANAGE_PROGRAM_ROLES (they can only
+    // view programs). Only super_admin and department_coordinator reach
+    // this point.
     let universityId = body.university_id;
-    
-    if (userRole === "university_admin") {
-      // University admin must use their university
-      universityId = userUniversityId;
-      
-      // Verify department belongs to their university
-      const { data: department } = await supabase
-        .from("departments")
-        .select("id, university_id")
-        .eq("id", department_id)
-        .single();
 
-      if (!department || department.university_id !== userUniversityId) {
-        return authorizationError("Department does not belong to your university");
-      }
-    } else if (userRole === "department_coordinator") {
-      // Department coordinator can only create in their department
+    if (userRole === "department_coordinator") {
+      // Department coordinator can only create in their own department
       if (department_id !== userDepartmentId) {
         return authorizationError("Can only create programs in your own department");
       }
       universityId = userUniversityId;
     }
+    // super_admin: use body.university_id (must be passed by caller)
 
     // Check if code is unique within the university
     const { data: existingProgram } = await supabase
@@ -341,20 +334,17 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify access based on role
+    // Verify access based on role.
+    // University Admin is NOT in MANAGE_PROGRAM_ROLES (view-only).
     const userRole = authContext.profile.role;
-    const userUniversityId = authContext.profile.university_id;
     const userDepartmentId = authContext.profile.department_id;
 
-    if (userRole === "university_admin") {
-      if (existingProgram.university_id !== userUniversityId) {
-        return authorizationError("Cannot modify programs from another university");
-      }
-    } else if (userRole === "department_coordinator") {
+    if (userRole === "department_coordinator") {
       if (existingProgram.department_id !== userDepartmentId) {
         return authorizationError("Cannot modify programs from another department");
       }
     }
+    // super_admin: no additional check
 
     // Check code uniqueness if changing
     if (updateData.code && updateData.code !== existingProgram.code) {
@@ -414,17 +404,18 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/programs
- * Delete program - Super Admin or University Admin (within their university)
+ * Delete program - Super Admin only
+ *
+ * University Admin can VIEW programs but cannot create/edit/delete them.
+ * Programs are created and managed by Department Coordinators. The
+ * university-admin/programs page is view-only.
  */
 export async function DELETE(request: NextRequest) {
   try {
     const authContext = await requireAuth();
 
-    // RLS policy allows super_admin and university_admin to delete.
-    // department_coordinator is NOT allowed to delete (see migration 0002).
-    const role = authContext.profile?.role;
-    if (role !== "super_admin" && role !== "university_admin") {
-      return authorizationError("Only Super Admins or University Admins can delete programs");
+    if (authContext.profile?.role !== "super_admin") {
+      return authorizationError("Only super admins can delete programs");
     }
 
     const cookieStore = await cookies();
