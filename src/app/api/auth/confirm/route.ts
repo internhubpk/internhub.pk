@@ -17,7 +17,10 @@ export async function GET(request: NextRequest) {
     
     if (token_hash && type === "email") {
       const cookieStore = await cookies();
-      const supabase = createClient(cookieStore);
+      const supabase = await createClient(cookieStore);
+      if (!supabase) {
+        return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+      }
       
       // Verify the token hash and confirm email
       const { error, data } = await supabase.auth.verifyOtp({

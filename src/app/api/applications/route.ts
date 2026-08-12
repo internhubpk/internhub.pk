@@ -78,7 +78,10 @@ export async function GET(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Parse query parameters with validation
     const { searchParams } = new URL(request.url);
@@ -391,7 +394,10 @@ export async function POST(request: NextRequest) {
     const authContext = await requireRole(SUBMIT_ROLES);
     
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Parse and validate request body
     const body = await request.json();

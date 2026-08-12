@@ -39,7 +39,10 @@ export async function POST(request: NextRequest) {
 
     // Create Supabase server client
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Attempt to sign in
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -134,7 +137,10 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Get current user
     const {

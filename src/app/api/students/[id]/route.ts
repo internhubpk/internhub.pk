@@ -23,7 +23,10 @@ export async function GET(
 ) {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
     const { id } = await params;
 
     // Authenticate user
@@ -135,7 +138,10 @@ export async function PUT(
 ) {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
     const { id } = await params;
 
     // Authenticate user

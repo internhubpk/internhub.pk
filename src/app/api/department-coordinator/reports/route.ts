@@ -66,7 +66,10 @@ export async function GET(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     const { searchParams } = new URL(request.url);
     const reportType = searchParams.get("type") || "overview";

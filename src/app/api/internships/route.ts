@@ -71,7 +71,10 @@ function validateSortParam(sortBy: string | null, sortOrder: string | null): {
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // For marketplace, allow unauthenticated access to published internships
     // For dashboard views, require authentication
@@ -318,7 +321,10 @@ export async function POST(request: NextRequest) {
     const authContext = await requireRole(CREATE_ROLES);
     
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Parse and validate request body
     const body = await request.json();

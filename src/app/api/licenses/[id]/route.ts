@@ -44,7 +44,10 @@ export async function GET(
 ) {
   try {
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     // Authenticate user
     const authContext = await getServerAuthContext();
@@ -167,7 +170,10 @@ export async function PUT(
     const authContext = await requireRole(["super_admin"]);
 
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     const { id } = await params;
 
@@ -351,7 +357,10 @@ export async function DELETE(
     const authContext = await requireRole(["super_admin"]);
 
     const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
 
     const { id } = await params;
 
@@ -435,7 +444,10 @@ async function auditLogEntry(
   }
 ): Promise<void> {
   try {
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
     
     const { data: { user } } = await supabase.auth.getUser();
     
