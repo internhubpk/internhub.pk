@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   BarChart3,
-  FileText,
   Users,
   Building2,
   Briefcase,
@@ -15,8 +14,8 @@ import {
   RefreshCw,
   AlertCircle,
   TrendingUp,
-  TrendingDown,
   Activity,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +33,10 @@ interface ReportStats {
   totalCompanies: number;
   activeInternships: number;
   pendingApplications: number;
+  acceptedApplications: number;
+  rejectedApplications: number;
   completedInternships: number;
+  openInternships: number;
   completionRate: number;
 }
 
@@ -46,10 +48,29 @@ interface DepartmentStat {
   activeInternshipCount: number;
 }
 
+interface CompanyHostStat {
+  companyId: string;
+  companyName: string;
+  internshipCount: number;
+}
+
+interface StatusBreakdown {
+  status: string;
+  count: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  count: number;
+}
+
 export default function UniversityAdminReportsPage() {
   const { profile, university } = useAuth();
   const [stats, setStats] = useState<ReportStats | null>(null);
   const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
+  const [companyStats, setCompanyStats] = useState<CompanyHostStat[]>([]);
+  const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([]);
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +87,7 @@ export default function UniversityAdminReportsPage() {
       setError(null);
       const supabase = createClient();
 
+      // Batch 1: top-level counts. All these queries run in parallel.
       const [
         studentsRes,
         activeStudentsRes,
@@ -73,23 +95,26 @@ export default function UniversityAdminReportsPage() {
         departmentsRes,
         companiesRes,
         activeInternRes,
-        pendingAppsRes,
         completedInternRes,
+        openInternRes,
+        pendingAppsRes,
+        acceptedAppsRes,
+        rejectedAppsRes,
       ] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student"),
         supabase
           .from("profiles")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student")
           .eq("is_active", true),
         supabase
           .from("profiles")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "department_coordinator"),
         supabase
@@ -99,22 +124,39 @@ export default function UniversityAdminReportsPage() {
           .order("name"),
         supabase
           .from("companies")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId),
+        // Active internships at this university
         supabase
           .from("internships")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "active"),
         supabase
-          .from("applications")
-          .select("id", { count: "exact" })
-          .eq("status", "pending"),
-        supabase
           .from("internships")
-          .select("id", { count: "exact" })
+          .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "completed"),
+        supabase
+          .from("internships")
+          .select("id", { count: "exact", head: true })
+          .eq("university_id", universityId)
+          .eq("status", "open"),
+        // Applications — RLS scopes to this university's internships.
+        // Table name is `internship_applications` (the `applications`
+        // view also works but the base table is more explicit).
+        supabase
+          .from("internship_applications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+        supabase
+          .from("internship_applications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "accepted"),
+        supabase
+          .from("internship_applications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "rejected"),
       ]);
 
       const totalActive = (activeInternRes.count || 0) + (completedInternRes.count || 0);
@@ -130,23 +172,26 @@ export default function UniversityAdminReportsPage() {
         totalCompanies: companiesRes.count || 0,
         activeInternships: activeInternRes.count || 0,
         pendingApplications: pendingAppsRes.count || 0,
+        acceptedApplications: acceptedAppsRes.count || 0,
+        rejectedApplications: rejectedAppsRes.count || 0,
         completedInternships: completedInternRes.count || 0,
+        openInternships: openInternRes.count || 0,
         completionRate,
       });
 
-      // Per-department stats — fetched in parallel
+      // Batch 2: per-department stats. All parallel.
       if (departmentsRes.data && departmentsRes.data.length > 0) {
         const deptStats: DepartmentStat[] = await Promise.all(
           departmentsRes.data.map(async (dept) => {
             const [studentCount, activeCount] = await Promise.all([
               supabase
                 .from("profiles")
-                .select("id", { count: "exact" })
+                .select("id", { count: "exact", head: true })
                 .eq("department_id", dept.id)
                 .eq("role", "student"),
               supabase
                 .from("internships")
-                .select("id", { count: "exact" })
+                .select("id", { count: "exact", head: true })
                 .eq("department_id", dept.id)
                 .eq("status", "active"),
             ]);
@@ -161,11 +206,106 @@ export default function UniversityAdminReportsPage() {
           })
         );
 
-        // Sort by student count descending
         deptStats.sort((a, b) => b.studentCount - a.studentCount);
         setDepartmentStats(deptStats);
       } else {
         setDepartmentStats([]);
+      }
+
+      // Batch 3: top companies hosting internships at this university.
+      // We fetch all internships for this university with company_id,
+      // then aggregate client-side (Supabase doesn't support GROUP BY
+      // directly via the REST API without an RPC function).
+      const { data: internshipsForCompanies, error: ifcErr } = await supabase
+        .from("internships")
+        .select("company_id")
+        .eq("university_id", universityId)
+        .not("company_id", "is", null);
+
+      if (ifcErr) {
+        console.warn("[reports] couldn't load internships for company aggregation:", ifcErr);
+        setCompanyStats([]);
+      } else {
+        const counts = new Map<string, number>();
+        for (const row of internshipsForCompanies || []) {
+          counts.set(row.company_id, (counts.get(row.company_id) || 0) + 1);
+        }
+        const companyIds = Array.from(counts.keys());
+        let companyNames = new Map<string, string>();
+        if (companyIds.length > 0) {
+          const { data: companiesData } = await supabase
+            .from("companies")
+            .select("id, name")
+            .in("id", companyIds);
+          for (const c of companiesData || []) {
+            companyNames.set(c.id, c.name);
+          }
+        }
+        const aggregated: CompanyHostStat[] = Array.from(counts.entries())
+          .map(([companyId, internshipCount]) => ({
+            companyId,
+            companyName: companyNames.get(companyId) || "Unknown company",
+            internshipCount,
+          }))
+          .sort((a, b) => b.internshipCount - a.internshipCount)
+          .slice(0, 5);
+        setCompanyStats(aggregated);
+      }
+
+      // Batch 4: internship status breakdown for this university.
+      const { data: statusData, error: statusErr } = await supabase
+        .from("internships")
+        .select("status")
+        .eq("university_id", universityId);
+
+      if (statusErr) {
+        console.warn("[reports] couldn't load internship status breakdown:", statusErr);
+        setStatusBreakdown([]);
+      } else {
+        const statusCounts = new Map<string, number>();
+        for (const row of statusData || []) {
+          statusCounts.set(row.status, (statusCounts.get(row.status) || 0) + 1);
+        }
+        const breakdown: StatusBreakdown[] = Array.from(statusCounts.entries())
+          .map(([status, count]) => ({ status, count }))
+          .sort((a, b) => b.count - a.count);
+        setStatusBreakdown(breakdown);
+      }
+
+      // Batch 5: monthly trend — internships created per month for the
+      // last 6 months. We fetch created_at for all internships at this
+      // university (RLS-scoped) and bucket client-side.
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const { data: trendData, error: trendErr } = await supabase
+        .from("internships")
+        .select("created_at")
+        .eq("university_id", universityId)
+        .gte("created_at", sixMonthsAgo.toISOString())
+        .order("created_at", { ascending: true });
+
+      if (trendErr) {
+        console.warn("[reports] couldn't load monthly trend:", trendErr);
+        setMonthlyTrend([]);
+      } else {
+        const monthCounts = new Map<string, number>();
+        for (const row of trendData || []) {
+          const d = new Date(row.created_at);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+        }
+        // Build a 6-month bucket list (including zero months) so the
+        // trend line is continuous even if no internships were created
+        // in a given month.
+        const buckets: MonthlyTrend[] = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          const label = d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+          buckets.push({ month: label, count: monthCounts.get(key) || 0 });
+        }
+        setMonthlyTrend(buckets);
       }
     } catch (err) {
       console.error("Error fetching report data:", err);
@@ -289,8 +429,17 @@ export default function UniversityAdminReportsPage() {
     },
   ];
 
-  // Find the department with the most students (for highlight)
   const topDepartment = departmentStats[0];
+  const trendMax = Math.max(...monthlyTrend.map((m) => m.count), 1);
+
+  const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+    draft: { label: "Draft", color: "bg-gray-500" },
+    open: { label: "Open", color: "bg-blue-500" },
+    active: { label: "Active", color: "bg-green-500" },
+    completed: { label: "Completed", color: "bg-emerald-600" },
+    closed: { label: "Closed", color: "bg-amber-500" },
+    cancelled: { label: "Cancelled", color: "bg-red-500" },
+  };
 
   return (
     <div className="space-y-6">
@@ -337,7 +486,7 @@ export default function UniversityAdminReportsPage() {
         ))}
       </div>
 
-      {/* Internship Health */}
+      {/* Internship Health + Quick Insights */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -385,6 +534,31 @@ export default function UniversityAdminReportsPage() {
                 </div>
                 <p className="text-2xl font-bold">{stats?.completedInternships ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Completed</p>
+              </div>
+            </div>
+
+            {/* Application funnel */}
+            <div className="pt-2 border-t">
+              <p className="text-sm font-medium mb-3">Application Funnel</p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3">
+                  <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                    {stats?.pendingApplications ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
+                </div>
+                <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3">
+                  <p className="text-xl font-bold text-green-700 dark:text-green-400">
+                    {stats?.acceptedApplications ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Accepted</p>
+                </div>
+                <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3">
+                  <p className="text-xl font-bold text-red-700 dark:text-red-400">
+                    {stats?.rejectedApplications ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Rejected</p>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -446,6 +620,158 @@ export default function UniversityAdminReportsPage() {
         </Card>
       </div>
 
+      {/* Monthly Trend + Top Companies */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Internships Created (6 months)
+            </CardTitle>
+            <CardDescription>
+              Number of new internships posted to your university per month
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {monthlyTrend.every((m) => m.count === 0) ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <BarChart3 className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  No internship creation activity in the last 6 months.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-end justify-between gap-2 h-48">
+                  {monthlyTrend.map((m, i) => {
+                    const height = (m.count / trendMax) * 100;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          {m.count > 0 ? m.count : ""}
+                        </div>
+                        <div className="w-full bg-muted/40 rounded-t-md flex items-end" style={{ height: "100%" }}>
+                          <motion.div
+                            initial={{ height: 0 }}
+                            animate={{ height: `${height}%` }}
+                            transition={{ delay: i * 0.05, duration: 0.4 }}
+                            className="w-full bg-primary/80 hover:bg-primary rounded-t-md min-h-[2px]"
+                          />
+                        </div>
+                        <div className="text-xs text-muted-foreground">{m.month}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              Top Host Companies
+            </CardTitle>
+            <CardDescription>
+              Companies with the most internships at your university
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {companyStats.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Briefcase className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  No companies have posted internships to your university yet.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {companyStats.map((company, i) => {
+                  const max = companyStats[0]?.internshipCount || 1;
+                  const pct = (company.internshipCount / max) * 100;
+                  return (
+                    <motion.div
+                      key={company.companyId}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs text-muted-foreground w-4">#{i + 1}</span>
+                          <span className="font-medium truncate">{company.companyName}</span>
+                        </div>
+                        <span className="font-semibold text-xs flex-shrink-0">
+                          {company.internshipCount}
+                        </span>
+                      </div>
+                      <Progress value={pct} className="h-1.5" />
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Internship Status Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Internship Status Breakdown
+          </CardTitle>
+          <CardDescription>
+            Distribution of all internships at your university by current status
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {statusBreakdown.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Activity className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <p className="text-sm text-muted-foreground">
+                No internships to analyze yet.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {statusBreakdown.map((row, i) => {
+                const total = statusBreakdown.reduce((sum, r) => sum + r.count, 0);
+                const pct = total > 0 ? Math.round((row.count / total) * 100) : 0;
+                const info = STATUS_LABELS[row.status] || { label: row.status, color: "bg-gray-500" };
+                return (
+                  <motion.div
+                    key={row.status}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-full ${info.color}`} />
+                        <span className="font-medium">{info.label}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">
+                          <strong className="text-foreground">{row.count}</strong> internship{row.count !== 1 ? "s" : ""}
+                        </span>
+                        <span className="text-muted-foreground">{pct}%</span>
+                      </div>
+                    </div>
+                    <Progress value={pct} className="h-1.5" />
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Department Breakdown */}
       <Card>
         <CardHeader>
@@ -503,43 +829,6 @@ export default function UniversityAdminReportsPage() {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Report Types Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Available Reports
-          </CardTitle>
-          <CardDescription>
-            Detailed exportable reports will be added in a future update
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[
-              { name: "Internship Summary", description: "Overview of all internships by status and department", icon: Briefcase },
-              { name: "Student Performance", description: "Academic and internship performance by student", icon: GraduationCap },
-              { name: "Department Statistics", description: "Department-wise metrics and comparisons", icon: Building2 },
-              { name: "Company Analytics", description: "Host company engagement and internship distribution", icon: TrendingUp },
-              { name: "Application Funnel", description: "Application submission → acceptance → completion", icon: Activity },
-              { name: "Coordinator Activity", description: "Coordinator workload and student assignments", icon: UserCog },
-            ].map((report) => (
-              <div
-                key={report.name}
-                className="rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors"
-              >
-                <report.icon className="h-5 w-5 text-primary mb-2" />
-                <p className="font-medium text-sm">{report.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{report.description}</p>
-                <Badge variant="outline" className="mt-3 text-xs">
-                  Coming soon
-                </Badge>
-              </div>
-            ))}
-          </div>
         </CardContent>
       </Card>
     </div>

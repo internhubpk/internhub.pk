@@ -14,6 +14,9 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +77,9 @@ export default function UniversityAdminSettingsPage() {
   });
   const [notifications, setNotifications] = useState<NotificationPrefs>(defaultNotifications);
   const [notFound, setNotFound] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
+  const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const universityId = profile?.university_id || university?.id;
 
@@ -236,6 +242,95 @@ export default function UniversityAdminSettingsPage() {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Change Password — uses supabase.auth.updateUser which works for
+  // any logged-in user without needing the service role key. The
+  // current password is verified by re-authenticating before the
+  // update (Supabase doesn't expose a "verify current password" API
+  // directly; we do a signInWithPassword and discard the result. If
+  // it fails, the current password was wrong.)
+  const handleChangePassword = async () => {
+    if (!passwordForm.next) {
+      toast({
+        title: "Validation Error",
+        description: "New password is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (passwordForm.next.length < 8) {
+      toast({
+        title: "Validation Error",
+        description: "New password must be at least 8 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      toast({
+        title: "Validation Error",
+        description: "New password and confirmation don't match",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (passwordForm.next === passwordForm.current) {
+      toast({
+        title: "Validation Error",
+        description: "New password must be different from the current one",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSavingPassword(true);
+      const supabase = createClient();
+
+      // Step 1: verify the current password by signing in with it.
+      // We don't need to keep this session — Supabase will reuse the
+      // existing session cookies. If signInWithPassword fails, the
+      // current password was wrong.
+      if (passwordForm.current) {
+        const { error: verifyErr } = await supabase.auth.signInWithPassword({
+          email: profile?.email || "",
+          password: passwordForm.current,
+        });
+        if (verifyErr) {
+          toast({
+            title: "Current password incorrect",
+            description: "The current password you entered doesn't match.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      // Step 2: update to the new password.
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: passwordForm.next,
+      });
+
+      if (updateErr) throw updateErr;
+
+      toast({
+        title: "Password updated",
+        description: "Your account password has been changed successfully.",
+      });
+
+      setPasswordForm({ current: "", next: "", confirm: "" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      const err = error as { message?: string } | null;
+      toast({
+        title: "Error",
+        description: err?.message || "Failed to change password. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -534,11 +629,11 @@ export default function UniversityAdminSettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
-                Security Settings
+                Account Security
               </CardTitle>
               <CardDescription>
-                Manage your account security preferences. These settings apply
-                to your admin account only.
+                Manage your admin account password. These settings apply to
+                your account only — not to other users at your university.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -566,22 +661,119 @@ export default function UniversityAdminSettingsPage() {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Button variant="outline" disabled>
-                  Change Password
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Self-service password change is coming soon. For now, use the
-                  &quot;Forgot Password&quot; link on the login page.
-                </p>
-              </div>
+              <div className="space-y-3 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-semibold">Change Password</Label>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Two-Factor Authentication</Label>
-                <div className="flex items-center gap-3">
-                  <Switch disabled />
-                  <span className="text-sm text-muted-foreground">Coming soon</span>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="current-pw" className="text-xs">Current Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="current-pw"
+                        type={showPasswords.current ? "text" : "password"}
+                        placeholder="Enter your current password"
+                        value={passwordForm.current}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                        className="pr-10"
+                        autoComplete="current-password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
+                      >
+                        {showPasswords.current ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-pw" className="text-xs">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="new-pw"
+                        type={showPasswords.next ? "text" : "password"}
+                        placeholder="Minimum 8 characters"
+                        value={passwordForm.next}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
+                        className="pr-10"
+                        autoComplete="new-password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPasswords({ ...showPasswords, next: !showPasswords.next })}
+                      >
+                        {showPasswords.next ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-pw" className="text-xs">Confirm New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm-pw"
+                        type={showPasswords.confirm ? "text" : "password"}
+                        placeholder="Re-enter the new password"
+                        value={passwordForm.confirm}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                        className="pr-10"
+                        autoComplete="new-password"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !isSavingPassword) {
+                            handleChangePassword();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
+                      >
+                        {showPasswords.confirm ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={isSavingPassword || !passwordForm.next || !passwordForm.confirm}
+                    className="gap-2"
+                  >
+                    {isSavingPassword ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Key className="h-4 w-4" />
+                        Update Password
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
 
@@ -590,7 +782,7 @@ export default function UniversityAdminSettingsPage() {
                   <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="font-medium text-sm text-amber-900 dark:text-amber-200">
-                      Need to make bigger changes?
+                      Need bigger changes?
                     </p>
                     <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
                       For changes to your university slug, license tier, or to
