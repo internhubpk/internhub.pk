@@ -1,14 +1,20 @@
 /**
  * InternHub Subdomain-Based Multi-Tenancy Service
- * 
- * This service provides centralized tenant (university) resolution
- * based on subdomain detection for the InternHub SaaS platform.
- * 
+ *
+ * Provides centralized tenant (university) resolution based on subdomain.
+ * Tenant records live in the `universities` table — this module only handles
+ * subdomain extraction and provides a sensible default platform config for
+ * the main domain.
+ *
  * Architecture:
  *   internhub.pk (main platform)
  *     ├─ iiui.internhub.pk (IIUI portal)
  *     ├─ comsats.internhub.pk (COMSATS portal)
  *     └─ nust.internhub.pk (NUST portal)
+ *
+ * To look up a tenant's brand/colors from the DB, call `getTenantConfig(slug)`
+ * which returns the platform default synchronously — caller code can fetch
+ * the real tenant record from the `universities` table when needed.
  */
 
 import type { TenantConfig as BaseTenantConfig } from "@/types";
@@ -58,140 +64,55 @@ export interface TenantFeatures {
 }
 
 // ============================================================
-// MOCK TENANT DATA FOR DEMO
+// PLATFORM DEFAULT CONFIG (main domain only)
 // ============================================================
 
 /**
- * Demo tenant configurations
- * In production, these would come from a database or config service
+ * The platform default. Per-tenant overrides should be loaded from the
+ * `universities` table in the database.
  */
+export const PLATFORM_DEFAULT_TENANT: TenantConfig = {
+  id: "main",
+  name: "InternHub",
+  slug: "main",
+  logo: "/logo.svg",
+  logoUrl: "/logo.svg",
+  favicon: "/favicon.ico",
+  primaryColor: "#2563eb", // Blue-600
+  secondaryColor: "#1e40af", // Blue-800
+  domain: "internhub.pk",
+  customDomain: null,
+  features: {
+    enableMarketplace: true,
+    enableEvaluations: true,
+    enableCertificates: true,
+    enableAttendance: true,
+    customWorkflow: true,
+    enableSSO: false,
+    enableCustomDomain: false,
+    maxStudents: Number.MAX_SAFE_INTEGER,
+  },
+  branding: {
+    tagline: "Enterprise Internship Management Platform",
+    description:
+      "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
+    supportEmail: "support@internhub.pk",
+    supportPhone: "+92-300-1234567",
+  },
+};
+
+// Back-compat alias for older code that still imports DEMO_TENANTS.
+// Only contains the platform default — no per-tenant demo data.
 export const DEMO_TENANTS: Record<string, TenantConfig> = {
-  // Main platform (no subdomain)
-  main: {
-    id: "main",
-    name: "InternHub",
-    slug: "main",
-    logo: "/logo.svg",
-    favicon: "/favicon.ico",
-    primaryColor: "#2563eb", // Blue-600
-    secondaryColor: "#1e40af", // Blue-800
-    domain: "internhub.pk",
-    features: {
-      enableMarketplace: true,
-      enableEvaluations: true,
-      enableCertificates: true,
-      enableAttendance: true,
-      customWorkflow: true,
-      enableSSO: true,
-      enableCustomDomain: true,
-      maxStudents: Infinity,
-    },
-    branding: {
-      tagline: "Enterprise Internship Management Platform",
-      description:
-        "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
-      supportEmail: "support@internhub.pk",
-      supportPhone: "+92-300-1234567",
-    },
-  },
-
-  // IIUI - International Islamic University Islamabad
-  iiui: {
-    id: "tenant-iiui-001",
-    name: "International Islamic University Islamabad",
-    slug: "iiui",
-    logo: "/logos/iiui-logo.svg",
-    favicon: "/favicons/iiui.ico",
-    primaryColor: "#006a4e", // IIUI Green
-    secondaryColor: "#004d33",
-    domain: "iiui.internhub.pk",
-    features: {
-      enableMarketplace: true,
-      enableEvaluations: true,
-      enableCertificates: true,
-      enableAttendance: true,
-      customWorkflow: false,
-      enableSSO: false,
-      enableCustomDomain: false,
-      maxStudents: 5000,
-    },
-    branding: {
-      loginBackgroundImage: "/backgrounds/iiui-bg.jpg",
-      tagline: "Excellence in Professional Development",
-      description:
-        "IIUI Internship Portal - Connecting students with industry opportunities.",
-      supportEmail: "internships@iiu.edu.pk",
-      supportPhone: "+92-51-9019350",
-    },
-  },
-
-  // COMSATS - COMSATS University Islamabad
-  comsats: {
-    id: "tenant-comsats-002",
-    name: "COMSATS University Islamabad",
-    slug: "comsats",
-    logo: "/logos/comsats-logo.svg",
-    favicon: "/favicons/comsats.ico",
-    primaryColor: "#1a365d", // COMSATS Navy
-    secondaryColor: "#0f2744",
-    domain: "comsats.internhub.pk",
-    features: {
-      enableMarketplace: true,
-      enableEvaluations: true,
-      enableCertificates: true,
-      enableAttendance: false,
-      customWorkflow: false,
-      enableSSO: true,
-      enableCustomDomain: false,
-      maxStudents: 10000,
-    },
-    branding: {
-      tagline: "Bridging Academia and Industry",
-      description:
-        "CUI Internship Portal - Your gateway to professional experience.",
-      supportEmail: "careers@comsats.edu.pk",
-      supportPhone: "+92-51-9247700",
-    },
-  },
-
-  // NUST - National University of Sciences & Technology
-  nust: {
-    id: "tenant-nust-003",
-    name: "National University of Sciences & Technology",
-    slug: "nust",
-    logo: "/logos/nust-logo.svg",
-    favicon: "/favicons/nust.ico",
-    primaryColor: "#7c2d12", // NUST Brown/Rust
-    secondaryColor: "#5c1d0b",
-    domain: "nust.internhub.pk",
-    features: {
-      enableMarketplace: true,
-      enableEvaluations: true,
-      enableCertificates: true,
-      enableAttendance: true,
-      customWorkflow: true,
-      enableSSO: true,
-      enableCustomDomain: true,
-      maxStudents: 15000,
-    },
-    branding: {
-      loginBackgroundImage: "/backgrounds/nust-bg.jpg",
-      tagline: "Leading Innovation and Excellence",
-      description:
-        "NUST Internship Portal - Empowering future leaders through practical experience.",
-      supportEmail: "placements@nust.edu.pk",
-      supportPhone: "+92-51-90851000",
-    },
-  },
+  main: PLATFORM_DEFAULT_TENANT,
 };
 
 // ============================================================
 // SUBDOMAIN DETECTION UTILITIES (CLIENT-SAFE)
 // ============================================================
 
-/** 
- * Base domain for the platform 
- * In production, this would be an environment variable
+/**
+ * Base domains for the platform
  */
 const BASE_DOMAINS = [
   "internhub.pk",
@@ -211,7 +132,7 @@ const BASE_DOMAINS = [
 export function extractSubdomain(hostname: string): string | null {
   // Remove port if present for local development
   const hostWithoutPort = hostname.split(":")[0];
-  
+
   // Check for localhost development patterns
   if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
     return null; // Main platform on localhost
@@ -230,7 +151,7 @@ export function extractSubdomain(hostname: string): string | null {
 
   // Check if base domain matches our known domains
   const baseDomain = parts.slice(-2).join(".");
-  
+
   if (!BASE_DOMAINS.some(d => d.includes(baseDomain))) {
     // Unknown domain - treat as main platform
     return null;
@@ -251,22 +172,9 @@ export function extractSubdomain(hostname: string): string | null {
  */
 export function detectClientTenantSlug(): string | null {
   if (typeof window === "undefined") return null;
-  
+
   const hostname = window.location.hostname;
-  const subdomain = extractSubdomain(hostname);
-  
-  if (subdomain && DEMO_TENANTS[subdomain]) {
-    return subdomain;
-  }
-  
-  // Fallback: check URL search params for testing
-  const params = new URLSearchParams(window.location.search);
-  const testTenant = params.get("tenant");
-  if (testTenant && DEMO_TENANTS[testTenant]) {
-    return testTenant;
-  }
-  
-  return null;
+  return extractSubdomain(hostname);
 }
 
 // ============================================================
@@ -274,37 +182,36 @@ export function detectClientTenantSlug(): string | null {
 // ============================================================
 
 /**
- * Get full tenant configuration by slug
- * Returns main platform config if no slug provided or not found
+ * Get platform default tenant configuration by slug.
+ * NOTE: This returns the platform default. Per-tenant overrides (name, logo,
+ * colors) should be fetched from the `universities` table by the calling code.
  */
 export function getTenantConfig(slug: string | null): TenantConfig {
-  if (!slug) {
-    return DEMO_TENANTS.main;
-  }
-  
-  return DEMO_TENANTS[slug] || DEMO_TENANTS.main;
+  return PLATFORM_DEFAULT_TENANT;
 }
 
 /**
  * Get tenant configuration client-side
  */
 export function getClientTenantConfig(): TenantConfig {
-  const slug = detectClientTenantSlug();
-  return getTenantConfig(slug);
+  return PLATFORM_DEFAULT_TENANT;
 }
 
 /**
- * Check if a given slug is a valid tenant
+ * Check if a given slug is a valid tenant.
+ * Always returns true for "main"; for any other slug, the caller should
+ * verify against the database.
  */
 export function isValidTenant(slug: string): boolean {
-  return slug in DEMO_TENANTS;
+  return slug === "main" || slug.length > 0;
 }
 
 /**
- * Get list of all available tenants (for admin/super-admin views)
+ * Get list of all available tenants (for admin/super-admin views).
+ * NOTE: Returns empty list — call the API to fetch real tenants from DB.
  */
 export function getAllTenants(): TenantConfig[] {
-  return Object.values(DEMO_TENANTS).filter(t => t.slug !== "main");
+  return [PLATFORM_DEFAULT_TENANT];
 }
 
 /**
@@ -343,8 +250,8 @@ export function getTenantPageTitle(tenant: TenantConfig, pageTitle?: string): st
  */
 export function getTenantOpenGraph(tenant: TenantConfig) {
   return {
-    title: `${tenant.name} - ${tenant.branding.tagline}`,
-    description: tenant.branding.description,
+    title: `${tenant.name} - ${tenant.branding.tagline ?? "InternHub"}`,
+    description: tenant.branding.description ?? "InternHub Platform",
     siteName: tenant.name,
   };
 }

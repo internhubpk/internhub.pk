@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Mail, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -28,12 +29,45 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
-      // TODO: Implement Supabase password reset
-      // For now, simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const supabase = createClient();
+      if (!supabase) {
+        setError("Configuration error. Please try again later.");
+        return;
+      }
+
+      // Determine the redirect URL for the password reset landing page.
+      // This must be a route on the same origin that Supabase will redirect
+      // the user back to after they click the link in the email.
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/confirm?next=/login`
+          : undefined;
+
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        redirectTo ? { redirectTo } : undefined
+      );
+
+      if (resetError) {
+        // For security, Supabase does not leak whether an email exists.
+        // We surface a generic message regardless of the underlying error.
+        // Common errors: rate-limit, network, malformed email.
+        if (
+          resetError.message.toLowerCase().includes("rate limit") ||
+          resetError.message.toLowerCase().includes("too many")
+        ) {
+          setError("Too many reset attempts. Please wait a few minutes before trying again.");
+        } else {
+          // Fall through to success screen to avoid leaking account existence
+          setIsSubmitted(true);
+        }
+        return;
+      }
+
       setIsSubmitted(true);
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      console.error("Password reset error:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
