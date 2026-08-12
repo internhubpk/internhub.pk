@@ -103,20 +103,32 @@ function getDashboardPath(role: UserRole | null): string {
 /**
  * Get role from JWT metadata ONLY - NO DATABASE CALLS!
  * This prevents RLS errors and memory issues.
+ *
+ * PRIORITY: app_metadata FIRST, then user_metadata.
+ *   - app_metadata is system-managed: our profiles_sync_role_to_auth trigger
+ *     (migration 0011) keeps auth.users.raw_app_meta_data->>'role' in lockstep
+ *     with profiles.role. When an admin changes someone's role in the DB,
+ *     app_metadata is updated automatically.
+ *   - user_metadata is set once at signup (raw_user_meta_data) and is also
+ *     synced by the trigger as of 0011, but historically was NOT updated on
+ *     role changes. Reading app_metadata first protects us from stale
+ *     user_metadata on accounts whose role was changed before 0011 was
+ *     applied to the live DB.
  */
 function getRoleFromUser(user: any): UserRole | null {
-  // Check user_metadata first (set during registration)
-  const metaRole = user?.user_metadata?.role;
-  if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
-    return metaRole as UserRole;
-  }
-  
-  // Check app_metadata (set by triggers or admin operations)
+  // Priority 1: app_metadata (kept in sync with profiles.role by trigger)
   const appRole = user?.app_metadata?.role;
   if (appRole && ROLE_DASHBOARDS[appRole as UserRole]) {
     return appRole as UserRole;
   }
-  
+
+  // Priority 2: user_metadata (also synced by trigger as of 0011, but kept
+  // as a fallback for legacy accounts / older JWTs)
+  const metaRole = user?.user_metadata?.role;
+  if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
+    return metaRole as UserRole;
+  }
+
   return null;
 }
 

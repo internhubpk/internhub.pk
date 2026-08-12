@@ -40,19 +40,23 @@ export default async function DashboardPage() {
   // ============================================================
   // GET ROLE FROM USER METADATA (PRIMARY - No DB Call)
   // ============================================================
+  // Priority: app_metadata FIRST (kept in sync with profiles.role by the
+  // profiles_sync_role_to_auth trigger — migration 0011), then user_metadata
+  // as a fallback. Reading app_metadata first protects us from stale
+  // user_metadata on accounts whose role was changed before 0011.
   let role: UserRole | null = null;
   
-  // Priority 1: user_metadata (most reliable for our use case)
-  const metaRole = user.user_metadata?.role;
-  if (metaRole && ROLE_DASHBOARD_PATHS[metaRole as UserRole]) {
-    role = metaRole as UserRole;
+  // Priority 1: app_metadata (set by triggers/admin operations — authoritative)
+  const appRole = user.app_metadata?.role;
+  if (appRole && ROLE_DASHBOARD_PATHS[appRole as UserRole]) {
+    role = appRole as UserRole;
   }
   
-  // Priority 2: app_metadata (set by triggers/admin)
+  // Priority 2: user_metadata (set at signup; also synced by trigger as of 0011)
   if (!role) {
-    const appRole = user.app_metadata?.role;
-    if (appRole && ROLE_DASHBOARD_PATHS[appRole as UserRole]) {
-      role = appRole as UserRole;
+    const metaRole = user.user_metadata?.role;
+    if (metaRole && ROLE_DASHBOARD_PATHS[metaRole as UserRole]) {
+      role = metaRole as UserRole;
     }
   }
   

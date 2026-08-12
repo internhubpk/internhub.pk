@@ -70,11 +70,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const meta = userData.user_metadata || {};
     const appMeta = userData.app_metadata || {};
     
-    // Determine role from metadata
+    // Determine role from metadata — prefer app_metadata (kept in sync with
+    // profiles.role by the profiles_sync_role_to_auth trigger, migration 0011)
+    // over user_metadata (set once at signup, may be stale on role changes).
     let role: UserRole = 'student';
-    const metaRole = meta.role || appMeta.role;
-    if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
-      role = metaRole as UserRole;
+    const appRole = appMeta.role;
+    if (appRole && ROLE_DASHBOARDS[appRole as UserRole]) {
+      role = appRole as UserRole;
+    } else {
+      const metaRole = meta.role;
+      if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
+        role = metaRole as UserRole;
+      }
     }
 
     return {
@@ -277,15 +284,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return false;
   }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
 
-  // Determine role from multiple sources for the context value
+  // Determine role from multiple sources for the context value.
+  // Priority:
+  //   1. profile.role (DB — most accurate, but requires the profiles table
+  //      to be reachable; on RLS failure we fall through)
+  //   2. user.app_metadata.role (system-managed; kept in sync with
+  //      profiles.role by the profiles_sync_role_to_auth trigger —
+  //      migration 0011)
+  //   3. user.user_metadata.role (set at signup; also synced by the
+  //      trigger as of 0011, but kept last for legacy accounts)
   const getEffectiveRole = useCallback((): UserRole | null => {
     // Priority 1: From profile (DB or fallback)
     if (profile?.role) return profile.role;
-    
-    // Priority 2: From user metadata
-    if (user?.user_metadata?.role) return user.user_metadata.role as UserRole;
+
+    // Priority 2: From app_metadata (system-managed, kept in sync by trigger)
     if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
-    
+
+    // Priority 3: From user_metadata (set at signup)
+    if (user?.user_metadata?.role) return user.user_metadata.role as UserRole;
+
     return null;
   }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
 
