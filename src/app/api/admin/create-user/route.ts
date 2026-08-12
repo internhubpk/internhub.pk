@@ -370,8 +370,20 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("[/api/admin/create-user] unhandled error:", error);
+
+    // Return enough detail to diagnose without exposing sensitive internals.
+    const detail =
+      error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : typeof error === "string"
+          ? error
+          : "Unknown error";
+
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: "Internal server error" },
+      {
+        success: false,
+        error: `Internal server error: ${detail}`,
+      },
       { status: 500 }
     );
   }
