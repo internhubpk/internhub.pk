@@ -328,53 +328,46 @@ export default function SuperAdminUniversitiesPage() {
         // Create admin account for this university
         if (data?.id) {
           try {
-            // 1. Create the auth user in Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-              email: formData.adminEmail.trim(),
-              password: formData.adminPassword,
-              options: {
-                data: {
-                  full_name: formData.adminName.trim() || `${data.name} Admin`,
-                  role: 'university_admin',
-                  university_id: data.id,
-                  university_name: data.name,
-                },
-              },
-            });
-
-            if (authError) {
-              console.error("Auth error:", authError);
-              // If auth fails, still keep the university but warn about admin
-              setMessage({ 
-                type: "warning", 
-                text: `University created but failed to create admin account: ${authError.message}. You can add the admin later.` 
-              });
-            } else if (authData.user) {
-              // 2. Create the profile record
-              const { error: profileError } = await supabase.from("profiles").insert({
-                user_id: authData.user.id,
+            // Call the server-side admin route. This uses the service
+            // role key to create the auth user via
+            // supabase.auth.admin.createUser(), which does NOT establish
+            // a session for the new user — so the currently-signed-in
+            // Super Admin stays signed in.
+            // (Previous flow called supabase.auth.signUp() from the
+            //  browser, which logged the Super Admin IN as the new
+            //  university_admin account. Bad.)
+            const res = await fetch("/api/admin/create-user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
                 email: formData.adminEmail.trim(),
+                password: formData.adminPassword,
                 full_name: formData.adminName.trim() || `${data.name} Admin`,
                 role: "university_admin",
                 university_id: data.id,
-                is_active: true,
+              }),
+            });
+
+            const json = await res.json();
+
+            if (!res.ok || !json?.success) {
+              console.error("Admin creation error:", json?.error);
+              // If auth fails, still keep the university but warn about admin
+              setMessage({
+                type: "warning",
+                text: `University created but failed to create admin account: ${json?.error || `Request failed (${res.status})`}. You can add the admin later.`,
               });
-
-              if (profileError) {
-                console.log("Profile creation warning:", profileError);
-                // Profile might be created by trigger, non-critical
-              }
-
-              setMessage({ 
-                type: "success", 
-                text: `University created! Admin account created for ${formData.adminEmail}. Default password: ${formData.adminPassword}` 
+            } else {
+              setMessage({
+                type: "success",
+                text: `University created! Admin account created for ${formData.adminEmail}. Default password: ${formData.adminPassword}`,
               });
             }
-          } catch (adminError) {
+          } catch (adminError: any) {
             console.error("Admin creation error:", adminError);
-            setMessage({ 
-              type: "warning", 
-              text: "University created but admin account setup encountered an error. Please check Users page." 
+            setMessage({
+              type: "warning",
+              text: `University created but admin account setup encountered an error: ${adminError?.message || "Unknown error"}. Please check Users page.`,
             });
           }
         } else {

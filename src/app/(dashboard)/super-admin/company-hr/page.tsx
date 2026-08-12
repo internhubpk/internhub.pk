@@ -187,59 +187,30 @@ export default function SuperAdminCompanyHrPage() {
 
     setIsCreating(true);
     try {
-      const supabase = createClient();
-
-      // 1. Create auth user — the on_auth_user_created trigger will insert
-      //    a row into profiles with role='company_hr' (from raw_user_meta_data).
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: createForm.email.trim(),
-        password: createForm.password,
-        options: {
-          data: {
-            full_name: createForm.full_name.trim(),
-            role: "company_hr",
-          },
-        },
-      });
-
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create auth user");
-
-      // 2. Update the profile (created by trigger) with company_id, phone, job_title.
-      //    Wait briefly to ensure the trigger has run.
-      await new Promise((r) => setTimeout(r, 500));
-
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: createForm.full_name.trim(),
-          first_name: createForm.full_name.trim().split(" ")[0],
-          last_name: createForm.full_name.trim().split(" ").slice(1).join(" ") || null,
-          company_id: createForm.company_id,
-          job_title: createForm.job_title.trim() || null,
-          phone: createForm.phone.trim() || null,
-          status: "active",
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", authData.user.id);
-
-      if (profileError) {
-        // Trigger might not have created the profile yet — try an insert.
-        const { error: insertError } = await supabase.from("profiles").insert({
-          user_id: authData.user.id,
+      // Call the server-side admin route. This uses the service role key
+      // to create the auth user via supabase.auth.admin.createUser(),
+      // which does NOT establish a session for the new user — so the
+      // currently-signed-in Super Admin stays signed in.
+      // (Previous flow called supabase.auth.signUp() from the browser,
+      //  which logged the Super Admin IN as the new HR account. Bad.)
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           email: createForm.email.trim(),
+          password: createForm.password,
           full_name: createForm.full_name.trim(),
-          first_name: createForm.full_name.trim().split(" ")[0],
-          last_name: createForm.full_name.trim().split(" ").slice(1).join(" ") || null,
           role: "company_hr",
           company_id: createForm.company_id,
-          job_title: createForm.job_title.trim() || null,
-          phone: createForm.phone.trim() || null,
-          status: "active",
-          is_active: true,
-        });
-        if (insertError) throw insertError;
+          job_title: createForm.job_title.trim() || undefined,
+          phone: createForm.phone.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
       }
 
       toast({

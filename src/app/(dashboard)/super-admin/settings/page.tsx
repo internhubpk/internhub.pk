@@ -1,37 +1,30 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
-  Settings,
+  Settings as SettingsIcon,
   Save,
   Globe,
   Bell,
   Shield,
-  Database,
-  Mail,
-  Key,
   Loader2,
   CheckCircle2,
   AlertCircle,
-  CreditCard,
   Server,
-  Activity,
-  HardDrive,
+  RefreshCw,
+  Lock,
   Users,
   Building2,
-  RefreshCw,
-  Zap,
-  Lock,
-  FileText,
+  Briefcase,
   GraduationCap,
+  FileText,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -42,6 +35,28 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/utils/supabase/client";
+
+/**
+ * Super Admin — Platform Settings
+ *
+ * This page is intentionally LEAN. It only contains controls that actually
+ * do something. Demo / placeholder content from earlier prototypes has been
+ * removed:
+ *   - Fake "License Management" section with hardcoded tier/limits
+ *   - Fake "Plan Features" comparison table (Free / Pro / Enterprise)
+ *   - "Upgrade Plan" button that called alert()
+ *   - "Clear Cache" button that did nothing
+ *   - "Export Data" button that did nothing
+ *   - Hardcoded System Health numbers (storage_usage_percent: 23,
+ *     active_connections: 15) — replaced with real DB reachability check
+ *
+ * What's left:
+ *   1. General         — platform name, support email, language, max file size
+ *   2. Notifications   — email + registration alert toggles
+ *   3. Security        — 2FA + session-timeout toggles
+ *   4. Platform Stats  — REAL counts: universities, companies, students, interns
+ *   5. System Health   — REAL database reachability + version info
+ */
 
 interface PlatformSettings {
   platform_name: string;
@@ -54,23 +69,18 @@ interface PlatformSettings {
   max_file_size: number;
 }
 
-interface LicenseInfo {
-  tier: string;
-  universities_used: number;
-  universities_limit: number;
-  students_used: number;
-  students_limit: number;
-  storage_used: number;
-  storage_limit: number;
-  expires_at: string | null;
-  is_active: boolean;
+interface PlatformStats {
+  total_universities: number;
+  total_companies: number;
+  total_students: number;
+  total_faculty: number;
+  total_internships: number;
+  total_applications: number;
 }
 
 interface SystemHealth {
   database_status: "healthy" | "degraded" | "down";
-  storage_usage_percent: number;
-  active_connections: number;
-  last_backup: string | null;
+  db_latency_ms: number | null;
   version: string;
 }
 
@@ -85,45 +95,34 @@ const defaultSettings: PlatformSettings = {
   max_file_size: 10,
 };
 
-const defaultLicense: LicenseInfo = {
-  tier: "free",
-  universities_used: 0,
-  universities_limit: 1,
-  students_used: 0,
-  students_limit: 100,
-  storage_used: 0,
-  storage_limit: 1000,
-  expires_at: null,
-  is_active: true,
+const emptyStats: PlatformStats = {
+  total_universities: 0,
+  total_companies: 0,
+  total_students: 0,
+  total_faculty: 0,
+  total_internships: 0,
+  total_applications: 0,
 };
 
-const defaultHealth: SystemHealth = {
+const emptyHealth: SystemHealth = {
   database_status: "healthy",
-  storage_usage_percent: 23,
-  active_connections: 15,
-  last_backup: new Date().toISOString(),
+  db_latency_ms: null,
   version: "1.0.0",
 };
 
 export default function SuperAdminSettingsPage() {
   const [settings, setSettings] = useState<PlatformSettings>(defaultSettings);
-  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo>(defaultLicense);
-  const [systemHealth, setSystemHealth] = useState<SystemHealth>(defaultHealth);
-  
+  const [stats, setStats] = useState<PlatformStats>(emptyStats);
+  const [health, setHealth] = useState<SystemHealth>(emptyHealth);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    fetchSettings();
-    fetchLicenseInfo();
-    fetchSystemHealth();
-  }, []);
-
-  async function fetchSettings() {
+  const fetchSettings = useCallback(async () => {
     try {
       const supabase = createClient();
-
       const { data, error } = await supabase
         .from("platform_settings")
         .select("*")
@@ -131,61 +130,109 @@ export default function SuperAdminSettingsPage() {
         .single();
 
       if (error && error.code !== "PGRST116") {
-        console.log("No existing settings found, using defaults");
+        // PGRST116 = no rows found. That's fine — fall back to defaults.
+        console.log("Settings fetch returned:", error.message);
       }
 
       if (data?.value) {
-        setSettings({ ...defaultSettings, ...JSON.parse(data.value) });
+        try {
+          setSettings({ ...defaultSettings, ...JSON.parse(data.value) });
+        } catch {
+          // Bad JSON in DB — keep defaults
+        }
       }
     } catch (error) {
       console.error("Error fetching settings:", error);
     }
-  }
+  }, []);
 
-  async function fetchLicenseInfo() {
+  const fetchPlatformStats = useCallback(async () => {
+    setIsRefreshingStats(true);
     try {
       const supabase = createClient();
 
-      // Get university count
-      const { count: uniCount } = await supabase
-        .from("universities")
-        .select("id", { count: "exact", head: true });
+      const [
+        uniRes,
+        coRes,
+        studentsRes,
+        facultyRes,
+        internshipsRes,
+        appsRes,
+      ] = await Promise.all([
+        supabase.from("universities").select("id", { count: "exact", head: true }),
+        supabase.from("companies").select("id", { count: "exact", head: true }),
+        supabase
+          .from("profiles")
+          .select("user_id", { count: "exact", head: true })
+          .eq("role", "student"),
+        supabase
+          .from("profiles")
+          .select("user_id", { count: "exact", head: true })
+          .eq("role", "faculty_supervisor"),
+        supabase.from("internships").select("id", { count: "exact", head: true }),
+        supabase.from("applications").select("id", { count: "exact", head: true }),
+      ]);
 
-      // Get student count
-      const { count: studentCount } = await supabase
+      setStats({
+        total_universities: uniRes.count || 0,
+        total_companies: coRes.count || 0,
+        total_students: studentsRes.count || 0,
+        total_faculty: facultyRes.count || 0,
+        total_internships: internshipsRes.count || 0,
+        total_applications: appsRes.count || 0,
+      });
+    } catch (e) {
+      console.log("Could not fetch platform stats:", e);
+    } finally {
+      setIsRefreshingStats(false);
+    }
+  }, []);
+
+  const fetchSystemHealth = useCallback(async () => {
+    try {
+      const supabase = createClient();
+
+      // Measure DB latency with a tiny count query
+      const started = Date.now();
+      const { error } = await supabase
         .from("profiles")
         .select("user_id", { count: "exact", head: true })
-        .eq("role", "student");
+        .limit(1);
+      const latency = Date.now() - started;
 
-      setLicenseInfo(prev => ({
-        ...prev,
-        universities_used: uniCount || 0,
-        students_used: studentCount || 0,
-      }));
-    } catch (e) {
-      console.log("Could not fetch license info:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function fetchSystemHealth() {
-    try {
-      const supabase = createClient();
-
-      // Test database connection
-      const { error } = await supabase.from("profiles").select("user_id", { count: "exact", head: true }).limit(1);
-
-      if (error && error.code === "42P01") {
-        setSystemHealth(prev => ({ ...prev, database_status: "degraded" }));
+      if (error) {
+        if (error.code === "42P01") {
+          setHealth((prev) => ({
+            ...prev,
+            database_status: "degraded",
+            db_latency_ms: latency,
+          }));
+        } else {
+          setHealth((prev) => ({
+            ...prev,
+            database_status: "degraded",
+            db_latency_ms: latency,
+          }));
+        }
+      } else {
+        setHealth((prev) => ({
+          ...prev,
+          database_status: "healthy",
+          db_latency_ms: latency,
+        }));
       }
-
-      // In a real app, you'd query actual system metrics
-      // For now, we'll use defaults
     } catch (e) {
       console.log("Could not fetch system health:", e);
+      setHealth((prev) => ({ ...prev, database_status: "down", db_latency_ms: null }));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await Promise.all([fetchSettings(), fetchPlatformStats(), fetchSystemHealth()]);
+      setIsLoading(false);
+    })();
+  }, [fetchSettings, fetchPlatformStats, fetchSystemHealth]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -194,21 +241,18 @@ export default function SuperAdminSettingsPage() {
     try {
       const supabase = createClient();
 
-      const { error } = await supabase
-        .from("platform_settings")
-        .upsert({
+      const { error } = await supabase.from("platform_settings").upsert(
+        {
           key: "global",
           value: JSON.stringify(settings),
           updated_at: new Date().toISOString(),
-          updated_by: "super_admin",
-        }, {
-          onConflict: "key",
-        });
+        },
+        { onConflict: "key" }
+      );
 
       if (error) throw error;
 
       setMessage({ type: "success", text: "Settings saved successfully!" });
-      
       setTimeout(() => setMessage(null), 3000);
     } catch (error: any) {
       console.error("Error saving settings:", error);
@@ -225,7 +269,7 @@ export default function SuperAdminSettingsPage() {
           <h1 className="text-3xl font-bold">Platform Settings</h1>
           <p className="text-muted-foreground mt-1">Configure global platform settings</p>
         </div>
-        
+
         <div className="grid gap-6 lg:grid-cols-2">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
@@ -248,7 +292,9 @@ export default function SuperAdminSettingsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Platform Settings</h1>
-          <p className="text-muted-foreground mt-1">Configure global platform settings and monitor system health</p>
+          <p className="text-muted-foreground mt-1">
+            Configure global platform settings and monitor system health
+          </p>
         </div>
         <Button onClick={handleSave} disabled={isSaving}>
           {isSaving ? (
@@ -271,7 +317,7 @@ export default function SuperAdminSettingsPage() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className={`flex items-center gap-3 p-4 rounded-lg border ${
-            message.type === "success" 
+            message.type === "success"
               ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-300"
               : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
           }`}
@@ -307,7 +353,9 @@ export default function SuperAdminSettingsPage() {
                 <Input
                   id="platform_name"
                   value={settings.platform_name}
-                  onChange={(e) => setSettings(prev => ({ ...prev, platform_name: e.target.value }))}
+                  onChange={(e) =>
+                    setSettings((prev) => ({ ...prev, platform_name: e.target.value }))
+                  }
                 />
               </div>
 
@@ -317,7 +365,9 @@ export default function SuperAdminSettingsPage() {
                   id="support_email"
                   type="email"
                   value={settings.support_email}
-                  onChange={(e) => setSettings(prev => ({ ...prev, support_email: e.target.value }))}
+                  onChange={(e) =>
+                    setSettings((prev) => ({ ...prev, support_email: e.target.value }))
+                  }
                 />
               </div>
 
@@ -325,7 +375,9 @@ export default function SuperAdminSettingsPage() {
                 <Label htmlFor="language">Default Language</Label>
                 <Select
                   value={settings.default_language}
-                  onValueChange={(value) => setSettings(prev => ({ ...prev, default_language: value }))}
+                  onValueChange={(value) =>
+                    setSettings((prev) => ({ ...prev, default_language: value }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -345,7 +397,12 @@ export default function SuperAdminSettingsPage() {
                   min="1"
                   max="100"
                   value={settings.max_file_size}
-                  onChange={(e) => setSettings(prev => ({ ...prev, max_file_size: parseInt(e.target.value) || 10 }))}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      max_file_size: parseInt(e.target.value) || 10,
+                    }))
+                  }
                 />
               </div>
             </CardContent>
@@ -374,7 +431,9 @@ export default function SuperAdminSettingsPage() {
                 </div>
                 <Switch
                   checked={settings.email_notifications}
-                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, email_notifications: checked }))}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, email_notifications: checked }))
+                  }
                 />
               </div>
 
@@ -387,7 +446,9 @@ export default function SuperAdminSettingsPage() {
                 </div>
                 <Switch
                   checked={settings.registration_alerts}
-                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, registration_alerts: checked }))}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, registration_alerts: checked }))
+                  }
                 />
               </div>
             </CardContent>
@@ -416,7 +477,9 @@ export default function SuperAdminSettingsPage() {
                 </div>
                 <Switch
                   checked={settings.require_2fa}
-                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, require_2fa: checked }))}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, require_2fa: checked }))
+                  }
                 />
               </div>
 
@@ -429,7 +492,9 @@ export default function SuperAdminSettingsPage() {
                 </div>
                 <Switch
                   checked={settings.session_timeout}
-                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, session_timeout: checked }))}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, session_timeout: checked }))
+                  }
                 />
               </div>
 
@@ -439,9 +504,13 @@ export default function SuperAdminSettingsPage() {
                 <div className="flex items-start gap-3">
                   <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
                   <div>
-                    <p className="font-medium text-amber-800 dark:text-amber-200 text-sm">Security Tip</p>
+                    <p className="font-medium text-amber-800 dark:text-amber-200 text-sm">
+                      Security Tip
+                    </p>
                     <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                      Enable 2FA for all admin accounts to enhance security.
+                      Enable 2FA for all admin accounts to enhance security. Toggles here are
+                      stored as platform policy; per-account 2FA enforcement is configured
+                      in your Supabase Auth settings.
                     </p>
                   </div>
                 </div>
@@ -459,89 +528,87 @@ export default function SuperAdminSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
+                <Server className="h-5 w-5" />
                 System Health
               </CardTitle>
-              <CardDescription>Platform status and performance</CardDescription>
+              <CardDescription>Live database reachability and platform info</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Database Status */}
-              <div className={`flex items-center gap-3 p-3 rounded-lg ${
-                systemHealth.database_status === "healthy" 
-                  ? "bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
-                  : systemHealth.database_status === "degraded"
-                  ? "bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
-                  : "bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800"
-              }`}>
-                <Server className={`h-5 w-5 flex-shrink-0 ${
-                  systemHealth.database_status === "healthy" 
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : systemHealth.database_status === "degraded"
-                    ? "text-amber-600 dark:text-amber-400"
-                    : "text-red-600 dark:text-red-400"
-                }`} />
+              <div
+                className={`flex items-center gap-3 p-3 rounded-lg ${
+                  health.database_status === "healthy"
+                    ? "bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+                    : health.database_status === "degraded"
+                    ? "bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+                    : "bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800"
+                }`}
+              >
+                <Server
+                  className={`h-5 w-5 flex-shrink-0 ${
+                    health.database_status === "healthy"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : health.database_status === "degraded"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                />
                 <div className="flex-1 min-w-0">
-                  <span className={`font-medium text-sm capitalize ${
-                    systemHealth.database_status === "healthy" 
-                      ? "text-emerald-800 dark:text-emerald-200"
-                      : systemHealth.database_status === "degraded"
-                      ? "text-amber-800 dark:text-amber-200"
-                      : "text-red-800 dark:text-red-200"
-                  }`}>
-                    Database: {systemHealth.database_status}
+                  <span
+                    className={`font-medium text-sm capitalize ${
+                      health.database_status === "healthy"
+                        ? "text-emerald-800 dark:text-emerald-200"
+                        : health.database_status === "degraded"
+                        ? "text-amber-800 dark:text-amber-200"
+                        : "text-red-800 dark:text-red-200"
+                    }`}
+                  >
+                    Database: {health.database_status}
                   </span>
+                  {health.db_latency_ms !== null && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Query latency: {health.db_latency_ms} ms
+                    </p>
+                  )}
                 </div>
-                <Badge variant={
-                  systemHealth.database_status === "healthy" 
-                    ? "default" 
-                    : systemHealth.database_status === "degraded"
-                    ? "secondary"
-                    : "destructive"
-                }>
-                  {systemHealth.database_status}
+                <Badge
+                  variant={
+                    health.database_status === "healthy"
+                      ? "default"
+                      : health.database_status === "degraded"
+                      ? "secondary"
+                      : "destructive"
+                  }
+                >
+                  {health.database_status}
                 </Badge>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Connections</span>
-                  </div>
-                  <p className="text-lg font-bold">{systemHealth.active_connections}</p>
-                </div>
-                
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Storage</span>
-                  </div>
-                  <p className="text-lg font-bold">{systemHealth.storage_usage_percent}%</p>
-                </div>
               </div>
 
               {/* Version Info */}
               <div className="pt-2 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Version</span>
-                  <span className="font-mono">{systemHealth.version}</span>
+                  <span className="text-muted-foreground">App Version</span>
+                  <span className="font-mono">{health.version}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Provider</span>
-                  <span className="font-medium">Supabase</span>
+                  <span className="text-muted-foreground">Auth Provider</span>
+                  <span className="font-medium">Supabase Auth</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Database</span>
-                  <span className="font-medium">PostgreSQL</span>
+                  <span className="font-medium">PostgreSQL (Supabase)</span>
                 </div>
               </div>
 
-              <Button variant="outline" className="w-full" onClick={() => {
-                fetchSystemHealth();
-                setMessage({ type: "success", text: "System health refreshed!" });
-                setTimeout(() => setMessage(null), 2000);
-              }}>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  fetchSystemHealth();
+                  setMessage({ type: "success", text: "System health refreshed!" });
+                  setTimeout(() => setMessage(null), 2000);
+                }}
+              >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh Status
               </Button>
@@ -550,7 +617,7 @@ export default function SuperAdminSettingsPage() {
         </motion.div>
       </div>
 
-      {/* License Management Section */}
+      {/* Platform Statistics — real counts from the DB */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -561,219 +628,93 @@ export default function SuperAdminSettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  License Management
+                  <SettingsIcon className="h-5 w-5" />
+                  Platform Statistics
                 </CardTitle>
-                <CardDescription>View current license usage and limits</CardDescription>
+                <CardDescription>
+                  Live counts pulled from the database. Click refresh to update.
+                </CardDescription>
               </div>
-              <Badge 
-                variant={licenseInfo.is_active ? "default" : "destructive"}
-                className="capitalize"
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchPlatformStats}
+                disabled={isRefreshingStats}
               >
-                {licenseInfo.tier} Plan
-              </Badge>
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${isRefreshingStats ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-6 md:grid-cols-3">
-              {/* Universities Usage */}
-              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-blue-500" />
-                  <span className="font-medium">Universities</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold">{licenseInfo.universities_used}</span>
-                  <span className="text-muted-foreground">/ {licenseInfo.universities_limit}</span>
-                </div>
-                <div className="w-full h-2 bg-background rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-300"
-                    style={{ width: `${Math.min(100, (licenseInfo.universities_used / licenseInfo.universities_limit) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {licenseInfo.universities_limit - licenseInfo.universities_used} slots available
-                </p>
-              </div>
-
-              {/* Students Usage */}
-              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                <div className="flex items-center gap-2">
-                  <GraduationCap className="h-5 w-5 text-green-500" />
-                  <span className="font-medium">Students</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold">{licenseInfo.students_used.toLocaleString()}</span>
-                  <span className="text-muted-foreground">/ {licenseInfo.students_limit.toLocaleString()}</span>
-                </div>
-                <div className="w-full h-2 bg-background rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-green-500 transition-all duration-300"
-                    style={{ width: `${Math.min(100, (licenseInfo.students_used / licenseInfo.students_limit) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {(licenseInfo.students_limit - licenseInfo.students_used).toLocaleString()} slots available
-                </p>
-              </div>
-
-              {/* Storage Usage */}
-              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                <div className="flex items-center gap-2">
-                  <HardDrive className="h-5 w-5 text-purple-500" />
-                  <span className="font-medium">Storage</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold">{licenseInfo.storage_used}</span>
-                  <span className="text-muted-foreground">/ {licenseInfo.storage_limit} MB</span>
-                </div>
-                <div className="w-full h-2 bg-background rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-purple-500 transition-all duration-300"
-                    style={{ width: `${Math.min(100, (licenseInfo.storage_used / licenseInfo.storage_limit) * 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {licenseInfo.storage_limit - licenseInfo.storage_used} MB available
-                </p>
-              </div>
-            </div>
-
-            {/* License Details */}
-            <div className="mt-6 p-4 rounded-lg border bg-card">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-xl bg-primary/10">
-                    <Zap className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold capitalize">{licenseInfo.tier} Plan</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {licenseInfo.expires_at 
-                        ? `Valid until ${new Date(licenseInfo.expires_at).toLocaleDateString()}`
-                        : "Free plan - no expiration"
-                      }
-                    </p>
-                  </div>
-                </div>
-                
-                <Button variant="outline" asChild>
-                  <a href="#" onClick={(e) => {
-                    e.preventDefault();
-                    alert("Upgrade functionality would be implemented here");
-                  }}>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Upgrade Plan
-                  </a>
-                </Button>
-              </div>
-            </div>
-
-            {/* Feature Comparison Table */}
-            <div className="mt-6 overflow-x-auto">
-              <h4 className="font-medium mb-3">Plan Features</h4>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-3 font-medium">Feature</th>
-                    <th className="text-center py-2 px-3 font-medium">Free</th>
-                    <th className="text-center py-2 px-3 font-medium">Professional</th>
-                    <th className="text-center py-2 px-3 font-medium">Enterprise</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { feature: "Universities", free: "1", pro: "10", enterprise: "Unlimited" },
-                    { feature: "Students per University", free: "100", pro: "1,000", enterprise: "Unlimited" },
-                    { feature: "Storage", free: "1 GB", pro: "10 GB", enterprise: "100 GB" },
-                    { feature: "Custom Branding", free: false, pro: true, enterprise: true },
-                    { feature: "API Access", free: false, pro: true, enterprise: true },
-                    { feature: "Priority Support", free: false, pro: false, enterprise: true },
-                    { feature: "SSO Integration", free: false, pro: false, enterprise: true },
-                  ].map((row) => (
-                    <tr key={row.feature} className="border-b border-border/50 last:border-0">
-                      <td className="py-2 px-3">{row.feature}</td>
-                      <td className="text-center py-2 px-3">
-                        {typeof row.free === "boolean" 
-                          ? <CheckCircle2 className={`h-4 w-4 mx-auto ${row.free ? "text-emerald-500" : "text-muted-foreground/30"}`} />
-                          : row.free
-                        }
-                      </td>
-                      <td className="text-center py-2 px-3">
-                        {typeof row.pro === "boolean" 
-                          ? <CheckCircle2 className={`h-4 w-4 mx-auto ${row.pro ? "text-emerald-500" : "text-muted-foreground/30"}`} />
-                          : row.pro
-                        }
-                      </td>
-                      <td className="text-center py-2 px-3">
-                        {typeof row.enterprise === "boolean" 
-                          ? <CheckCircle2 className={`h-4 w-4 mx-auto ${row.enterprise ? "text-emerald-500" : "text-muted-foreground/30"}`} />
-                          : row.enterprise
-                        }
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <StatTile
+                label="Universities"
+                value={stats.total_universities}
+                icon={<Building2 className="h-5 w-5 text-blue-500" />}
+                accent="bg-blue-50 dark:bg-blue-950/30"
+              />
+              <StatTile
+                label="Companies"
+                value={stats.total_companies}
+                icon={<Briefcase className="h-5 w-5 text-orange-500" />}
+                accent="bg-orange-50 dark:bg-orange-950/30"
+              />
+              <StatTile
+                label="Students"
+                value={stats.total_students}
+                icon={<GraduationCap className="h-5 w-5 text-emerald-500" />}
+                accent="bg-emerald-50 dark:bg-emerald-950/30"
+              />
+              <StatTile
+                label="Faculty Supervisors"
+                value={stats.total_faculty}
+                icon={<Users className="h-5 w-5 text-teal-500" />}
+                accent="bg-teal-50 dark:bg-teal-950/30"
+              />
+              <StatTile
+                label="Internships"
+                value={stats.total_internships}
+                icon={<FileText className="h-5 w-5 text-purple-500" />}
+                accent="bg-purple-50 dark:bg-purple-950/30"
+              />
+              <StatTile
+                label="Applications"
+                value={stats.total_applications}
+                icon={<FileText className="h-5 w-5 text-amber-500" />}
+                accent="bg-amber-50 dark:bg-amber-950/30"
+              />
             </div>
           </CardContent>
         </Card>
       </motion.div>
+    </div>
+  );
+}
 
-      {/* Danger Zone */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
-      >
-        <Card className="border-red-200 dark:border-red-900">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
-              Danger Zone
-            </CardTitle>
-            <CardDescription>Irreversible actions that affect the entire platform</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
-              <div>
-                <p className="font-medium text-red-800 dark:text-red-200">Clear All Cache</p>
-                <p className="text-sm text-red-700 dark:text-red-300">Clear all cached data across the platform</p>
-              </div>
-              <Button 
-                variant="outline" 
-                className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
-                onClick={() => {
-                  if (confirm("Are you sure you want to clear all cache?")) {
-                    setMessage({ type: "success", text: "Cache cleared successfully!" });
-                    setTimeout(() => setMessage(null), 3000);
-                  }
-                }}
-              >
-                Clear Cache
-              </Button>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg bg-muted/50">
-              <div>
-                <p className="font-medium">Export Platform Data</p>
-                <p className="text-sm text-muted-foreground">Download a backup of all platform data</p>
-              </div>
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  setMessage({ type: "success", text: "Export started! You will receive an email when ready." });
-                  setTimeout(() => setMessage(null), 3000);
-                }}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                Export Data
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+/**
+ * Small tile component for displaying a single stat.
+ */
+function StatTile({
+  label,
+  value,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <div className={`p-4 rounded-lg ${accent} border border-border/50`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+        {icon}
+      </div>
+      <p className="text-3xl font-bold">{value.toLocaleString()}</p>
     </div>
   );
 }
