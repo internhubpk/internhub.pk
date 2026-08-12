@@ -67,7 +67,15 @@ interface Task {
   description: string | null;
   course_name: string | null;
   due_date: string | null;
-  status: "pending" | "assigned" | "in_progress" | "submitted" | "approved" | "rejected";
+  status:
+    | "pending"
+    | "assigned"
+    | "in_progress"
+    | "submitted"
+    | "resubmitted"
+    | "under_review"
+    | "approved"
+    | "rejected";
   priority: "low" | "medium" | "high" | "urgent";
   created_at: string;
   submission?: TaskSubmission;
@@ -81,7 +89,7 @@ interface TaskSubmission {
   file_url: string | null;
   file_name: string | null;
   submitted_at: string;
-  status: "pending" | "under_review" | "approved" | "rejected";
+  status: "pending" | "submitted" | "resubmitted" | "under_review" | "approved" | "rejected";
   feedback: string | null;
   reviewed_at: string | null;
 }
@@ -110,41 +118,43 @@ export default function StudentTasksPage() {
     if (!user) return;
 
     try {
-      const supabase = createClient();
-      
-      // Fetch tasks assigned to this student
-      const { data: tasksData, error } = await supabase
-        .from("tasks")
-        .select("*")
-        .eq("student_user_id", user.id)
-        .order("due_date", { ascending: true });
-
-      if (error) throw error;
-
-      // Fetch submissions for these tasks
-      const taskIds = (tasksData || []).map(t => t.id);
-      
-      let submissionsMap: Record<string, TaskSubmission> = {};
-      
-      if (taskIds.length > 0) {
-        const { data: submissionsData } = await supabase
-          .from("task_submissions")
-          .select("*")
-          .eq("student_user_id", user.id)
-          .in("task_id", taskIds);
-
-        (submissionsData || []).forEach((sub: any) => {
-          submissionsMap[sub.task_id] = sub;
-        });
+      // Fetch tasks via the API (which queries task_assignments, not
+      // tasks directly — tasks has no student_user_id column).
+      const res = await fetch("/api/student/tasks", { cache: "no-store" });
+      const json = await res.json().catch(() => ({ success: false, data: [] }));
+      if (res.ok && json?.success && Array.isArray(json.data)) {
+        // Map the API's enriched rows to the UI's Task interface.
+        const tasksWithSubmissions: Task[] = (json.data as any[]).map((row) => ({
+          id: row.id,
+          title: row.title || "",
+          description: row.description || null,
+          course_name: null, // not in schema; left null
+          due_date: row.due_date || null,
+          // Use the assignment status as the task status for the student's
+          // view (pending/submitted/approved/rejected).
+          status: (row.assignment_status as Task["status"]) || "pending",
+          priority: (row.priority as Task["priority"]) || "medium",
+          created_at: row.created_at || new Date().toISOString(),
+          submission: row.submission_id
+            ? {
+                id: row.submission_id,
+                task_id: row.id,
+                notes: row.submission_notes,
+                url: row.submission_url,
+                file_url: row.submission_file_url,
+                file_name: row.submission_file_name,
+                submitted_at: row.submission_submitted_at || new Date().toISOString(),
+                status: (row.submission_status as TaskSubmission["status"]) || "pending",
+                feedback: row.submission_feedback,
+                reviewed_at: row.submission_reviewed_at,
+              }
+            : undefined,
+        }));
+        setTasks(tasksWithSubmissions);
+      } else {
+        console.error("Error fetching tasks:", json?.error || `HTTP ${res.status}`);
+        setTasks([]);
       }
-
-      // Combine tasks with their submissions
-      const tasksWithSubmissions: Task[] = (tasksData || []).map(task => ({
-        ...task,
-        submission: submissionsMap[task.id],
-      }));
-
-      setTasks(tasksWithSubmissions);
     } catch (error) {
       console.error("Error fetching tasks:", error);
     } finally {
@@ -252,13 +262,12 @@ export default function StudentTasksPage() {
     setIsSubmitting(true);
 
     try {
-      const supabase = createClient();
-
       let fileUrl: string | null = null;
       let fileName: string | null = null;
 
       // Upload file if provided
       if (submissionFile) {
+        const supabase = createClient();
         const fileExt = submissionFile.name.split('.').pop();
         const fileNameUnique = `submission_${user.id}_${selectedTask.id}_${Date.now()}.${fileExt}`;
         const filePath = `submissions/${fileNameUnique}`;
@@ -277,31 +286,23 @@ export default function StudentTasksPage() {
         fileName = submissionFile.name;
       }
 
-      // Create or update submission
-      const submissionData = {
-        task_id: selectedTask.id,
-        student_user_id: user.id,
-        notes: submissionNotes,
-        url: submissionUrl || null,
-        file_url: fileUrl,
-        file_name: fileName,
-        status: "pending",
-        submitted_at: new Date().toISOString(),
-      };
-
-      const { error: submitError } = await supabase
-        .from("task_submissions")
-        .upsert(submissionData, {
-          onConflict: "task_id,student_user_id",
-        });
-
-      if (submitError) throw submitError;
-
-      // Update task status
-      await supabase
-        .from("tasks")
-        .update({ status: "submitted" })
-        .eq("id", selectedTask.id);
+      // Submit via the API (which upserts task_submissions + updates the
+      // assignment status atomically).
+      const res = await fetch("/api/student/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: selectedTask.id,
+          notes: submissionNotes || undefined,
+          url: submissionUrl || undefined,
+          file_url: fileUrl || undefined,
+          file_name: fileName || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Failed to submit task (HTTP ${res.status})`);
+      }
 
       // Reset form and close dialog
       setSubmitDialogOpen(false);
@@ -314,7 +315,7 @@ export default function StudentTasksPage() {
       await fetchTasks();
     } catch (error) {
       console.error("Error submitting task:", error);
-      alert("Failed to submit task. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to submit task. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

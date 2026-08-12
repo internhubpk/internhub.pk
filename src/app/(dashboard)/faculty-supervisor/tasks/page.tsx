@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -123,6 +123,39 @@ interface Task {
 // Default empty data - will be populated from database
 const DEFAULT_STUDENTS: StudentOption[] = [];
 const DEFAULT_TASKS: Task[] = [];
+
+// Map an API task row (snake_case) to the UI's Task interface (camelCase).
+// The API returns tasks with `assignments` (joined task_assignments with
+// student profile) and `submissions` (joined task_submissions).
+function mapApiTaskToUi(apiTask: any): Task {
+  const assignments: any[] = Array.isArray(apiTask.assignments) ? apiTask.assignments : [];
+  const submissions: any[] = Array.isArray(apiTask.submissions) ? apiTask.submissions : [];
+
+  const assignedStudents: StudentOption[] = assignments.map((a: any) => ({
+    id: a.student_user_id || a.student?.user_id || "",
+    name: a.student?.full_name || `Student ${(a.student_user_id || "").slice(0, 6)}`,
+    email: a.student?.email || "",
+    program: "", // program name not joined in API response; left blank
+  }));
+
+  return {
+    id: apiTask.id,
+    title: apiTask.title || "",
+    description: apiTask.description || null,
+    status: (apiTask.status as TaskStatus) || "draft",
+    priority: (apiTask.priority as TaskPriority) || "medium",
+    dueDate: apiTask.due_date || "",
+    createdAt: apiTask.created_at || new Date().toISOString(),
+    updatedAt: apiTask.updated_at || new Date().toISOString(),
+    assignedStudents,
+    completedBy: submissions
+      .filter((s: any) => s.status === "approved")
+      .map((s: any) => s.student_user_id),
+    attachments: [], // attachments not yet fetched via API; left empty
+    submissionCount: submissions.length,
+    totalAssigned: assignments.length,
+  };
+}
 
 // Interface for task form props
 interface TaskFormProps {
@@ -291,69 +324,71 @@ export default function FacultySupervisorTasksPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
-  // Fetch data from database
-  useEffect(() => {
-    async function fetchData() {
-      if (!user) { setIsLoading(false); return; }
-      
-      try {
-        const supabase = createClient();
-        
-        // Get supervisor record
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
+  // Fetch data from database + API
+  const fetchData = useCallback(async () => {
+    if (!user) { setIsLoading(false); return; }
 
-        if (!supervisor) {
-          setIsLoading(false);
-          return;
-        }
+    try {
+      const supabase = createClient();
 
-        // Fetch supervised students. NOTE: the FK column is student_user_id,
-        // not student_id.
-        const { data: studentData } = await supabase
-          .from("student_internships")
-          .select(`
-            student_user_id,
-            student:students(
-              id,
-              full_name,
-              email,
-              program:programs(id, name)
-            )
-          `)
-          .eq("faculty_supervisor_id", user.id)
-          .in("status", ["active", "in_progress"]);
+      // Fetch supervised students. student_internships.student_user_id
+      // references profiles.user_id (NOT students.user_id), so we join to
+      // profiles. The student's program comes from student_internships.program_id.
+      const { data: studentData, error: studentErr } = await supabase
+        .from("student_internships")
+        .select(`
+          student_user_id,
+          program:programs(id, name),
+          student:profiles!student_internships_student_user_id_fkey(user_id, full_name, email)
+        `)
+        .eq("faculty_supervisor_id", user.id)
+        .in("status", ["assigned", "active"]);
 
-        const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
-          id: s.student?.id || s.student_user_id,
-          name: s.student?.full_name || `Student ${s.student_user_id?.slice(0, 6)}`,
-          email: s.student?.email || "",
-          program: s.student?.program?.name || "Unknown Program",
-        }));
-
-        setStudents(studentList);
-
-        // Fetch tasks (when API is ready)
-        // const { data: taskData } = await supabase
-        //   .from("tasks")
-        //   .select("*")
-        //   .eq("supervisor_id", supervisor.id);
-        
-        // setTasks(taskData || []);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        // Keep empty state on error
-      } finally {
-        setIsLoading(false);
+      if (studentErr) {
+        console.error("Error fetching students:", studentErr);
       }
+
+      const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
+        id: s.student?.user_id || s.student_user_id,
+        name: s.student?.full_name || `Student ${(s.student_user_id || "").slice(0, 6)}`,
+        email: s.student?.email || "",
+        program: s.program?.name || "Unknown Program",
+      }));
+
+      // Deduplicate by student id (a student may have multiple internships)
+      const dedupedStudents = Array.from(
+        studentList.reduce((map, s) => {
+          if (!map.has(s.id)) map.set(s.id, s);
+          return map;
+        }, new Map<string, StudentOption>()).values()
+      );
+      setStudents(dedupedStudents);
+
+      // Fetch tasks via the API
+      try {
+        const res = await fetch("/api/faculty-supervisor/tasks", { cache: "no-store" });
+        const json = await res.json().catch(() => ({ success: false, data: [] }));
+        if (res.ok && json?.success && Array.isArray(json.data)) {
+          setTasks((json.data as any[]).map(mapApiTaskToUi));
+        } else {
+          console.error("Error fetching tasks:", json?.error || `HTTP ${res.status}`);
+          setTasks([]);
+        }
+      } catch (taskErr) {
+        console.error("Error fetching tasks:", taskErr);
+        setTasks([]);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      // Keep empty state on error
+    } finally {
+      setIsLoading(false);
     }
-    
-    fetchData();
   }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -459,61 +494,85 @@ export default function FacultySupervisorTasksPage() {
 
   const handleCreateTask = async () => {
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newTask: Task = {
-      id: Date.now().toString(),
-      title: formData.title,
-      description: formData.description,
-      status: "draft",
-      priority: formData.priority,
-      dueDate: formData.dueDate,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      assignedStudents: students.filter(s => formData.assignedStudentIds.includes(s.id)),
-      completedBy: [],
-      attachments: [],
-      submissionCount: 0,
-      totalAssigned: formData.assignedStudentIds.length,
-    };
-
-    setTasks(prev => [newTask, ...prev]);
-    setIsCreateDialogOpen(false);
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      const res = await fetch("/api/faculty-supervisor/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description || undefined,
+          priority: formData.priority,
+          due_date: formData.dueDate,
+          student_user_ids: formData.assignedStudentIds,
+          status: "draft",
+        }),
+      });
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      if (!res.ok || !json?.success) {
+        alert(json?.error || `Failed to create task (HTTP ${res.status})`);
+        return;
+      }
+      setIsCreateDialogOpen(false);
+      resetForm();
+      await fetchData();
+    } catch (err) {
+      console.error("Error creating task:", err);
+      alert(err instanceof Error ? err.message : "Failed to create task");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleUpdateTask = async () => {
     if (!selectedTask) return;
-    
+
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    setTasks(prev => prev.map(task => 
-      task.id === selectedTask.id 
-        ? {
-            ...task,
-            title: formData.title,
-            description: formData.description,
-            priority: formData.priority,
-            dueDate: formData.dueDate,
-            assignedStudents: students.filter(s => formData.assignedStudentIds.includes(s.id)),
-            totalAssigned: formData.assignedStudentIds.length,
-            updatedAt: new Date().toISOString(),
-          }
-        : task
-    ));
-
-    setIsEditDialogOpen(false);
-    setSelectedTask(null);
-    resetForm();
-    setIsSubmitting(false);
+    try {
+      const res = await fetch("/api/faculty-supervisor/tasks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: selectedTask.id,
+          title: formData.title,
+          description: formData.description || null,
+          priority: formData.priority,
+          due_date: formData.dueDate,
+          student_user_ids: formData.assignedStudentIds,
+        }),
+      });
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      if (!res.ok || !json?.success) {
+        alert(json?.error || `Failed to update task (HTTP ${res.status})`);
+        return;
+      }
+      setIsEditDialogOpen(false);
+      setSelectedTask(null);
+      resetForm();
+      await fetchData();
+    } catch (err) {
+      console.error("Error updating task:", err);
+      alert(err instanceof Error ? err.message : "Failed to update task");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
+    try {
+      const res = await fetch(
+        `/api/faculty-supervisor/tasks?task_id=${encodeURIComponent(taskId)}`,
+        { method: "DELETE" }
+      );
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+      if (!res.ok || !json?.success) {
+        alert(json?.error || `Failed to delete task (HTTP ${res.status})`);
+        return;
+      }
+      await fetchData();
+    } catch (err) {
+      console.error("Error deleting task:", err);
+      alert(err instanceof Error ? err.message : "Failed to delete task");
+    }
   };
 
   const openEditDialog = (task: Task) => {
