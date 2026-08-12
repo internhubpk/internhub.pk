@@ -92,13 +92,7 @@ interface SiteSupervisor {
 // Default empty state - supervisors will be fetched from database
 const DEFAULT_SUPERVISORS: SiteSupervisor[] = [];
 
-const availablePrograms = [
-  "Software Engineering Internship - Summer 2024",
-  "Digital Marketing & Social Media Intern",
-  "Data Analytics Research Program",
-  "UI/UX Design Internship",
-];
-
+// Common department focus labels — stored as free-text on the supervisor row.
 const departments = [
   "Software Engineering",
   "Data Science",
@@ -111,11 +105,25 @@ const departments = [
 
 export default function CompanyHRSupervisorsPage() {
   const [supervisors, setSupervisors] = useState<SiteSupervisor[]>(DEFAULT_SUPERVISORS);
+  const [availablePrograms, setAvailablePrograms] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchSupervisors();
+    fetchPrograms();
   }, []);
+
+  async function fetchPrograms() {
+    try {
+      const res = await fetch("/api/company-hr/internships?limit=100", { cache: "no-store" });
+      if (!res.ok) return;
+      const j = await res.json();
+      const list = (j.data || []).map((i: any) => i.title).filter(Boolean);
+      setAvailablePrograms(list);
+    } catch {
+      // ignore
+    }
+  }
 
   async function fetchSupervisors() {
     try {

@@ -68,7 +68,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -107,55 +106,99 @@ interface AttendanceSummary {
 const DEFAULT_RECORDS: AttendanceRecord[] = [];
 const DEFAULT_SUMMARIES: AttendanceSummary[] = [];
 
-const programs = ["All Programs", "Marketing Intern", "Software Engineering Intern", "Data Science Intern", "UI/UX Design Intern"];
+const DEFAULT_PROGRAMS = ["All Programs"];
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateLong(iso: string): string {
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function shiftDate(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function CompanyHRAttendancePage() {
   const { profile } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>(DEFAULT_RECORDS);
   const [summaries, setSummaries] = useState<AttendanceSummary[]>(DEFAULT_SUMMARIES);
+  const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso());
+  const [attendanceStats, setAttendanceStats] = useState<any>(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchAttendance();
-  }, [profile?.company_id]);
+  }, [profile?.company_id, selectedDate]);
 
   async function fetchAttendance() {
-    if (!profile?.company_id) { setIsLoading(false); return; }
+    setIsLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          student:profiles!student_user_id(full_name, email),
-          internships!inner(title, company_id)
-        `)
-        .eq('internships.company_id', profile.company_id)
-        .order('date', { ascending: false })
-        .limit(50);
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const recs: AttendanceRecord[] = data.map((rec: any) => ({
-          id: rec.id,
-          intern_id: rec.student_user_id,
-          intern_name: rec.student?.full_name || 'Unknown',
-          intern_email: rec.student?.email || '',
-          program: rec.internships?.title || 'Unknown Program',
-          date: rec.date,
-          check_in: rec.check_in,
-          check_out: rec.check_out,
-          status: rec.status || 'present',
-          notes: rec.notes,
-          location: rec.location,
-          verified: rec.verified ?? true,
-        }));
-        setRecords(recs);
+      const url = `/api/company-hr/attendance?date=${encodeURIComponent(selectedDate)}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
+      const j = await res.json();
+      const recs: AttendanceRecord[] = (j.data || []).map((rec: any) => ({
+        id: rec.id,
+        intern_id: rec.student_user_id,
+        intern_name: rec.student_name || "Unknown",
+        intern_email: rec.student_email || "",
+        program: rec.internship_title || "Unknown Program",
+        date: rec.date,
+        check_in: rec.check_in,
+        check_out: rec.check_out,
+        status: rec.status || "present",
+        notes: rec.notes,
+        location: null,
+        verified: rec.verified ?? false,
+      }));
+      setRecords(recs);
+      setAttendanceStats(j.stats || null);
+      // Build programs filter list from internships returned
+      const internshipTitles = (j.internships || []).map((i: any) => i.title).filter(Boolean);
+      setPrograms(["All Programs", ...Array.from(new Set(internshipTitles as string[]))]);
+
+      // Compute per-intern summaries from records (approximation)
+      const byIntern = new Map<string, { name: string; program: string; total: number; present: number; late: number; absent: number; leave: number; half_day: number }>();
+      for (const r of recs) {
+        const k = r.intern_id;
+        const cur = byIntern.get(k) || { name: r.intern_name, program: r.program, total: 0, present: 0, late: 0, absent: 0, leave: 0, half_day: 0 };
+        cur.total += 1;
+        if (r.status === "present") cur.present += 1;
+        else if (r.status === "late") cur.late += 1;
+        else if (r.status === "absent") cur.absent += 1;
+        else if (r.status === "leave") cur.leave += 1;
+        else if (r.status === "half_day") cur.half_day += 1;
+        byIntern.set(k, cur);
+      }
+      const sums: AttendanceSummary[] = Array.from(byIntern.values()).map((s) => ({
+        intern_id: "",
+        intern_name: s.name,
+        program: s.program,
+        total_days: s.total,
+        present_days: s.present,
+        absent_days: s.absent,
+        late_days: s.late,
+        leave_days: s.leave,
+        half_day_days: s.half_day,
+        attendance_rate: s.total > 0 ? Math.round(((s.present + s.late + s.half_day) / s.total) * 100) : 0,
+      }));
+      setSummaries(sums);
     } catch (error) {
       console.error("Error fetching attendance:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
@@ -213,14 +256,42 @@ export default function CompanyHRAttendancePage() {
 
   const getInitials = (name: string) => name.split(" ").map(n => n[0]).join("").toUpperCase();
 
-  // Stats
+  // Stats — computed from the API-returned stats object (when available)
+  // or from the records array (filtered to the selected date).
   const stats = {
-    todayTotal: records.filter(r => r.date === "2024-02-12").length,
-    todayPresent: records.filter(r => r.date === "2024-02-12" && r.status === "present").length,
-    todayAbsent: records.filter(r => r.date === "2024-02-12" && r.status === "absent").length,
-    todayLate: records.filter(r => r.date === "2024-02-12" && r.status === "late").length,
-    avgAttendanceRate: Math.round(summaries.reduce((acc, s) => acc + s.attendance_rate, 0) / summaries.length),
+    todayTotal: attendanceStats?.total ?? records.length,
+    todayPresent: attendanceStats?.present ?? records.filter(r => r.status === "present").length,
+    todayAbsent: attendanceStats?.absent ?? records.filter(r => r.status === "absent").length,
+    todayLate: attendanceStats?.late ?? records.filter(r => r.status === "late").length,
+    avgAttendanceRate: summaries.length > 0
+      ? Math.round(summaries.reduce((acc, s) => acc + s.attendance_rate, 0) / summaries.length)
+      : 0,
     perfectAttendance: summaries.filter(s => s.attendance_rate === 100).length,
+  };
+
+  // Save correction: persist to the API
+  const handleSaveCorrection = async () => {
+    if (!selectedRecord || !correctionReason.trim()) return;
+    setSavingCorrection(true);
+    try {
+      const res = await fetch(`/api/company-hr/attendance/${selectedRecord.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, notes: correctionReason }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      setRecords(recs =>
+        recs.map(r => (r.id === selectedRecord.id ? { ...r, status: newStatus, notes: correctionReason, verified: true } : r))
+      );
+      setIsCorrectionOpen(false);
+      setCorrectionReason("");
+      setSelectedRecord(null);
+    } catch (e: any) {
+      alert(e.message || "Failed to save correction");
+    } finally {
+      setSavingCorrection(false);
+    }
   };
 
   const openCorrectionDialog = (record: AttendanceRecord) => {
@@ -240,7 +311,36 @@ export default function CompanyHRAttendancePage() {
           </p>
         </div>
 
-        <Button variant="outline" className="gap-2">
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={() => {
+            const rows = [
+              ["Intern", "Email", "Program", "Date", "Status", "Check-in", "Check-out", "Notes"],
+              ...filteredRecords.map((r) => [
+                r.intern_name,
+                r.intern_email,
+                r.program,
+                r.date,
+                r.status,
+                r.check_in || "",
+                r.check_out || "",
+                r.notes || "",
+              ]),
+            ];
+            const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `attendance-${selectedDate}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }}
+          disabled={filteredRecords.length === 0}
+        >
           <Download className="h-4 w-4" />
           Export Report
         </Button>
@@ -320,7 +420,7 @@ export default function CompanyHRAttendancePage() {
               </SelectTrigger>
               <SelectContent>
                 {programs.map(program => (
-                  <SelectItem key={program} value={program.toLowerCase().replace(" ", "_")}>{program}</SelectItem>
+                  <SelectItem key={program} value={program === "All Programs" ? "all" : program}>{program}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -355,15 +455,30 @@ export default function CompanyHRAttendancePage() {
 
           {/* Date Navigation */}
           <div className="flex items-center justify-between mb-4 p-3 bg-muted/30 rounded-lg">
-            <Button variant="ghost" size="sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+            >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
             <div className="flex items-center gap-2 font-medium">
               <Calendar className="h-4 w-4" />
-              Monday, February 12, 2024
+              {formatDateLong(selectedDate)}
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="ml-2 border rounded px-2 py-1 text-sm bg-background"
+                aria-label="Pick a date"
+              />
             </div>
-            <Button variant="ghost" size="sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
+            >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -439,7 +554,13 @@ export default function CompanyHRAttendancePage() {
                             <DropdownMenuItem onClick={() => openCorrectionDialog(record)}>
                               <Edit3 className="mr-2 h-4 w-4" /> Mark Correction
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                alert(
+                                  `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}`
+                                );
+                              }}
+                            >
                               <Eye className="mr-2 h-4 w-4" /> View Details
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -597,11 +718,11 @@ export default function CompanyHRAttendancePage() {
                 <Button variant="outline" onClick={() => { setIsCorrectionOpen(false); setCorrectionReason(""); }}>
                   Cancel
                 </Button>
-                <Button 
-                  disabled={!correctionReason.trim()}
-                  onClick={() => { setIsCorrectionOpen(false); setCorrectionReason(""); }}
+                <Button
+                  disabled={!correctionReason.trim() || savingCorrection}
+                  onClick={handleSaveCorrection}
                 >
-                  Save Correction
+                  {savingCorrection ? "Saving..." : "Save Correction"}
                 </Button>
               </DialogFooter>
             </div>

@@ -69,7 +69,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
@@ -87,7 +86,7 @@ interface ActiveIntern {
   supervisor_name?: string | null;
   start_date: string;
   end_date: string;
-  status: "active" | "on_leave" | "completed" | "terminated";
+  status: "assigned" | "active" | "paused" | "completed" | "terminated";
   attendance_rate: number;
   overall_rating?: number | null;
   offer_letter_uploaded: boolean;
@@ -99,75 +98,59 @@ interface ActiveIntern {
 // Default empty state - interns will be fetched from database
 const DEFAULT_INTERNS: ActiveIntern[] = [];
 
-const availableSupervisors = [
-  { id: "sup_001", name: "Ahmed Khan", department: "Software Engineering", intern_count: 6 },
-  { id: "sup_002", name: "Fatima Ali", department: "Marketing & Design", intern_count: 4 },
-  { id: "sup_003", name: "Omar Hassan", department: "Data Science", intern_count: 8 },
-];
-
-const programs = [
-  "All Programs",
-  "Software Engineering Intern",
-  "Marketing Intern",
-  "Data Science Intern",
-  "UI/UX Design Intern",
-];
+// Curated program filter list — replaced dynamically after data loads.
+const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHRInternsPage() {
   const { profile } = useAuth();
   const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
+  const [supervisors, setSupervisors] = useState<Array<{ user_id: string; name: string; email: string }>>([]);
+  const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [isLoading, setIsLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     fetchInterns();
   }, [profile?.company_id]);
 
   async function fetchInterns() {
-    if (!profile?.company_id) { setIsLoading(false); return; }
+    setIsLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('student_internships')
-        .select(`
-          *,
-          student:profiles!student_user_id(full_name, email, phone),
-          internships!inner(title),
-          site_supervisor:profiles!site_supervisor_id(full_name)
-        `)
-        .eq('company_id', profile.company_id)
-        .in('status', ['assigned', 'active', 'on_leave', 'completed'])
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const internList: ActiveIntern[] = data.map((intern: any) => ({
-          id: intern.id,
-          student_id: intern.student_user_id,
-          student_name: intern.student?.full_name || 'Unknown',
-          student_email: intern.student?.email || '',
-          phone: intern.student?.phone,
-          university: '',
-          department: '',
-          internship_id: intern.internship_id,
-          internship_title: intern.internships?.title || 'Unknown Program',
-          supervisor_id: intern.site_supervisor_id,
-          supervisor_name: intern.site_supervisor?.full_name || null,
-          start_date: intern.start_date,
-          end_date: intern.end_date,
-          status: intern.status || 'active',
-          attendance_rate: intern.attendance_rate || 0,
-          overall_rating: intern.overall_rating,
-          offer_letter_uploaded: intern.offer_letter_uploaded || false,
-          certificate_issued: intern.certificate_issued || false,
-          weekly_logs_submitted: intern.weekly_logs_submitted || 0,
-          total_weeks: intern.total_weeks || 0,
-        }));
-        setInterns(internList);
+      const res = await fetch("/api/company-hr/interns", { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
+      const j = await res.json();
+      const list = (j.data || []).map((intern: any) => ({
+        id: intern.id,
+        student_id: intern.student_user_id,
+        student_name: intern.student_name || "Unknown",
+        student_email: intern.student_email || "",
+        phone: intern.student_phone || null,
+        university: intern.university || "",
+        department: intern.department || "",
+        internship_id: intern.internship_id,
+        internship_title: intern.internship_title || "Unknown Program",
+        supervisor_id: intern.site_supervisor_id,
+        supervisor_name: intern.supervisor_name || null,
+        start_date: intern.start_date,
+        end_date: intern.end_date,
+        status: intern.status || "active",
+        attendance_rate: intern.attendance_rate || 0,
+        overall_rating: intern.overall_rating || 0,
+        offer_letter_uploaded: intern.offer_letter_uploaded || false,
+        certificate_issued: intern.certificate_issued || false,
+        weekly_logs_submitted: intern.weekly_logs_submitted || 0,
+        total_weeks: intern.internship_duration_weeks || 0,
+      }));
+      setInterns(list);
+      setSupervisors(j.supervisors || []);
+      // Build program filter list from data
+      const uniquePrograms = Array.from(new Set(list.map((i: any) => i.internship_title).filter(Boolean))) as string[];
+      setPrograms(["All Programs", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching interns:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
@@ -198,8 +181,10 @@ export default function CompanyHRInternsPage() {
     switch (status) {
       case "active":
         return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><UserCheck className="mr-1 h-3 w-3" />Active</Badge>;
-      case "on_leave":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200"><Clock className="mr-1 h-3 w-3" />On Leave</Badge>;
+      case "paused":
+        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200"><Clock className="mr-1 h-3 w-3" />Paused</Badge>;
+      case "assigned":
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><UserCheck className="mr-1 h-3 w-3" />Assigned</Badge>;
       case "completed":
         return <Badge className="bg-purple-100 text-purple-700 border-purple-200"><CheckCircle2 className="mr-1 h-3 w-3" />Completed</Badge>;
       case "terminated":
@@ -211,20 +196,43 @@ export default function CompanyHRInternsPage() {
 
   const getInitials = (name: string) => name.split(" ").map(n => n[0]).join("").toUpperCase();
 
-  const handleAssignSupervisor = () => {
+  const handleAssignSupervisor = async () => {
     if (!assigningInternId || !selectedSupervisorForAssignment) return;
-
-    const supervisor = availableSupervisors.find(s => s.id === selectedSupervisorForAssignment);
-    
-    setInterns(interns.map(intern => 
-      intern.id === assigningInternId 
-        ? { ...intern, supervisor_id: selectedSupervisorForAssignment, supervisor_name: supervisor?.name }
-        : intern
-    ));
-
-    setIsAssignOpen(false);
-    setAssigningInternId(null);
-    setSelectedSupervisorForAssignment("");
+    setAssigning(true);
+    try {
+      // Look up the intern to get the student_user_id needed by the API.
+      const intern = interns.find((i) => i.id === assigningInternId);
+      if (!intern) throw new Error("Intern not found");
+      const res = await fetch("/api/company-hr/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supervisor_id: selectedSupervisorForAssignment,
+          intern_ids: [intern.student_id],
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      const supervisor = supervisors.find((s) => s.user_id === selectedSupervisorForAssignment);
+      setInterns(
+        interns.map((i) =>
+          i.id === assigningInternId
+            ? {
+                ...i,
+                supervisor_id: selectedSupervisorForAssignment,
+                supervisor_name: supervisor?.name || null,
+              }
+            : i
+        )
+      );
+      setIsAssignOpen(false);
+      setAssigningInternId(null);
+      setSelectedSupervisorForAssignment("");
+    } catch (e: any) {
+      alert(e.message || "Failed to assign supervisor");
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const openAssignDialog = (internId: string) => {
@@ -236,10 +244,12 @@ export default function CompanyHRInternsPage() {
   const stats = {
     total: interns.length,
     active: interns.filter(i => i.status === "active").length,
-    onLeave: interns.filter(i => i.status === "on_leave").length,
+    onLeave: interns.filter(i => i.status === "paused").length,
     completed: interns.filter(i => i.status === "completed").length,
-    unassigned: interns.filter(i => !i.supervisor_id && i.status === "active").length,
-    avgAttendance: Math.round(interns.reduce((acc, i) => acc + i.attendance_rate, 0) / interns.length),
+    unassigned: interns.filter(i => !i.supervisor_id && (i.status === "active" || i.status === "assigned")).length,
+    avgAttendance: interns.length > 0
+      ? Math.round(interns.reduce((acc, i) => acc + i.attendance_rate, 0) / interns.length)
+      : 0,
   };
 
   return (
@@ -321,7 +331,16 @@ export default function CompanyHRInternsPage() {
               <span className="text-sm text-amber-800">
                 <strong>{stats.unassigned}</strong> active intern(s) without assigned supervisors
               </span>
-              <Button size="sm" variant="outline" className="ml-auto bg-white hover:bg-amber-50">
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto bg-white hover:bg-amber-50"
+                onClick={() => {
+                  const firstUnassigned = interns.find((i) => !i.supervisor_id && (i.status === "active" || i.status === "assigned"));
+                  if (firstUnassigned) openAssignDialog(firstUnassigned.id);
+                }}
+                disabled={stats.unassigned === 0}
+              >
                 Assign Now
               </Button>
             </motion.div>
@@ -360,7 +379,8 @@ export default function CompanyHRInternsPage() {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="on_leave">On Leave</SelectItem>
+                <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="assigned">Assigned</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="terminated">Terminated</SelectItem>
               </SelectContent>
@@ -699,42 +719,43 @@ export default function CompanyHRInternsPage() {
                   <SelectValue placeholder="Choose a supervisor..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableSupervisors.map(supervisor => (
-                    <SelectItem key={supervisor.id} value={supervisor.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{supervisor.name}</span>
-                        <span className="text-muted-foreground text-xs">({supervisor.department})</span>
-                      </div>
+                  {supervisors.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      No active supervisors — add one first
                     </SelectItem>
-                  ))}
+                  ) : (
+                    supervisors.map((supervisor) => (
+                      <SelectItem key={supervisor.user_id} value={supervisor.user_id}>
+                        <div className="flex items-center gap-2">
+                          <span>{supervisor.name}</span>
+                          <span className="text-muted-foreground text-xs">({supervisor.email})</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
             {selectedSupervisorForAssignment && (() => {
-              const supervisor = availableSupervisors.find(s => s.id === selectedSupervisorForAssignment);
+              const supervisor = supervisors.find(s => s.user_id === selectedSupervisorForAssignment);
               return (
                 <div className="p-3 bg-muted/30 rounded-lg text-sm">
                   <p><strong>{supervisor?.name}</strong></p>
-                  <p className="text-muted-foreground">
-                    Department: {supervisor?.department}
-                  </p>
-                  <p className="text-muted-foreground">
-                    Currently supervising: {supervisor?.intern_count} intern(s)
-                  </p>
+                  <p className="text-muted-foreground">{supervisor?.email}</p>
                 </div>
               );
             })()}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }}>
+              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }} disabled={assigning}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleAssignSupervisor}
-                disabled={!selectedSupervisorForAssignment}
+                disabled={!selectedSupervisorForAssignment || assigning}
               >
-                Assign Supervisor
+                {assigning ? "Assigning..." : "Assign Supervisor"}
               </Button>
             </DialogFooter>
           </div>

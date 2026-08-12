@@ -79,7 +79,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/utils/supabase/client";
 import { useAuth } from "@/components/providers/auth-provider";
 
 // Types
@@ -88,7 +87,7 @@ interface Application {
   student_id: string;
   student_name: string;
   student_email: string;
-  student_avatar?: string;
+  student_avatar?: string | null;
   internship_id: string;
   internship_title: string;
   status: "pending" | "reviewing" | "accepted" | "rejected" | "withdrawn";
@@ -101,70 +100,69 @@ interface Application {
   cover_letter: string;
   resume_url?: string | null;
   skills: string[];
-  phone?: string;
+  phone?: string | null;
+  student_bio?: string;
+  github_url?: string;
+  linkedin_url?: string;
 }
 
 // Default empty state - applications will be fetched from database
 const DEFAULT_APPLICATIONS: Application[] = [];
 
-const availablePrograms = [
-  "All Programs",
-  "Software Engineering Intern",
-  "Marketing Intern",
-  "Data Science Intern",
-  "UI/UX Design Intern",
-];
+const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHRApplicationsPage() {
   const { profile } = useAuth();
   const [applications, setApplications] = useState<Application[]>(DEFAULT_APPLICATIONS);
+  const [availablePrograms, setAvailablePrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [isLoading, setIsLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     fetchApplications();
   }, [profile?.company_id]);
 
   async function fetchApplications() {
-    if (!profile?.company_id) { setIsLoading(false); return; }
+    setIsLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('applications')
-        .select(`
-          *,
-          student:profiles!student_user_id(full_name, email),
-          internships!inner(title)
-        `)
-        .eq('company_id', profile.company_id)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const apps: Application[] = data.map((app: any) => ({
-          id: app.id,
-          student_id: app.student_user_id,
-          student_name: app.student?.full_name || 'Unknown',
-          student_email: app.student?.email || '',
-          internship_id: app.internship_id,
-          internship_title: app.internships?.title || 'Unknown Program',
-          status: app.status || 'pending',
-          applied_at: app.created_at,
-          updated_at: app.updated_at || app.created_at,
-          university: '',
-          department: '',
-          gpa: app.gpa || 'N/A',
-          match_score: app.match_score || 0,
-          cover_letter: app.cover_letter,
-          resume_url: app.resume_url,
-          skills: app.skills || [],
-          phone: app.phone,
-        }));
-        setApplications(apps);
+      const res = await fetch("/api/company-hr/applications", { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
+      const j = await res.json();
+      const apps: Application[] = (j.data || []).map((app: any) => ({
+        id: app.id,
+        student_id: app.student_user_id,
+        student_name:
+          app.student?.full_name ||
+          [app.student?.first_name, app.student?.last_name].filter(Boolean).join(" ") ||
+          "Unknown",
+        student_email: app.student?.email || "",
+        student_avatar: app.student?.avatar_url || null,
+        internship_id: app.internship_id,
+        internship_title: app.internship?.title || "Unknown Program",
+        status: app.status || "pending",
+        applied_at: app.applied_at,
+        updated_at: app.updated_at || app.applied_at,
+        university: app.student?.university || "",
+        department: app.student?.department || "",
+        gpa: app.student?.cgpa ? app.student.cgpa.toFixed(2) : "N/A",
+        match_score: 0, // not computed
+        cover_letter: app.cover_letter,
+        resume_url: app.resume_url || app.student?.cv_url,
+        skills: [],
+        phone: app.student?.phone,
+        student_bio: app.student?.bio || "",
+        github_url: app.student?.github_url || "",
+        linkedin_url: app.student?.linkedin_url || "",
+      }));
+      setApplications(apps);
+      // Build program filter list from data
+      const uniquePrograms = Array.from(new Set(apps.map((a) => a.internship_title).filter(Boolean)));
+      setAvailablePrograms(["All Programs", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching applications:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
@@ -219,23 +217,37 @@ export default function CompanyHRApplicationsPage() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase();
   };
 
-  const updateApplicationStatus = async (appIds: string[], status: Application["status"]) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('applications')
-      .update({ status, updated_at: new Date().toISOString() })
-      .in('id', appIds);
-
-    if (error) {
-      console.error("Error updating application status:", error);
-      alert("Failed to update application. Please try again.");
+  const updateApplicationStatus = async (
+    appIds: string[],
+    status: Application["status"],
+    reason?: string
+  ) => {
+    setUpdating(true);
+    try {
+      const res = await fetch("/api/company-hr/applications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: appIds, status, reason }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
+      }
+      setApplications((apps) =>
+        apps.map((app) =>
+          appIds.includes(app.id)
+            ? { ...app, status, updated_at: new Date().toISOString() }
+            : app
+        )
+      );
+      return true;
+    } catch (e: any) {
+      console.error("Error updating application status:", e);
+      alert(e.message || "Failed to update application. Please try again.");
       return false;
+    } finally {
+      setUpdating(false);
     }
-
-    setApplications(apps => apps.map(app =>
-      appIds.includes(app.id) ? { ...app, status, updated_at: new Date().toISOString() } : app
-    ));
-    return true;
   };
 
   const handleAccept = async (appId: string) => {
@@ -247,12 +259,16 @@ export default function CompanyHRApplicationsPage() {
   const handleReject = async () => {
     if (!rejectingAppId) return;
 
-    if (await updateApplicationStatus([rejectingAppId], "rejected")) {
+    if (await updateApplicationStatus([rejectingAppId], "rejected", rejectReason || undefined)) {
       setIsRejectDialogOpen(false);
       setRejectReason("");
       setRejectingAppId(null);
       setIsDetailOpen(false);
     }
+  };
+
+  const handleMarkForReview = async (appId: string) => {
+    await updateApplicationStatus([appId], "reviewing");
   };
 
   const openRejectDialog = (appId: string) => {
@@ -288,7 +304,9 @@ export default function CompanyHRApplicationsPage() {
     accepted: applications.filter(a => a.status === "accepted").length,
     rejected: applications.filter(a => a.status === "rejected").length,
     acceptanceRate: Math.round((applications.filter(a => a.status === "accepted").length / Math.max(1, applications.length)) * 100),
-    avgMatchScore: Math.round(applications.reduce((acc, a) => acc + a.match_score, 0) / applications.length),
+    avgMatchScore: applications.length > 0
+      ? Math.round(applications.reduce((acc, a) => acc + a.match_score, 0) / applications.length)
+      : 0,
   };
 
   return (
@@ -495,12 +513,26 @@ export default function CompanyHRApplicationsPage() {
                   </div>
                   <div className="flex gap-2">
                     {selectedApplication.resume_url && (
-                      <Button variant="outline" size="sm" className="gap-1">
-                        <Download className="h-3 w-3" /> Resume
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        asChild
+                      >
+                        <a href={selectedApplication.resume_url} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-3 w-3" /> Resume
+                        </a>
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" className="gap-1">
-                      <MessageSquare className="h-3 w-3" /> Contact
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      asChild
+                    >
+                      <a href={`mailto:${selectedApplication.student_email}`}>
+                        <MessageSquare className="h-3 w-3" /> Contact
+                      </a>
                     </Button>
                   </div>
                 </div>
@@ -612,14 +644,11 @@ export default function CompanyHRApplicationsPage() {
                     </AlertDialogContent>
                   </AlertDialog>
 
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     className="gap-1"
-                    onClick={() => {
-                      setApplications(apps => apps.map(app => 
-                        app.id === selectedApplication.id ? { ...app, status: "reviewing" as const } : app
-                      ));
-                    }}
+                    onClick={() => handleMarkForReview(selectedApplication.id)}
+                    disabled={updating || selectedApplication.status === "reviewing"}
                   >
                     <Clock className="h-4 w-4" /> Mark for Review
                   </Button>
@@ -924,11 +953,20 @@ function ApplicationTable({
                             <DropdownMenuItem onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}>
                               <Eye className="mr-2 h-4 w-4" /> View Full Profile
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Download className="mr-2 h-4 w-4" /> Download Resume
+                            <DropdownMenuItem asChild>
+                              <a
+                                href={app.resume_url || "#"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={app.resume_url ? "" : "pointer-events-none opacity-50"}
+                              >
+                                <Download className="mr-2 h-4 w-4" /> Download Resume
+                              </a>
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <MessageSquare className="mr-2 h-4 w-4" /> Send Message
+                            <DropdownMenuItem asChild>
+                              <a href={`mailto:${app.student_email}`}>
+                                <MessageSquare className="mr-2 h-4 w-4" /> Send Message
+                              </a>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

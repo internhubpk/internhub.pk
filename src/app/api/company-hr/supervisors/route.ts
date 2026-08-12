@@ -218,12 +218,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if email already exists
+    // Check if email already exists. The `filter` field is supported by the
+    // underlying GoTrue API but isn't in the typed listUsers() params in some
+    // supabase-js versions, so we cast.
     const { data: existingUser } = await supabase.auth.admin.listUsers({
       page: 1,
       perPage: 1,
-      filter: `email.eq.${email}`,
-    });
+      ...( { filter: `email.eq.${email}` } as any ),
+    } as any);
 
     if (existingUser && existingUser.users.length > 0) {
       return NextResponse.json(

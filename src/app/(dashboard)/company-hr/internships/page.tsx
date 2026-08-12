@@ -77,7 +77,7 @@ interface InternshipProgram {
   id: string;
   title: string;
   description: string;
-  status: "draft" | "open" | "active" | "closed" | "expired" | "cancelled";
+  status: "draft" | "open" | "active" | "completed" | "expired" | "cancelled";
   location_type: "remote" | "on_site" | "hybrid";
   location?: string | null;
   is_paid: boolean;
@@ -98,7 +98,9 @@ interface InternshipProgram {
 // Default empty state - internships will be fetched from database
 const DEFAULT_INTERNSHIPS: InternshipProgram[] = [];
 
-// Available departments (mock)
+// Curated list of common department names. The form collects target
+// departments as free-text labels (stored in a jsonb column), so this list
+// is purely a convenience picker — not a DB lookup.
 const availableDepartments = [
   "Computer Science",
   "Software Engineering",
@@ -112,22 +114,28 @@ const availableDepartments = [
   "Mechanical Engineering",
 ];
 
-const availableUniversities = [
-  "State University",
-  "Tech University",
-  "Business School",
-  "Research Institute",
-  "National University of Sciences",
-  "Lahore University",
-];
-
 export default function CompanyHRInternshipsPage() {
   const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
   const [isLoading, setIsLoading] = useState(true);
+  const [universities, setUniversities] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     fetchInternships();
+    fetchUniversities();
   }, []);
+
+  async function fetchUniversities() {
+    try {
+      const res = await fetch('/api/universities', { cache: "no-store" });
+      if (!res.ok) return;
+      const j = await res.json();
+      // API may return { data: [...] } or [...]
+      const list = Array.isArray(j) ? j : j.data || [];
+      setUniversities(list.map((u: any) => ({ id: u.id, name: u.name })));
+    } catch {
+      // ignore — keep empty list
+    }
+  }
 
   async function fetchInternships() {
     try {
@@ -225,6 +233,7 @@ export default function CompanyHRInternshipsPage() {
           description: formData.description,
           location_type: formData.location_type,
           location: formData.location || null,
+          remote: formData.location_type === 'remote' || formData.location_type === 'hybrid',
           is_paid: formData.is_paid,
           stipend: formData.stipend ? parseFloat(formData.stipend) : null,
           duration_weeks: parseInt(formData.duration_weeks) || 8,
@@ -233,6 +242,8 @@ export default function CompanyHRInternshipsPage() {
           end_date: formData.end_date || null,
           application_deadline: formData.application_deadline || null,
           required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
+          target_departments: formData.target_departments,
+          university_id: formData.target_university || null,
         }),
       });
 
@@ -260,6 +271,7 @@ export default function CompanyHRInternshipsPage() {
           description: formData.description,
           location_type: formData.location_type,
           location: formData.location || null,
+          remote: formData.location_type === 'remote' || formData.location_type === 'hybrid',
           is_paid: formData.is_paid,
           stipend: formData.stipend ? parseFloat(formData.stipend) : null,
           duration_weeks: parseInt(formData.duration_weeks) || editingInternship.duration_weeks,
@@ -268,6 +280,8 @@ export default function CompanyHRInternshipsPage() {
           end_date: formData.end_date || null,
           application_deadline: formData.application_deadline || null,
           required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
+          target_departments: formData.target_departments,
+          university_id: formData.target_university || null,
         }),
       });
 
@@ -341,7 +355,14 @@ export default function CompanyHRInternshipsPage() {
   };
 
   const togglePublishStatus = async (id: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'draft' ? 'open' : currentStatus === 'open' ? 'closed' : 'open';
+    // Valid InternshipStatus values: draft | open | active | completed | cancelled | expired.
+    // Toggle semantics: draft → open (publish), open → cancelled (unpublish/close),
+    // anything else → open (re-open).
+    const nextStatus =
+      currentStatus === 'draft' ? 'open'
+      : currentStatus === 'open' ? 'cancelled'
+      : currentStatus === 'cancelled' ? 'open'
+      : 'open';
     try {
       const response = await fetch(`/api/company-hr/internships/${id}`, {
         method: 'PUT',
@@ -365,12 +386,10 @@ export default function CompanyHRInternshipsPage() {
         return <Badge className="bg-green-100 text-green-700 border-green-200">Open</Badge>;
       case "draft":
         return <Badge variant="secondary">Draft</Badge>;
-      case "closed":
-        return <Badge variant="destructive">Closed</Badge>;
+      case "cancelled":
+        return <Badge variant="destructive">Cancelled</Badge>;
       case "expired":
         return <Badge className="bg-orange-100 text-orange-700 border-orange-200">Expired</Badge>;
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-700 border-red-200">Cancelled</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -555,12 +574,12 @@ export default function CompanyHRInternshipsPage() {
                 
                 <div className="space-y-2">
                   <Label>Target University</Label>
-                  <Select value={formData.target_university} onValueChange={(value) => setFormData({ ...formData, target_university: value })}>
+                  <Select value={formData.target_university || "__all__"} onValueChange={(value) => setFormData({ ...formData, target_university: value === "__all__" ? "" : value })}>
                     <SelectTrigger><SelectValue placeholder="All universities" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Universities</SelectItem>
-                      {availableUniversities.map(uni => (
-                        <SelectItem key={uni} value={uni}>{uni}</SelectItem>
+                      <SelectItem value="__all__">All Universities</SelectItem>
+                      {universities.map(uni => (
+                        <SelectItem key={uni.id} value={uni.id}>{uni.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -748,7 +767,7 @@ export default function CompanyHRInternshipsPage() {
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="open">Open</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>

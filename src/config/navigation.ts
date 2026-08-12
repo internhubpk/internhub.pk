@@ -32,6 +32,7 @@ import {
   CheckSquare,
   ClipboardCheck,
   Search,
+  Bell,
 } from "lucide-react";
 
 export interface NavItem {
@@ -289,6 +290,21 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       title: "Evaluations",
       href: "/company-hr/evaluations",
       icon: ClipboardCheck,
+    },
+    {
+      title: "Reports",
+      href: "/company-hr/reports",
+      icon: BarChart3,
+    },
+    {
+      title: "Notifications",
+      href: "/company-hr/notifications",
+      icon: Bell,
+    },
+    {
+      title: "Settings",
+      href: "/company-hr/settings",
+      icon: Settings,
     },
   ],
   site_supervisor: [

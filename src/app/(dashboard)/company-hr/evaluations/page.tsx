@@ -70,7 +70,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/utils/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -104,66 +103,162 @@ interface FinalEvaluation {
 // Default empty state - evaluations will be fetched from database
 const DEFAULT_EVALUATIONS: FinalEvaluation[] = [];
 
-const programs = ["All Programs", "Software Engineering Intern", "Marketing Intern", "Data Science Intern", "UI/UX Design Intern"];
+const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHREvaluationsPage() {
   const { profile } = useAuth();
   const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
+  const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
+  const [internsForEvaluation, setInternsForEvaluation] = useState<Array<{
+    student_internship_id: string;
+    student_user_id: string;
+    student_name: string;
+    internship_id: string;
+    internship_title: string;
+  }>>([]);
+  const [evaluateTarget, setEvaluateTarget] = useState<{
+    student_internship_id: string;
+    student_user_id: string;
+    internship_id: string;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [issuingCert, setIssuingCert] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchEvaluations();
+    fetchInternsForEval();
   }, [profile?.company_id]);
 
   async function fetchEvaluations() {
-    if (!profile?.company_id) { setIsLoading(false); return; }
+    setIsLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('evaluations')
-        .select(`
-          *,
-          student:profiles!student_user_id(full_name, email),
-          internships!inner(title, company_id)
-        `)
-        .eq('internships.company_id', profile.company_id)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const evals: FinalEvaluation[] = data.map((ev: any) => ({
+      const res = await fetch("/api/company-hr/evaluations", { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
+      }
+      const j = await res.json();
+      const evals: FinalEvaluation[] = (j.data || []).map((ev: any) => {
+        const scores = ev.scores && typeof ev.scores === "object" ? ev.scores : {};
+        return {
           id: ev.id,
           intern_id: ev.student_user_id,
-          intern_name: ev.student?.full_name || 'Unknown',
-          intern_email: ev.student?.email || '',
+          intern_name: ev.student_name || "Unknown",
+          intern_email: ev.student_email || "",
           internship_id: ev.internship_id,
-          internship_title: ev.internships?.title || 'Unknown Program',
-          supervisor_name: ev.supervisor_name,
-          status: ev.status || 'pending',
-          overall_rating: ev.overall_rating,
-          skills_rating: ev.skills_rating,
-          attitude_rating: ev.attitude_rating,
-          punctuality_rating: ev.punctuality_rating,
-          quality_rating: ev.quality_rating,
-          comments: ev.comments,
-          strengths: ev.strengths,
-          areas_for_improvement: ev.areas_for_improvement,
-          recommendation: ev.recommendation,
+          internship_title: ev.internship_title || "Unknown Program",
+          supervisor_name: ev.evaluator_name || null,
+          status: ev.status || "pending",
+          overall_rating: scores.overall ?? ev.rating ?? 0,
+          skills_rating: scores.technical ?? 0,
+          attitude_rating: scores.attitude ?? 0,
+          punctuality_rating: scores.punctuality ?? 0,
+          quality_rating: scores.quality ?? 0,
+          comments: ev.comments || "",
+          strengths: scores.strengths ? [scores.strengths] : null,
+          areas_for_improvement: scores.areas_for_improvement ? [scores.areas_for_improvement] : null,
+          recommendation: scores.recommendation || null,
           certificate_issued: ev.certificate_issued || false,
           submitted_at: ev.submitted_at,
-          evaluated_by: ev.evaluated_by,
+          evaluated_by: ev.evaluator_id,
           created_at: ev.created_at,
-        }));
-        setEvaluations(evals);
-      }
+        };
+      });
+      setEvaluations(evals);
+      const uniquePrograms = Array.from(new Set(evals.map((e) => e.internship_title).filter(Boolean)));
+      setPrograms(["All Programs", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching evaluations:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
+
+  async function fetchInternsForEval() {
+    try {
+      const res = await fetch("/api/company-hr/interns", { cache: "no-store" });
+      if (!res.ok) return;
+      const j = await res.json();
+      const list = (j.data || [])
+        .filter((i: any) => i.status === "active" || i.status === "assigned" || i.status === "completed")
+        .map((i: any) => ({
+          student_internship_id: i.id,
+          student_user_id: i.student_user_id,
+          student_name: i.student_name || "Unknown",
+          internship_id: i.internship_id,
+          internship_title: i.internship_title || "",
+        }));
+      setInternsForEvaluation(list);
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleSubmitEvaluation = async (status: "submitted" | "in_progress") => {
+    if (!evaluateTarget) {
+      alert("Please select an intern to evaluate.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/company-hr/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_internship_id: evaluateTarget.student_internship_id,
+          student_user_id: evaluateTarget.student_user_id,
+          internship_id: evaluateTarget.internship_id,
+          scores: {
+            overall: formState.overall_rating,
+            technical: formState.skills_rating,
+            attitude: formState.attitude_rating,
+            punctuality: formState.punctuality_rating,
+            quality: formState.quality_rating,
+            strengths: formState.strengths,
+            areas_for_improvement: formState.areas_for_improvement,
+            recommendation: formState.recommendation,
+          },
+          comments: formState.comments,
+          strengths: formState.strengths,
+          areas_for_improvement: formState.areas_for_improvement,
+          recommendation: formState.recommendation,
+          status,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      setIsEvaluateOpen(false);
+      setFormState({
+        overall_rating: 0, skills_rating: 0, attitude_rating: 0,
+        punctuality_rating: 0, quality_rating: 0,
+        comments: "", strengths: "", areas_for_improvement: "",
+        recommendation: "",
+      });
+      setEvaluateTarget(null);
+      await fetchEvaluations();
+    } catch (e: any) {
+      alert(e.message || "Failed to save evaluation");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleIssueCertificate = async (evaluationId: string) => {
+    setIssuingCert(true);
+    try {
+      const res = await fetch(`/api/company-hr/evaluations/${evaluationId}/certificate`, {
+        method: "POST",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      await fetchEvaluations();
+    } catch (e: any) {
+      alert(e.message || "Failed to issue certificate");
+    } finally {
+      setIssuingCert(false);
+    }
+  };
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
@@ -463,17 +558,51 @@ export default function CompanyHREvaluationsPage() {
                         </Button>
 
                         {(evaluation.status === "pending" || evaluation.status === "in_progress") && (
-                          <Button 
+                          <Button
                             size="sm"
-                            onClick={() => { setSelectedEvaluation(evaluation); setIsEvaluateOpen(true); }}
+                            onClick={() => {
+                              setSelectedEvaluation(evaluation);
+                              // Pre-populate the form with existing scores if available
+                              setFormState({
+                                overall_rating: evaluation.overall_rating || 0,
+                                skills_rating: evaluation.skills_rating || 0,
+                                attitude_rating: evaluation.attitude_rating || 0,
+                                punctuality_rating: evaluation.punctuality_rating || 0,
+                                quality_rating: evaluation.quality_rating || 0,
+                                comments: evaluation.comments || "",
+                                strengths: Array.isArray(evaluation.strengths) ? evaluation.strengths.join("\n") : (evaluation.strengths || ""),
+                                areas_for_improvement: Array.isArray(evaluation.areas_for_improvement) ? evaluation.areas_for_improvement.join("\n") : (evaluation.areas_for_improvement || ""),
+                                recommendation: (evaluation.recommendation || "") as any,
+                              });
+                              // Look up the student_internship_id for this evaluation
+                              const match = internsForEvaluation.find(
+                                (i) => i.student_user_id === evaluation.intern_id && i.internship_id === evaluation.internship_id
+                              );
+                              if (match) {
+                                setEvaluateTarget({
+                                  student_internship_id: match.student_internship_id,
+                                  student_user_id: match.student_user_id,
+                                  internship_id: match.internship_id,
+                                });
+                              } else {
+                                setEvaluateTarget(null);
+                              }
+                              setIsEvaluateOpen(true);
+                            }}
                           >
                             <Edit3 className="h-3 w-3 mr-1" /> Evaluate
                           </Button>
                         )}
 
                         {evaluation.status === "submitted" && !evaluation.certificate_issued && (
-                          <Button size="sm" className="bg-purple-600 hover:bg-purple-700">
-                            <Award className="h-3 w-3 mr-1" /> Approve & Issue Certificate
+                          <Button
+                            size="sm"
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={() => handleIssueCertificate(evaluation.id)}
+                            disabled={issuingCert}
+                          >
+                            <Award className="h-3 w-3 mr-1" />
+                            {issuingCert ? "Issuing..." : "Approve & Issue Certificate"}
                           </Button>
                         )}
 
@@ -548,11 +677,11 @@ export default function CompanyHREvaluationsPage() {
                   </h4>
                   
                   <div className="space-y-3">
-                    <RatingRow label="Overall Performance" rating={selectedEvaluation.overall_rating} icon={<Target className="h-4 w-4" />} />
-                    <RatingRow label="Technical Skills" rating={selectedEvaluation.skills_rating} icon={<Zap className="h-4 w-4" />} />
-                    <RatingRow label="Attitude & Teamwork" rating={selectedEvaluation.attitude_rating} icon={<Heart className="h-4 w-4" />} />
-                    <RatingRow label="Punctuality" rating={selectedEvaluation.punctuality_rating} icon={<Clock className="h-4 w-4" />} />
-                    <RatingRow label="Work Quality" rating={selectedEvaluation.quality_rating} icon={<Lightbulb className="h-4 w-4" />} />
+                    <RatingRow label="Overall Performance" rating={selectedEvaluation.overall_rating ?? null} icon={<Target className="h-4 w-4" />} />
+                    <RatingRow label="Technical Skills" rating={selectedEvaluation.skills_rating ?? null} icon={<Zap className="h-4 w-4" />} />
+                    <RatingRow label="Attitude & Teamwork" rating={selectedEvaluation.attitude_rating ?? null} icon={<Heart className="h-4 w-4" />} />
+                    <RatingRow label="Punctuality" rating={selectedEvaluation.punctuality_rating ?? null} icon={<Clock className="h-4 w-4" />} />
+                    <RatingRow label="Work Quality" rating={selectedEvaluation.quality_rating ?? null} icon={<Lightbulb className="h-4 w-4" />} />
                   </div>
                 </div>
 
@@ -619,10 +748,20 @@ export default function CompanyHREvaluationsPage() {
 
                 <div className="flex justify-end pt-4 border-t gap-2">
                   <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
-                  {!selectedEvaluation.certificate_issued && selectedEvaluation.status === "approved" && (
-                    <Button className="bg-purple-600 hover:bg-purple-700">
-                      <Award className="h-4 w-4 mr-2" /> Issue Certificate
+                  {!selectedEvaluation.certificate_issued && (selectedEvaluation.status === "approved" || selectedEvaluation.status === "submitted") && (
+                    <Button
+                      className="bg-purple-600 hover:bg-purple-700"
+                      onClick={() => handleIssueCertificate(selectedEvaluation.id)}
+                      disabled={issuingCert}
+                    >
+                      <Award className="h-4 w-4 mr-2" />
+                      {issuingCert ? "Issuing..." : "Issue Certificate"}
                     </Button>
+                  )}
+                  {selectedEvaluation.certificate_issued && (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                      <CheckCircle2 className="mr-1 h-3 w-3" /> Certificate issued
+                    </Badge>
                   )}
                 </div>
               </div>
@@ -725,7 +864,7 @@ export default function CompanyHREvaluationsPage() {
               {/* Recommendation */}
               <div className="space-y-2">
                 <Label>Hiring Recommendation</Label>
-                <Select value={formState.recommendation} onValueChange={(v) => setFormState({ ...formState, recommendation: v })}>
+                <Select value={formState.recommendation} onValueChange={(v) => setFormState({ ...formState, recommendation: v as any })}>
                   <SelectTrigger><SelectValue placeholder="Select recommendation..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="strong_hire">Strongly Recommend Hiring</SelectItem>
@@ -736,14 +875,21 @@ export default function CompanyHREvaluationsPage() {
               </div>
 
               <DialogFooter className="pt-4 border-t">
-                <Button variant="outline" onClick={() => setIsEvaluateOpen(false)}>
+                <Button variant="outline" onClick={() => setIsEvaluateOpen(false)} disabled={submitting}>
                   Cancel
                 </Button>
-                <Button variant="secondary">
-                  Save Draft
+                <Button
+                  variant="secondary"
+                  onClick={() => handleSubmitEvaluation("in_progress")}
+                  disabled={submitting || !evaluateTarget}
+                >
+                  {submitting ? "Saving..." : "Save Draft"}
                 </Button>
-                <Button disabled={!formState.overall_rating}>
-                  Submit Evaluation
+                <Button
+                  disabled={!formState.overall_rating || submitting || !evaluateTarget}
+                  onClick={() => handleSubmitEvaluation("submitted")}
+                >
+                  {submitting ? "Submitting..." : "Submit Evaluation"}
                 </Button>
               </DialogFooter>
             </div>

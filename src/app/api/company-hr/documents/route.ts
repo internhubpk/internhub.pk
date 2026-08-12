@@ -55,15 +55,36 @@ export async function GET(request: NextRequest) {
     const documentType = searchParams.get("type"); // offer_letter, certificate
     const internId = searchParams.get("intern_id");
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const limit = parseInt(searchParams.get("limit") || "50");
     const offset = (page - 1) * limit;
 
-    // Build query - get documents for company's interns
+    // Resolve the set of student user_ids that belong to this company's
+    // active placements. This is the only safe way to scope documents —
+    // filtering by entity_type alone would leak documents across tenants.
+    const { data: companyInterns } = await supabase
+      .from("student_internships")
+      .select("student_user_id")
+      .eq("company_id", profile.company_id);
+
+    const companyStudentIds = (companyInterns || []).map((r) => r.student_user_id);
+
+    // If the company has no interns yet, return an empty page rather than
+    // running a query that would return documents for other companies.
+    if (companyStudentIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        meta: { page, limit, total: 0, totalPages: 0 },
+      });
+    }
+
+    // Build query - get documents for company's interns only.
     let query = supabase
       .from("documents")
       .select("*", { count: "exact" })
-      .eq("entity_type", "student") // Intern documents are linked to students
+      .eq("entity_type", "student")
       .in("type", ["offer_letter", "certificate", "other"])
+      .in("entity_id", companyStudentIds)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -72,6 +93,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (internId) {
+      // Belt-and-suspenders: even if a caller passes an intern_id, only
+      // return documents if that intern is one of the company's interns.
+      if (!companyStudentIds.includes(internId)) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          meta: { page, limit, total: 0, totalPages: 0 },
+        });
+      }
       query = query.eq("entity_id", internId);
     }
 
@@ -188,38 +218,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify intern belongs to company's program
-    const { data: internApplication, error: appError } = await supabase
-      .from("applications")
-      .select(`
-        student_id,
-        internship_id,
-        internships!inner (
-          id,
-          company_id,
-          title
-        ),
-        profiles:student_id (
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq("student_id", intern_id)
-      .eq("status", "accepted")
-      .eq("internships.company_id", profile.company_id)
-      .single();
+    // Verify intern belongs to company — check student_internships first
+    // (covers all current placements), fall back to accepted applications.
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("id, internship_id, internships!inner(id, title, company_id)")
+      .eq("student_user_id", intern_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
 
-    if (appError || !internApplication) {
-      return NextResponse.json(
-        { error: { code: "INTERN_NOT_FOUND", message: "Intern not found or does not belong to your company's programs" } },
-        { status: 404 }
-      );
+    const siAny = si as any;
+    let internshipTitle: string | null = siAny?.internships
+      ? (Array.isArray(siAny.internships) ? siAny.internships[0]?.title : siAny.internships.title)
+      : null;
+    let internshipId: string | null = siAny?.internship_id || null;
+
+    if (!si) {
+      // Fall back to checking accepted applications
+      const { data: internApplication } = await supabase
+        .from("applications")
+        .select(`
+          student_user_id,
+          internship_id,
+          internships!inner (
+            id,
+            company_id,
+            title
+          )
+        `)
+        .eq("student_user_id", intern_id)
+        .eq("status", "accepted")
+        .eq("internships.company_id", profile.company_id)
+        .maybeSingle();
+      if (!internApplication) {
+        return NextResponse.json(
+          { error: { code: "INTERN_NOT_FOUND", message: "Intern not found or does not belong to your company's programs" } },
+          { status: 404 }
+        );
+      }
+      const internshipsArr = Array.isArray(internApplication?.internships) ? internApplication.internships : internApplication?.internships ? [internApplication.internships] : [];
+      internshipTitle = (internshipsArr?.[0] as any)?.title || null;
+      internshipId = internApplication?.internship_id || null;
     }
 
     let fileUrl: string | null = null;
     let fileSize: number = 0;
-    let fileName: string = name || `${type}_${internApplication.profiles?.first_name}_${internApplication.profiles?.last_name}.pdf`;
+    let fileName: string = name || `${type}_${internshipTitle || intern_id}.pdf`;
 
     if (file) {
       // Upload file to storage

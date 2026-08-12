@@ -92,6 +92,10 @@ interface DocumentTemplate {
 // Default empty states - data will be fetched from database
 const DEFAULT_DOCUMENTS: InternDocument[] = [];
 const DEFAULT_INTERNS: Array<{id: string; name: string; email: string; program: string; has_offer_letter: boolean; has_certificate: boolean}> = [];
+
+// Built-in templates. These are placeholder document templates — they don't
+// reference a DB table. Selecting one and uploading a file uses the file's
+// content; selecting one without a file creates a placeholder record.
 const DEFAULT_TEMPLATES: DocumentTemplate[] = [
   { id: "tpl_001", name: "Standard Offer Letter Template", type: "offer_letter", description: "Professional offer letter template for all internship positions" },
   { id: "tpl_002", name: "Technical Internship Offer Letter", type: "offer_letter", description: "Specialized template for technical/engineering roles" },
@@ -104,66 +108,106 @@ export default function CompanyHRDocumentsPage() {
   const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
   const [interns, setInterns] = useState(DEFAULT_INTERNS);
   const [templates] = useState<DocumentTemplate[]>(DEFAULT_TEMPLATES);
+  const [uploading, setUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchDocuments();
+    fetchInterns();
   }, [profile?.company_id]);
 
   async function fetchDocuments() {
-    if (!profile?.company_id) { setIsLoading(false); return; }
+    setIsLoading(true);
     try {
-      const supabase = createClient();
-
-      // Documents are scoped to students generically (entity_type/entity_id), so
-      // first resolve which students belong to this company's internships.
-      const { data: companyStudents } = await supabase
-        .from('student_internships')
-        .select('student_user_id')
-        .eq('company_id', profile.company_id);
-
-      const studentIds = [...new Set((companyStudents || []).map((s: any) => s.student_user_id))];
-
-      if (studentIds.length === 0) {
-        setDocuments([]);
-        return;
+      const res = await fetch("/api/company-hr/documents", { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
-
-      const { data, error } = await supabase
-        .from('documents')
-        .select(`
-          *,
-          student:profiles!uploaded_by(full_name, email)
-        `)
-        .eq('entity_type', 'student')
-        .in('entity_id', studentIds)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const docs: InternDocument[] = data.map((doc: any) => ({
+      const j = await res.json();
+      // We need intern names — fetch profiles for entity_ids.
+      const docsRaw = j.data || [];
+      const studentIds = Array.from(new Set(docsRaw.map((d: any) => d.entity_id).filter(Boolean)));
+      let profileMap = new Map<string, any>();
+      if (studentIds.length > 0) {
+        const supabase = createClient();
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, first_name, last_name, email")
+          .in("user_id", studentIds);
+        profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+      }
+      const docs: InternDocument[] = docsRaw.map((doc: any) => {
+        const p = profileMap.get(doc.entity_id) || {};
+        return {
           id: doc.id,
           intern_id: doc.entity_id,
-          intern_name: doc.student?.full_name || 'Unknown',
-          intern_email: doc.student?.email || '',
-          document_type: doc.type || 'offer_letter',
-          file_name: doc.name || 'document.pdf',
+          intern_name:
+            p.full_name || [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unknown",
+          intern_email: p.email || "",
+          document_type: doc.type || "offer_letter",
+          file_name: doc.name || "document.pdf",
           file_url: doc.url,
           file_size: doc.size || 0,
           uploaded_at: doc.created_at,
           uploaded_by: doc.uploaded_by,
-          status: doc.status || 'pending',
-        }));
-        setDocuments(docs);
-      }
+          status: doc.status || "pending",
+        };
+      });
+      setDocuments(docs);
     } catch (error) {
       console.error("Error fetching documents:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
   }
+
+  async function fetchInterns() {
+    try {
+      const res = await fetch("/api/company-hr/interns", { cache: "no-store" });
+      if (!res.ok) return;
+      const j = await res.json();
+      const list = (j.data || []).map((i: any) => ({
+        id: i.student_user_id,
+        name: i.student_name || "Unknown",
+        email: i.student_email || "",
+        program: i.internship_title || "",
+        has_offer_letter: !!i.offer_letter_uploaded,
+        has_certificate: !!i.certificate_issued,
+      }));
+      setInterns(list);
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!selectedInternForUpload || !selectedFile) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("intern_id", selectedInternForUpload);
+      fd.append("type", uploadDocumentType);
+      fd.append("name", selectedFile.name);
+      const res = await fetch("/api/company-hr/documents", {
+        method: "POST",
+        body: fd,
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      await fetchDocuments();
+      await fetchInterns();
+      setIsUploadOpen(false);
+      setSelectedFile(null);
+      setSelectedInternForUpload("");
+    } catch (e: any) {
+      alert(e.message || "Failed to upload document");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -285,7 +329,45 @@ export default function CompanyHRDocumentsPage() {
 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsBulkOpen(false)}>Cancel</Button>
-                  <Button>Generate Documents</Button>
+                  <Button
+                    onClick={async () => {
+                      const targets = interns.filter(
+                        (i) =>
+                          (uploadDocumentType === "offer_letter" && !i.has_offer_letter) ||
+                          (uploadDocumentType === "certificate" && !i.has_certificate)
+                      );
+                      if (targets.length === 0) {
+                        alert("All interns already have this document type. Nothing to generate.");
+                        return;
+                      }
+                      setUploading(true);
+                      let success = 0;
+                      for (const i of targets) {
+                        try {
+                          const res = await fetch("/api/company-hr/documents", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              intern_id: i.id,
+                              type: uploadDocumentType,
+                              name: `${uploadDocumentType === "offer_letter" ? "Offer Letter" : "Certificate"} — ${i.name}`,
+                            }),
+                          });
+                          if (res.ok) success += 1;
+                        } catch {
+                          // continue
+                        }
+                      }
+                      setUploading(false);
+                      setIsBulkOpen(false);
+                      await fetchDocuments();
+                      await fetchInterns();
+                      alert(`Generated ${success} of ${targets.length} document(s).`);
+                    }}
+                    disabled={uploading || interns.length === 0}
+                  >
+                    {uploading ? "Generating..." : "Generate Documents"}
+                  </Button>
                 </DialogFooter>
               </div>
             </DialogContent>
@@ -361,14 +443,14 @@ export default function CompanyHRDocumentsPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => { setIsUploadOpen(false); setSelectedFile(null); }}>
+                  <Button variant="outline" onClick={() => { setIsUploadOpen(false); setSelectedFile(null); }} disabled={uploading}>
                     Cancel
                   </Button>
-                  <Button 
-                    disabled={!selectedInternForUpload || !selectedFile}
-                    onClick={() => { setIsUploadOpen(false); setSelectedFile(null); }}
+                  <Button
+                    disabled={!selectedInternForUpload || !selectedFile || uploading}
+                    onClick={handleUpload}
                   >
-                    Upload Document
+                    {uploading ? "Uploading..." : "Upload Document"}
                   </Button>
                 </DialogFooter>
               </div>
@@ -669,10 +751,20 @@ export default function CompanyHRDocumentsPage() {
                         <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                         
                         <div className="mt-4 flex gap-2">
-                          <Button size="sm" variant="outline">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => alert(`Template: ${template.name}\n\n${template.description}\n\n(In a future release, this will open a PDF preview.)`)}
+                          >
                             <Eye className="h-3 w-3 mr-1" /> Preview
                           </Button>
-                          <Button size="sm">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setUploadDocumentType(template.type);
+                              setIsUploadOpen(true);
+                            }}
+                          >
                             Use Template
                           </Button>
                         </div>
@@ -689,7 +781,10 @@ export default function CompanyHRDocumentsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <Card className="border-dashed cursor-pointer hover:border-primary/50 transition-colors">
+              <Card
+                className="border-dashed cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => alert("Custom template designer is coming soon. For now, use the built-in templates above.")}
+              >
                 <CardContent className="p-6 flex flex-col items-center justify-center min-h-[180px]">
                   <Plus className="h-8 w-8 text-muted-foreground mb-3" />
                   <p className="font-semibold">Create New Template</p>

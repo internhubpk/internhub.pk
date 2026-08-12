@@ -181,32 +181,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create internship
+    // Defensive: keep stipend_currency consistent — default to PKR
+    const stipend_currency = "PKR";
+
+    // Create internship. Only include columns that exist on `internships` per
+    // migration 0001 (plus the optional location_type / target_departments
+    // added in migration 0024).
+    const insertPayload: Record<string, unknown> = {
+      company_id: profile.company_id,
+      title: title.trim(),
+      description: description.trim(),
+      location: location || null,
+      remote: Boolean(remote),
+      is_paid: Boolean(is_paid),
+      stipend: stipend || null,
+      stipend_currency,
+      duration_weeks: duration_weeks ?? 8,
+      max_applicants: max_applicants || null,
+      current_applicants: 0,
+      start_date: start_date || null,
+      end_date: end_date || null,
+      application_deadline: application_deadline || null,
+      required_skills: Array.isArray(required_skills) ? required_skills : [],
+      requirements: Array.isArray(requirements) ? requirements : [],
+      benefits: Array.isArray(benefits) ? benefits : [],
+      status: "draft",
+      created_by: user.id,
+    };
+    if (location_type !== undefined) insertPayload.location_type = location_type;
+    if (target_departments !== undefined) insertPayload.target_departments = target_departments;
+    if (university_id !== undefined) insertPayload.university_id = university_id || null;
+
     const { data: internship, error: insertError } = await supabase
       .from("internships")
-      .insert({
-        company_id: profile.company_id,
-        title: title.trim(),
-        description: description.trim(),
-        location_type,
-        location: location || null,
-        remote,
-        is_paid,
-        stipend: stipend || null,
-        duration_weeks,
-        target_departments,
-        university_id: university_id || null,
-        max_applicants: max_applicants || null,
-        current_applicants: 0,
-        start_date: start_date || null,
-        end_date: end_date || null,
-        application_deadline: application_deadline || null,
-        required_skills,
-        requirements,
-        benefits,
-        status: "draft",
-        created_by: user.id,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

@@ -1,29 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Briefcase,
   Users,
   UserCheck,
   Star,
-  FileText,
-  Clock,
   Plus,
   RefreshCw,
   TrendingUp,
   AlertCircle,
   Eye,
   ArrowRight,
-  Calendar,
   Award,
-  BarChart3,
   CheckCircle2,
   XCircle,
   UserPlus,
-  FolderOpen,
   ClipboardCheck,
+  Clock,
 } from "lucide-react";
 import {
   Card,
@@ -44,10 +39,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
-import { createClient } from "@/utils/supabase/client";
 
-// Types
 interface CompanyStats {
   activeInternships: number;
   totalApplications: number;
@@ -55,6 +49,10 @@ interface CompanyStats {
   pendingReviews: number;
   completionRate: number;
   totalSupervisors: number;
+  totalInterns: number;
+  completedInterns: number;
+  avgAttendanceRate: number;
+  avgRating: number;
 }
 
 interface RecentApplication {
@@ -64,7 +62,7 @@ interface RecentApplication {
   internship_title: string;
   status: "pending" | "accepted" | "rejected" | "reviewing";
   applied_at: string;
-  university?: string;
+  student_avatar?: string | null;
 }
 
 interface ActiveProgram {
@@ -73,20 +71,27 @@ interface ActiveProgram {
   status: string;
   applicants_count: number;
   max_applicants?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
+  application_deadline?: string | null;
+  created_at: string;
 }
 
 interface InternPerformance {
-  id: string;
-  name: string;
-  program: string;
+  student_internship_id: string;
+  student_user_id: string;
+  internship_id: string;
   attendance_rate: number;
   rating: number;
-  status: "active" | "on_leave" | "completed" | "terminated";
+  status: string;
+  start_date: string;
 }
 
-// Default empty states - data will be fetched from database
+interface DashboardData {
+  stats: CompanyStats;
+  recentApplications: RecentApplication[];
+  activePrograms: ActiveProgram[];
+  internPerformance: InternPerformance[];
+}
+
 const DEFAULT_STATS: CompanyStats = {
   activeInternships: 0,
   totalApplications: 0,
@@ -94,595 +99,462 @@ const DEFAULT_STATS: CompanyStats = {
   pendingReviews: 0,
   completionRate: 0,
   totalSupervisors: 0,
+  totalInterns: 0,
+  completedInterns: 0,
+  avgAttendanceRate: 0,
+  avgRating: 0,
 };
 
-const DEFAULT_APPLICATIONS: RecentApplication[] = [];
-const DEFAULT_PROGRAMS: ActiveProgram[] = [];
-const DEFAULT_PERFORMANCE: InternPerformance[] = [];
-
 export default function CompanyHRDashboard() {
-  const { user, profile } = useAuth();
-  const [stats, setStats] = useState<CompanyStats>(DEFAULT_STATS);
-  const [isLoading, setIsLoading] = useState(true);
-  const [recentApplications, setRecentApplications] = useState<RecentApplication[]>(DEFAULT_APPLICATIONS);
-  const [activePrograms, setActivePrograms] = useState<ActiveProgram[]>(DEFAULT_PROGRAMS);
-  const [internPerformance, setInternPerformance] = useState<InternPerformance[]>(DEFAULT_PERFORMANCE);
+  const { profile } = useAuth();
+  const { toast } = useToast();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/company-hr/dashboard", { cache: "no-store" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Failed (${res.status})`);
+      }
+      const j = await res.json();
+      setData(j.data);
+    } catch (e: any) {
+      setError(e.message || "Failed to load dashboard");
+      toast({
+        title: "Dashboard error",
+        description: e.message || "Failed to load dashboard",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    fetchCompanyData();
-  }, [user]);
+    fetchData();
+  }, [fetchData]);
 
-  async function fetchCompanyData() {
-    if (!user) { setIsLoading(false); return; }
+  const stats = data?.stats || DEFAULT_STATS;
+  const recentApplications = data?.recentApplications || [];
+  const activePrograms = data?.activePrograms || [];
+  const internPerformance = data?.internPerformance || [];
 
-    try {
-      const supabase = createClient();
-      
-      // Fetch real data from Supabase - using Promise.allSettled for resilience
-      const results = await Promise.allSettled([
-        // Fetch internships count
-        supabase
-          .from('internships')
-          .select('id', { count: 'exact' })
-          .eq('company_id', profile?.company_id)
-          .in('status', ['active', 'open']),
-        
-        // Fetch applications count
-        supabase
-          .from('applications')
-          .select('id', { count: 'exact' })
-          .eq('company_id', profile?.company_id),
-          
-        // Fetch recent applications with details
-        supabase
-          .from('applications')
-          .select(`
-            id,
-            status,
-            created_at,
-            student:profiles!student_user_id(full_name, email),
-            internships!inner(title)
-          `)
-          .eq('company_id', profile?.company_id)
-          .order('created_at', { ascending: false })
-          .limit(5),
-        
-        // Fetch active programs
-        supabase
-          .from('internships')
-          .select('*')
-          .eq('company_id', profile?.company_id)
-          .in('status', ['active', 'open'])
-          .order('created_at', { ascending: false })
-          .limit(5),
-      ]);
+  const fmtDate = (d?: string | null) =>
+    d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-      // Process results safely
-      const [internshipsResult, applicationsResult, recentAppsResult, programsResult] = results;
-      
-      // Update stats from actual data
-      const newStats: CompanyStats = { ...DEFAULT_STATS };
-      
-      if (internshipsResult.status === 'fulfilled' && internshipsResult.value.data) {
-        newStats.activeInternships = internshipsResult.value.count || 0;
-      }
-      if (applicationsResult.status === 'fulfilled' && applicationsResult.value.data) {
-        newStats.totalApplications = applicationsResult.value.count || 0;
-      }
-      
-      // Set stats
-      setStats(newStats);
-      
-      // Set recent applications if available
-      if (recentAppsResult.status === 'fulfilled' && recentAppsResult.value.data) {
-        const apps: RecentApplication[] = recentAppsResult.value.data.map((app: any) => ({
-          id: app.id,
-          student_name: app.student?.full_name || 'Unknown',
-          student_email: app.student?.email || '',
-          internship_title: app.internships?.title || 'Unknown Program',
-          status: app.status || 'pending',
-          applied_at: app.created_at,
-        }));
-        setRecentApplications(apps);
-      }
-      
-      // Set active programs if available
-      if (programsResult.status === 'fulfilled' && programsResult.value.data) {
-        const programs: ActiveProgram[] = programsResult.value.data.map((prog: any) => ({
-          id: prog.id,
-          title: prog.title,
-          status: prog.status,
-          applicants_count: prog.current_applicants || 0,
-          max_applicants: prog.max_applicants || 0,
-          start_date: prog.start_date,
-          end_date: prog.end_date,
-        }));
-        setActivePrograms(programs);
-      }
-      
-    } catch (error) {
-      console.error("Error fetching company data:", error);
-      // Keep default empty state on error
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Pending</Badge>;
-      case "accepted":
-      case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Accepted</Badge>;
-      case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>;
-      case "reviewing":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Reviewing</Badge>;
-      case "open":
-        return <Badge className="bg-green-100 text-green-700 border-green-200">Open</Badge>;
-      case "on_leave":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">On Leave</Badge>;
-      case "completed":
-        return <Badge className="bg-purple-100 text-purple-700 border-purple-200">Completed</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
+  const statusBadge = (s: string) => {
+    const cls =
+      s === "accepted"
+        ? "bg-emerald-100 text-emerald-700"
+        : s === "rejected"
+        ? "bg-red-100 text-red-700"
+        : s === "reviewing"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-slate-100 text-slate-700";
+    return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{s}</span>;
   };
 
   const statCards = [
     {
-      title: "Active Programs",
-      value: stats?.activeInternships.toString() || "0",
+      label: "Active Programs",
+      value: stats.activeInternships,
       icon: Briefcase,
       color: "text-blue-600",
-      bgColor: "bg-blue-50",
-      description: "Currently running internships",
+      bg: "bg-blue-50",
+      href: "/company-hr/internships",
     },
     {
-      title: "Total Applications",
-      value: stats?.totalApplications.toString() || "0",
-      icon: FileText,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-      description: "All time applications received",
-    },
-    {
-      title: "Active Interns",
-      value: stats?.activeInterns.toString() || "0",
-      icon: Users,
+      label: "Total Applications",
+      value: stats.totalApplications,
+      icon: ClipboardCheck,
       color: "text-purple-600",
-      bgColor: "bg-purple-50",
-      description: "Currently interning at your company",
+      bg: "bg-purple-50",
+      href: "/company-hr/applications",
     },
     {
-      title: "Pending Reviews",
-      value: stats?.pendingReviews.toString() || "0",
+      label: "Pending Reviews",
+      value: stats.pendingReviews,
       icon: Clock,
       color: "text-amber-600",
-      bgColor: "bg-amber-50",
-      description: "Awaiting your decision",
-    },
-  ];
-
-  const quickActions = [
-    {
-      title: "Post New Internship",
-      description: "Create a new internship listing",
-      icon: Plus,
-      href: "/company-hr/internships",
-      color: "bg-blue-50 text-blue-600",
-    },
-    {
-      title: "Review Applications",
-      description: `${stats?.pendingReviews || 0} pending reviews`,
-      icon: FileText,
+      bg: "bg-amber-50",
       href: "/company-hr/applications",
-      color: "bg-green-50 text-green-600",
-      badge: stats?.pendingReviews ? stats.pendingReviews : undefined,
     },
     {
-      title: "Manage Supervisors",
-      description: `${stats?.totalSupervisors || 0} site supervisors`,
-      icon: UserPlus,
+      label: "Active Interns",
+      value: stats.activeInterns,
+      icon: Users,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
+      href: "/company-hr/interns",
+    },
+    {
+      label: "Site Supervisors",
+      value: stats.totalSupervisors,
+      icon: UserCheck,
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
       href: "/company-hr/supervisors",
-      color: "bg-purple-50 text-purple-600",
     },
     {
-      title: "View Documents",
-      description: "Letters and certificates",
-      icon: FolderOpen,
-      href: "/company-hr/documents",
-      color: "bg-orange-50 text-orange-600",
+      label: "Completion Rate",
+      value: `${stats.completionRate}%`,
+      icon: TrendingUp,
+      color: "text-rose-600",
+      bg: "bg-rose-50",
+      href: "/company-hr/reports",
     },
   ];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">HR Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {profile?.full_name || user?.email || "HR Manager"}
+          <h1 className="text-2xl font-bold tracking-tight">
+            Welcome back, {profile?.full_name?.split(" ")[0] || profile?.first_name || "HR"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Manage your internship programs, applications, and interns in one place.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchCompanyData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button asChild>
-            <Link href="/company-hr/internships">
-              <Plus className="h-4 w-4 mr-2" />
-              Post Internship
-            </Link>
-          </Button>
+          <Link href="/company-hr/internships">
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-2" /> New Internship
+            </Button>
+          </Link>
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((card, index) => (
-          <motion.div
-            key={card.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.title}</p>
-                    <p className="text-3xl font-bold mt-1">{card.value}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{card.description}</p>
-                  </div>
-                  <div className={`p-3 rounded-full ${card.bgColor}`}>
-                    <card.icon className={`h-6 w-6 ${card.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+            <div>
+              <p className="font-medium text-red-900">Failed to load dashboard data</p>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quickActions.map((action, index) => (
-          <motion.div
-            key={action.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 + index * 0.05 }}
-          >
-            <Link href={action.href}>
-              <Card className="cursor-pointer hover:shadow-md transition-all hover:border-primary/20 h-full">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className={`p-3 rounded-lg ${action.color}`}>
-                      <action.icon className="h-5 w-5" />
-                    </div>
-                    {action.badge && action.badge > 0 && (
-                      <Badge variant="destructive" className="ml-2">
-                        {action.badge}
-                      </Badge>
-                    )}
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {statCards.map((s) => {
+          const Icon = s.icon;
+          return (
+            <Link key={s.label} href={s.href}>
+              <Card className="hover:shadow-md transition-shadow">
+                <CardContent className="pt-5">
+                  <div className={`inline-flex p-2 rounded-md ${s.bg} mb-3`}>
+                    <Icon className={`h-4 w-4 ${s.color}`} />
                   </div>
-                  <h3 className="font-semibold mt-4">{action.title}</h3>
-                  <p className="text-sm text-muted-foreground mt-1">{action.description}</p>
+                  <div className="text-2xl font-bold">{s.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
                 </CardContent>
               </Card>
             </Link>
-          </motion.div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Programs Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="lg:col-span-2"
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Briefcase className="h-5 w-5 text-primary" />
-                Active Internship Programs
-              </CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/company-hr/internships" className="gap-1">
-                  View All <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activePrograms.map((program) => (
-                  <div
-                    key={program.id}
-                    className="flex items-center justify-between p-4 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium truncate">{program.title}</h4>
-                        {getStatusBadge(program.status)}
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        {program.start_date && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(program.start_date).toLocaleDateString()} -{" "}
-                            {program.end_date ? new Date(program.end_date).toLocaleDateString() : "Ongoing"}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 flex items-center gap-3">
-                        <Progress 
-                          value={program.max_applicants ? (program.applicants_count / program.max_applicants) * 100 : 50} 
-                          className="h-2 w-32" 
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {program.applicants_count}/{program.max_applicants || "∞"} applicants
-                        </span>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                
-                {activePrograms.length === 0 && (
-                  <div className="text-center py-8">
-                    <Briefcase className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
-                    <p className="text-muted-foreground">No active programs yet</p>
-                    <Button variant="link" asChild className="mt-2">
-                      <Link href="/company-hr/internships">Create your first program</Link>
-                    </Button>
-                  </div>
-                )}
+      {/* Performance Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Average Attendance</p>
+                <p className="text-2xl font-bold mt-1">{stats.avgAttendanceRate}%</p>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Completion Rate & Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45 }}
-        >
-          <Card className="h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                Performance Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Completion Rate Circle */}
-              <div className="flex flex-col items-center py-4">
-                <div className="relative w-32 h-32">
-                  <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="54"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="10"
-                      className="text-muted/20"
-                    />
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="54"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="10"
-                      strokeLinecap="round"
-                      strokeDasharray={`${(stats?.completionRate || 0) * 3.39} 339`}
-                      className="text-emerald-500"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-bold">{stats?.completionRate || 0}%</span>
-                    <span className="text-xs text-muted-foreground">Completion Rate</span>
-                  </div>
-                </div>
+              <div className="p-3 rounded-full bg-emerald-50">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
               </div>
-
-              {/* Additional Metrics */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm">Site Supervisors</span>
-                  </div>
-                  <span className="font-semibold">{stats?.totalSupervisors || 0}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <Award className="h-4 w-4 text-amber-600" />
-                    <span className="text-sm">Avg. Rating</span>
-                  </div>
-                  <span className="font-semibold">4.6 / 5.0</span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-green-600" />
-                    <span className="text-sm">Avg. Attendance</span>
-                  </div>
-                  <span className="font-semibold">94%</span>
-                </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Average Rating</p>
+                <p className="text-2xl font-bold mt-1">{stats.avgRating.toFixed(1)} / 5.0</p>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              <div className="p-3 rounded-full bg-amber-50">
+                <Star className="h-6 w-6 text-amber-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Interns</p>
+                <p className="text-2xl font-bold mt-1">
+                  {stats.totalInterns}{" "}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    ({stats.completedInterns} completed)
+                  </span>
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-indigo-50">
+                <Award className="h-6 w-6 text-indigo-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Bottom Grid: Recent Applications + Top Performers */}
+      {/* Recent Applications + Active Programs */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Applications Queue */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
-                Recent Applications
-              </CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/company-hr/applications" className="gap-1">
-                  View All <ArrowRight className="h-4 w-4" />
-                </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent Applications</CardTitle>
+              <CardDescription>Latest 5 applications received</CardDescription>
+            </div>
+            <Link href="/company-hr/applications">
+              <Button variant="ghost" size="sm">
+                View all <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 max-h-[320px] overflow-y-auto">
-                {recentApplications.slice(0, 5).map((app) => (
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-slate-100 animate-pulse rounded" />
+                ))}
+              </div>
+            ) : recentApplications.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No applications yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentApplications.map((app) => (
                   <div
                     key={app.id}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/30 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <Avatar className="h-9 w-9 shrink-0">
-                        <AvatarFallback className="text-xs">
-                          {getInitials(app.student_name)}
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage src={app.student_avatar || undefined} />
+                        <AvatarFallback>
+                          {app.student_name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{app.student_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {app.internship_title}
-                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{app.internship_title}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 ml-2">
-                      {getStatusBadge(app.status)}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-muted-foreground hidden sm:block">
+                        {fmtDate(app.applied_at)}
+                      </span>
+                      {statusBadge(app.status)}
                     </div>
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+            )}
+          </CardContent>
+        </Card>
 
-        {/* Top Performing Interns */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Star className="h-5 w-5 text-primary" />
-                Intern Performance
-              </CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/company-hr/interns" className="gap-1">
-                  View All <ArrowRight className="h-4 w-4" />
-                </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Active Internship Programs</CardTitle>
+              <CardDescription>Currently open and active programs</CardDescription>
+            </div>
+            <Link href="/company-hr/internships">
+              <Button variant="ghost" size="sm">
+                View all <ArrowRight className="h-3 w-3 ml-1" />
               </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Intern</TableHead>
-                    <TableHead>Attendance</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {internPerformance.slice(0, 4).map((intern) => (
-                    <TableRow key={intern.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-7 w-7">
-                            <AvatarFallback className="text-xs">
-                              {getInitials(intern.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium text-sm">{intern.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Progress value={intern.attendance_rate} className="h-2 w-16" />
-                          <span className="text-xs text-muted-foreground">{intern.attendance_rate}%</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                          <span className="text-sm font-medium">{intern.rating}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{getStatusBadge(intern.status)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </motion.div>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-16 bg-slate-100 animate-pulse rounded" />
+                ))}
+              </div>
+            ) : activePrograms.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No active programs yet.</p>
+                <Link href="/company-hr/internships">
+                  <Button size="sm" variant="outline" className="mt-3">
+                    <Plus className="h-3 w-3 mr-1" /> Create one
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activePrograms.map((p) => {
+                  const pct =
+                    p.max_applicants && p.max_applicants > 0
+                      ? Math.min(100, Math.round((p.applicants_count / p.max_applicants) * 100))
+                      : 0;
+                  return (
+                    <div key={p.id} className="p-3 rounded-lg border">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-sm truncate">{p.title}</p>
+                        <Badge variant="outline" className="capitalize">
+                          {p.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Progress value={pct} className="h-1.5 flex-1" />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {p.applicants_count}
+                          {p.max_applicants ? `/${p.max_applicants}` : ""} applicants
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Empty State (shown when no data) */}
-      {!isLoading && stats && stats.activeInternships === 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card>
-            <CardContent className="py-12">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="p-4 rounded-full bg-primary/10 mb-4">
-                  <Briefcase className="h-10 w-10 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Welcome to Your HR Dashboard!</h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  Get started by posting your first internship program to attract talented students from partner universities.
-                </p>
-                <div className="flex gap-3">
-                  <Button asChild size="lg">
-                    <Link href="/company-hr/internships">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create First Program
-                    </Link>
-                  </Button>
-                  <Button variant="outline" asChild size="lg">
-                    <Link href="/company-hr/supervisors">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add Supervisor
-                    </Link>
-                  </Button>
-                </div>
+      {/* Intern Performance Table */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Intern Performance</CardTitle>
+            <CardDescription>Attendance & rating for active interns</CardDescription>
+          </div>
+          <Link href="/company-hr/interns">
+            <Button variant="ghost" size="sm">
+              All interns <ArrowRight className="h-3 w-3 ml-1" />
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-10 bg-slate-100 animate-pulse rounded" />
+              ))}
+            </div>
+          ) : internPerformance.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No active interns yet.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Intern</TableHead>
+                  <TableHead>Attendance</TableHead>
+                  <TableHead>Rating</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {internPerformance.map((p) => (
+                  <TableRow key={p.student_internship_id}>
+                    <TableCell>
+                      <Link
+                        href={`/company-hr/interns`}
+                        className="font-medium text-sm hover:underline"
+                      >
+                        {p.student_user_id.slice(0, 8)}…
+                      </Link>
+                      <p className="text-xs text-muted-foreground">Started {fmtDate(p.start_date)}</p>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Progress value={p.attendance_rate} className="h-1.5 w-16" />
+                        <span className="text-xs text-muted-foreground">{p.attendance_rate}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                        <span className="text-sm font-medium">
+                          {p.rating > 0 ? p.rating.toFixed(1) : "—"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {p.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Link href="/company-hr/internships">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardContent className="pt-5 flex flex-col items-center text-center">
+              <div className="p-2 rounded-full bg-blue-50 mb-2">
+                <Briefcase className="h-5 w-5 text-blue-600" />
               </div>
+              <p className="font-medium text-sm">Manage Internships</p>
             </CardContent>
           </Card>
-        </motion.div>
-      )}
+        </Link>
+        <Link href="/company-hr/applications">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardContent className="pt-5 flex flex-col items-center text-center">
+              <div className="p-2 rounded-full bg-purple-50 mb-2">
+                <ClipboardCheck className="h-5 w-5 text-purple-600" />
+              </div>
+              <p className="font-medium text-sm">Review Applications</p>
+              {stats.pendingReviews > 0 && (
+                <Badge className="mt-1 bg-amber-100 text-amber-700 hover:bg-amber-100">
+                  {stats.pendingReviews} pending
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/company-hr/supervisors">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardContent className="pt-5 flex flex-col items-center text-center">
+              <div className="p-2 rounded-full bg-indigo-50 mb-2">
+                <UserPlus className="h-5 w-5 text-indigo-600" />
+              </div>
+              <p className="font-medium text-sm">Add Supervisor</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/company-hr/reports">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+            <CardContent className="pt-5 flex flex-col items-center text-center">
+              <div className="p-2 rounded-full bg-rose-50 mb-2">
+                <TrendingUp className="h-5 w-5 text-rose-600" />
+              </div>
+              <p className="font-medium text-sm">View Reports</p>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
     </div>
   );
 }

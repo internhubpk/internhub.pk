@@ -2,9 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
-// GET: Get intern-supervisor assignments
-// POST: Assign supervisor to intern(s)
-// PUT: Reassignment
+async function getCompanyProfile(supabase: any, userId: string) {
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("company_id, role")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !profile) {
+    return {
+      profile: null,
+      errorResponse: NextResponse.json(
+        { error: { code: "PROFILE_NOT_FOUND", message: "User profile not found" } },
+        { status: 404 }
+      ),
+    };
+  }
+  if (profile.role !== "company_hr") {
+    return {
+      profile: null,
+      errorResponse: NextResponse.json(
+        { error: { code: "FORBIDDEN", message: "Access denied. Company HR role required." } },
+        { status: 403 }
+      ),
+    };
+  }
+  if (!profile.company_id) {
+    return {
+      profile: null,
+      errorResponse: NextResponse.json(
+        { error: { code: "NO_COMPANY", message: "No company associated with this account" } },
+        { status: 400 }
+      ),
+    };
+  }
+  return { profile, errorResponse: null };
+}
+
+// GET /api/company-hr/assignments
+// ?supervisor_id=...&intern_id=...&active_only=true
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -12,10 +48,8 @@ export async function GET(request: NextRequest) {
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !user) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
@@ -23,83 +57,52 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user profile with company_id
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("company_id, role")
-      .eq("user_id", user.id)
-      .single();
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
 
-    if (profileError || !profile) {
-      return NextResponse.json(
-        { error: { code: "PROFILE_NOT_FOUND", message: "User profile not found" } },
-        { status: 404 }
-      );
-    }
-
-    if (profile.role !== "company_hr") {
-      return NextResponse.json(
-        { error: { code: "FORBIDDEN", message: "Access denied. Company HR role required." } },
-        { status: 403 }
-      );
-    }
-
-    if (!profile.company_id) {
-      return NextResponse.json(
-        { error: { code: "NO_COMPANY", message: "No company associated with this account" } },
-        { status: 400 }
-      );
-    }
-
-    // Parse query parameters
     const { searchParams } = new URL(request.url);
     const supervisorId = searchParams.get("supervisor_id");
     const internId = searchParams.get("intern_id");
-    const programId = searchParams.get("program_id");
     const activeOnly = searchParams.get("active_only") !== "false";
 
-    // Build base query - get assignments for company's interns
+    // Fetch all of the company's student_internships so we can scope the
+    // assignment join by their student_internship_id values.
+    const { data: companySIs } = await supabase
+      .from("student_internships")
+      .select("id, student_user_id, internship_id, status")
+      .eq("company_id", profile.company_id);
+
+    const siIds = (companySIs || []).map((r) => r.id);
+    if (siIds.length === 0) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
     let query = supabase
       .from("intern_supervisor_assignments")
       .select(`
-        *,
-        profiles:intern_id (
-          id,
-          first_name,
-          last_name,
-          email,
-          avatar_url
-        ),
-        supervisors:supervisor_id (
-          id,
-          first_name,
-          last_name,
-          email,
-          department_focus,
-          specialization
-        ),
-        internships:internship_id (
-          id,
-          title,
-          company_id
-        )
+        id,
+        student_internship_id,
+        supervisor_id,
+        type,
+        assigned_at,
+        ended_at,
+        created_at,
+        is_active,
+        intern_id,
+        internship_id,
+        assigned_by,
+        unassigned_at,
+        unassigned_by
       `)
+      .in("student_internship_id", siIds)
       .order("assigned_at", { ascending: false });
 
     if (activeOnly) {
-      query = query.eq("is_active", true);
+      query = query.or(`is_active.eq.true,ended_at.is.null`);
     }
-
-    if (supervisorId) {
-      query = query.eq("supervisor_id", supervisorId);
-    }
-
-    if (internId) {
-      query = query.eq("intern_id", internId);
-    }
+    if (supervisorId) query = query.eq("supervisor_id", supervisorId);
 
     const { data: assignments, error } = await query;
-
     if (error) {
       console.error("Error fetching assignments:", error);
       return NextResponse.json(
@@ -108,15 +111,74 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter by company (ensure we only return company's data)
-    const filteredAssignments = (assignments || []).filter(
-      assignment => assignment.internships?.company_id === profile.company_id
+    // Hydrate with student + supervisor + internship info
+    const allAssignments = (assignments || []) as any[];
+    // Filter further by intern_id (mapped to student_user_id via companySIs)
+    const filteredAssignments = internId
+      ? allAssignments.filter((a) => {
+          const si = (companySIs || []).find((s) => s.id === a.student_internship_id);
+          return si?.student_user_id === internId;
+        })
+      : allAssignments;
+
+    // Resolve supervisor + student + internship profile rows in batch.
+    const supervisorUserIds = Array.from(new Set(filteredAssignments.map((a) => a.supervisor_id)));
+    const studentUserIds = Array.from(
+      new Set(
+        filteredAssignments
+          .map((a) => {
+            const si = (companySIs || []).find((s) => s.id === a.student_internship_id);
+            return si?.student_user_id;
+          })
+          .filter(Boolean) as string[]
+      )
+    );
+    const internshipIds = Array.from(
+      new Set(
+        filteredAssignments
+          .map((a) => {
+            const si = (companySIs || []).find((s) => s.id === a.student_internship_id);
+            return si?.internship_id;
+          })
+          .filter(Boolean) as string[]
+      )
     );
 
-    return NextResponse.json({
-      success: true,
-      data: filteredAssignments,
+    const [supRes, stuRes, intRes] = await Promise.all([
+      supervisorUserIds.length
+        ? supabase
+            .from("supervisors")
+            .select("user_id, first_name, last_name, email, company_id, is_active")
+            .in("user_id", supervisorUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      studentUserIds.length
+        ? supabase
+            .from("profiles")
+            .select("user_id, first_name, last_name, email, avatar_url")
+            .in("user_id", studentUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      internshipIds.length
+        ? supabase.from("internships").select("id, title").in("id", internshipIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const supervisorMap = new Map((supRes.data || []).map((s: any) => [s.user_id, s]));
+    const studentMap = new Map((stuRes.data || []).map((s: any) => [s.user_id, s]));
+    const internshipMap = new Map((intRes.data || []).map((i: any) => [i.id, i]));
+
+    const enriched = filteredAssignments.map((a) => {
+      const si = (companySIs || []).find((s) => s.id === a.student_internship_id);
+      return {
+        ...a,
+        student_user_id: si?.student_user_id || null,
+        internship_id: si?.internship_id || a.internship_id || null,
+        student: studentMap.get(si?.student_user_id) || null,
+        supervisor: supervisorMap.get(a.supervisor_id) || null,
+        internship: internshipMap.get(si?.internship_id) || null,
+      };
     });
+
+    return NextResponse.json({ success: true, data: enriched });
   } catch (error) {
     console.error("Unexpected error:", error);
     return NextResponse.json(
@@ -126,6 +188,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST /api/company-hr/assignments
+// body: { supervisor_id, intern_ids: string[], student_internship_ids?: string[] }
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -133,10 +197,8 @@ export async function POST(request: NextRequest) {
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !user) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
@@ -144,72 +206,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user profile with company_id
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("company_id, role")
-      .eq("user_id", user.id)
-      .single();
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
 
-    if (profileError || !profile) {
-      return NextResponse.json(
-        { error: { code: "PROFILE_NOT_FOUND", message: "User profile not found" } },
-        { status: 404 }
-      );
-    }
-
-    if (profile.role !== "company_hr") {
-      return NextResponse.json(
-        { error: { code: "FORBIDDEN", message: "Access denied. Company HR role required." } },
-        { status: 403 }
-      );
-    }
-
-    if (!profile.company_id) {
-      return NextResponse.json(
-        { error: { code: "NO_COMPANY", message: "No company associated with this account" } },
-        { status: 400 }
-      );
-    }
-
-    // Parse request body
     const body = await request.json();
-    const {
-      supervisor_id,
-      intern_ids, // Array of intern IDs for batch assignment
-      internship_id,
-    } = body;
+    const { supervisor_id, intern_ids = [] } = body;
 
-    // Validate required fields
     if (!supervisor_id) {
       return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "Supervisor ID is required" } },
+        { error: { code: "VALIDATION_ERROR", message: "supervisor_id is required" } },
         { status: 400 }
       );
     }
-
-    if (!intern_ids || !Array.isArray(intern_ids) || intern_ids.length === 0) {
+    if (!Array.isArray(intern_ids) || intern_ids.length === 0) {
       return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "At least one intern ID is required" } },
+        { error: { code: "VALIDATION_ERROR", message: "intern_ids[] is required" } },
         { status: 400 }
       );
     }
 
-    // Verify supervisor belongs to this company
-    const { data: supervisor, error: supervisorError } = await supabase
+    // Verify supervisor belongs to this company and is active.
+    const { data: supervisor } = await supabase
       .from("supervisors")
-      .select("*")
-      .eq("id", supervisor_id)
+      .select("user_id, company_id, is_active, type")
+      .eq("user_id", supervisor_id)
       .eq("company_id", profile.company_id)
-      .single();
+      .maybeSingle();
 
-    if (supervisorError || !supervisor) {
+    if (!supervisor) {
       return NextResponse.json(
         { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or does not belong to your company" } },
         { status: 404 }
       );
     }
-
     if (!supervisor.is_active) {
       return NextResponse.json(
         { error: { code: "SUPERVISOR_INACTIVE", message: "Cannot assign to an inactive supervisor" } },
@@ -217,56 +246,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify all interns belong to company's programs
-    const { data: internApplications, error: appsError } = await supabase
-      .from("applications")
-      .select(`
-        student_id,
-        internship_id,
-        internships!inner (
-          id,
-          company_id,
-          title
-        )
-      `)
-      .in("student_id", intern_ids)
-      .eq("status", "accepted");
+    // Resolve each intern_id (student_user_id) → student_internships row
+    // belonging to this company. Only company interns can be assigned.
+    const { data: companySIs } = await supabase
+      .from("student_internships")
+      .select("id, student_user_id, internship_id, status, site_supervisor_id")
+      .eq("company_id", profile.company_id)
+      .in("student_user_id", intern_ids);
 
-    if (appsError) {
-      console.error("Error verifying interns:", appsError);
-      return NextResponse.json(
-        { error: { code: "DATABASE_ERROR", message: "Failed to verify interns" } },
-        { status: 500 }
-      );
-    }
+    const validSIs = (companySIs || []) as any[];
 
-    // Filter to only company's accepted applications
-    const validInterns = (internApplications || []).filter(
-      app => app.internships?.company_id === profile.company_id
-    );
-
-    if (validInterns.length === 0) {
+    if (validSIs.length === 0) {
       return NextResponse.json(
         { error: { code: "NO_VALID_INTERNS", message: "No valid interns found for assignment" } },
         { status: 400 }
       );
     }
 
-    // Create assignments
-    const assignmentsToCreate = validInterns.map(app => ({
-      intern_id: app.student_id,
+    // Deactivate any currently-active assignments for these
+    // student_internship_id values (regardless of supervisor) so the new
+    // assignment is the only active one.
+    const siIds = validSIs.map((si) => si.id);
+    await supabase
+      .from("intern_supervisor_assignments")
+      .update({
+        ended_at: new Date().toISOString(),
+        is_active: false,
+        unassigned_at: new Date().toISOString(),
+        unassigned_by: user.id,
+      })
+      .in("student_internship_id", siIds)
+      .or(`is_active.eq.true,ended_at.is.null`);
+
+    // Create new assignments. Use the type that matches the supervisor.
+    const assignmentsToCreate = validSIs.map((si) => ({
+      student_internship_id: si.id,
       supervisor_id,
-      internship_id: app.internship_id || internship_id,
+      type: supervisor.type || "site",
+      assigned_at: new Date().toISOString(),
+      ended_at: null,
+      // Optional convenience columns (migration 0024):
+      intern_id: si.student_user_id,
+      internship_id: si.internship_id,
       assigned_by: user.id,
       is_active: true,
     }));
 
     const { data: createdAssignments, error: insertError } = await supabase
       .from("intern_supervisor_assignments")
-      .upsert(assignmentsToCreate, {
-        onConflict: "intern_id,supervisor_id",
-        ignoreDuplicates: false,
-      })
+      .insert(assignmentsToCreate)
       .select();
 
     if (insertError) {
@@ -277,7 +305,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Log audit action
+    // Also mirror the assignment onto student_internships.site_supervisor_id
+    // so existing code that reads that column continues to work.
+    await Promise.all(
+      validSIs.map((si) =>
+        supabase
+          .from("student_internships")
+          .update({ site_supervisor_id: supervisor_id, updated_at: new Date().toISOString() })
+          .eq("id", si.id)
+      )
+    );
+
+    // Notify each intern
+    await Promise.all(
+      validSIs.map((si) =>
+        supabase.from("notifications").insert({
+          user_id: si.student_user_id,
+          sender_id: user.id,
+          title: "Site supervisor assigned",
+          message: "You have been assigned a site supervisor. You can now submit weekly logs and request evaluations.",
+          category: "system",
+          priority: "medium",
+          is_read: false,
+        })
+      )
+    );
+
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "assign_supervisor_to_interns",
@@ -285,15 +338,18 @@ export async function POST(request: NextRequest) {
       new_values: {
         supervisor_id,
         intern_count: createdAssignments?.length,
-        intern_ids: validInterns.map(i => i.student_id),
+        intern_ids: validSIs.map((i) => i.student_user_id),
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: createdAssignments,
-      message: `Successfully assigned ${createdAssignments?.length || 0} intern(s) to supervisor`,
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: createdAssignments,
+        message: `Successfully assigned ${createdAssignments?.length || 0} intern(s) to supervisor`,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Unexpected error:", error);
     return NextResponse.json(
@@ -303,7 +359,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle reassignments via PUT
+// PUT /api/company-hr/assignments — reassign a single intern
+// body: { intern_id, new_supervisor_id }
 export async function PUT(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -311,10 +368,8 @@ export async function PUT(request: NextRequest) {
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !user) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
@@ -322,52 +377,70 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Get user profile with company_id
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("company_id, role")
-      .eq("user_id", user.id)
-      .single();
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
 
-    if (profileError || !profile || profile.role !== "company_hr" || !profile.company_id) {
-      return NextResponse.json(
-        { error: { code: "FORBIDDEN", message: "Access denied" } },
-        { status: 403 }
-      );
-    }
-
-    // Parse request body
     const body = await request.json();
     const { intern_id, new_supervisor_id } = body;
-
     if (!intern_id || !new_supervisor_id) {
       return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "Intern ID and new supervisor ID are required" } },
+        { error: { code: "VALIDATION_ERROR", message: "intern_id and new_supervisor_id are required" } },
         { status: 400 }
       );
     }
 
-    // Deactivate existing assignment
-    const { error: deactivateError } = await supabase
-      .from("intern_supervisor_assignments")
-      .update({ 
-        is_active: false, 
-        unassigned_at: new Date().toISOString(),
-        unassigned_by: user.id 
-      })
-      .eq("intern_id", intern_id)
-      .eq("is_active", true);
+    // Verify intern belongs to company
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("id, internship_id, company_id")
+      .eq("student_user_id", intern_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
 
-    if (deactivateError) {
-      console.error("Error deactivating old assignment:", deactivateError);
+    if (!si) {
+      return NextResponse.json(
+        { error: { code: "INTERN_NOT_FOUND", message: "Intern not found in your company" } },
+        { status: 404 }
+      );
     }
 
-    // Create new assignment
+    // Verify supervisor
+    const { data: supervisor } = await supabase
+      .from("supervisors")
+      .select("user_id, company_id, is_active, type")
+      .eq("user_id", new_supervisor_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!supervisor || !supervisor.is_active) {
+      return NextResponse.json(
+        { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or inactive" } },
+        { status: 404 }
+      );
+    }
+
+    // Deactivate previous assignments for this student_internship_id
+    await supabase
+      .from("intern_supervisor_assignments")
+      .update({
+        ended_at: new Date().toISOString(),
+        is_active: false,
+        unassigned_at: new Date().toISOString(),
+        unassigned_by: user.id,
+      })
+      .eq("student_internship_id", si.id)
+      .or(`is_active.eq.true,ended_at.is.null`);
+
+    // Insert new assignment
     const { data: newAssignment, error: createError } = await supabase
       .from("intern_supervisor_assignments")
       .insert({
-        intern_id,
+        student_internship_id: si.id,
         supervisor_id: new_supervisor_id,
+        type: supervisor.type || "site",
+        assigned_at: new Date().toISOString(),
+        intern_id,
+        internship_id: si.internship_id,
         assigned_by: user.id,
         is_active: true,
       })
@@ -382,7 +455,12 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Log audit action
+    // Mirror onto student_internships
+    await supabase
+      .from("student_internships")
+      .update({ site_supervisor_id: new_supervisor_id, updated_at: new Date().toISOString() })
+      .eq("id", si.id);
+
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "reassign_intern",
