@@ -337,9 +337,20 @@ export async function POST(request: NextRequest) {
     if (job_title) profileUpdate.job_title = job_title?.trim() || null;
     if (phone) profileUpdate.phone = phone?.trim() || null;
 
-    const { error: profileUpsertError } = await adminClient
-      .from("profiles")
-      .upsert(profileUpdate, { onConflict: "user_id" });
+    let profileUpsertError: unknown = null;
+    let profileAfterUpsert: Record<string, unknown> | null = null;
+
+    try {
+      const upsertRes = await adminClient
+        .from("profiles")
+        .upsert(profileUpdate, { onConflict: "user_id" })
+        .select()
+        .single();
+      profileUpsertError = upsertRes.error;
+      profileAfterUpsert = upsertRes.data;
+    } catch (e) {
+      profileUpsertError = e;
+    }
 
     if (profileUpsertError) {
       console.error(
@@ -348,23 +359,42 @@ export async function POST(request: NextRequest) {
       );
       // Don't fail the whole request — the auth user was created
       // successfully, and the trigger likely already inserted a
-      // minimal profile row. The admin can edit it from the UI.
+      // minimal profile row. But DO surface the error to the caller
+      // so the UI can warn the admin that the profile may be
+      // incomplete (e.g. university_id missing → won't show in lists).
     }
 
     // ==========================================================
     // 7. Return the new user's id. The caller's session is NOT
     //    affected — they remain signed in as super_admin /
     //    university_admin.
+    //
+    //    If the profile upsert failed, we include a `warning` field
+    //    with the error message. The caller can display this so the
+    //    admin knows the profile may be incomplete.
     // ==========================================================
-    return NextResponse.json<ApiResponse<{ id: string; email: string; role: string }>>(
+    const upsertErrMsg =
+      profileUpsertError instanceof Error
+        ? profileUpsertError.message
+        : profileUpsertError && typeof profileUpsertError === "object" && "message" in profileUpsertError
+          ? String((profileUpsertError as { message: unknown }).message)
+          : null;
+
+    return NextResponse.json<
+      ApiResponse<{ id: string; email: string; role: string; profile?: Record<string, unknown> | null }> & {
+        warning?: string;
+      }
+    >(
       {
         success: true,
         data: {
           id: authData.user.id,
           email: email.trim(),
           role,
+          profile: profileAfterUpsert,
         },
         message: "Account created. The new user can sign in with their email and password.",
+        ...(upsertErrMsg ? { warning: `Profile save issue: ${upsertErrMsg}` } : {}),
       },
       { status: 201 }
     );

@@ -271,10 +271,21 @@ export default function CoordinatorsPage() {
         return;
       }
 
-      toast({
-        title: "Coordinator Created",
-        description: `${formData.full_name}'s account has been created successfully`,
-      });
+      // The API may return a `warning` if the profile upsert failed
+      // (e.g. university_id not saved). Show it so the admin knows the
+      // coordinator might not appear in lists until the profile is fixed.
+      if (json?.warning) {
+        toast({
+          title: "Account created (with warning)",
+          description: json.warning,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Coordinator Created",
+          description: `${formData.full_name}'s account has been created successfully`,
+        });
+      }
 
       setIsDialogOpen(false);
       resetForm();

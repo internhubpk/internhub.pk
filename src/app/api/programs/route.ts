@@ -414,14 +414,17 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/programs
- * Delete program - Super Admin only (dangerous operation)
+ * Delete program - Super Admin or University Admin (within their university)
  */
 export async function DELETE(request: NextRequest) {
   try {
     const authContext = await requireAuth();
-    
-    if (authContext.profile?.role !== "super_admin") {
-      return authorizationError("Only super admins can delete programs");
+
+    // RLS policy allows super_admin and university_admin to delete.
+    // department_coordinator is NOT allowed to delete (see migration 0002).
+    const role = authContext.profile?.role;
+    if (role !== "super_admin" && role !== "university_admin") {
+      return authorizationError("Only Super Admins or University Admins can delete programs");
     }
 
     const cookieStore = await cookies();
