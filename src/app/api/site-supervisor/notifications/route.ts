@@ -7,7 +7,9 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Get current user
+    // Get current user — student_internships.site_supervisor_id is FK to
+    // profiles.user_id, so we use the auth user's id directly (RLS uses
+    // auth.uid() the same way).
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -16,20 +18,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     const body = await request.json();
     const { recipientType, studentIds, title, content, priority = "medium" } = body;
@@ -49,11 +38,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get all assigned student IDs
+    // Get all assigned student user_ids (real column: student_user_id, not
+    // student_id). Filter by the supervisor's user_id (profiles.user_id),
+    // NOT the supervisors table PK.
     const { data: assignments, error: assignError } = await supabase
       .from("student_internships")
-      .select("student_id, student:students(user_id)")
-      .eq("site_supervisor_id", supervisor.id);
+      .select("student_user_id")
+      .eq("site_supervisor_id", supervisorUserId);
 
     if (assignError) {
       console.error("Error fetching assignments:", assignError);
@@ -63,12 +54,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const assignedStudentIds = (assignments || [])
+      .map((a: any) => a.student_user_id)
+      .filter((id: any): id is string => Boolean(id));
+
     // Determine recipients
     let targetStudentIds: string[] = [];
-    
+
     if (recipientType === "broadcast") {
       // Send to ALL assigned students
-      targetStudentIds = assignments?.map(a => a.student_id) || [];
+      targetStudentIds = assignedStudentIds;
     } else {
       // Send to specific students - verify they are assigned to this supervisor
       if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
@@ -78,9 +73,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const assignedStudentIds = assignments?.map(a => a.student_id) || [];
       const invalidIds = studentIds.filter((id: string) => !assignedStudentIds.includes(id));
-      
+
       if (invalidIds.length > 0) {
         return NextResponse.json<ApiResponse<null>>(
           { 
@@ -104,9 +98,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user IDs for the target students
-    const targetAssignments = assignments?.filter(a => targetStudentIds.includes(a.student_id)) || [];
-    const userIds = targetAssignments.map(a => (a as any).student?.user_id).filter(Boolean);
+    // `student_user_id` IS the recipient's `user_id` on `notifications` —
+    // no second hop through `students` is needed (that join was broken
+    // anyway since student_internships has no FK to students).
+    const userIds = targetStudentIds;
 
     // Create notifications for each student
     const notifications = userIds.map((userId: string) => ({
@@ -115,10 +110,10 @@ export async function POST(request: NextRequest) {
       message: content,
       category: "announcement" as const,
       priority,
-      sender_id: user.id,
+      sender_id: supervisorUserId,
       metadata: {
         sent_by: "site_supervisor",
-        supervisor_id: supervisor.id,
+        supervisor_id: supervisorUserId,
         recipient_type: recipientType,
       },
     }));
@@ -138,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     // Create audit log
     await supabase.from("audit_logs").insert({
-      user_id: user.id,
+      user_id: supervisorUserId,
       action: "send_notification",
       entity_type: "notification",
       new_values: {
@@ -171,7 +166,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Get current user
+    // Get current user — metadata->>supervisor_id stores the supervisor's
+    // user_id (profiles.user_id), NOT the supervisors table PK.
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -180,20 +176,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -208,7 +191,7 @@ export async function GET(request: NextRequest) {
       .from("notifications")
       .select("*", { count: "exact" })
       .eq("metadata->>sent_by", "site_supervisor")
-      .eq("metadata->>supervisor_id", supervisor.id)
+      .eq("metadata->>supervisor_id", supervisorUserId)
       .range(from, to)
       .order("created_at", { ascending: false });
 

@@ -87,6 +87,8 @@ interface StudentForReport {
   overallProgress: number;
   finalGrade?: string;
   gpa?: number;
+  cgpa?: number;
+  studentIdNumber?: string;
 }
 
 interface MarksheetEntry {
@@ -147,23 +149,11 @@ export default function FacultySupervisorReportsPage() {
       
       try {
         const supabase = createClient();
-        
-        // Get supervisor record
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
 
-        if (!supervisor) {
-          setIsLoading(false);
-          return;
-        }
-
-        // Fetch supervised students with their internship details.
-        // NOTE: faculty_supervisor_id references profiles.user_id, not the
-        // supervisors.id surrogate key, so we filter by the auth user id.
+        // Fetch supervised students. faculty_supervisor_id references
+        // profiles.user_id (not supervisors.id); student_internships has no FK
+        // to `students`, so we join profiles via student_user_id and fetch the
+        // `students` rows separately for program/cgpa.
         const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
@@ -171,37 +161,78 @@ export default function FacultySupervisorReportsPage() {
             status,
             start_date,
             end_date,
-            progress,
-            student:students(
-              id,
-              full_name,
-              email,
-              program:programs(name),
-              gpa
-            ),
-            internship:internships(title, company)
+            student_user_id,
+            student_profile:student_user_id(full_name, email, avatar_url),
+            internship:internships(id, title, location, remote),
+            company:company_id(name)
           `)
           .eq("faculty_supervisor_id", user.id);
 
-        const studentList: StudentForReport[] = (studentData || []).map((s: any) => ({
-          id: s.student?.id || s.id,
-          name: s.student?.full_name || `Student ${s.id?.slice(0, 6)}`,
-          email: s.student?.email || "",
-          program: s.student?.program?.name || "Unknown Program",
-          company: s.internship?.company || "N/A",
-          internshipTitle: s.internship?.title || "N/A",
-          startDate: s.start_date || "",
-          endDate: s.end_date || "",
-          status: s.status || "active",
-          overallProgress: s.progress || 0,
-          finalGrade: undefined, // Would come from evaluations table
-          gpa: s.student?.gpa,
-        }));
+        const studentUserIds = Array.from(
+          new Set((studentData || []).map((s: any) => s.student_user_id))
+        );
+
+        // Fetch students-table records (cgpa, program_id) for these users.
+        let recordByUser = new Map<string, any>();
+        let programMap: Record<string, string> = {};
+        if (studentUserIds.length > 0) {
+          const { data: records } = await supabase
+            .from("students")
+            .select("user_id, cgpa, student_id_number, program_id")
+            .in("user_id", studentUserIds);
+          (records || []).forEach((r: any) => recordByUser.set(r.user_id, r));
+          const programIds = Array.from(
+            new Set((records || []).map((r: any) => r.program_id).filter(Boolean))
+          );
+          if (programIds.length > 0) {
+            const { data: programs } = await supabase
+              .from("programs")
+              .select("id, name")
+              .in("id", programIds);
+            (programs || []).forEach((p: any) => {
+              programMap[p.id] = p.name;
+            });
+          }
+        }
+
+        // Compute progress from weekly_logs (approved / total).
+        let logsByStudent = new Map<string, { approved: number; total: number }>();
+        if (studentUserIds.length > 0) {
+          const { data: logs } = await supabase
+            .from("weekly_logs")
+            .select("student_user_id, status")
+            .in("student_user_id", studentUserIds);
+          (logs || []).forEach((log: any) => {
+            const cur = logsByStudent.get(log.student_user_id) || { approved: 0, total: 0 };
+            cur.total += 1;
+            if (log.status === "approved") cur.approved += 1;
+            logsByStudent.set(log.student_user_id, cur);
+          });
+        }
+
+        const studentList: StudentForReport[] = (studentData || []).map((s: any) => {
+          const meta = logsByStudent.get(s.student_user_id) || { approved: 0, total: 0 };
+          const progress = meta.total > 0 ? Math.round((meta.approved / meta.total) * 100) : 0;
+          const record = recordByUser.get(s.student_user_id);
+          const programName = record?.program_id ? programMap[record.program_id] || "Unknown Program" : "Unknown Program";
+          return {
+            id: s.student_user_id || s.id,
+            name: s.student_profile?.full_name || `Student ${s.student_user_id?.slice(0, 6)}`,
+            email: s.student_profile?.email || "",
+            program: programName,
+            company: s.company?.name || "N/A",
+            internshipTitle: s.internship?.title || "N/A",
+            startDate: s.start_date || "",
+            endDate: s.end_date || "",
+            status: s.status === "active" ? "active" : s.status === "completed" ? "completed" : "on_leave",
+            overallProgress: progress,
+            gpa: record?.cgpa ? Number(record.cgpa) : undefined,
+            cgpa: record?.cgpa ? Number(record.cgpa) : undefined,
+            studentIdNumber: record?.student_id_number,
+          };
+        });
 
         setStudents(studentList);
-
-        // Fetch marksheet data when a student is selected (would be triggered by selection)
-        // setMarksheet(marksheetData || []);
       } catch (error) {
         console.error("Error fetching report data:", error);
         // Keep empty state on error
@@ -212,6 +243,92 @@ export default function FacultySupervisorReportsPage() {
     
     fetchData();
   }, [user]);
+
+  // Fetch marksheet data when a student is selected.
+  useEffect(() => {
+    if (!user || !selectedStudent) return;
+    const studentUserId = selectedStudent.id;
+    const supervisorUserId = user.id;
+
+    async function fetchMarksheet() {
+      try {
+        const supabase = createClient();
+        const [logsRes, evalsRes, attRes] = await Promise.all([
+          supabase
+            .from("weekly_logs")
+            .select(`
+              id,
+              week_number,
+              week_start_date,
+              week_end_date,
+              status,
+              supervisor_feedback,
+              hours_worked,
+              tasks_completed
+            `)
+            .eq("student_user_id", studentUserId)
+            .order("week_start_date", { ascending: true }),
+          supabase
+            .from("evaluations")
+            .select("id, type, status, scores, comments, rating, created_at")
+            .eq("student_user_id", studentUserId)
+            .eq("evaluator_id", supervisorUserId)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("attendance")
+            .select("id, date, status")
+            .eq("student_user_id", studentUserId),
+        ]);
+
+        const logs = logsRes.data || [];
+        const evals = evalsRes.data || [];
+        const att = attRes.data || [];
+
+        // Build weekly marksheet rows from weekly_logs.
+        const rows: MarksheetEntry[] = logs.map((log: any) => {
+          const tasksList = Array.isArray(log.tasks_completed) ? log.tasks_completed : [];
+          // Attendance for this week (date between week_start_date and week_end_date).
+          const ws = log.week_start_date ? new Date(log.week_start_date) : null;
+          const we = log.week_end_date ? new Date(log.week_end_date) : null;
+          const weekAtt = att.filter((a: any) => {
+            const d = new Date(a.date);
+            return (!ws || d >= ws) && (!we || d <= we);
+          });
+          const presentCount = weekAtt.filter((a: any) => a.status === "present" || a.status === "late" || a.status === "half_day").length;
+          const weekAttPct = weekAtt.length > 0 ? Math.round((presentCount / weekAtt.length) * 100) : 0;
+          // Weekly score from any evaluation created during this week.
+          const weekEval = evals.find((e: any) => {
+            const ed = new Date(e.created_at);
+            return ws && we && ed >= ws && ed <= we;
+          });
+          let weeklyScore = 0;
+          let maxScore = 10;
+          if (weekEval && weekEval.scores && typeof weekEval.scores === "object") {
+            const vals = Object.values(weekEval.scores).filter((v): v is number => typeof v === "number");
+            weeklyScore = vals.reduce((acc, v) => acc + v, 0);
+            maxScore = vals.length * 10 || 10;
+          }
+          return {
+            weekNumber: log.week_number || 0,
+            weekStart: log.week_start_date || "",
+            weekEnd: log.week_end_date || "",
+            tasksCompleted: tasksList.length,
+            tasksTotal: tasksList.length,
+            attendance: weekAttPct,
+            weeklyScore,
+            maxScore,
+            remarks: log.supervisor_feedback || "",
+          };
+        });
+        setMarksheet(rows);
+      } catch (error) {
+        console.error("Error fetching marksheet:", error);
+        setMarksheet([]);
+      }
+    }
+
+    fetchMarksheet();
+  }, [user, selectedStudent]);
 
   // Ref for printing
   const certificateRef = useRef<HTMLDivElement>(null);
@@ -320,11 +437,15 @@ export default function FacultySupervisorReportsPage() {
   };
 
   const handleDownloadPDF = async () => {
+    // Use the browser print dialog (user can choose “Save as PDF”).
+    // A real PDF library (jsPDF / pdfmake) isn't installed in this project,
+    // and a setTimeout no-op would just mislead the user.
     setIsGenerating(true);
-    // Simulate PDF generation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsGenerating(false);
-    alert("PDF download started! (This is a demo)");
+    try {
+      window.print();
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // Certificate Template Component
@@ -410,7 +531,11 @@ export default function FacultySupervisorReportsPage() {
         <div className="grid grid-cols-3 gap-4 my-6 text-sm">
           <div className="p-3 bg-muted/30 rounded">
             <p className="font-semibold">Attendance</p>
-            <p className="text-lg font-bold text-emerald-600">97%</p>
+            <p className="text-lg font-bold text-emerald-600">{(() => {
+              const total = marksheet.reduce((acc, e) => acc + (e.attendance > 0 ? 1 : 0), 0);
+              const sum = marksheet.reduce((acc, e) => acc + e.attendance, 0);
+              return total > 0 ? Math.round(sum / total) : 0;
+            })()}%</p>
           </div>
           <div className="p-3 bg-muted/30 rounded">
             <p className="font-semibold">Overall Score</p>
@@ -854,14 +979,18 @@ export default function FacultySupervisorReportsPage() {
                   </Card>
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-3xl font-bold text-blue-600">97%</p>
+                      <p className="text-3xl font-bold text-blue-600">{(() => {
+                        const total = marksheet.reduce((acc, e) => acc + (e.attendance > 0 ? 1 : 0), 0);
+                        const sum = marksheet.reduce((acc, e) => acc + e.attendance, 0);
+                        return total > 0 ? Math.round(sum / total) : 0;
+                      })()}%</p>
                       <p className="text-sm text-muted-foreground">Avg Attendance</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-3xl font-bold text-purple-600">{selectedStudent.gpa || 'N/A'}</p>
-                      <p className="text-sm text-muted-foreground">GPA</p>
+                      <p className="text-3xl font-bold text-purple-600">{selectedStudent?.cgpa || selectedStudent?.gpa || 'N/A'}</p>
+                      <p className="text-sm text-muted-foreground">CGPA</p>
                     </CardContent>
                   </Card>
                 </div>

@@ -39,16 +39,21 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 // Types
+// `attendance.status` uses the `attendance_status` enum
+// (present, absent, late, remote, leave, holiday).
+// Schema: id, student_user_id, internship_id, student_internship_id, date,
+// check_in (timestamptz), check_out (timestamptz), status, notes, location_lat,
+// location_lng, verified, created_at, updated_at. NO `student_id`, NO `hours_worked`.
 interface AttendanceRecord {
   id: string;
-  student_id: string;
+  student_user_id: string;
   internship_id: string | null;
   date: string;
   check_in: string | null;
   check_out: string | null;
-  status: "present" | "absent" | "late" | "half_day" | "leave" | "holiday" | "weekend";
+  status: "present" | "absent" | "late" | "remote" | "leave" | "holiday";
   notes: string | null;
-  hours_worked: number | null;
+  verified: boolean | null;
   created_at: string;
 }
 
@@ -127,22 +132,30 @@ export default function StudentAttendancePage() {
 
   // Calculate stats
   const calculateStats = (): AttendanceStats => {
-    // Filter out weekends and holidays for working days calculation
-    const workingRecords = attendance.filter(r => 
-      r.status !== "weekend" && r.status !== "holiday"
-    );
+    // Filter out holidays for working days calculation. (`weekend` and
+    // `half_day` are NOT valid attendance_status values — only present, absent,
+    // late, remote, leave, holiday.)
+    const workingRecords = attendance.filter(r => r.status !== "holiday");
     
     const totalWorkingDays = workingRecords.length || 1; // Avoid division by zero
     
-    const presentDays = attendance.filter(r => r.status === "present").length;
+    const presentDays = attendance.filter(r => r.status === "present" || r.status === "remote").length;
     const lateDays = attendance.filter(r => r.status === "late").length;
     const absentDays = attendance.filter(r => r.status === "absent").length;
-    const halfDays = attendance.filter(r => r.status === "half_day").length;
+    const halfDays = 0; // `half_day` is not a valid enum value
     const leaveDays = attendance.filter(r => r.status === "leave").length;
     const holidayDays = attendance.filter(r => r.status === "holiday").length;
-    const weekendDays = attendance.filter(r => r.status === "weekend").length;
+    const weekendDays = 0; // `weekend` is not a valid enum value
     
-    const totalHours = attendance.reduce((acc, r) => acc + (r.hours_worked || 0), 0);
+    // Compute total hours from check_in/check_out timestamps (difference in
+    // hours). If either is null, count as 0.
+    const totalHours = attendance.reduce((acc, r) => {
+      if (!r.check_in || !r.check_out) return acc;
+      const inMs = new Date(r.check_in).getTime();
+      const outMs = new Date(r.check_out).getTime();
+      if (isNaN(inMs) || isNaN(outMs) || outMs <= inMs) return acc;
+      return acc + (outMs - inMs) / (1000 * 60 * 60);
+    }, 0);
     
     // Attendance rate based on working days only
     const attendedDays = presentDays + lateDays + halfDays * 0.5;
@@ -155,11 +168,11 @@ export default function StudentAttendancePage() {
     
     // Sort by date ascending for streak calculation
     const sortedByDate = [...attendance]
-      .filter(r => r.status !== "weekend" && r.status !== "holiday")
+      .filter(r => r.status !== "holiday")
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     sortedByDate.forEach(record => {
-      if (record.status === "present" || record.status === "late") {
+      if (record.status === "present" || record.status === "late" || record.status === "remote") {
         tempStreak++;
         bestStreak = Math.max(bestStreak, tempStreak);
       } else {
@@ -170,9 +183,9 @@ export default function StudentAttendancePage() {
     // Current streak (from most recent day going backwards)
     const sortedDesc = [...sortedByDate].reverse();
     for (const record of sortedDesc) {
-      if (record.status === "present" || record.status === "late") {
+      if (record.status === "present" || record.status === "late" || record.status === "remote") {
         currentStreak++;
-      } else if (record.status !== "weekend" && record.status !== "holiday") {
+      } else if (record.status !== "holiday") {
         break;
       }
     }
@@ -195,7 +208,8 @@ export default function StudentAttendancePage() {
 
   const stats = calculateStats();
 
-  // Status badge helper
+  // Status badge helper. Uses the real `attendance_status` enum values:
+  // present, absent, late, remote, leave, holiday.
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "present":
@@ -216,10 +230,10 @@ export default function StudentAttendancePage() {
             <AlertCircle className="mr-1 h-3 w-3" />Late
           </Badge>
         );
-      case "half_day":
+      case "remote":
         return (
-          <Badge className="bg-orange-100 text-orange-700 border-orange-200">
-            Half Day
+          <Badge className="bg-purple-100 text-purple-700 border-purple-200">
+            Remote
           </Badge>
         );
       case "leave":
@@ -232,12 +246,6 @@ export default function StudentAttendancePage() {
         return (
           <Badge variant="secondary">
             Holiday
-          </Badge>
-        );
-      case "weekend":
-        return (
-          <Badge variant="outline" className="text-muted-foreground">
-            Weekend
           </Badge>
         );
       default:
@@ -256,26 +264,31 @@ export default function StudentAttendancePage() {
 
   const formatTime = (timeStr: string | null) => {
     if (!timeStr) return "-";
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
+    // `check_in` / `check_out` are `timestamptz`, so parse as a Date.
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return "-";
+    const hour = d.getHours();
+    const minutes = d.getMinutes();
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
+    return `${displayHour}:${String(minutes).padStart(2, "0")} ${ampm}`;
+  };
+
+  // Compute the duration (in hours) between two timestamptz values.
+  const computeHours = (checkIn: string | null, checkOut: string | null): number => {
+    if (!checkIn || !checkOut) return 0;
+    const inMs = new Date(checkIn).getTime();
+    const outMs = new Date(checkOut).getTime();
+    if (isNaN(inMs) || isNaN(outMs) || outMs <= inMs) return 0;
+    return (outMs - inMs) / (1000 * 60 * 60);
   };
 
   const formatDuration = (checkIn: string | null, checkOut: string | null) => {
-    if (!checkIn || !checkOut) return "-";
-    
-    const [inH, inM] = checkIn.split(":").map(Number);
-    const [outH, outM] = checkOut.split(":").map(Number);
-    
-    let diffMinutes = (outH * 60 + outM) - (inH * 60 + inM);
-    if (diffMinutes < 0) diffMinutes += 24 * 60; // Handle overnight
-    
-    const hours = Math.floor(diffMinutes / 60);
-    const minutes = diffMinutes % 60;
-    
-    return `${hours}h ${minutes}m`;
+    const hours = computeHours(checkIn, checkOut);
+    if (hours <= 0) return "-";
+    const h = Math.floor(hours);
+    const minutes = Math.round((hours - h) * 60);
+    return `${h}h ${minutes}m`;
   };
 
   // Navigate months
@@ -606,11 +619,14 @@ export default function StudentAttendancePage() {
                         </div>
                       )}
 
-                      {record.hours_worked !== null && record.hours_worked > 0 && (
-                        <p className="text-sm font-medium">
-                          {record.hours_worked.toFixed(1)} hours worked
-                        </p>
-                      )}
+                      {(() => {
+                        const hrs = computeHours(record.check_in, record.check_out);
+                        return hrs > 0 ? (
+                          <p className="text-sm font-medium">
+                            {hrs.toFixed(1)} hours worked
+                          </p>
+                        ) : null;
+                      })()}
 
                       {record.notes && (
                         <p className="text-xs text-muted-foreground italic bg-muted/30 p-2 rounded">
@@ -657,7 +673,10 @@ export default function StudentAttendancePage() {
                           <TableCell>{formatTime(record.check_out)}</TableCell>
                           <TableCell>{formatDuration(record.check_in, record.check_out)}</TableCell>
                           <TableCell>
-                            {record.hours_worked !== null ? `${record.hours_worked.toFixed(1)}h` : "-"}
+                            {(() => {
+                              const hrs = computeHours(record.check_in, record.check_out);
+                              return hrs > 0 ? `${hrs.toFixed(1)}h` : "-";
+                            })()}
                           </TableCell>
                           <TableCell>{getStatusBadge(record.status)}</TableCell>
                           <TableCell className="max-w-[150px] truncate">

@@ -2,45 +2,36 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
 
-// Site Supervisor Evaluation interface matching HEC requirements
-interface SiteSupervisorEvaluationInput {
-  student_internship_id?: string;
-  student_id?: string;
-  evaluation_period_start: string;
-  evaluation_period_end: string;
-  // Technical Skills (0-10 each)
-  technical_knowledge: number;
-  problem_solving: number;
-  code_quality: number;
-  learning_agility: number;
-  // Professional Skills (0-10 each)
-  communication: number;
-  teamwork: number;
-  punctuality: number;
-  initiative: number;
-  adaptability: number;
-  // Work Quality (0-10 each)
-  task_completion_rate: number;
-  deliverable_quality: number;
-  deadline_adherence: number;
-  documentation_quality: number;
-  // Overall
-  decision: 'satisfactory' | 'needs_improvement' | 'unsatisfactory';
-  // Comments (Markdown)
-  strengths: string;
-  areas_for_improvement: string;
-  general_remarks: string;
-  recommendations: string;
-  // Signature
-  signature_image: string;
+// Real `evaluations` columns (from 0001_initial_schema.sql):
+//   id, type, student_user_id, internship_id, student_internship_id,
+//   task_id, task_submission_id, evaluator_id, evaluator_role, status,
+//   scores (jsonb), comments, rating (0-5), submitted_at, created_at, updated_at
+//
+// NOTE: `evaluator_id` references profiles.user_id, NOT supervisors.id.
+// `site_supervisor_evaluations` is just a SELECT view on this table for
+// evaluator_role = 'site_supervisor' — we write to `evaluations` directly
+// so we can set every column explicitly.
+
+interface EvaluationPostBody {
+  student_user_id?: string;
+  evaluator_id?: string;
+  evaluator_role?: string;
+  type?: string;
+  scores?: Record<string, number>;
+  rating?: number;
+  comments?: string;
+  status?: string;
+  submitted_at?: string;
+  internship_id?: string | null;
+  student_internship_id?: string | null;
 }
 
-// GET: Get evaluation queue/history for assigned students
+// GET: Get evaluation history for the supervisor's assigned students.
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
-    // Get current user
+
+    // Get current user — evaluations.evaluator_id references profiles.user_id.
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -49,47 +40,47 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const pageSize = parseInt(searchParams.get("pageSize") || "20");
-    const status = searchParams.get("status"); // pending, submitted, approved
+    const status = searchParams.get("status");
     const studentId = searchParams.get("studentId");
 
-    // Build query
+    // Build query against `evaluations` (not the view). Use real columns only
+    // and join `profiles` via `student_user_id`.
     let query = supabase
-      .from("site_supervisor_evaluations")
-      .select(`
-        *,
-        student_internship:student_internships(
-          id,
-          student_id,
-          student:students(id, full_name, email, avatar_url),
-          internship:internships(id, title)
-        )
-      `, { count: "exact" })
-      .eq("evaluator_id", supervisor.id);
+      .from("evaluations")
+      .select(
+        `
+        id,
+        student_user_id,
+        internship_id,
+        student_internship_id,
+        type,
+        evaluator_id,
+        evaluator_role,
+        status,
+        scores,
+        rating,
+        comments,
+        submitted_at,
+        created_at,
+        updated_at,
+        student_profile:student_user_id(full_name, first_name, last_name, email, avatar_url)
+        `,
+        { count: "exact" }
+      )
+      .eq("evaluator_id", supervisorUserId)
+      .eq("evaluator_role", "site_supervisor");
 
     if (status) {
       query = query.eq("status", status);
     }
     if (studentId) {
-      query = query.eq("student_id", studentId);
+      query = query.eq("student_user_id", studentId);
     }
 
     // Pagination
@@ -131,12 +122,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Submit new evaluation with scores, comments, signature
+// POST: Submit a new site-supervisor evaluation.
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -145,136 +135,82 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
+    // evaluator_id must be the supervisor's user_id (profiles.user_id) —
+    // NOT the supervisors table PK — so the FK constraint and the
+    // `evaluator_id = auth.uid()` RLS policy both match.
+    const supervisorUserId = user.id;
 
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
-
-    // Parse request body
-    const body: SiteSupervisorEvaluationInput = await request.json();
+    const body: EvaluationPostBody = await request.json();
 
     // Validate required fields
-    if (!body.evaluation_period_start || !body.evaluation_period_end) {
+    if (!body.student_user_id) {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Evaluation period dates are required" } },
+        { success: false, error: { code: "VALIDATION_ERROR", message: "student_user_id is required" } },
         { status: 400 }
       );
     }
 
-    if (!body.signature_image) {
+    if (!body.scores || typeof body.scores !== "object") {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Digital signature is required" } },
+        { success: false, error: { code: "VALIDATION_ERROR", message: "scores object is required" } },
         { status: 400 }
       );
     }
 
-    // Validate score ranges (0-10)
-    const scoreFields = [
-      'technical_knowledge', 'problem_solving', 'code_quality', 'learning_agility',
-      'communication', 'teamwork', 'punctuality', 'initiative', 'adaptability',
-      'task_completion_rate', 'deliverable_quality', 'deadline_adherence', 'documentation_quality'
-    ];
-
-    for (const field of scoreFields) {
-      const value = body[field as keyof SiteSupervisorEvaluationInput] as number;
-      if (typeof value !== 'number' || value < 0 || value > 10) {
+    // Validate score ranges (0-10) for every entry in the scores object.
+    for (const [key, value] of Object.entries(body.scores)) {
+      if (typeof value !== "number" || value < 0 || value > 10) {
         return NextResponse.json<ApiResponse<null>>(
-          { 
-            success: false, 
-            error: { 
-              code: "VALIDATION_ERROR", 
-              message: `${field} must be a number between 0 and 10` 
-            } 
+          {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: `${key} must be a number between 0 and 10`,
+            },
           },
           { status: 400 }
         );
       }
     }
 
-    // Calculate weighted average for overall rating
-    // Technical Skills: 30%
-    const technicalAvg = (
-      body.technical_knowledge + body.problem_solving + 
-      body.code_quality + body.learning_agility
-    ) / 4;
-    
-    // Professional Skills: 35%
-    const professionalAvg = (
-      body.communication + body.teamwork + 
-      body.punctuality + body.initiative + body.adaptability
-    ) / 5;
-    
-    // Work Quality: 35%
-    const workQualityAvg = (
-      body.task_completion_rate + body.deliverable_quality + 
-      body.deadline_adherence + body.documentation_quality
-    ) / 4;
+    // Verify the student is assigned to this supervisor. Use real columns:
+    // site_supervisor_id (profiles.user_id) and student_user_id.
+    const { data: assignment, error: assignError } = await supabase
+      .from("student_internships")
+      .select("id")
+      .eq("site_supervisor_id", supervisorUserId)
+      .eq("student_user_id", body.student_user_id)
+      .maybeSingle();
 
-    const overallRating = Math.round(
-      (technicalAvg * 0.30) + (professionalAvg * 0.35) + (workQualityAvg * 0.35)
-      * 100
-    ) / 100;
-
-    // Verify student is assigned to this supervisor
-    if (body.student_id) {
-      const { data: assignment, error: assignError } = await supabase
-        .from("student_internships")
-        .select("id")
-        .eq("site_supervisor_id", supervisor.id)
-        .eq("student_id", body.student_id)
-        .maybeSingle();
-
-      if (assignError || !assignment) {
-        return NextResponse.json<ApiResponse<null>>(
-          { success: false, error: { code: "FORBIDDEN", message: "Student is not assigned to this supervisor" } },
-          { status: 403 }
-        );
-      }
+    if (assignError || !assignment) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Student is not assigned to this supervisor" } },
+        { status: 403 }
+      );
     }
 
-    // Create evaluation record
+    // Coerce `rating` to 0-5 (evaluations.rating is a 0-5 numeric column).
+    const ratingRaw = typeof body.rating === "number" ? body.rating : 0;
+    const rating = Math.max(0, Math.min(5, ratingRaw));
+
+    // Insert into `evaluations` directly (real columns only).
+    const insertPayload = {
+      student_user_id: body.student_user_id,
+      evaluator_id: supervisorUserId,
+      evaluator_role: "site_supervisor",
+      type: body.type || "site_evaluation",
+      scores: body.scores,
+      rating,
+      comments: body.comments ?? null,
+      status: body.status || "submitted",
+      submitted_at: body.submitted_at || new Date().toISOString(),
+      internship_id: body.internship_id ?? null,
+      student_internship_id: body.student_internship_id ?? assignment.id ?? null,
+    };
+
     const { data: evaluation, error: insertError } = await supabase
-      .from("site_supervisor_evaluations")
-      .insert({
-        evaluator_id: supervisor.id,
-        student_internship_id: body.student_internship_id,
-        student_id: body.student_id,
-        evaluation_period_start: body.evaluation_period_start,
-        evaluation_period_end: body.evaluation_period_end,
-        technical_knowledge: body.technical_knowledge,
-        problem_solving: body.problem_solving,
-        code_quality: body.code_quality,
-        learning_agility: body.learning_agility,
-        communication: body.communication,
-        teamwork: body.teamwork,
-        punctuality: body.punctuality,
-        initiative: body.initiative,
-        adaptability: body.adaptability,
-        task_completion_rate: body.task_completion_rate,
-        deliverable_quality: body.deliverable_quality,
-        deadline_adherence: body.deadline_adherence,
-        documentation_quality: body.documentation_quality,
-        overall_rating: overallRating,
-        decision: body.decision,
-        strengths: body.strengths,
-        areas_for_improvement: body.areas_for_improvement,
-        general_remarks: body.general_remarks,
-        recommendations: body.recommendations,
-        signature_image: body.signature_image,
-        signed_at: new Date().toISOString(),
-        status: "submitted",
-        version: 1,
-      })
+      .from("evaluations")
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -286,30 +222,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update student_internship with last evaluation date
-    if (body.student_id) {
-      await supabase
-        .from("student_internships")
-        .update({ last_evaluation_at: new Date().toISOString() })
-        .eq("site_supervisor_id", supervisor.id)
-        .eq("student_id", body.student_id);
-    }
-
     // Create audit log entry
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "create_evaluation",
-      entity_type: "site_supervisor_evaluation",
+      entity_type: "evaluation",
       entity_id: evaluation.id,
-      new_values: { ...evaluation, signature_image: "[REDACTED]" },
+      new_values: {
+        ...evaluation,
+        // Don't persist a giant signature blob to the audit log even if it
+        // was embedded in comments (it's truncated on the client side
+        // before submission, but be defensive).
+      },
     });
 
     return NextResponse.json<ApiResponse<any>>({
       success: true,
-      data: {
-        ...evaluation,
-        signature_image: undefined, // Don't return signature in list view
-      },
+      data: evaluation,
     });
 
   } catch (error) {
@@ -321,12 +250,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT: Update evaluation (if within edit window - 48 hours)
+// PUT: Update an evaluation (within 48-hour edit window). Not currently
+// called by the page UI, but kept consistent with the schema.
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
-    // Get current user
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -335,23 +264,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     const body = await request.json();
-    const { evaluationId, ...updates } = body;
+    const { evaluationId, scores, rating, comments, status } = body;
 
     if (!evaluationId) {
       return NextResponse.json<ApiResponse<null>>(
@@ -360,12 +276,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Fetch existing evaluation and check ownership & edit window
+    // Fetch existing evaluation and check ownership & edit window.
     const { data: existingEval, error: fetchError } = await supabase
-      .from("site_supervisor_evaluations")
-      .select("*")
+      .from("evaluations")
+      .select("id, evaluator_id, status, created_at")
       .eq("id", evaluationId)
-      .eq("evaluator_id", supervisor.id)
+      .eq("evaluator_id", supervisorUserId)
+      .eq("evaluator_role", "site_supervisor")
       .single();
 
     if (fetchError || !existingEval) {
@@ -375,11 +292,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check edit window (48 hours)
     const createdAt = new Date(existingEval.created_at);
     const now = new Date();
     const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-
     if (hoursSinceCreation > 48) {
       return NextResponse.json<ApiResponse<null>>(
         { success: false, error: { code: "EDIT_WINDOW_CLOSED", message: "Edit window closed. Evaluations can only be edited within 48 hours of submission." } },
@@ -387,45 +302,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Recalculate overall rating if scores are being updated
-    let updateData = { ...updates };
-    if (scoreFields.some(field => updates[field])) {
-      const technicalAvg = (
-        (updates.technical_knowledge ?? existingEval.technical_knowledge) +
-        (updates.problem_solving ?? existingEval.problem_solving) +
-        (updates.code_quality ?? existingEval.code_quality) +
-        (updates.learning_agility ?? existingEval.learning_agility)
-      ) / 4;
-      
-      const professionalAvg = (
-        (updates.communication ?? existingEval.communication) +
-        (updates.teamwork ?? existingEval.teamwork) +
-        (updates.punctuality ?? existingEval.punctuality) +
-        (updates.initiative ?? existingEval.initiative) +
-        (updates.adaptability ?? existingEval.adaptability)
-      ) / 5;
-      
-      const workQualityAvg = (
-        (updates.task_completion_rate ?? existingEval.task_completion_rate) +
-        (updates.deliverable_quality ?? existingEval.deliverable_quality) +
-        (updates.deadline_adherence ?? existingEval.deadline_adherence) +
-        (updates.documentation_quality ?? existingEval.documentation_quality)
-      ) / 4;
+    // Build the update payload from real columns only.
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (scores && typeof scores === "object") updateData.scores = scores;
+    if (typeof rating === "number") updateData.rating = Math.max(0, Math.min(5, rating));
+    if (typeof comments === "string") updateData.comments = comments;
+    if (typeof status === "string") updateData.status = status;
 
-      updateData.overall_rating = Math.round(
-        (technicalAvg * 0.30) + (professionalAvg * 0.35) + (workQualityAvg * 0.35)
-        * 100
-      ) / 100;
-    }
-
-    // Update with version increment
     const { data: updatedEval, error: updateError } = await supabase
-      .from("site_supervisor_evaluations")
-      .update({
-        ...updateData,
-        version: existingEval.version + 1,
-        updated_at: new Date().toISOString(),
-      })
+      .from("evaluations")
+      .update(updateData)
       .eq("id", evaluationId)
       .select()
       .single();
@@ -438,13 +324,12 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Create audit log
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "update_evaluation",
-      entity_type: "site_supervisor_evaluation",
+      entity_type: "evaluation",
       entity_id: evaluationId,
-      old_values: existingEval,
+      old_values: { status: existingEval.status },
       new_values: updateData,
     });
 

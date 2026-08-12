@@ -1,21 +1,21 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
-// GET: Get pending/completed evaluations for supervisor
+// GET: Get pending/completed evaluations for the faculty supervisor
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get supervisor's profile
+    // Get supervisor's profile. profiles has no `id` column — PK is user_id.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, university_id, department_id")
+      .select("user_id, role, university_id, department_id")
       .eq("user_id", user.id)
       .single();
 
@@ -26,67 +26,42 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get supervised program IDs
-    const { data: supervisor } = await supabase
-      .from("supervisors")
-      .select("program_ids")
-      .eq("user_id", user.id)
-      .eq("type", "faculty")
-      .single();
-
-    const programIds = supervisor?.program_ids || [];
-
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // 'pending', 'completed', 'all'
-    const submissionType = searchParams.get("submission_type"); // 'weekly_log', 'task_submission', etc.
-    const studentId = searchParams.get("student_id");
+    const studentUserId = searchParams.get("student_id") || searchParams.get("student_user_id");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
 
+    // evaluation_status enum: pending, in_progress, submitted, approved, rejected
+    // (no "completed" value).
     if (type === "pending") {
-      // Get submissions pending evaluation
       let query = supabase
-        .from("submissions")
-        .select(`
+        .from("evaluations")
+        .select(
+          `
           id,
-          student_id,
-          task_id,
           type,
-          title,
-          content,
+          status,
+          comments,
+          created_at,
           submitted_at,
-          due_date,
-          students (
-            id,
-            full_name,
-            email,
-            avatar_url,
-            program_id
-          ),
-          tasks (
-            id,
-            title,
-            priority
-          )
-        `, { count: "exact" })
-        .eq("status", "submitted")
-        .order("submitted_at", { ascending: true })
+          student_user_id,
+          student_profile:student_user_id(full_name, email, avatar_url)
+        `,
+          { count: "exact" }
+        )
+        .eq("evaluator_id", user.id)
+        .eq("evaluator_role", "faculty_supervisor")
+        .in("status", ["pending", "in_progress"])
+        .order("created_at", { ascending: true })
         .range((page - 1) * limit, page * limit - 1);
 
-      // Filter by supervised programs
-      if (programIds.length > 0) {
-        query = query.in("students.program_id", programIds);
+      if (studentUserId) {
+        query = query.eq("student_user_id", studentUserId);
       }
 
-      if (submissionType) {
-        query = query.eq("type", submissionType);
-      }
-      if (studentId) {
-        query = query.eq("student_id", studentId);
-      }
-
-      const { data: submissions, count, error } = await query;
+      const { data: evaluations, count, error } = await query;
 
       if (error) {
         console.error("Error fetching pending evaluations:", error);
@@ -95,7 +70,7 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         success: true,
-        data: submissions || [],
+        data: evaluations || [],
         meta: {
           page,
           limit,
@@ -103,36 +78,33 @@ export async function GET(request: Request) {
           totalPages: Math.ceil((count || 0) / limit),
         },
       });
-
     } else {
-      // Get evaluation history
+      // History: evaluations with a terminal status.
       let query = supabase
         .from("evaluations")
-        .select(`
+        .select(
+          `
           id,
           type,
-          student_id,
-          internship_id,
+          status,
+          rating,
           scores,
           comments,
-          status,
+          created_at,
           submitted_at,
-          evaluated_at,
-          students (
-            id,
-            full_name,
-            email
-          )
-        `, { count: "exact" })
+          student_user_id,
+          student_profile:student_user_id(full_name, email)
+        `,
+          { count: "exact" }
+        )
         .eq("evaluator_id", user.id)
+        .eq("evaluator_role", "faculty_supervisor")
+        .in("status", ["submitted", "approved", "rejected"])
         .order("created_at", { ascending: false })
         .range((page - 1) * limit, page * limit - 1);
 
-      if (submissionType) {
-        query = query.eq("type", submissionType);
-      }
-      if (studentId) {
-        query = query.eq("student_id", studentId);
+      if (studentUserId) {
+        query = query.eq("student_user_id", studentUserId);
       }
 
       const { data: evaluations, count, error } = await query;
@@ -159,21 +131,31 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Submit evaluation (rating, comments, status)
+// POST: Submit an evaluation (rating, scores, comments, status).
+//
+// Body shape:
+//   {
+//     evaluation_id: string,         // required — the pending evaluation to update
+//     decision: "approve" | "reject" | "request_revision",
+//     rating?: number,               // 0-5
+//     criteria_scores?: Record<string, number>, // stored as JSONB `scores`
+//     evaluator_comments?: string,   // internal notes
+//     feedback?: string              // visible to student (combined into comments)
+//   }
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get supervisor's profile
+    // Get supervisor's profile (profiles PK is user_id, not id).
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name")
+      .select("user_id, role, full_name")
       .eq("user_id", user.id)
       .single();
 
@@ -184,25 +166,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get request body
     const body = await request.json();
     const {
-      submission_id,
-      decision, // 'approve', 'reject', 'request_revision'
-      rating, // 1-5 overall rating
-      criteria_scores, // Object with criterion IDs as keys and scores as values
-      evaluator_comments, // Internal notes
-      feedback, // Visible to student
+      evaluation_id,
+      decision,
+      rating,
+      criteria_scores,
+      evaluator_comments,
+      feedback,
     } = body;
 
-    if (!submission_id || !decision) {
+    if (!evaluation_id || !decision) {
       return NextResponse.json(
-        { error: "Submission ID and decision are required" },
+        { error: "evaluation_id and decision are required" },
         { status: 400 }
       );
     }
 
-    // Validate decision
     const validDecisions = ["approve", "reject", "request_revision"];
     if (!validDecisions.includes(decision)) {
       return NextResponse.json(
@@ -211,145 +191,87 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get the submission
-    const { data: submission, error: subError } = await supabase
-      .from("submissions")
-      .select(`
-        id,
-        student_id,
-        task_id,
-        type,
-        status,
-        students (
-          id,
-          user_id,
-          full_name,
-          program_id
-        )
-      `)
-      .eq("id", submission_id)
+    // Load the evaluation (and verify ownership).
+    const { data: evaluation, error: evalError } = await supabase
+      .from("evaluations")
+      .select("id, student_user_id, type, status")
+      .eq("id", evaluation_id)
+      .eq("evaluator_id", user.id)
+      .eq("evaluator_role", "faculty_supervisor")
       .single();
 
-    if (subError || !submission) {
-      return NextResponse.json({ error: "Submission not found" }, { status: 404 });
-    }
-
-    // Verify student is in supervised programs
-    const { data: supervisorData } = await supabase
-      .from("supervisors")
-      .select("program_ids")
-      .eq("user_id", user.id)
-      .eq("type", "faculty")
-      .single();
-
-    const programIds = supervisorData?.program_ids || [];
-    
-    if (!programIds.includes(submission.students.program_id)) {
+    if (evalError || !evaluation) {
       return NextResponse.json(
-        { error: "Not authorized to evaluate this student" },
-        { status: 403 }
+        { error: "Evaluation not found or not owned by this supervisor" },
+        { status: 404 }
       );
     }
 
-    // Calculate total score from criteria
-    let totalScore: number | null = null;
-    let maxScore: number | null = null;
+    // Map decision → evaluation status (enum: pending, in_progress, submitted, approved, rejected).
+    const newStatus =
+      decision === "approve"
+        ? "approved"
+        : decision === "reject"
+        ? "rejected"
+        : "submitted"; // request_revision → submitted with feedback
+
+    // Combine internal comments and student-visible feedback into the single
+    // `comments` column (the table has no separate `feedback` column).
+    const combinedComments =
+      [evaluator_comments, feedback].filter(Boolean).join("\n\n--- Feedback for student ---\n") || null;
+
+    // Build scores JSONB (only valid numeric values).
+    const scores: Record<string, number> = {};
     if (criteria_scores && typeof criteria_scores === "object") {
-      const scores = Object.values(criteria_scores) as number[];
-      totalScore = scores.reduce((sum, s) => sum + s, 0);
-      maxScore = scores.length * 10; // Assuming each criterion is out of 10
+      for (const [k, v] of Object.entries(criteria_scores)) {
+        if (typeof v === "number" && !Number.isNaN(v)) scores[k] = v;
+      }
     }
 
-    // Update submission status
-    const newStatus = decision === "approve" ? "approved" : 
-                       decision === "reject" ? "rejected" : "revision_required";
-
-    const { error: updateError } = await supabase
-      .from("submissions")
-      .update({
-        status: newStatus,
-        evaluated_by: user.id,
-        evaluated_at: new Date().toISOString(),
-        feedback: feedback || null,
-      })
-      .eq("id", submission_id);
-
-    if (updateError) {
-      console.error("Error updating submission:", updateError);
-      return NextResponse.json({ error: "Failed to update submission" }, { status: 500 });
-    }
-
-    // Create evaluation record
-    const { data: evaluation, error: evalError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("evaluations")
-      .insert({
-        type: submission.type === "weekly_log" ? "weekly_log" : 
-             submission.type === "task_submission" ? "supervisor_evaluation" : 
-             submission.type,
-        student_id: submission.student_id,
-        task_id: submission.task_id,
-        submission_id: submission.id,
-        evaluator_id: user.id,
-        evaluator_role: "faculty_supervisor",
-        rating: rating || null,
-        scores: criteria_scores || null,
-        total_score: totalScore,
-        max_score: maxScore,
-        comments: evaluator_comments || null,
-        feedback: feedback || null,
-        status: "completed",
-        decision: decision,
+      .update({
+        rating: typeof rating === "number" ? rating : null,
+        scores,
+        comments: combinedComments,
+        status: newStatus,
+        submitted_at: new Date().toISOString(),
       })
+      .eq("id", evaluation_id)
       .select()
       .single();
 
-    if (evalError) {
-      console.error("Error creating evaluation:", evalError);
-      return NextResponse.json({ error: "Failed to create evaluation record" }, { status: 500 });
+    if (updateError) {
+      console.error("Error updating evaluation:", updateError);
+      return NextResponse.json({ error: "Failed to submit evaluation" }, { status: 500 });
     }
 
-    // Send notification to student about evaluation result
-    const notificationTitle = decision === "approve" ? "Submission Approved" :
-                              decision === "reject" ? "Submission Requires Attention" :
-                              "Revision Requested";
-    
-    const notificationMessage = decision === "approve" 
-      ? `Your "${submission.type.replace("_", " ")}" has been approved by your supervisor.`
-      : decision === "reject"
-      ? `Your submission requires significant revisions. Please review the feedback provided.`
-      : `Please review the feedback and submit a revised version of your work.`;
+    // Notify the student.
+    const notificationTitle =
+      decision === "approve"
+        ? "Evaluation Approved"
+        : decision === "reject"
+        ? "Evaluation Rejected"
+        : "Evaluation Submitted — Revision Requested";
+
+    const notificationMessage =
+      feedback || evaluator_comments || "Your evaluation has been updated.";
 
     await supabase.from("notifications").insert({
-      user_id: submission.students.user_id,
+      user_id: evaluation.student_user_id,
+      sender_id: user.id,
       title: notificationTitle,
       message: notificationMessage,
       category: "evaluation",
       priority: decision === "reject" ? "high" : "medium",
-      action_url: `/student/evaluations/${evaluation.id}`,
-      metadata: { 
-        evaluation_id: evaluation.id,
-        submission_id: submission_id,
-        decision: decision,
-      },
+      is_read: false,
+      metadata: { evaluation_id: evaluation.id, decision },
     });
-
-    // If approved and it's a weekly log, update the log status too
-    if (decision === "approve" && submission.type === "weekly_log") {
-      await supabase
-        .from("weekly_logs")
-        .update({
-          status: "approved",
-          supervisor_feedback: feedback || evaluator_comments || null,
-          reviewed_by: user.id,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq("id", submission_id); // Assuming submission_id matches weekly_log id
-    }
 
     return NextResponse.json({
       success: true,
-      data: evaluation,
-      message: `Submission ${newStatus} successfully`,
+      data: updated,
+      message: `Evaluation ${newStatus} successfully`,
     });
   } catch (error) {
     console.error("Submit evaluation error:", error);

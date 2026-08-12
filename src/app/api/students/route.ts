@@ -39,10 +39,8 @@ const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin"];
 const ALLOWED_SORT_FIELDS = [
   "created_at",
   "updated_at",
-  "enrollment_number",
-  "status",
   "cgpa",
-  "semester",
+  "student_id_number",
 ] as const;
 
 /**
@@ -99,7 +97,9 @@ export async function GET(request: NextRequest) {
     
     // Sanitize search input to prevent XSS/injection
     const search = searchParams.get("search") ? sanitizeInput(searchParams.get("search")!) : null;
-    const status = searchParams.get("status");
+    // NOTE: a `status` query param is accepted for backwards-compat but ignored —
+    // the `students` table has no `status` column.
+    const programIdFilter = searchParams.get("program_id");
     
     // Validate sort parameters
     const { sortBy, ascending } = validateSortParam(
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
       // Security: Prevent accessing other universities even if filter is provided
       if (filters.university_id && filters.university_id !== userUniversityId) {
         // Silently ignore the filter - don't expose error that could leak info
-        console.warn(`User ${authContext.user.id} attempted to access different university`);
+        console.warn(`User ${authContext.user?.id} attempted to access different university`);
       }
     } else if (userRole === "department_coordinator") {
       // Department coordinators can ONLY see their department's students
@@ -167,14 +167,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply additional filters (only if not already restricted by role)
-    if (status) {
-      query = query.eq("status", status);
+    if (programIdFilter) {
+      query = query.eq("program_id", programIdFilter);
     }
 
     // Apply sanitized search filter
     if (search) {
       // Use parameterized-like approach with ilike
-      query = query.or(`enrollment_number.ilike.%${search}%`);
+      query = query.or(`student_id_number.ilike.%${search}%`);
     }
 
     // Get total count
@@ -298,17 +298,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if enrollment number is unique within the university
+    // Check if student_id_number is unique within the university
     const { data: existingEnrollment } = await supabase
       .from("students")
-      .select("id")
-      .eq("enrollment_number", studentData.enrollment_number)
+      .select("user_id")
+      .eq("student_id_number", studentData.student_id_number)
       .eq("university_id", studentData.university_id)
-      .single();
+      .maybeSingle();
 
     if (existingEnrollment) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "A student with this enrollment number already exists" },
+        { success: false, error: "A student with this student ID number already exists" },
         { status: 409 }
       );
     }
@@ -356,7 +356,14 @@ export async function POST(request: NextRequest) {
     const { data: student, error } = await supabase
       .from("students")
       .insert({
-        ...studentData,
+        user_id: studentData.user_id,
+        university_id: studentData.university_id,
+        department_id: studentData.department_id,
+        program_id: studentData.program_id,
+        student_id_number: studentData.student_id_number,
+        enrollment_year: studentData.enrollment_year,
+        expected_graduation: studentData.expected_graduation,
+        cgpa: studentData.cgpa,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -368,7 +375,7 @@ export async function POST(request: NextRequest) {
       
       if (error.code === "23505") {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Student with this enrollment number already exists" },
+          { success: false, error: "Student with this student ID number already exists" },
           { status: 409 }
         );
       }
@@ -380,7 +387,7 @@ export async function POST(request: NextRequest) {
     }
 
     // AUDIT LOG: Log student creation for compliance
-    await audit.studentCreate(student!.id, studentData.university_id);
+    await audit.studentCreate(student!.user_id, studentData.university_id);
 
     return NextResponse.json<ApiResponse<Student>>({
       success: true,

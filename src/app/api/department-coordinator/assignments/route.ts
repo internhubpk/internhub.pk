@@ -47,23 +47,14 @@ export async function GET(request: NextRequest) {
     const userDepartmentId = authContext.profile.department_id;
 
     // Build query - get student internships with supervisor info
+    // NOTE: `student_internships.student_user_id` references `profiles.user_id`
+    // (NOT `students.id`), and `faculty_supervisor_id` also references `profiles.user_id`.
     let query = supabase
       .from("student_internships")
       .select(`
         *,
-        students:student_id(
-          id,
-          enrollment_number,
-          profiles:user_id(first_name, last_name, email),
-          programs:program_id(name, code),
-          departments:department_id(name)
-        ),
-        faculty_supervisors:faculty_supervisor_id(
-          id,
-          title,
-          specialization,
-          profiles:user_id(first_name, last_name, email)
-        ),
+        student_profile:student_user_id(first_name, last_name, email, avatar_url, phone),
+        faculty_supervisor_profile:faculty_supervisor_id(first_name, last_name, email, avatar_url, phone),
         internships:internship_id(
           id,
           title,
@@ -74,20 +65,22 @@ export async function GET(request: NextRequest) {
 
     // Apply department-scoped filtering
     if (userRole === "department_coordinator") {
-      // For department coordinators, we need to filter by their department
-      // This requires joining through students table
+      // For department coordinators, we need to filter by their department.
+      // `student_internships` has its own `department_id` column (denormalized for RLS)
+      // but the audit spec asks us to filter via the `students` table lookup so the
+      // filter is authoritative regardless of how the row was inserted.
       if (userDepartmentId && userUniversityId) {
-        // We'll need to get students in this department first
+        // Get students (their user_ids) in this department
         const { data: deptStudents } = await supabase
           .from("students")
-          .select("id")
+          .select("user_id")
           .eq("department_id", userDepartmentId)
           .eq("university_id", userUniversityId);
 
-        const deptStudentIds = deptStudents?.map(s => s.id) || [];
+        const deptStudentIds = deptStudents?.map(s => s.user_id) || [];
         
         if (deptStudentIds.length > 0) {
-          query = query.in("student_id", deptStudentIds);
+          query = query.in("student_user_id", deptStudentIds);
         } else {
           // No students in department
           return NextResponse.json<ApiResponse<any>>({
@@ -101,6 +94,18 @@ export async function GET(request: NextRequest) {
             },
           });
         }
+      } else {
+        // No department assigned → empty result
+        return NextResponse.json<ApiResponse<any>>({
+          success: true,
+          data: {
+            data: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0,
+          },
+        });
       }
     }
 
@@ -191,12 +196,15 @@ export async function POST(request: NextRequest) {
     const userUniversityId = authContext.profile.university_id;
     const userDepartmentId = authContext.profile.department_id;
 
-    // Fetch student and verify department access
+    // Fetch student and verify department access.
+    // NOTE: `student_id` in the request body is the student's `user_id`
+    // (since `students.user_id` is the PK and `student_internships.student_user_id`
+    // references `profiles.user_id`).
     const { data: student } = await supabase
       .from("students")
       .select("*")
-      .eq("id", student_id)
-      .single();
+      .eq("user_id", student_id)
+      .maybeSingle();
 
     if (!student) {
       return NextResponse.json<ApiResponse<never>>(
@@ -218,7 +226,7 @@ export async function POST(request: NextRequest) {
       .from("supervisors")
       .select("*")
       .eq("user_id", faculty_supervisor_id)
-      .single();
+      .maybeSingle();
 
     if (!supervisor) {
       return NextResponse.json<ApiResponse<never>>(
@@ -233,18 +241,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if assignment already exists for this student-internship combo
+    // Check if assignment already exists for this student-internship combo.
+    // `student_internships.student_user_id` (not `student_id`) is the FK to profiles.
     let existingAssignmentQuery = supabase
       .from("student_internships")
       .select("id")
-      .eq("student_id", student_id)
+      .eq("student_user_id", student_id)
       .eq("faculty_supervisor_id", faculty_supervisor_id);
 
     if (internship_id) {
       existingAssignmentQuery = existingAssignmentQuery.eq("internship_id", internship_id);
     }
 
-    const { data: existingAssignment } = await existingAssignmentQuery.single();
+    const { data: existingAssignment } = await existingAssignmentQuery.maybeSingle();
 
     if (existingAssignment) {
       return NextResponse.json<ApiResponse<never>>(
@@ -253,31 +262,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or update assignment
-    const assignmentData: Record<string, any> = {
-      student_id,
-      faculty_supervisor_id,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (internship_id) {
-      assignmentData.internship_id = internship_id;
-    }
-
-    // Check if there's an existing student internship record to update
+    // Check if there's an existing student_internships row to update.
+    // The department-coordinator flow is “assign a faculty supervisor to a student
+    // who already has an internship” — so we expect a row to already exist.
+    // INSERTing a fresh `student_internships` row would require `internship_id`,
+    // `company_id`, and `start_date` (all NOT NULL) which this endpoint does not
+    // (and should not) provide.
     const { data: existingSI } = await supabase
       .from("student_internships")
       .select("id, status")
-      .eq("student_id", student_id)
+      .eq("student_user_id", student_id)
       .maybeSingle();
 
     let result;
 
     if (existingSI) {
-      // Update existing record
+      // Update existing record — only set faculty_supervisor_id (and updated_at).
+      // Do NOT re-set student_user_id / internship_id on an UPDATE.
       const { data, error } = await supabase
         .from("student_internships")
-        .update(assignmentData)
+        .update({
+          faculty_supervisor_id,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", existingSI.id)
         .select()
         .single();
@@ -291,25 +298,12 @@ export async function POST(request: NextRequest) {
       }
       result = data;
     } else {
-      // Create new record
-      const { data, error } = await supabase
-        .from("student_internships")
-        .insert({
-          ...assignmentData,
-          status: internship_id ? "active" : "assigned",
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error creating assignment:", error);
-        return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Failed to create assignment" },
-          { status: 500 }
-        );
-      }
-      result = data;
+      // No existing student_internships row — the student has not been placed
+      // into an internship yet, so a faculty-supervisor assignment is meaningless.
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Student has no active internship — cannot assign supervisor" },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json<ApiResponse<typeof result>>({
@@ -368,22 +362,23 @@ export async function DELETE(request: NextRequest) {
       const { data: student } = await supabase
         .from("students")
         .select("department_id")
-        .eq("id", studentId)
-        .single();
+        .eq("user_id", studentId)
+        .maybeSingle();
 
       if (!student || student.department_id !== userDepartmentId) {
         return authorizationError("Cannot modify assignments for students outside your department");
       }
     }
 
-    // Remove assignment (set supervisor to null)
+    // Remove assignment (set supervisor to null).
+    // NOTE: `student_internships.student_user_id` (not `student_id`) is the FK to profiles.
     const { error } = await supabase
       .from("student_internships")
       .update({ 
         faculty_supervisor_id: null,
         updated_at: new Date().toISOString()
       })
-      .eq("student_id", studentId)
+      .eq("student_user_id", studentId)
       .eq("faculty_supervisor_id", supervisorId);
 
     if (error) {

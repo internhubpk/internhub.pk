@@ -7,7 +7,9 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Get current user
+    // Get current user — student_internships.site_supervisor_id and
+    // weekly_logs.supervisor_id both reference profiles.user_id, so we use
+    // the auth user's id directly (RLS uses auth.uid() the same way).
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -16,20 +18,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -39,11 +28,11 @@ export async function GET(request: NextRequest) {
     const studentId = searchParams.get("studentId");
     const lateOnly = searchParams.get("lateOnly") === "true";
 
-    // First get all assigned student IDs
+    // First get all assigned student user_ids (real column: student_user_id).
     const { data: assignments, error: assignError } = await supabase
       .from("student_internships")
-      .select("student_id")
-      .eq("site_supervisor_id", supervisor.id);
+      .select("student_user_id")
+      .eq("site_supervisor_id", supervisorUserId);
 
     if (assignError) {
       console.error("Error fetching assignments:", assignError);
@@ -53,7 +42,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const studentIds = assignments?.map(a => a.student_id) || [];
+    const studentIds = (assignments || [])
+      .map((a: any) => a.student_user_id)
+      .filter((id: any): id is string => Boolean(id));
     if (studentIds.length === 0) {
       return NextResponse.json<ApiResponse<PaginatedResponse<null>>>({
         success: true,
@@ -69,21 +60,39 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Build query for weekly logs
+    // Build query for weekly logs. weekly_logs has no `student_id` column —
+    // the student FK is `student_user_id`. The supervisor FK is
+    // `supervisor_id` (also profiles.user_id). The `student:students(...)`
+    // join was broken (no FK to students) — join `profiles` via
+    // `student_user_id` instead.
     let query = supabase
       .from("weekly_logs")
       .select(`
-        *,
-        student:students(id, full_name, email, avatar_url),
-        internship:internships(id, title)
+        id,
+        student_user_id,
+        supervisor_id,
+        week_start_date,
+        week_end_date,
+        work_description,
+        tasks_completed,
+        challenges_faced,
+        learnings,
+        status,
+        supervisor_feedback,
+        reviewed_at,
+        submitted_at,
+        created_at,
+        updated_at,
+        student_profile:student_user_id(full_name, first_name, last_name, email, avatar_url)
       `, { count: "exact" })
-      .in("student_id", studentIds);
+      .eq("supervisor_id", supervisorUserId)
+      .in("student_user_id", studentIds);
 
     if (status) {
       query = query.eq("status", status);
     }
     if (studentId) {
-      query = query.eq("student_id", studentId);
+      query = query.eq("student_user_id", studentId);
     }
 
     // Filter for late logs if requested
@@ -113,11 +122,11 @@ export async function GET(request: NextRequest) {
       const weekEnd = new Date(log.week_end_date);
       const submittedAt = log.submitted_at ? new Date(log.submitted_at) : null;
       const gracePeriodEnd = new Date(weekEnd.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 days grace
-      
+
       return {
         ...log,
         isLate: submittedAt ? submittedAt > gracePeriodEnd : false,
-        daysLate: submittedAt && submittedAt > gracePeriodEnd 
+        daysLate: submittedAt && submittedAt > gracePeriodEnd
           ? Math.floor((submittedAt.getTime() - gracePeriodEnd.getTime()) / (1000 * 60 * 60 * 24))
           : 0,
       };
@@ -155,7 +164,9 @@ export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     
-    // Get current user
+    // Get current user — student_internships.site_supervisor_id and
+    // weekly_logs.supervisor_id both reference profiles.user_id, so we use
+    // the auth user's id directly.
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json<ApiResponse<null>>(
@@ -164,20 +175,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Get site supervisor record
-    const { data: supervisor, error: supervisorError } = await supabase
-      .from("supervisors")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("type", "site")
-      .single();
-
-    if (supervisorError || !supervisor) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "NOT_FOUND", message: "No site supervisor record found" } },
-        { status: 404 }
-      );
-    }
+    const supervisorUserId = user.id;
 
     const body = await request.json();
     const { logId, action, feedback } = body;
@@ -189,10 +187,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify the log belongs to an assigned student
+    // Verify the log belongs to an assigned student. weekly_logs has no
+    // `student_id` column — the student FK is `student_user_id`.
     const { data: log, error: logError } = await supabase
       .from("weekly_logs")
-      .select("*")
+      .select("id, student_user_id, supervisor_id, week_start_date, week_end_date, status")
       .eq("id", logId)
       .single();
 
@@ -203,12 +202,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check if student is assigned to this supervisor
+    // Check if student is assigned to this supervisor. Filter by the
+    // supervisor's user_id (profiles.user_id) — NOT the supervisors table
+    // PK — and use `student_user_id`, not `student_id`.
     const { data: assignment } = await supabase
       .from("student_internships")
       .select("id")
-      .eq("site_supervisor_id", supervisor.id)
-      .eq("student_id", log.student_id)
+      .eq("site_supervisor_id", supervisorUserId)
+      .eq("student_user_id", log.student_user_id)
       .maybeSingle();
 
     if (!assignment) {
@@ -227,13 +228,15 @@ export async function PUT(request: NextRequest) {
 
     const newStatus = statusMap[action as keyof typeof statusMap];
 
-    // Update the log
+    // Update the log — all columns below exist on weekly_logs.
+    // `supervisor_id` references profiles.user_id, so write the supervisor's
+    // user_id (not the supervisors table PK).
     const { data: updatedLog, error: updateError } = await supabase
       .from("weekly_logs")
       .update({
         status: newStatus,
         supervisor_feedback: feedback || null,
-        supervisor_id: supervisor.id,
+        supervisor_id: supervisorUserId,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -249,16 +252,24 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Create notification for student about log review
+    // Create notification for student about log review. weekly_logs has no
+    // `student_id` column — use `student_user_id`. Also no `week_number`
+    // column — derive a display label from `week_start_date`.
+    const weekLabel = log.week_start_date
+      ? new Date(log.week_start_date).toLocaleDateString()
+      : "the week";
     await supabase.from("notifications").insert({
-      user_id: log.student_id,
+      user_id: log.student_user_id,
+      sender_id: supervisorUserId,
       title: `Weekly Log ${newStatus === 'approved' ? 'Approved' : 'Reviewed'}`,
-      message: `Your weekly log for Week ${log.week_number} has been ${newStatus.replace('_', ' ')}.${feedback ? ` Feedback: ${feedback}` : ''}`,
+      message: `Your weekly log for the week of ${weekLabel} has been ${newStatus.replace('_', ' ')}.${feedback ? ` Feedback: ${feedback}` : ''}`,
       category: "evaluation",
       priority: newStatus === "rejected" ? "high" : "medium",
       metadata: {
         log_id: logId,
         action,
+        supervisor_id: supervisorUserId,
+        sent_by: "site_supervisor",
       },
     });
 

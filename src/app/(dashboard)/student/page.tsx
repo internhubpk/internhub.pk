@@ -109,12 +109,14 @@ export default function StudentDashboard() {
 
       // Use Promise.allSettled to handle partial failures gracefully
       const results = await Promise.allSettled([
-        // Fetch active internship
+        // Fetch active student_internship (link table), then we'll hydrate the
+        // internship row separately. `internships` has NO `student_id` column —
+        // the link is via `student_internships.student_user_id`.
         supabase
-          .from("internships")
-          .select("*")
-          .eq("student_id", user.id)
-          .in("status", ["active", "accepted"])
+          .from("student_internships")
+          .select("id, internship_id, start_date, end_date, status, is_active")
+          .eq("student_user_id", user.id)
+          .in("status", ["active", "pending"])
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -125,11 +127,12 @@ export default function StudentDashboard() {
           .select("id", { count: "exact" })
           .eq("student_user_id", user.id),
 
-        // Fetch tasks with status
+        // Fetch task assignments with embedded task — tasks has NO `student_id`,
+        // the link is via `task_assignments.student_user_id`.
         supabase
-          .from("tasks")
-          .select("*")
-          .eq("student_id", user.id),
+          .from("task_assignments")
+          .select("id, status, due_date, tasks:task_id(id, title, due_date, status)")
+          .eq("student_user_id", user.id),
 
         // Fetch documents count
         supabase
@@ -156,44 +159,62 @@ export default function StudentDashboard() {
           .order("submitted_at", { ascending: false })
           .limit(5),
 
-        // Fetch upcoming deadlines
-        supabase
-          .from("tasks")
-          .select("*")
-          .eq("student_id", user.id)
-          .in("status", ["pending", "assigned"])
-          .gte("due_date", new Date().toISOString())
-          .order("due_date", { ascending: true })
-          .limit(5),
+        // Upcoming deadlines are derived from the task_assignments fetch above
+        // (results[2]). This placeholder keeps the array shape stable.
+        Promise.resolve({ data: null, error: null }),
       ]);
 
-      // Extract results safely - each may have failed
-      const internshipResult = results[0];
+      // If we have an active student_internship, hydrate the internship row
+      // (title, company_name, etc.) from the `internships` table.
+      const studentInternship =
+        results[0].status === "fulfilled" ? (results[0].value as any).data : null;
+      let internshipRow: any = null;
+      if (studentInternship?.internship_id) {
+        const { data: internship } = await supabase
+          .from("internships")
+          .select("id, title, company:company_id(name), start_date, end_date, status")
+          .eq("id", studentInternship.internship_id)
+          .maybeSingle();
+        internshipRow = internship;
+      }
+
+      // Extract results safely - each may have failed.
+      // (results[0] is consumed as `studentInternship` above; results[6] is the
+      // upcoming-deadlines placeholder — deadlines are derived from results[2].)
       const applicationsResult = results[1];
       const tasksResult = results[2];
       const documentsResult = results[3];
       const attendanceResult = results[4];
       const submissionsResult = results[5];
-      const deadlinesResult = results[6];
 
-      // Process internship data
+      // Process internship data — combined from student_internships (link) +
+      // internships (display row).
       let internshipData: InternshipInfo | null = null;
       let activeInternship = false;
-      
-      if (internshipResult.status === 'fulfilled' && internshipResult.value.data) {
-        const data = internshipResult.value.data as any;
-        activeInternship = !!data;
-        if (data) {
-          internshipData = {
-            id: data.id,
-            title: data.title || "Active Internship",
-            company_name: data.company_name || "Company",
-            start_date: data.start_date,
-            end_date: data.end_date,
-            status: data.status,
-            progress: data.progress || 0,
-          };
+
+      if (studentInternship) {
+        activeInternship = true;
+        const start = studentInternship.start_date || internshipRow?.start_date;
+        const end = studentInternship.end_date || internshipRow?.end_date;
+        let progress = 0;
+        if (start && end) {
+          const startMs = new Date(start).getTime();
+          const endMs = new Date(end).getTime();
+          const nowMs = Date.now();
+          if (endMs > startMs) {
+            progress = Math.max(0, Math.min(100, Math.round(((nowMs - startMs) / (endMs - startMs)) * 100)));
+          }
         }
+        internshipData = {
+          id: internshipRow?.id || studentInternship.internship_id,
+          title: internshipRow?.title || "Active Internship",
+          company_name:
+            (internshipRow?.company && (internshipRow.company as any).name) || "Company",
+          start_date: start,
+          end_date: end,
+          status: studentInternship.status || internshipRow?.status || "active",
+          progress,
+        };
       }
 
       // Process applications count
@@ -202,13 +223,28 @@ export default function StudentDashboard() {
         applicationsCount = applicationsResult.value.count || 0;
       }
 
-      // Process tasks
+      // Process task assignments — each row has an embedded `tasks` object
+      // (singular because of the FK relationship).
       let pendingTasks = 0, completedTasks = 0, totalTasks = 0;
+      let assignmentRows: any[] = [];
       if (tasksResult.status === 'fulfilled' && tasksResult.value.data) {
-        const tasksData = tasksResult.value.data as any[];
-        totalTasks = tasksData.length;
-        pendingTasks = tasksData.filter(t => t.status === "pending" || t.status === "assigned").length;
-        completedTasks = tasksData.filter(t => t.status === "completed" || t.status === "approved").length;
+        assignmentRows = tasksResult.value.data as any[];
+        totalTasks = assignmentRows.length;
+        pendingTasks = assignmentRows.filter((row) => {
+          const taskStatus = row.tasks?.status;
+          return (
+            row.status === "pending" ||
+            taskStatus === "assigned" ||
+            taskStatus === "in_progress" ||
+            taskStatus === "published"
+          );
+        }).length;
+        // `completed` IS a valid task_status enum value (migration 0023), so
+        // count rows where the embedded task is completed. `approved` is the
+        // matching task_submission_status on the assignment itself.
+        completedTasks = assignmentRows.filter((row) =>
+          row.tasks?.status === "completed" || row.status === "approved"
+        ).length;
       }
 
       // Process documents count
@@ -249,16 +285,26 @@ export default function StudentDashboard() {
         }));
       }
 
-      // Process deadlines
+      // Process deadlines — derive from the task_assignments fetch above.
+      // Filter rows with a future due_date and sort ascending.
       let upcomingDeadlines: UpcomingDeadline[] = [];
-      if (deadlinesResult.status === 'fulfilled' && deadlinesResult.value.data) {
-        upcomingDeadlines = (deadlinesResult.value.data as any[]).map((task: any) => ({
-          id: task.id,
-          title: task.title,
-          due_date: task.due_date,
-          course_name: task.course_name,
+      const nowIso = new Date().toISOString();
+      upcomingDeadlines = assignmentRows
+        .filter((row) => {
+          const due = row.due_date || row.tasks?.due_date;
+          return due && new Date(due).getTime() >= new Date(nowIso).getTime();
+        })
+        .sort((a, b) => {
+          const aDue = new Date(a.due_date || a.tasks?.due_date).getTime();
+          const bDue = new Date(b.due_date || b.tasks?.due_date).getTime();
+          return aDue - bDue;
+        })
+        .slice(0, 5)
+        .map((row) => ({
+          id: row.tasks?.id || row.id,
+          title: row.tasks?.title || "Untitled task",
+          due_date: row.due_date || row.tasks?.due_date,
         }));
-      }
 
       setStats({
         activeInternship,

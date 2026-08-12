@@ -108,7 +108,8 @@ export default function SuperAdminDashboard() {
         // Sum hours logged from weekly_logs
         supabase.from("weekly_logs").select("hours_worked"),
         // Count pending applications
-        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        // NOTE: real table is `internship_applications` — `applications` does not exist.
+        supabase.from("internship_applications").select("id", { count: "exact", head: true }).eq("status", "pending"),
         // Count completed internships
         supabase.from("internships").select("id", { count: "exact", head: true }).eq("status", "completed"),
         // Get recent activity (audit logs)
@@ -221,7 +222,8 @@ export default function SuperAdminDashboard() {
         setRoleDistribution(pieData);
       }
 
-      // Generate mock monthly growth data (would be replaced with real aggregation)
+      // Generate monthly growth data from real `created_at` timestamps on
+      // `profiles`, `universities`, and `internships`.
       generateMonthlyGrowthData(supabase);
       
       setDataState("ready");
@@ -241,15 +243,22 @@ export default function SuperAdminDashboard() {
 
   async function generateMonthlyGrowthData(supabase: any) {
     try {
-      // Get users created in the last 6 months
+      // Get users, universities, and internships created in the last 6 months.
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      
-      const { data: recentUsers } = await supabase
-        .from("profiles")
-        .select("created_at")
-        .gte("created_at", sixMonthsAgo.toISOString());
-      
+      const sinceIso = sixMonthsAgo.toISOString();
+
+      const [usersRes, unisRes, internshipsRes] = await Promise.all([
+        supabase.from("profiles").select("created_at").gte("created_at", sinceIso),
+        supabase.from("universities").select("created_at").gte("created_at", sinceIso),
+        supabase.from("internships").select("created_at").gte("created_at", sinceIso),
+      ]);
+
+      const recentUsers = usersRes?.data ?? [];
+      const recentUnis = unisRes?.data ?? [];
+      const recentInternships = internshipsRes?.data ?? [];
+
+      // Build the last 6 month buckets (oldest → newest).
       const months: { month: string; users: number; universities: number; internships: number }[] = [];
       const now = new Date();
       for (let i = 5; i >= 0; i--) {
@@ -259,24 +268,39 @@ export default function SuperAdminDashboard() {
           users: 0,
           universities: 0,
           internships: 0,
-        });
+          // store the bucket's (year, monthIndex) for matching.
+          _year: d.getFullYear(),
+          _month: d.getMonth(),
+        } as any);
       }
-      
-      // Distribute users by month
-      if (recentUsers) {
-        recentUsers.forEach((u: any) => {
-          const createdDate = new Date(u.created_at);
-          const monthIndex = months.findIndex(m => {
-            const mDate = new Date(m.month + ', ' + now.getFullYear());
-            return mDate.getMonth() === createdDate.getMonth();
-          });
-          if (monthIndex >= 0) {
-            months[monthIndex].users++;
-          }
-        });
-      }
-      
-      setMonthlyGrowthData(months);
+
+      const bucketOf = (iso: string) => {
+        const d = new Date(iso);
+        return months.find((m: any) => m._year === d.getFullYear() && m._month === d.getMonth());
+      };
+
+      recentUsers.forEach((u: any) => {
+        const bucket = bucketOf(u.created_at);
+        if (bucket) bucket.users++;
+      });
+      recentUnis.forEach((u: any) => {
+        const bucket = bucketOf(u.created_at);
+        if (bucket) bucket.universities++;
+      });
+      recentInternships.forEach((u: any) => {
+        const bucket = bucketOf(u.created_at);
+        if (bucket) bucket.internships++;
+      });
+
+      // Strip the private `_year` / `_month` helper fields before setting state.
+      setMonthlyGrowthData(
+        months.map(({ month, users, universities, internships }) => ({
+          month,
+          users,
+          universities,
+          internships,
+        }))
+      );
     } catch (e) {
       console.log("Could not generate growth data:", e);
       // Set empty data
@@ -293,16 +317,78 @@ export default function SuperAdminDashboard() {
   }
 
   function formatAuditMessage(log: any): string {
+    const action: string = log.action || "";
+
+    // Known `audit_logs.action` values come in two styles:
+    //   1. Dotted  — e.g. `auth.login`, `internship.approve` (from `src/lib/audit.ts`)
+    //   2. Snake   — e.g. `create_supervisor`, `weekly_log_approve` (inline calls in API routes)
+    // Map the common ones to friendly messages.
     const actionMap: Record<string, string> = {
-      "INSERT": "Created",
-      "UPDATE": "Updated",
-      "DELETE": "Deleted",
+      // Dotted (lib/audit.ts)
+      "auth.login": "User signed in",
+      "auth.logout": "User signed out",
+      "auth.register": "New user registered",
+      "student.create": "Created student",
+      "student.update": "Updated student",
+      "university.create": "Created university",
+      "university.update": "Updated university",
+      "university.suspend": "Suspended university",
+      "internship.create": "Created internship",
+      "internship.approve": "Approved internship",
+      "internship.reject": "Rejected internship",
+      "application.submit": "Submitted application",
+      "application.approve": "Approved application",
+      "application.reject": "Rejected application",
+      "evaluation.submit": "Submitted evaluation",
+      "certificate.issue": "Issued certificate",
+      "certificate.revoke": "Revoked certificate",
+      "document.upload": "Uploaded document",
+      "company.create": "Created company",
+      "company.verify": "Verified company",
+      "settings.change": "Changed settings",
+      "user.role_change": "Changed user role",
+      // Snake (inline calls in api routes)
+      create_supervisor: "Created site supervisor",
+      delete_supervisor: "Deleted site supervisor",
+      create_internship: "Created internship",
+      create_evaluation: "Created evaluation",
+      update_evaluation: "Updated evaluation",
+      update_company_settings: "Updated company settings",
+      change_password: "Changed password",
+      correct_attendance: "Corrected attendance",
+      assign_supervisor_to_interns: "Assigned supervisor to interns",
+      reassign_intern: "Reassigned intern",
+      issue_certificate: "Issued certificate",
+      send_notification: "Sent notification",
+      weekly_log_approve: "Approved weekly log",
+      weekly_log_reject: "Rejected weekly log",
+      weekly_log_request_revision: "Requested weekly log revision",
+      create_user: "Created user",
+      update_user: "Updated user",
+      delete_user: "Deleted user",
+      update_settings: "Updated settings",
     };
-    
-    const entity = log.entity_type?.replace(/_/g, " ") || "record";
-    const verb = actionMap[log.action] || log.action;
-    
-    return `${verb} ${entity}`;
+
+    if (actionMap[action]) {
+      return actionMap[action];
+    }
+
+    // Fallback: prettify the action string. Handles both dotted and snake_case
+    // styles — e.g. `weekly_log_approve` → `Weekly log approve`,
+    // `auth.login` → `Auth login`.
+    const pretty = action
+      .replace(/[._]/g, " ")
+      .trim()
+      .toLowerCase();
+    if (!pretty) {
+      const entity = log.entity_type?.replace(/_/g, " ");
+      return entity ? `Updated ${entity}` : "Activity";
+    }
+    const capitalized = pretty.charAt(0).toUpperCase() + pretty.slice(1);
+
+    // If we have entity_type, append it for context (e.g. `Created` + `student`).
+    const entity = log.entity_type?.replace(/_/g, " ");
+    return entity ? `${capitalized} ${entity}` : capitalized;
   }
 
   const statCards = [

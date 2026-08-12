@@ -55,13 +55,13 @@ interface ProfileData {
   email: string;
   phone: string;
   bio: string;
-  major: string;
-  gpa: string;
-  graduationYear: string;
-  skills: string[];
-  linkedin: string;
-  github: string;
-  website: string;
+  // `profiles` table social columns
+  linkedinUrl: string;
+  githubUrl: string;
+  // `students` table academic columns (separate upsert)
+  cgpa: string;
+  enrollmentYear: string;
+  expectedGraduation: string;
 }
 
 interface CVInfo {
@@ -77,7 +77,6 @@ export default function StudentProfilePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
   
   // CV Upload state
   const [cvInfo, setCvInfo] = useState<CVInfo | null>(null);
@@ -98,32 +97,28 @@ export default function StudentProfilePage() {
     email: "",
     phone: "",
     bio: "",
-    major: "",
-    gpa: "",
-    graduationYear: "",
-    skills: [],
-    linkedin: "",
-    github: "",
-    website: "",
+    linkedinUrl: "",
+    githubUrl: "",
+    cgpa: "",
+    enrollmentYear: "",
+    expectedGraduation: "",
   });
 
-  // Load profile data when available
+  // Load profile data when available. The profile object from the auth
+  // context covers the `profiles` table; the academic fields live in the
+  // separate `students` table, which we fetch on mount.
   useEffect(() => {
     if (profile) {
-      setProfileData({
+      setProfileData((prev) => ({
+        ...prev,
         firstName: profile.first_name || "",
         lastName: profile.last_name || "",
         email: user?.email || "",
         phone: profile.phone || "",
         bio: profile.bio || "",
-        major: (profile as any).major || "",
-        gpa: (profile as any).gpa?.toString() || "",
-        graduationYear: (profile as any).graduation_year?.toString() || "",
-        skills: (profile as any).skills || [],
-        linkedin: (profile as any).linkedin || "",
-        github: (profile as any).github || "",
-        website: (profile as any).website || "",
-      });
+        linkedinUrl: profile.linkedin_url || "",
+        githubUrl: profile.github_url || "",
+      }));
     } else if (user) {
       setProfileData(prev => ({
         ...prev,
@@ -131,6 +126,36 @@ export default function StudentProfilePage() {
       }));
     }
   }, [profile, user]);
+
+  // Fetch the `students` row once the user is available so the academic
+  // fields (cgpa, enrollment_year, expected_graduation) populate the form.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("students")
+          .select("cgpa, enrollment_year, expected_graduation")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!cancelled && data) {
+          setProfileData((prev) => ({
+            ...prev,
+            cgpa: data.cgpa != null ? String(data.cgpa) : "",
+            enrollmentYear: data.enrollment_year != null ? String(data.enrollment_year) : "",
+            expectedGraduation: data.expected_graduation != null ? String(data.expected_graduation) : "",
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching student academic record:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Fetch CV info on mount
   useEffect(() => {
@@ -171,28 +196,46 @@ export default function StudentProfilePage() {
     setSaveSuccess(false);
     
     try {
+      if (!user) throw new Error("Not authenticated");
       const supabase = createClient();
-      
-      // Update profile in Supabase
-      const { error } = await supabase
-        .from("profiles")
-        .upsert({
-          user_id: user?.id,
-          first_name: profileData.firstName,
-          last_name: profileData.lastName,
-          phone: profileData.phone,
-          bio: profileData.bio,
-          major: profileData.major,
-          gpa: profileData.gpa ? parseFloat(profileData.gpa) : null,
-          graduation_year: profileData.graduationYear ? parseInt(profileData.graduationYear) : null,
-          skills: profileData.skills,
-          linkedin: profileData.linkedin,
-          github: profileData.github,
-          website: profileData.website,
-          updated_at: new Date().toISOString(),
-        });
+      const nowIso = new Date().toISOString();
 
-      if (error) throw error;
+      // 1. Upsert the `profiles` row — only real columns.
+      const profilePayload = {
+        user_id: user.id,
+        full_name: `${profileData.firstName} ${profileData.lastName}`.trim(),
+        first_name: profileData.firstName || null,
+        last_name: profileData.lastName || null,
+        phone: profileData.phone || null,
+        bio: profileData.bio || null,
+        linkedin_url: profileData.linkedinUrl || null,
+        github_url: profileData.githubUrl || null,
+        updated_at: nowIso,
+      };
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(profilePayload);
+      if (profileError) throw profileError;
+
+      // 2. Upsert the `students` row — only real columns.
+      const cgpaValue = profileData.cgpa ? parseFloat(profileData.cgpa) : null;
+      const enrollmentYearValue = profileData.enrollmentYear
+        ? parseInt(profileData.enrollmentYear, 10)
+        : null;
+      const expectedGraduationValue = profileData.expectedGraduation
+        ? parseInt(profileData.expectedGraduation, 10)
+        : null;
+
+      const studentPayload = {
+        user_id: user.id,
+        cgpa: cgpaValue,
+        enrollment_year: enrollmentYearValue,
+        expected_graduation: expectedGraduationValue,
+      };
+      const { error: studentError } = await supabase
+        .from("students")
+        .upsert(studentPayload, { onConflict: "user_id" });
+      if (studentError) throw studentError;
       
       await refreshProfile();
       setIsEditing(false);
@@ -208,20 +251,11 @@ export default function StudentProfilePage() {
   };
 
   const handleAddSkill = () => {
-    if (skillInput.trim() && !profileData.skills.includes(skillInput.trim())) {
-      setProfileData(prev => ({
-        ...prev,
-        skills: [...prev.skills, skillInput.trim()],
-      }));
-      setSkillInput("");
-    }
+    // Skills field removed — no backing `skills` column on `profiles` or `students`.
   };
 
-  const handleRemoveSkill = (skillToRemove: string) => {
-    setProfileData(prev => ({
-      ...prev,
-      skills: prev.skills.filter(s => s !== skillToRemove),
-    }));
+  const handleRemoveSkill = (_skillToRemove: string) => {
+    // Skills field removed — no backing `skills` column.
   };
 
   const handleCVUpload = async () => {
@@ -447,7 +481,7 @@ export default function StudentProfilePage() {
             <CardContent className="p-6 text-center space-y-4">
               <div className="relative inline-block">
                 <Avatar className="h-28 w-28 mx-auto">
-                  <AvatarImage src={profile?.avatar_url} alt="Profile" />
+                  <AvatarImage src={profile?.avatar_url || undefined} alt="Profile" />
                   <AvatarFallback className="text-3xl bg-primary text-primary-foreground">
                     {initials}
                   </AvatarFallback>
@@ -489,21 +523,19 @@ export default function StudentProfilePage() {
                   </div>
                   
                   <div className="flex flex-wrap justify-center gap-2 pt-2">
-                    {profileData.skills.length > 0 ? (
-                      profileData.skills.map((skill) => (
-                        <Badge key={skill} variant="secondary">{skill}</Badge>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No skills added yet</p>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {profileData.expectedGraduation
+                        ? `Expected graduation: ${profileData.expectedGraduation}`
+                        : "Update your academic info below"}
+                    </p>
                   </div>
 
                   {/* Social Links */}
-                  {(profileData.linkedin || profileData.github || profileData.website) && (
+                  {(profileData.linkedinUrl || profileData.githubUrl) && (
                     <div className="flex justify-center gap-3 pt-2 border-t">
-                      {profileData.linkedin && (
+                      {profileData.linkedinUrl && (
                         <a 
-                          href={profileData.linkedin.startsWith('http') ? profileData.linkedin : `https://linkedin.com/in/${profileData.linkedin}`}
+                          href={profileData.linkedinUrl.startsWith('http') ? profileData.linkedinUrl : `https://linkedin.com/in/${profileData.linkedinUrl}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 rounded-full hover:bg-muted transition-colors"
@@ -511,24 +543,14 @@ export default function StudentProfilePage() {
                           <Linkedin className="h-5 w-5 text-[#0077B5]" />
                         </a>
                       )}
-                      {profileData.github && (
+                      {profileData.githubUrl && (
                         <a 
-                          href={profileData.github.startsWith('http') ? profileData.github : `https://github.com/${profileData.github}`}
+                          href={profileData.githubUrl.startsWith('http') ? profileData.githubUrl : `https://github.com/${profileData.githubUrl}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 rounded-full hover:bg-muted transition-colors"
                         >
                           <Github className="h-5 w-5" />
-                        </a>
-                      )}
-                      {profileData.website && (
-                        <a 
-                          href={profileData.website.startsWith('http') ? profileData.website : `https://${profileData.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full hover:bg-muted transition-colors"
-                        >
-                          <Globe className="h-5 w-5 text-blue-500" />
                         </a>
                       )}
                     </div>
@@ -540,34 +562,9 @@ export default function StudentProfilePage() {
                     <Camera className="h-4 w-4 mr-2" />
                     {avatarUploading ? "Uploading..." : "Change Photo"}
                   </Button>
-                  
-                  <div className="space-y-2">
-                    <Label>Skills</Label>
-                    <div className="flex flex-wrap gap-1">
-                      {profileData.skills.map((skill) => (
-                        <Badge 
-                          key={skill} 
-                          variant="secondary" 
-                          className="cursor-pointer pr-1"
-                          onClick={() => handleRemoveSkill(skill)}
-                        >
-                          {skill}
-                          <X className="h-3 w-3 ml-1" />
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        value={skillInput}
-                        onChange={(e) => setSkillInput(e.target.value)}
-                        placeholder="Add a skill..."
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())}
-                      />
-                      <Button variant="outline" size="icon" onClick={handleAddSkill}>
-                        <PlusIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Edit your profile to update academic and professional details.
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -838,22 +835,11 @@ export default function StudentProfilePage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="major">Major / Field of Study</Label>
+                  <Label htmlFor="cgpa">CGPA</Label>
                   <Input
-                    id="major"
-                    value={profileData.major}
-                    onChange={(e) => setProfileData(prev => ({ ...prev, major: e.target.value }))}
-                    disabled={!isEditing}
-                    placeholder="e.g., Computer Science"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="gpa">CGPA</Label>
-                  <Input
-                    id="gpa"
-                    value={profileData.gpa}
-                    onChange={(e) => setProfileData(prev => ({ ...prev, gpa: e.target.value }))}
+                    id="cgpa"
+                    value={profileData.cgpa}
+                    onChange={(e) => setProfileData(prev => ({ ...prev, cgpa: e.target.value }))}
                     disabled={!isEditing}
                     placeholder="e.g., 3.5"
                     type="number"
@@ -862,13 +848,33 @@ export default function StudentProfilePage() {
                     max="4"
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="enrollmentYear">Enrollment Year</Label>
+                  <Select
+                    value={profileData.enrollmentYear}
+                    onValueChange={(value) => setProfileData(prev => ({ ...prev, enrollmentYear: value }))}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="graduationYear">Expected Graduation Year</Label>
+                <Label htmlFor="expectedGraduation">Expected Graduation Year</Label>
                 <Select
-                  value={profileData.graduationYear}
-                  onValueChange={(value) => setProfileData(prev => ({ ...prev, graduationYear: value }))}
+                  value={profileData.expectedGraduation}
+                  onValueChange={(value) => setProfileData(prev => ({ ...prev, expectedGraduation: value }))}
                   disabled={!isEditing}
                 >
                   <SelectTrigger>
@@ -896,46 +902,34 @@ export default function StudentProfilePage() {
               <CardDescription>Links to your professional profiles and portfolio</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="linkedin" className="flex items-center gap-2">
+                  <Label htmlFor="linkedinUrl" className="flex items-center gap-2">
                     <Linkedin className="h-4 w-4 text-[#0077B5]" />
                     LinkedIn URL
                   </Label>
                   <Input
-                    id="linkedin"
-                    value={profileData.linkedin}
-                    onChange={(e) => setProfileData(prev => ({ ...prev, linkedin: e.target.value }))}
+                    id="linkedinUrl"
+                    name="linkedin_url"
+                    value={profileData.linkedinUrl}
+                    onChange={(e) => setProfileData(prev => ({ ...prev, linkedinUrl: e.target.value }))}
                     disabled={!isEditing}
                     placeholder="linkedin.com/in/username"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="github" className="flex items-center gap-2">
+                  <Label htmlFor="githubUrl" className="flex items-center gap-2">
                     <Github className="h-4 w-4" />
                     GitHub URL
                   </Label>
                   <Input
-                    id="github"
-                    value={profileData.github}
-                    onChange={(e) => setProfileData(prev => ({ ...prev, github: e.target.value }))}
+                    id="githubUrl"
+                    name="github_url"
+                    value={profileData.githubUrl}
+                    onChange={(e) => setProfileData(prev => ({ ...prev, githubUrl: e.target.value }))}
                     disabled={!isEditing}
                     placeholder="github.com/username"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="website" className="flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-blue-500" />
-                    Portfolio Website
-                  </Label>
-                  <Input
-                    id="website"
-                    value={profileData.website}
-                    onChange={(e) => setProfileData(prev => ({ ...prev, website: e.target.value }))}
-                    disabled={!isEditing}
-                    placeholder="yourwebsite.com"
                   />
                 </div>
               </div>

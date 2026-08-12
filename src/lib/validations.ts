@@ -26,18 +26,19 @@ export const CreateStudentSchema = z.object({
   university_id: z.string().uuid("Invalid university ID"),
   department_id: z.string().uuid("Invalid department ID"),
   program_id: z.string().uuid("Invalid program ID"),
-  enrollment_number: z.string()
-    .min(3, "Enrollment number must be at least 3 characters")
+  student_id_number: z.string()
+    .min(3, "Student ID number must be at least 3 characters")
     .max(50),
-  semester: z.number()
-    .int("Semester must be an integer")
-    .min(1, "Semester must be at least 1")
-    .max(20, "Semester cannot exceed 20"),
+  enrollment_year: z.number()
+    .int("Enrollment year must be an integer")
+    .min(1990, "Enrollment year must be at least 1990")
+    .max(2100, "Enrollment year cannot exceed 2100")
+    .optional(),
+  expected_graduation: z.string().optional(),
   cgpa: z.number()
     .min(0, "CGPA cannot be negative")
     .max(4, "CGPA cannot exceed 4.0")
     .optional(),
-  status: z.enum(["active", "graduated", "suspended", "withdrawn"]).default("active"),
 });
 
 export const UpdateStudentSchema = CreateStudentSchema.partial();
@@ -221,15 +222,14 @@ export const CreateSupervisorSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
   type: z.enum(["faculty", "site", "external"]),
   department_id: z.string().uuid("Invalid department ID").optional(),
-  title: z.string().max(100).optional(),
+  program_id: z.string().uuid("Invalid program ID").optional(),
+  company_id: z.string().uuid("Invalid company ID").optional(),
+  employee_id: z.string().max(100).optional(),
   specialization: z.string().max(200).optional(),
   phone: z.string().max(20).optional(),
   email: z.string().email("Invalid email format").optional(),
-  max_interns: z.number()
-    .int("Max interns must be an integer")
-    .min(1, "Must supervise at least 1 intern")
-    .max(50, "Cannot supervise more than 50 interns")
-    .default(10),
+  first_name: z.string().max(100).optional(),
+  last_name: z.string().max(100).optional(),
   is_active: z.boolean().default(true),
 });
 

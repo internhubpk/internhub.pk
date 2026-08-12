@@ -460,10 +460,13 @@ export default function SuperAdminUniversitiesPage() {
     try {
       const supabase = createClient();
       
-      // First check if there are any users associated
+      // First check if there are any users associated.
+      // NOTE: `profiles` PK is `user_id` (no `id` column). We only need the
+      // count, so selecting the PK with `head: true` is enough — `head: true`
+      // means no rows are actually returned, so this is a count-only request.
       const { count } = await supabase
         .from("profiles")
-        .select("id", { count: "exact", head: true })
+        .select("user_id", { count: "exact", head: true })
         .eq("university_id", deleteTarget.id);
 
       if (count && count > 0) {

@@ -69,6 +69,7 @@ interface EvaluationStudent {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  internshipId?: string | null;
   internshipTitle: string;
   lastEvaluationDate?: string | null;
   daysSinceEvaluation: number;
@@ -79,15 +80,16 @@ interface EvaluationRecord {
   id: string;
   studentId: string;
   studentName: string;
-  periodStart: string;
-  periodEnd: string;
+  periodStart: string | null;
+  periodEnd: string | null;
   overallRating: number;
   decision: "satisfactory" | "needs_improvement" | "unsatisfactory";
   submittedAt: string;
-  signedAt: string;
+  signedAt: string | null;
   technicalScore: number;
   professionalScore: number;
   workQualityScore: number;
+  comments?: string | null;
 }
 
 interface EvaluationFormData {
@@ -170,94 +172,175 @@ export default function SiteSupervisorEvaluationsPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      
-      // Get supervisor record
-      const { data: supervisor } = await supabase
-        .from("supervisors")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "site")
-        .single();
 
-      if (!supervisor) {
-        // No supervisor record - keep empty state
-        setIsLoading(false);
-        return;
-      }
+      // student_internships.site_supervisor_id is FK to profiles.user_id —
+      // filter by the auth user's id (the supervisor's user_id), NOT the
+      // supervisors table PK. RLS uses auth.uid() the same way.
+      const supervisorUserId = user.id;
 
-      // Fetch assigned students with evaluation status
+      // Fetch assigned students (real columns only — student_internships has
+      // no `student_id`, `progress`, or `last_evaluation_at` columns).
       const { data: assignments } = await supabase
         .from("student_internships")
         .select(`
           id,
-          student_id,
+          student_user_id,
+          internship_id,
           status,
           start_date,
           end_date,
-          progress,
-          last_evaluation_at,
-          student:students(
-            id,
+          student_profile:student_user_id(
             full_name,
+            first_name,
+            last_name,
             email,
             avatar_url
           ),
           internship:internships(id, title)
         `)
-        .eq("site_supervisor_id", supervisor.id);
+        .eq("site_supervisor_id", supervisorUserId)
+        .order("updated_at", { ascending: false });
 
-      const studentList: EvaluationStudent[] = (assignments || []).map((assign: any) => {
-        const student = assign.student || {};
+      const internRows = (assignments || []) as any[];
+      const studentUserIds = internRows
+        .map((r) => r.student_user_id)
+        .filter((id): id is string => Boolean(id));
+
+      // Look up most-recent evaluation per student (the supervisor's own) so
+      // we can compute "days since last evaluation" without relying on the
+      // non-existent `student_internships.last_evaluation_at` column.
+      const evalsForStatusRes = studentUserIds.length
+        ? await supabase
+            .from("evaluations")
+            .select("id, student_user_id, created_at")
+            .eq("evaluator_id", supervisorUserId)
+            .eq("evaluator_role", "site_supervisor")
+            .in("student_user_id", studentUserIds)
+            .order("created_at", { ascending: false })
+        : { data: [] as any[], error: null };
+
+      const lastEvalByStudent = new Map<string, string>();
+      (evalsForStatusRes.data || []).forEach((ev: any) => {
+        if (ev.student_user_id && !lastEvalByStudent.has(ev.student_user_id)) {
+          lastEvalByStudent.set(ev.student_user_id, ev.created_at);
+        }
+      });
+
+      const studentList: EvaluationStudent[] = internRows.map((assign: any) => {
+        const profile = assign.student_profile || {};
         const internship = assign.internship || {};
-        const lastEval = assign.last_evaluation_at ? new Date(assign.last_evaluation_at) : null;
-        const daysSince = lastEval ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24)) : 999;
+        const studentUser = assign.student_user_id as string | undefined;
+        const lastEvalIso = studentUser ? lastEvalByStudent.get(studentUser) ?? null : null;
+        const lastEval = lastEvalIso ? new Date(lastEvalIso) : null;
+        const daysSince = lastEval
+          ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24))
+          : -1;
 
         let evalStatus: EvaluationStudent["evaluationStatus"];
         if (!lastEval || daysSince > 21) evalStatus = "overdue";
         else if (daysSince > 18) evalStatus = "due";
-        else if (daysSince >= 0) evalStatus = "current";
-        else evalStatus = "completed";
+        else evalStatus = "current";
+
+        const fullName =
+          profile.full_name ||
+          [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+          (profile.email ? profile.email.split("@")[0] : "Unknown Student");
 
         return {
           id: assign.id,
-          studentId: student.id,
-          name: student.full_name || `Student ${student.id?.slice(0, 6)}`,
-          email: student.email || "",
-          avatarUrl: student.avatar_url,
+          studentId: studentUser || assign.id,
+          name: fullName,
+          email: profile.email || "",
+          avatarUrl: profile.avatar_url ?? null,
+          internshipId: internship.id ?? null,
           internshipTitle: internship.title || "N/A",
-          lastEvaluationDate: assign.last_evaluation_at,
-          daysSinceEvaluation: daysSince === 999 ? -1 : daysSince,
+          lastEvaluationDate: lastEvalIso,
+          daysSinceEvaluation: daysSince,
           evaluationStatus: evalStatus,
         };
       });
 
       setStudents(studentList);
 
-      // Fetch past evaluations
+      // Fetch past evaluations directly from `evaluations` (real columns).
+      // `evaluations.evaluator_id` references profiles.user_id — filter by
+      // the supervisor's user_id, not the supervisors table PK. The
+      // `site_supervisor_evaluations` view is just a SELECT on this same
+      // table and gives no benefit here.
       const { data: evals } = await supabase
-        .from("site_supervisor_evaluations")
+        .from("evaluations")
         .select(`
-          *,
-          student:students(full_name)
+          id,
+          student_user_id,
+          type,
+          scores,
+          rating,
+          comments,
+          status,
+          submitted_at,
+          created_at,
+          student_profile:student_user_id(
+            full_name,
+            first_name,
+            last_name,
+            email,
+            avatar_url
+          )
         `)
-        .eq("evaluator_id", supervisor.id)
+        .eq("evaluator_id", supervisorUserId)
+        .eq("evaluator_role", "site_supervisor")
         .order("created_at", { ascending: false })
         .limit(50);
 
-      setEvaluations((evals || []).map((e: any) => ({
-        id: e.id,
-        studentId: e.student_id,
-        studentName: e.student?.full_name || "Unknown",
-        periodStart: e.evaluation_period_start,
-        periodEnd: e.evaluation_period_end,
-        overallRating: e.overall_rating,
-        decision: e.decision,
-        submittedAt: e.created_at,
-        signedAt: e.signed_at,
-        technicalScore: ((e.technical_knowledge + e.problem_solving + e.code_quality + e.learning_agility) / 4),
-        professionalScore: ((e.communication + e.teamwork + e.punctuality + e.initiative + e.adaptability) / 5),
-        workQualityScore: ((e.task_completion_rate + e.deliverable_quality + e.deadline_adherence + e.documentation_quality) / 4),
-      })));
+      const num = (v: any) => (typeof v === "number" ? v : 0);
+      const avg = (vals: number[]) =>
+        vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+
+      setEvaluations((evals || []).map((e: any) => {
+        const scores = (e.scores && typeof e.scores === "object") ? e.scores as Record<string, any> : {};
+        const overall = typeof e.rating === "number" ? e.rating : 0;
+        const decision: EvaluationRecord["decision"] =
+          overall >= 4 ? "satisfactory" : overall >= 3 ? "needs_improvement" : "unsatisfactory";
+        const submittedAt = e.submitted_at || e.created_at;
+        const student = e.student_profile || {};
+        const studentName =
+          student.full_name ||
+          [student.first_name, student.last_name].filter(Boolean).join(" ") ||
+          "Unknown Student";
+        return {
+          id: e.id,
+          studentId: e.student_user_id,
+          studentName,
+          // evaluations has no `evaluation_period_start/end` — leave null.
+          periodStart: null,
+          periodEnd: null,
+          overallRating: overall,
+          decision,
+          submittedAt,
+          // evaluations has no `signed_at` — fall back to submittedAt.
+          signedAt: submittedAt,
+          technicalScore: avg([
+            num(scores.technical_knowledge),
+            num(scores.problem_solving),
+            num(scores.code_quality),
+            num(scores.learning_agility),
+          ]),
+          professionalScore: avg([
+            num(scores.communication),
+            num(scores.teamwork),
+            num(scores.punctuality),
+            num(scores.initiative),
+            num(scores.adaptability),
+          ]),
+          workQualityScore: avg([
+            num(scores.task_completion_rate),
+            num(scores.deliverable_quality),
+            num(scores.deadline_adherence),
+            num(scores.documentation_quality),
+          ]),
+          comments: e.comments ?? null,
+        };
+      }));
 
     } catch (error) {
       console.error("Error fetching evaluation data:", error);
@@ -331,34 +414,67 @@ export default function SiteSupervisorEvaluationsPage() {
       alert("Please provide your digital signature before submitting.");
       return;
     }
-    
+    if (!user) return;
+
     setIsSubmitting(true);
-    
+
     try {
-      const supabase = createClient();
-      
+      const selectedStudent = students.find((s) => s.studentId === formData.studentId);
+      const internshipId = selectedStudent?.internshipId ?? null;
+
+      // Build a single `scores` JSONB object containing all 13 score
+      // sliders (real `evaluations.scores` column). The legacy per-column
+      // insert fields do not exist on `evaluations`.
+      const scores = {
+        technical_knowledge: formData.technicalKnowledge,
+        problem_solving: formData.problemSolving,
+        code_quality: formData.codeQuality,
+        learning_agility: formData.learningAgility,
+        communication: formData.communication,
+        teamwork: formData.teamwork,
+        punctuality: formData.punctuality,
+        initiative: formData.initiative,
+        adaptability: formData.adaptability,
+        task_completion_rate: formData.taskCompletionRate,
+        deliverable_quality: formData.deliverableQuality,
+        deadline_adherence: formData.deadlineAdherence,
+        documentation_quality: formData.documentationQuality,
+      };
+
+      // Combine all four comment fields into a single `comments` text blob
+      // (evaluations has no per-section columns). Include the chosen decision
+      // and the signature image as metadata for traceability.
+      const comments = [
+        formData.strengths ? `Strengths & Achievements:\n${formData.strengths}` : "",
+        formData.areasForImprovement
+          ? `Areas for Improvement:\n${formData.areasForImprovement}`
+          : "",
+        formData.generalRemarks ? `General Remarks:\n${formData.generalRemarks}` : "",
+        formData.recommendations ? `Recommendations:\n${formData.recommendations}` : "",
+        formData.decision ? `Decision: ${formData.decision}` : "",
+        formData.signatureData ? `Signature: ${formData.signatureData.slice(0, 80)}…` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      // evaluations.rating is 0-5 — the UI computes a 0-10 weighted average,
+      // so scale it down by 2.
+      const rating = Math.max(0, Math.min(5, Math.round((calculatedScores.overallRating / 2) * 10) / 10));
+
       const response = await fetch("/api/site-supervisor/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formData,
-          student_id: formData.studentId,
-          evaluation_period_start: formData.periodStart,
-          evaluation_period_end: formData.periodEnd,
-          technical_knowledge: formData.technicalKnowledge,
-          problem_solving: formData.problemSolving,
-          code_quality: formData.codeQuality,
-          learning_agility: formData.learningAgility,
-          communication: formData.communication,
-          teamwork: formData.teamwork,
-          punctuality: formData.punctuality,
-          initiative: formData.initiative,
-          adaptability: formData.adaptability,
-          task_completion_rate: formData.taskCompletionRate,
-          deliverable_quality: formData.deliverableQuality,
-          deadline_adherence: formData.deadlineAdherence,
-          documentation_quality: formData.documentationQuality,
-          signature_image: formData.signatureData,
+          student_user_id: formData.studentId,
+          evaluator_id: user.id,
+          evaluator_role: "site_supervisor",
+          type: "site_evaluation",
+          scores,
+          rating,
+          comments,
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+          internship_id: internshipId,
         }),
       });
 
@@ -629,8 +745,10 @@ export default function SiteSupervisorEvaluationsPage() {
                         <Button
                           size="sm"
                           onClick={() => {
-                            handleSelectStudent(student.studentId);
-                            setActiveTab("new");
+                            if (student.studentId) {
+                              handleSelectStudent(student.studentId);
+                              setActiveTab("new");
+                            }
                           }}
                         >
                           {student.evaluationStatus === "overdue" ? "Evaluate Now" : "Evaluate"}
@@ -716,7 +834,7 @@ export default function SiteSupervisorEvaluationsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {students.map((student) => (
-                      <SelectItem key={student.studentId} value={student.studentId}>
+                      <SelectItem key={student.studentId || student.id} value={student.studentId || student.id}>
                         <div className="flex items-center gap-2">
                           <span>{student.name}</span>
                           {getEvaluationStatusBadge(student.evaluationStatus)}
@@ -1167,8 +1285,13 @@ export default function SiteSupervisorEvaluationsPage() {
                           <div>
                             <h3 className="font-semibold text-lg">{evaluation.studentName}</h3>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(evaluation.periodStart).toLocaleDateString()} -{" "}
-                              {new Date(evaluation.periodEnd).toLocaleDateString()}
+                              {evaluation.periodStart
+                                ? new Date(evaluation.periodStart).toLocaleDateString()
+                                : "—"}
+                              {" - "}
+                              {evaluation.periodEnd
+                                ? new Date(evaluation.periodEnd).toLocaleDateString()
+                                : "—"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Submitted {new Date(evaluation.submittedAt).toLocaleDateString()}
@@ -1372,7 +1495,9 @@ export default function SiteSupervisorEvaluationsPage() {
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Signed On</p>
                       <p className="font-semibold mt-1">
-                        {new Date(selectedEvaluation.signedAt).toLocaleString()}
+                        {selectedEvaluation.signedAt
+                          ? new Date(selectedEvaluation.signedAt).toLocaleString()
+                          : "—"}
                       </p>
                     </CardContent>
                   </Card>

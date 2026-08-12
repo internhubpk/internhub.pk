@@ -300,19 +300,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If user is company HR, automatically add them to the company
+    // If user is company HR, automatically add them to the company.
+    // NOTE: `company_users` columns are: id, company_id, user_id, role, is_active,
+    // created_at. There is NO `first_name`, `last_name`, `email`, or `status` —
+    // any of those would cause the insert to fail with column-not-found.
     if (profile.role === "company_hr") {
       const { error: companyUserError } = await supabase
         .from("company_users")
         .insert({
           company_id: company!.id,
           user_id: user.id,
-          role: "admin",
-          first_name: "",
-          last_name: "",
-          email: user.email || "",
+          role: "company_hr",
           is_active: true,
-          created_at: new Date().toISOString(),
         });
 
       if (companyUserError) {

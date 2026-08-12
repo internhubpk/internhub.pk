@@ -1,9 +1,21 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ScrollText, Search, Filter, Eye, CheckCircle, XCircle, Clock, Loader2, Calendar } from "lucide-react";
+import {
+  ScrollText,
+  Search,
+  Filter,
+  Eye,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Loader2,
+  Calendar,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,18 +33,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 interface WeeklyLog {
   id: string;
   student_name: string;
+  student_user_id: string;
   week_number: number;
   week_start_date: string;
   week_end_date: string;
   hours_worked: number;
   status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
   submitted_at?: string;
+  // Review-only fields (populated when a log is opened in the dialog)
+  tasks_completed?: string[];
+  challenges?: string;
+  learnings?: string;
+  supervisor_feedback?: string;
 }
 
 export default function FacultySupervisorWeeklyLogsPage() {
@@ -41,6 +67,12 @@ export default function FacultySupervisorWeeklyLogsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Review dialog state
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<WeeklyLog | null>(null);
+  const [reviewFeedback, setReviewFeedback] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     async function fetchLogs() {
@@ -79,6 +111,10 @@ export default function FacultySupervisorWeeklyLogsPage() {
             status,
             submitted_at,
             student_user_id,
+            tasks_completed,
+            challenges,
+            learnings,
+            supervisor_feedback,
             profiles:student_user_id(first_name, last_name)
           `)
           .in("student_user_id", studentIds)
@@ -88,13 +124,20 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
         const logList: WeeklyLog[] = (weeklyLogs || []).map((log: any) => ({
           id: log.id,
-          student_name: `${log.profiles?.first_name || ""} ${log.profiles?.last_name || ""}`.trim() || "Unknown Student",
+          student_user_id: log.student_user_id,
+          student_name:
+            `${log.profiles?.first_name || ""} ${log.profiles?.last_name || ""}`.trim() ||
+            "Unknown Student",
           week_number: log.week_number,
           week_start_date: log.week_start_date,
           week_end_date: log.week_end_date,
           hours_worked: log.hours_worked || 0,
           status: log.status,
           submitted_at: log.submitted_at,
+          tasks_completed: Array.isArray(log.tasks_completed) ? log.tasks_completed : [],
+          challenges: log.challenges,
+          learnings: log.learnings,
+          supervisor_feedback: log.supervisor_feedback,
         }));
 
         setLogs(logList);
@@ -132,6 +175,55 @@ export default function FacultySupervisorWeeklyLogsPage() {
     );
   };
 
+  const openReviewDialog = (log: WeeklyLog) => {
+    setSelectedLog(log);
+    setReviewFeedback(log.supervisor_feedback || "");
+    setIsReviewOpen(true);
+  };
+
+  const handleReview = async (action: "approve" | "reject" | "request_revision") => {
+    if (!user || !selectedLog) return;
+    setIsSubmitting(true);
+    try {
+      const supabase = createClient();
+      // weekly_log_status enum: draft, submitted, approved, rejected, revision_required
+      const newStatus =
+        action === "approve"
+          ? "approved"
+          : action === "reject"
+          ? "rejected"
+          : "revision_required";
+
+      const { error } = await supabase
+        .from("weekly_logs")
+        .update({
+          status: newStatus,
+          supervisor_feedback: reviewFeedback || null,
+          reviewed_at: new Date().toISOString(),
+          supervisor_id: user.id,
+        })
+        .eq("id", selectedLog.id);
+
+      if (error) throw error;
+
+      setLogs((prev) =>
+        prev.map((l) =>
+          l.id === selectedLog.id
+            ? { ...l, status: newStatus, supervisor_feedback: reviewFeedback || undefined }
+            : l
+        )
+      );
+      setIsReviewOpen(false);
+      setSelectedLog(null);
+      setReviewFeedback("");
+    } catch (error) {
+      console.error("Error reviewing weekly log:", error);
+      alert("Failed to update weekly log. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -140,7 +232,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Weekly Logs</h1>
           <p className="text-muted-foreground">Review and approve student weekly logs</p>
         </div>
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => window.print()}>
           <Calendar className="mr-2 h-4 w-4" />
           Export
         </Button>
@@ -208,6 +300,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 <SelectItem value="submitted">Submitted</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="revision_required">Revision Required</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
               </SelectContent>
             </Select>
@@ -258,7 +351,12 @@ export default function FacultySupervisorWeeklyLogsPage() {
                       <TableCell>{getStatusBadge(log.status)}</TableCell>
                       <TableCell>{log.submitted_at || "-"}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openReviewDialog(log)}
+                          title="Review log"
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -270,6 +368,122 @@ export default function FacultySupervisorWeeklyLogsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Review Dialog */}
+      <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedLog && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <ScrollText className="h-5 w-5" />
+                  Weekly Log — Week {selectedLog.week_number}
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedLog.student_name} • {selectedLog.week_start_date} to {selectedLog.week_end_date}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="p-4 text-center">
+                      <p className="text-xs text-muted-foreground">Hours Worked</p>
+                      <p className="text-2xl font-bold text-blue-600">{selectedLog.hours_worked}h</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 text-center">
+                      <p className="text-xs text-muted-foreground">Status</p>
+                      <div className="mt-1 flex justify-center">
+                        {getStatusBadge(selectedLog.status)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm font-medium">Tasks Completed</Label>
+                    {selectedLog.tasks_completed && selectedLog.tasks_completed.length > 0 ? (
+                      <ul className="mt-1 list-disc list-inside text-sm space-y-1">
+                        {selectedLog.tasks_completed.map((task, idx) => (
+                          <li key={idx}>{task}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">No tasks listed.</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium">Challenges</Label>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">
+                      {selectedLog.challenges || "None reported."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium">Learnings</Label>
+                    <p className="mt-1 text-sm whitespace-pre-wrap">
+                      {selectedLog.learnings || "None reported."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="feedback">Supervisor Feedback</Label>
+                  <Textarea
+                    id="feedback"
+                    placeholder="Provide feedback to the student (optional for approve, recommended for reject/revision)..."
+                    value={reviewFeedback}
+                    onChange={(e) => setReviewFeedback(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsReviewOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  onClick={() => handleReview("request_revision")}
+                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                >
+                  <Clock className="h-4 w-4" /> Request Revision
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="gap-2"
+                  onClick={() => handleReview("reject")}
+                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                >
+                  <XCircle className="h-4 w-4" /> Reject
+                </Button>
+                <Button
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => handleReview("approve")}
+                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4" />
+                  )}
+                  Approve
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

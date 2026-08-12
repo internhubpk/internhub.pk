@@ -98,8 +98,7 @@ export async function PATCH(request: Request) {
       query = supabase
         .from("notifications")
         .update({ 
-          is_read: true, 
-          read_at: new Date().toISOString() 
+          is_read: true
         })
         .eq("user_id", user.id)
         .eq("is_read", false);
@@ -108,8 +107,7 @@ export async function PATCH(request: Request) {
       query = supabase
         .from("notifications")
         .update({ 
-          is_read: true, 
-          read_at: new Date().toISOString() 
+          is_read: true
         })
         .in("id", notification_ids)
         .eq("user_id", user.id); // Security: ensure users can only mark their own

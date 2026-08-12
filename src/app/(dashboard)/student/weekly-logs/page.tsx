@@ -36,17 +36,21 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 // Types
+// `weekly_logs.status` uses the `weekly_log_status` enum
+// (draft, submitted, approved, revision_required).
+// Schema: id, student_user_id, supervisor_id, week_start_date, week_end_date,
+// work_description, tasks_completed, challenges_faced, learnings, status,
+// supervisor_feedback, reviewed_at, submitted_at, created_at, updated_at.
 interface WeeklyLog {
   id: string;
-  weekNumber: number;
-  startDate: string;
-  endDate: string;
-  status: "approved" | "rejected" | "pending" | "draft";
-  tasksCompleted: string[];
-  challenges: string;
-  nextWeekGoals: string[];
-  supervisorFeedback: string | null;
-  hoursWorked: number;
+  week_start_date: string;
+  week_end_date: string;
+  status: "draft" | "submitted" | "approved" | "revision_required";
+  work_description: string | null;
+  tasks_completed: string | string[] | null;
+  challenges_faced: string | null;
+  learnings: string | null;
+  supervisor_feedback: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }
@@ -59,15 +63,31 @@ export default function StudentWeeklyLogsPage() {
   const [logs, setLogs] = useState<WeeklyLog[]>(DEFAULT_LOGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   
-  // Form state
+  // Form state — mirrors the real `weekly_logs` columns.
   const [formData, setFormData] = useState({
-    tasksCompleted: "",
-    challenges: "",
-    nextWeekGoals: "",
-    hoursWorked: "",
+    week_start_date: "",
+    week_end_date: "",
+    work_description: "",
+    tasks_completed: "",
+    challenges_faced: "",
+    learnings: "",
   });
+
+  // Helper: compute the current week's Monday → Sunday (YYYY-MM-DD).
+  const getCurrentWeekRange = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0 = Sun
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const toIso = (d: Date) => d.toISOString().slice(0, 10);
+    return { start: toIso(monday), end: toIso(sunday) };
+  };
 
   useEffect(() => {
     fetchWeeklyLogs();
@@ -79,27 +99,26 @@ export default function StudentWeeklyLogsPage() {
     try {
       const supabase = createClient();
       
-      // Fetch weekly logs for current student
+      // Fetch weekly logs for current student. Use only real columns.
       const { data, error } = await supabase
         .from('weekly_logs')
-        .select('*')
+        .select('id, week_start_date, week_end_date, work_description, tasks_completed, challenges_faced, learnings, status, supervisor_feedback, submitted_at, reviewed_at, created_at')
         .eq('student_user_id', user.id)
         .order('week_start_date', { ascending: false });
       
       if (error) throw error;
       
-      if (data && data.length > 0) {
+      if (data) {
         const logList: WeeklyLog[] = data.map((log: any) => ({
           id: log.id,
-          weekNumber: log.week_number || 0,
-          startDate: log.week_start_date || '',
-          endDate: log.week_end_date || '',
+          week_start_date: log.week_start_date || '',
+          week_end_date: log.week_end_date || '',
           status: log.status || 'draft',
-          tasksCompleted: log.tasks_completed || [],
-          challenges: log.challenges || '',
-          nextWeekGoals: log.next_week_goals || [],
-          supervisorFeedback: log.supervisor_feedback,
-          hoursWorked: log.hours_worked || 0,
+          work_description: log.work_description,
+          tasks_completed: log.tasks_completed,
+          challenges_faced: log.challenges_faced,
+          learnings: log.learnings,
+          supervisor_feedback: log.supervisor_feedback,
           submittedAt: log.submitted_at,
           reviewedAt: log.reviewed_at,
         }));
@@ -117,32 +136,86 @@ export default function StudentWeeklyLogsPage() {
     switch (status) {
       case "approved":
         return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
-      case "pending":
+      case "revision_required":
+        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Revision Required</Badge>;
+      case "submitted":
         return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Pending Review</Badge>;
+      case "draft":
+        return <Badge variant="outline"><FileText className="mr-1 h-3 w-3" />Draft</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
   const handleSubmitLog = async () => {
-    // In real app, this would submit to Supabase
+    if (!user) return;
+    // Require at least a work description or some tasks completed to submit.
+    if (!formData.work_description.trim() && !formData.tasks_completed.trim()) {
+      alert("Please describe your work or list the tasks you completed this week.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const supabase = createClient();
-      // Submit logic here
-      alert("Weekly log submitted successfully!");
+
+      // Derive supervisor_id from the student's active student_internship.
+      // Prefer site_supervisor_id; fall back to faculty_supervisor_id.
+      const { data: si, error: siError } = await supabase
+        .from("student_internships")
+        .select("site_supervisor_id, faculty_supervisor_id")
+        .eq("student_user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (siError) {
+        console.error("Error fetching student_internship for supervisor:", siError);
+      }
+      const supervisorId = si?.site_supervisor_id || si?.faculty_supervisor_id || null;
+
+      // Default the week range to the current week if the user didn't pick.
+      const defaultRange = getCurrentWeekRange();
+      const weekStart = formData.week_start_date || defaultRange.start;
+      const weekEnd = formData.week_end_date || defaultRange.end;
+
+      const payload = {
+        student_user_id: user.id,
+        supervisor_id: supervisorId,
+        week_start_date: weekStart,
+        week_end_date: weekEnd,
+        work_description: formData.work_description.trim() || null,
+        tasks_completed: formData.tasks_completed.trim() || null,
+        challenges_faced: formData.challenges_faced.trim() || null,
+        learnings: formData.learnings.trim() || null,
+        status: "submitted" as const,
+        submitted_at: new Date().toISOString(),
+      };
+
+      const { error: insertError } = await supabase
+        .from("weekly_logs")
+        .insert(payload);
+
+      if (insertError) throw insertError;
+
+      // Reset form, close dialog, refresh list.
+      setFormData({
+        week_start_date: "",
+        week_end_date: "",
+        work_description: "",
+        tasks_completed: "",
+        challenges_faced: "",
+        learnings: "",
+      });
       setIsDialogOpen(false);
-      setFormData({ tasksCompleted: "", challenges: "", nextWeekGoals: "", hoursWorked: "" });
-      // Refresh logs
-      fetchWeeklyLogs();
+      await fetchWeeklyLogs();
     } catch (error) {
       console.error("Error submitting log:", error);
       alert("Failed to submit log. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const pendingWeeks = logs.filter(log => log.status === "pending" || log.status === "draft");
+  const pendingWeeks = logs.filter(log => log.status === "submitted" || log.status === "draft");
 
   if (isLoading) {
     return (
@@ -188,8 +261,7 @@ export default function StudentWeeklyLogsPage() {
               </p>
             </div>
             
-            {pendingWeeks.length > 0 && (
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="h-4 w-4" />
@@ -200,17 +272,46 @@ export default function StudentWeeklyLogsPage() {
                   <DialogHeader>
                     <DialogTitle>Submit Weekly Log</DialogTitle>
                     <DialogDescription>
-                      Week {pendingWeeks[0]?.weekNumber} ({pendingWeeks[0]?.startDate} - {pendingWeeks[0]?.endDate})
+                      Defaults to the current week (Mon–Sun). Adjust the dates if needed.
                     </DialogDescription>
                   </DialogHeader>
                   
                   <div className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Week Start Date</label>
+                        <Input
+                          type="date"
+                          value={formData.week_start_date || getCurrentWeekRange().start}
+                          onChange={(e) => setFormData({ ...formData, week_start_date: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Week End Date</label>
+                        <Input
+                          type="date"
+                          value={formData.week_end_date || getCurrentWeekRange().end}
+                          onChange={(e) => setFormData({ ...formData, week_end_date: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Work Description</label>
+                      <Textarea
+                        placeholder="Summary of what you worked on this week..."
+                        value={formData.work_description}
+                        onChange={(e) => setFormData({ ...formData, work_description: e.target.value })}
+                        rows={4}
+                      />
+                    </div>
+
                     <div>
                       <label className="text-sm font-medium mb-2 block">Tasks Completed</label>
                       <Textarea
                         placeholder="List the tasks you completed this week..."
-                        value={formData.tasksCompleted}
-                        onChange={(e) => setFormData({ ...formData, tasksCompleted: e.target.value })}
+                        value={formData.tasks_completed}
+                        onChange={(e) => setFormData({ ...formData, tasks_completed: e.target.value })}
                         rows={4}
                       />
                     </div>
@@ -219,45 +320,34 @@ export default function StudentWeeklyLogsPage() {
                       <label className="text-sm font-medium mb-2 block">Challenges Faced</label>
                       <Textarea
                         placeholder="Any obstacles or challenges you encountered..."
-                        value={formData.challenges}
-                        onChange={(e) => setFormData({ ...formData, challenges: e.target.value })}
+                        value={formData.challenges_faced}
+                        onChange={(e) => setFormData({ ...formData, challenges_faced: e.target.value })}
                         rows={3}
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium mb-2 block">Next Week Goals</label>
+                      <label className="text-sm font-medium mb-2 block">Learnings</label>
                       <Textarea
-                        placeholder="What do you plan to accomplish next week..."
-                        value={formData.nextWeekGoals}
-                        onChange={(e) => setFormData({ ...formData, nextWeekGoals: e.target.value })}
+                        placeholder="Key takeaways and what you learned this week..."
+                        value={formData.learnings}
+                        onChange={(e) => setFormData({ ...formData, learnings: e.target.value })}
                         rows={3}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Hours Worked</label>
-                      <Input
-                        type="number"
-                        placeholder="Total hours worked this week"
-                        value={formData.hoursWorked}
-                        onChange={(e) => setFormData({ ...formData, hoursWorked: e.target.value })}
                       />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
                         Cancel
                       </Button>
-                      <Button onClick={handleSubmitLog} className="gap-2">
-                        <Send className="h-4 w-4" />
-                        Submit Log
+                      <Button onClick={handleSubmitLog} className="gap-2" disabled={isSubmitting}>
+                        {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {isSubmitting ? "Submitting..." : "Submit Log"}
                       </Button>
                     </div>
                   </div>
                 </DialogContent>
               </Dialog>
-            )}
           </motion.div>
         </div>
       </div>
@@ -312,8 +402,8 @@ export default function StudentWeeklyLogsPage() {
                 <Calendar className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Hours</p>
-                <p className="text-2xl font-bold">{logs.reduce((acc, log) => acc + (log.hoursWorked || 0), 0)}</p>
+                <p className="text-sm text-muted-foreground">Weeks Logged</p>
+                <p className="text-2xl font-bold">{logs.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -344,11 +434,11 @@ export default function StudentWeeklyLogsPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <CardTitle className="text-lg">
-                          Week {log.weekNumber}
+                          {log.week_start_date ? new Date(log.week_start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Week"}{log.week_end_date ? ` – ${new Date(log.week_end_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-2 mt-1">
                           <Calendar className="h-3 w-3" />
-                          {log.startDate} - {log.endDate}
+                          {log.week_start_date} - {log.week_end_date}
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
@@ -362,32 +452,50 @@ export default function StudentWeeklyLogsPage() {
                     </div>
                   </CardHeader>
 
-                  {log.tasksCompleted.length > 0 && (
-                    <CardContent className="pt-0 space-y-3">
+                  <CardContent className="pt-0 space-y-3">
+                    {log.work_description && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-2">Tasks Completed:</h4>
-                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                          {log.tasksCompleted.map((task, i) => (
-                            <li key={i}>{task}</li>
-                          ))}
-                        </ul>
+                        <h4 className="text-sm font-semibold mb-1">Work Description:</h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.work_description}</p>
                       </div>
+                    )}
 
-                      {log.challenges && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">Challenges:</h4>
-                          <p className="text-sm text-muted-foreground">{log.challenges}</p>
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-4 pt-2 text-sm text-muted-foreground border-t">
-                        <span>Hours: <strong>{log.hoursWorked}</strong></span>
-                        {log.supervisorFeedback && (
-                          <span>Feedback: <strong className="text-emerald-600">Received</strong></span>
+                    {log.tasks_completed && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1">Tasks Completed:</h4>
+                        {Array.isArray(log.tasks_completed) ? (
+                          <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                            {log.tasks_completed.map((task, i) => (
+                              <li key={i}>{task}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.tasks_completed}</p>
                         )}
                       </div>
-                    </CardContent>
-                  )}
+                    )}
+
+                    {log.challenges_faced && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1">Challenges:</h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.challenges_faced}</p>
+                      </div>
+                    )}
+
+                    {log.learnings && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1">Learnings:</h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.learnings}</p>
+                      </div>
+                    )}
+
+                    {log.supervisor_feedback && (
+                      <div className="pt-2 border-t">
+                        <h4 className="text-sm font-semibold mb-1">Supervisor Feedback:</h4>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap">{log.supervisor_feedback}</p>
+                      </div>
+                    )}
+                  </CardContent>
                 </Card>
               </motion.div>
             ))

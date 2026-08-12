@@ -110,39 +110,24 @@ export default function SiteSupervisorWeeklyLogsPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      
-      // Get supervisor record
-      const { data: supervisor } = await supabase
-        .from("supervisors")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "site")
-        .single();
 
-      if (!supervisor) {
-        // No supervisor record - keep empty state
-        setLogs([]);
-        setStats({
-          totalLogs: 0,
-          pendingReview: 0,
-          approved: 0,
-          rejected: 0,
-          lateSubmissions: 0,
-          averageHours: 0,
-        });
-        setIsLoading(false);
-        return;
-      }
+      // student_internships.site_supervisor_id and weekly_logs.supervisor_id
+      // both reference profiles.user_id — so we filter by the auth user's id
+      // (the supervisor's user_id), NOT the supervisors table PK. RLS uses
+      // auth.uid() the same way.
+      const supervisorUserId = user.id;
 
-      // Get assigned students
+      // Get assigned students (real column: student_user_id, not student_id)
       const { data: assignments } = await supabase
         .from("student_internships")
-        .select("student_id")
-        .eq("site_supervisor_id", supervisor.id);
+        .select("student_user_id")
+        .eq("site_supervisor_id", supervisorUserId);
 
-      const studentIds = (assignments || []).map(a => a.student_id);
+      const studentUserIds = (assignments || [])
+        .map((a: any) => a.student_user_id)
+        .filter((id: any): id is string => Boolean(id));
 
-      if (studentIds.length === 0) {
+      if (studentUserIds.length === 0) {
         setLogs([]);
         setStats({
           totalLogs: 0,
@@ -156,59 +141,91 @@ export default function SiteSupervisorWeeklyLogsPage() {
         return;
       }
 
-      // Fetch weekly logs for assigned students
+      // Fetch weekly logs for assigned students. weekly_logs.supervisor_id is
+      // FK to profiles.user_id; weekly_logs has no `student_id` column — the
+      // student FK column is `student_user_id`. Join profiles via that column.
       const { data: weeklyLogs } = await supabase
         .from("weekly_logs")
         .select(`
-          *,
-          student:students(id, full_name, email, avatar_url)
+          id,
+          student_user_id,
+          supervisor_id,
+          week_start_date,
+          week_end_date,
+          work_description,
+          tasks_completed,
+          challenges_faced,
+          learnings,
+          status,
+          supervisor_feedback,
+          reviewed_at,
+          submitted_at,
+          created_at,
+          updated_at,
+          student_profile:student_user_id(
+            full_name,
+            first_name,
+            last_name,
+            email,
+            avatar_url
+          )
         `)
-        .in("student_id", studentIds)
-        .order("week_start_date", { ascending: false})
+        .eq("supervisor_id", supervisorUserId)
+        .in("student_user_id", studentUserIds)
+        .order("week_start_date", { ascending: false })
         .limit(100);
 
-      const processedLogs: WeeklyLogEntry[] = (weeklyLogs || []).map((log: any) => {
-        const student = log.student || {};
+      const processedLogs: WeeklyLogEntry[] = (weeklyLogs || []).map((log: any, idx: number) => {
+        const profile = log.student_profile || {};
         const weekEnd = new Date(log.week_end_date);
         const submittedAt = log.submitted_at ? new Date(log.submitted_at) : null;
         const gracePeriodEnd = new Date(weekEnd.getTime() + 3 * 24 * 60 * 60 * 1000);
 
+        const fullName =
+          profile.full_name ||
+          [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+          (profile.email ? profile.email.split("@")[0] : "Unknown Student");
+
         return {
           id: log.id,
-          studentId: student.id,
-          studentName: student.full_name || `Student ${student.id?.slice(0, 6)}`,
-          studentEmail: student.email || "",
-          avatarUrl: student.avatar_url,
-          weekNumber: log.week_number,
+          studentId: log.student_user_id,
+          studentName: fullName,
+          studentEmail: profile.email || "",
+          avatarUrl: profile.avatar_url ?? null,
+          // weekly_logs has no `week_number` column; derive a stable number
+          // from the position in the (desc-ordered) list for display only.
+          weekNumber: idx + 1,
           weekStart: log.week_start_date,
           weekEnd: log.week_end_date,
-          status: log.status,
-          tasksCompleted: log.tasks_completed || [],
-          challenges: log.challenges,
-          learnings: log.learnings,
-          nextWeekGoals: log.next_week_goals,
-          hoursWorked: log.hours_worked,
-          submittedAt: log.submitted_at,
-          reviewedAt: log.reviewed_at,
-          supervisorFeedback: log.supervisor_feedback,
+          status: log.status as WeeklyLogEntry["status"],
+          tasksCompleted: Array.isArray(log.tasks_completed) ? log.tasks_completed : [],
+          challenges: log.challenges_faced ?? null,
+          learnings: log.learnings ?? null,
+          // weekly_logs has no `next_week_goals` or `hours_worked` column
+          nextWeekGoals: null,
+          hoursWorked: null,
+          submittedAt: log.submitted_at ?? null,
+          reviewedAt: log.reviewed_at ?? null,
+          supervisorFeedback: log.supervisor_feedback ?? null,
           isLate: submittedAt ? submittedAt > gracePeriodEnd : false,
-          daysLate: submittedAt && submittedAt > gracePeriodEnd
-            ? Math.floor((submittedAt.getTime() - gracePeriodEnd.getTime()) / (1000 * 60 * 60 * 24))
-            : 0,
+          daysLate:
+            submittedAt && submittedAt > gracePeriodEnd
+              ? Math.floor((submittedAt.getTime() - gracePeriodEnd.getTime()) / (1000 * 60 * 60 * 24))
+              : 0,
         };
       });
 
       setLogs(processedLogs);
 
-      // Calculate stats
+      // Calculate stats (hours are always null since weekly_logs has no
+      // `hours_worked` column, so averageHours stays 0).
       setStats({
         totalLogs: processedLogs.length,
-        pendingReview: processedLogs.filter(l => l.status === "submitted").length,
-        approved: processedLogs.filter(l => l.status === "approved").length,
-        rejected: processedLogs.filter(l => l.status === "rejected").length,
-        lateSubmissions: processedLogs.filter(l => l.isLate).length,
-        averageHours: processedLogs.filter(l => l.hoursWorked).reduce((sum, l) => sum + (l.hoursWorked || 0), 0) 
-          / (processedLogs.filter(l => l.hoursWorked).length || 1),
+        pendingReview: processedLogs.filter((l) => l.status === "submitted").length,
+        approved: processedLogs.filter((l) => l.status === "approved").length,
+        rejected: processedLogs.filter((l) => l.status === "rejected").length,
+        lateSubmissions: processedLogs.filter((l) => l.isLate).length,
+        averageHours: 0,
       });
 
     } catch (error) {
@@ -248,6 +265,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
     setIsSubmittingReview(true);
     
     try {
+      if (!selectedLog) return;
       const response = await fetch("/api/site-supervisor/weekly-logs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -263,7 +281,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
         
         // Update local state
         setLogs(prev => prev.map(log =>
-          log.id === selectedLog.id
+          log.id === selectedLog!.id
             ? { ...log, status: action === "approve" ? "approved" as const : action === "reject" ? "rejected" as const : "revision_required" as const, supervisorFeedback: reviewFeedback, reviewedAt: new Date().toISOString() }
             : log
         ));

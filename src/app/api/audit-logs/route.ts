@@ -98,14 +98,14 @@ export async function GET(request: NextRequest) {
     // Enrich logs with user information
     const enrichedLogs = await Promise.all(
       result.data.map(async (log) => {
-        let userInfo = null;
+        let userInfo: { first_name: string | null; last_name: string | null; role: string | null } | null = null;
         
         if (log.user_id) {
           const { data: profile } = await supabase
             .from("profiles")
             .select("first_name, last_name, role")
             .eq("user_id", log.user_id)
-            .single();
+            .maybeSingle();
           
           userInfo = profile;
         }

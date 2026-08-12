@@ -117,8 +117,18 @@ export default function FacultySupervisorDashboard() {
       // since faculty_supervisor_id references profiles.user_id).
       const { data: assignedInternships } = await supabase
         .from("student_internships")
-        .select("id, student_user_id, status")
-        .eq("faculty_supervisor_id", user.id);
+        .select(`
+          id,
+          student_user_id,
+          status,
+          start_date,
+          end_date,
+          student_profile:student_user_id(full_name, email, avatar_url),
+          internship:internships(id, title, location, remote, company_id),
+          company:company_id(name)
+        `)
+        .eq("faculty_supervisor_id", user.id)
+        .order("created_at", { ascending: false });
 
       const supervisedStudentIds = Array.from(
         new Set((assignedInternships || []).map((a) => a.student_user_id))
@@ -127,23 +137,135 @@ export default function FacultySupervisorDashboard() {
         (a) => a.status === "active"
       ).length;
 
-      // Fetch faculty supervisor stats
-      const [pendingRes, completedRes] = await Promise.all([
-        supervisedStudentIds.length > 0
-          ? supabase
-              .from("weekly_logs")
-              .select("id", { count: "exact" })
-              .eq("status", "submitted")
-              .in("student_user_id", supervisedStudentIds)
-          : Promise.resolve({ count: 0 }),
-        supabase
-          .from("evaluations")
-          .select("id", { count: "exact" })
-          .eq("evaluator_id", user.id)
-          .eq("status", "completed"),
-      ]);
+      // Run all the remaining stats + section queries in parallel.
+      const [pendingRes, completedRes, recentSubsRes, tasksRes, weeklyLogsRes] =
+        await Promise.all([
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("weekly_logs")
+                .select("id", { count: "exact" })
+                .eq("status", "submitted")
+                .in("student_user_id", supervisedStudentIds)
+            : Promise.resolve({ count: 0 }),
+          // evaluation_status enum has no "completed" value; use
+          // "submitted" / "approved" / "rejected" as the "done" set.
+          supabase
+            .from("evaluations")
+            .select("id", { count: "exact" })
+            .eq("evaluator_id", user.id)
+            .in("status", ["submitted", "approved", "rejected"]),
+          // Recent submissions: latest task_submissions by assigned students.
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("task_submissions")
+                .select(`
+                  id,
+                  status,
+                  submitted_at,
+                  student_user_id,
+                  task_id,
+                  student_profile:student_user_id(full_name),
+                  task:tasks(title)
+                `)
+                .in("student_user_id", supervisedStudentIds)
+                .order("submitted_at", { ascending: false })
+                .limit(5)
+            : Promise.resolve({ data: [] }),
+          // Tasks created by this supervisor (for "Tasks Needing Attention").
+          supabase
+            .from("tasks")
+            .select(`
+              id,
+              title,
+              due_date,
+              status,
+              created_at
+            `)
+            .eq("created_by", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false })
+            .limit(10),
+          // All weekly_logs for supervised students (used to compute progress).
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("weekly_logs")
+                .select("student_user_id, status, week_start_date")
+                .in("student_user_id", supervisedStudentIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+      // Map assigned internships to the StudentOverview shape, computing a
+      // simple progress proxy from weekly_logs (approved / total).
+      const logsByStudent = new Map<string, { approved: number; total: number; latest?: string }>();
+      (weeklyLogsRes.data || []).forEach((log: any) => {
+        const cur = logsByStudent.get(log.student_user_id) || { approved: 0, total: 0 };
+        cur.total += 1;
+        if (log.status === "approved") cur.approved += 1;
+        const ws = log.week_start_date;
+        if (ws && (!cur.latest || ws > cur.latest)) cur.latest = ws;
+        logsByStudent.set(log.student_user_id, cur);
+      });
+
+      const studentList: StudentOverview[] = (assignedInternships || []).map((s: any) => {
+        const meta = logsByStudent.get(s.student_user_id) || { approved: 0, total: 0 };
+        const progress = meta.total > 0 ? Math.round((meta.approved / meta.total) * 100) : 0;
+        const name =
+          s.student_profile?.full_name ||
+          `Student ${s.student_user_id?.slice(0, 6)}`;
+        const company = s.company?.name || s.internship?.title || "N/A";
+        return {
+          id: s.student_user_id || s.id,
+          name,
+          email: s.student_profile?.email || "",
+          program: "", // not in profile; left blank
+          company,
+          progress,
+          status: s.status === "active" ? "active" : s.status === "completed" ? "completed" : "active",
+          lastActivity: meta.latest || s.start_date || "",
+          avatarUrl: s.student_profile?.avatar_url,
+        };
+      });
+      setStudents(studentList);
+
+      // Map recent task_submissions → RecentSubmission
+      const recentSubs: RecentSubmission[] = (recentSubsRes.data || []).map((sub: any) => ({
+        id: sub.id,
+        studentName: sub.student_profile?.full_name || "Unknown Student",
+        taskTitle: sub.task?.title || "Untitled Task",
+        submittedAt: sub.submitted_at || "",
+        status:
+          sub.status === "approved"
+            ? "approved"
+            : sub.status === "rejected"
+            ? "rejected"
+            : "pending",
+        type: "task",
+      }));
+      setRecentSubmissions(recentSubs);
+
+      // Map tasks → TaskNeedingAttention
+      const now = new Date();
+      const taskItems: TaskNeedingAttention[] = (tasksRes.data || [])
+        .map((t: any) => {
+          const due = t.due_date ? new Date(t.due_date) : null;
+          const isOverdue = due ? due.getTime() < now.getTime() && t.status !== "closed" : false;
+          return {
+            id: t.id,
+            title: t.title,
+            assignedTo: "Assigned students",
+            dueDate: t.due_date || new Date().toISOString(),
+            status: isOverdue ? "overdue" : "pending_review",
+            priority: isOverdue ? "high" : "medium",
+          } as TaskNeedingAttention;
+        })
+        .filter((t) => t.status === "overdue")
+        .slice(0, 5);
+      setTasksNeedingAttention(taskItems);
 
       // Set stats from actual database counts
+      const avgProgress =
+        studentList.length > 0
+          ? Math.round(studentList.reduce((acc, s) => acc + s.progress, 0) / studentList.length)
+          : 0;
       setStats({
         supervisedStudents: supervisedStudentIds.length,
         activeInternships: activeInternshipsCount,
@@ -151,8 +273,8 @@ export default function FacultySupervisorDashboard() {
         evaluationsCompleted: completedRes.count || 0,
         tasksPending: 0,
         tasksCompleted: 0,
-        tasksOverdue: 0,
-        avgProgress: 0,
+        tasksOverdue: taskItems.length,
+        avgProgress,
       });
     } catch (error) {
       console.error("Error fetching faculty stats:", error);
@@ -295,13 +417,13 @@ export default function FacultySupervisorDashboard() {
             Refresh
           </Button>
           <Button asChild>
-            <Link href="/faculty-supervisor/tasks/new">
+            <Link href="/faculty-supervisor/tasks">
               <Plus className="h-4 w-4 mr-2" />
               New Task
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/faculty-supervisor/notifications/new">
+            <Link href="/faculty-supervisor/notifications">
               <Send className="h-4 w-4 mr-2" />
               Notify
             </Link>

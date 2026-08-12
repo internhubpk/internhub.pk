@@ -71,7 +71,8 @@ interface Internship {
   end_date: string | null;
   application_deadline: string | null;
   created_at: string;
-  department_ids?: string[];
+  // Real schema column (jsonb array of department UUIDs). NO `department_ids`.
+  target_departments?: string[];
   // Application status (if student has applied)
   hasApplied?: boolean;
   applicationId?: string;
@@ -102,18 +103,15 @@ export default function StudentInternshipsPage() {
     try {
       const supabase = createClient();
       
-      // Build query - filter by department if available
-      let query = supabase
+      // Build query — show all open internships. We do NOT filter by
+      // `department_id` at the SQL level because (a) the column is nullable
+      // (NULL = open to all departments) and (b) the `target_departments`
+      // jsonb array is a separate match path. Filter client-side below.
+      const query = supabase
         .from("internships")
         .select("*")
         .eq("status", "open")
         .order("created_at", { ascending: false });
-
-      // If profile has department_id, filter internships that accept this department
-      // This would depend on your schema - using contains for array field
-      if (profile?.department_id) {
-        query = query.eq("department_id", profile.department_id);
-      }
 
       const { data: internshipsData, error } = await query;
 
@@ -151,14 +149,37 @@ export default function StudentInternshipsPage() {
         });
       }
 
-      // Combine data
-      const processedInternships: Internship[] = (internshipsData || []).map(internship => ({
-        ...internship,
-        company_name: companyMap[internship.company_id] || "Unknown Company",
-        hasApplied: !!appliedMap[internship.id],
-        applicationId: appliedMap[internship.id]?.id,
-        applicationStatus: appliedMap[internship.id]?.status,
-      }));
+      // Combine data. Apply department scoping client-side: an internship is
+      // visible to this student if its `department_id` matches the student's
+      // department OR its `target_departments` jsonb array contains the
+      // student's department OR it has no department restriction (NULL +
+      // empty/missing `target_departments` = open to all).
+      const studentDeptId = profile?.department_id;
+      const processedInternships: Internship[] = (internshipsData || [])
+        .filter((internship: any) => {
+          if (!studentDeptId) return true;
+          const openToAll =
+            !internship.department_id &&
+            (!internship.target_departments ||
+              (Array.isArray(internship.target_departments) &&
+                internship.target_departments.length === 0));
+          if (openToAll) return true;
+          if (internship.department_id === studentDeptId) return true;
+          if (
+            Array.isArray(internship.target_departments) &&
+            internship.target_departments.includes(studentDeptId)
+          ) {
+            return true;
+          }
+          return false;
+        })
+        .map(internship => ({
+          ...internship,
+          company_name: companyMap[internship.company_id] || "Unknown Company",
+          hasApplied: !!appliedMap[internship.id],
+          applicationId: appliedMap[internship.id]?.id,
+          applicationStatus: appliedMap[internship.id]?.status,
+        }));
 
       setInternships(processedInternships);
     } catch (error) {

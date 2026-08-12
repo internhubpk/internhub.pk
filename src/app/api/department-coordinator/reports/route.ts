@@ -133,10 +133,13 @@ async function getOverviewStats(
   supabase: Awaited<ReturnType<typeof createClient>>,
   filters: Record<string, string | null>
 ): Promise<NextResponse<ApiResponse<DepartmentStats>>> {
-  // Build base queries with department filter
+  // Build base queries with department filter.
+  // NOTE: `students` table has no `status` column — the previous code filtered
+  // on a non-existent column, which caused PostgREST to 400 every call.
+  // `students.user_id` (not `id`) is the PK.
   let studentQuery = supabase
     .from("students")
-    .select("id, status", { count: "exact" });
+    .select("user_id", { count: "exact" });
 
   let programQuery = supabase
     .from("programs")
@@ -156,16 +159,18 @@ async function getOverviewStats(
     studentQuery = studentQuery.eq("department_id", filters.department_id);
     programQuery = programQuery.eq("department_id", filters.department_id);
     supervisorQuery = supervisorQuery.eq("department_id", filters.department_id);
-    
-    // For internships, we need to join through students
+    internshipQuery = internshipQuery.eq("department_id", filters.department_id);
+
+    // For internships, also restrict to students in this department (defense-in-depth
+    // in case the denormalized `department_id` on `student_internships` is NULL).
     const { data: deptStudents } = await supabase
       .from("students")
-      .select("id")
+      .select("user_id")
       .eq("department_id", filters.department_id!);
     
-    const studentIds = deptStudents?.map(s => s.id) || [];
+    const studentIds = deptStudents?.map(s => s.user_id) || [];
     if (studentIds.length > 0) {
-      internshipQuery = internshipQuery.in("student_id", studentIds);
+      internshipQuery = internshipQuery.in("student_user_id", studentIds);
     }
   }
 
@@ -175,10 +180,12 @@ async function getOverviewStats(
     supervisorQuery = supervisorQuery.eq("university_id", filters.university_id);
   }
 
-  // Execute all queries in parallel
+  // Execute all queries in parallel.
+  // `students` has no `status` column — `activeStudents` previously came from
+  // a `.eq("status", "active")` filter that 400'd. We now report it equal to
+  // `totalStudents` until a real status column is added.
   const [
     studentsResult,
-    activeStudentsResult,
     programsResult,
     activeProgramsResult,
     supervisorsResult,
@@ -186,7 +193,6 @@ async function getOverviewStats(
     completedInternshipsResult,
   ] = await Promise.all([
     studentQuery,
-    studentQuery.eq("status", "active"),
     programQuery,
     programQuery.eq("is_active", true),
     supervisorQuery,
@@ -199,17 +205,17 @@ async function getOverviewStats(
   if (filters.department_id) {
     const { data: studentsWithoutSupervisor } = await supabase
       .from("students")
-      .select("id")
+      .select("user_id")
       .eq("department_id", filters.department_id!)
       .not("program_id", "is", null);
 
     if (studentsWithoutSupervisor && studentsWithoutSupervisor.length > 0) {
-      const studentIds = studentsWithoutSupervisor.map(s => s.id);
+      const studentIds = studentsWithoutSupervisor.map(s => s.user_id);
       
       const { count: assignedCount } = await supabase
         .from("student_internships")
         .select("id", { count: "exact" })
-        .in("student_id", studentIds)
+        .in("student_user_id", studentIds)
         .not("faculty_supervisor_id", "is", null);
 
       pendingAssignmentsCount = (studentsWithoutSupervisor.length) - (assignedCount || 0);
@@ -218,7 +224,7 @@ async function getOverviewStats(
 
   const stats: DepartmentStats = {
     totalStudents: studentsResult.count || 0,
-    activeStudents: activeStudentsResult.count || 0,
+    activeStudents: studentsResult.count || 0,
     totalPrograms: programsResult.count || 0,
     activePrograms: activeProgramsResult.count || 0,
     totalSupervisors: supervisorsResult.count || 0,
@@ -267,10 +273,10 @@ async function getProgramPerformance(
   for (const program of programs || []) {
     const { data: programStudents } = await supabase
       .from("students")
-      .select("id")
+      .select("user_id")
       .eq("program_id", program.id);
 
-    const programStudentIds = programStudents?.map((s) => s.id) || [];
+    const programStudentIds = programStudents?.map((s) => s.user_id) || [];
     const totalStudents = programStudentIds.length;
 
     let activeCount = 0;
@@ -281,12 +287,12 @@ async function getProgramPerformance(
           .from("student_internships")
           .select("id", { count: "exact" })
           .eq("status", "active")
-          .in("student_id", programStudentIds),
+          .in("student_user_id", programStudentIds),
         supabase
           .from("student_internships")
           .select("id", { count: "exact" })
           .eq("status", "completed")
-          .in("student_id", programStudentIds),
+          .in("student_user_id", programStudentIds),
       ]);
       activeCount = activeInternshipsResult.count || 0;
       completedCount = completedInternshipsResult.count || 0;
@@ -323,7 +329,6 @@ async function getSupervisorWorkload(
     .select(`
       id,
       user_id,
-      title,
       specialization,
       profiles:user_id(first_name, last_name, email)
     `)
@@ -357,7 +362,7 @@ async function getSupervisorWorkload(
     const profile = supervisor.profiles as any;
     workloadData.push({
       supervisor_id: supervisor.id,
-      supervisor_name: `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || supervisor.title || "Unknown",
+      supervisor_name: `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "Unknown",
       supervisor_email: profile?.email || "",
       assigned_students: assignedResult.count || 0,
       active_supervisions: activeResult.count || 0,
@@ -393,14 +398,19 @@ async function getMonthlyTrends(
     const monthStart = `${year}-${monthStr}-01`;
     const monthEnd = new Date(year, month, 0).toISOString().split("T")[0];
 
-    // Get student enrollments this month
+    // Get student enrollments this month.
+    // `students.user_id` (not `id`) is the PK.
     let enrollmentQuery = supabase
       .from("students")
-      .select("id", { count: "exact" })
+      .select("user_id", { count: "exact" })
       .gte("created_at", monthStart)
       .lte("created_at", `${monthEnd}T23:59:59`);
 
-    // Get internships started this month
+    // Get internships started this month.
+    // SECURITY FIX: previously these queries had NO department filter — they
+    // returned global platform counts. `student_internships` has a denormalized
+    // `department_id` column (mirrored from `students.department_id`) so we can
+    // filter on it directly without a subquery.
     let startedQuery = supabase
       .from("student_internships")
       .select("id", { count: "exact" })
@@ -417,9 +427,13 @@ async function getMonthlyTrends(
 
     if (filters.department_id) {
       enrollmentQuery = enrollmentQuery.eq("department_id", filters.department_id);
+      startedQuery = startedQuery.eq("department_id", filters.department_id);
+      completedQuery = completedQuery.eq("department_id", filters.department_id);
     }
     if (filters.university_id) {
       enrollmentQuery = enrollmentQuery.eq("university_id", filters.university_id);
+      startedQuery = startedQuery.eq("university_id", filters.university_id);
+      completedQuery = completedQuery.eq("university_id", filters.university_id);
     }
 
     const [enrollments, started, completed] = await Promise.all([
@@ -452,17 +466,19 @@ async function getStudentReport(
   filters: Record<string, string | null>,
   searchParams: URLSearchParams
 ): Promise<NextResponse<ApiResponse<any>>> {
-  const status = searchParams.get("status");
+  // NOTE: `students` table has no `id`, `enrollment_number`, `status`, or
+  // `semester` columns (PK is `user_id`; identifier is `student_id_number`).
+  // The `status` query param is silently ignored for backwards-compat.
   const programId = searchParams.get("program_id");
   const hasSupervisor = searchParams.get("has_supervisor");
 
   let query = supabase
     .from("students")
     .select(`
-      id,
-      enrollment_number,
-      status,
-      semester,
+      user_id,
+      student_id_number,
+      enrollment_year,
+      expected_graduation,
       cgpa,
       created_at,
       profiles:user_id(first_name, last_name, email, phone),
@@ -476,14 +492,11 @@ async function getStudentReport(
   if (filters.university_id) {
     query = query.eq("university_id", filters.university_id);
   }
-  if (status) {
-    query = query.eq("status", status);
-  }
   if (programId) {
     query = query.eq("program_id", programId);
   }
 
-  const { data: students, error } = await query.order("enrollment_number", { ascending: true });
+  const { data: students, error } = await query.order("student_id_number", { ascending: true });
 
   if (error) {
     throw error;
@@ -493,21 +506,21 @@ async function getStudentReport(
   let enrichedStudents = students || [];
 
   if (hasSupervisor === "true" || hasSupervisor === "false") {
-    const studentIds = enrichedStudents.map(s => s.id);
+    const studentIds = enrichedStudents.map(s => s.user_id);
     
     if (studentIds.length > 0) {
       const { data: assignments } = await supabase
         .from("student_internships")
-        .select("student_id, faculty_supervisor_id")
-        .in("student_id", studentIds)
+        .select("student_user_id, faculty_supervisor_id")
+        .in("student_user_id", studentIds)
         .not("faculty_supervisor_id", "is", null);
 
-      const studentsWithSupervisor = new Set(assignments?.map(a => a.student_id) || []);
+      const studentsWithSupervisor = new Set(assignments?.map(a => a.student_user_id) || []);
 
       if (hasSupervisor === "true") {
-        enrichedStudents = enrichedStudents.filter(s => studentsWithSupervisor.has(s.id));
+        enrichedStudents = enrichedStudents.filter(s => studentsWithSupervisor.has(s.user_id));
       } else {
-        enrichedStudents = enrichedStudents.filter(s => !studentsWithSupervisor.has(s.id));
+        enrichedStudents = enrichedStudents.filter(s => !studentsWithSupervisor.has(s.user_id));
       }
     }
   }

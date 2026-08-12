@@ -149,10 +149,10 @@ export default function FacultySupervisorStudentsPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>(DEFAULT_STUDENTS);
-  const [tasks] = useState<Record<string, TaskItem[]>>(DEFAULT_TASKS);
-  const [submissions] = useState<Record<string, Submission[]>>(DEFAULT_SUBMISSIONS);
-  const [evaluations] = useState<Record<string, EvaluationRecord[]>>(DEFAULT_EVALUATIONS);
-  const [attendance] = useState<Record<string, AttendanceSummary>>(DEFAULT_ATTENDANCE);
+  const [tasks, setTasks] = useState<Record<string, TaskItem[]>>(DEFAULT_TASKS);
+  const [submissions, setSubmissions] = useState<Record<string, Submission[]>>(DEFAULT_SUBMISSIONS);
+  const [evaluations, setEvaluations] = useState<Record<string, EvaluationRecord[]>>(DEFAULT_EVALUATIONS);
+  const [attendance, setAttendance] = useState<Record<string, AttendanceSummary>>(DEFAULT_ATTENDANCE);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -165,24 +165,15 @@ export default function FacultySupervisorStudentsPage() {
   useEffect(() => {
     async function fetchData() {
       if (!user) { setIsLoading(false); return; }
-      
+
       try {
         const supabase = createClient();
-        
-        // Get supervisor record
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
 
-        if (!supervisor) {
-          setIsLoading(false);
-          return;
-        }
-
-        // Fetch supervised students with their internship details
+        // Fetch supervised students with their internship details.
+        // faculty_supervisor_id references profiles.user_id (NOT supervisors.id),
+        // and student_internships has no FK to `students` — the FK is
+        // student_user_id → profiles(user_id). Program/university info lives
+        // on the `students` table (joined by user_id) and `programs`.
         const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
@@ -190,41 +181,111 @@ export default function FacultySupervisorStudentsPage() {
             status,
             start_date,
             end_date,
-            progress,
-            last_activity_at,
-            student:students(
-              id,
-              full_name,
-              email,
-              phone,
-              avatar_url,
-              program:programs(name),
-              university:universities(name)
-            ),
-            internship:internships(title, company, location)
+            student_user_id,
+            internship_id,
+            company_id,
+            student_profile:student_user_id(full_name, first_name, last_name, email, phone, avatar_url),
+            internship:internships(id, title, location, remote),
+            company:company_id(name)
           `)
           .eq("faculty_supervisor_id", user.id);
 
-        const studentList: Student[] = (studentData || []).map((s: any) => ({
-          id: s.student?.id || s.id,
-          name: s.student?.full_name || `Student ${s.id?.slice(0, 6)}`,
-          email: s.student?.email || "",
-          phone: s.student?.phone,
-          university: s.student?.university?.name || "Unknown University",
-          program: s.student?.program?.name || "Unknown Program",
-          major: "", // Would come from student profile
-          semester: 0, // Would come from student profile
-          internshipTitle: s.internship?.title || "N/A",
-          company: s.internship?.company || "N/A",
-          companyLocation: s.internship?.location || "N/A",
-          status: s.status || "active",
-          weeklyLogStatus: "not_submitted" as Student["weeklyLogStatus"],
-          overallProgress: s.progress || 0,
-          lastActivity: s.last_activity_at || "",
-          startDate: s.start_date || "",
-          endDate: s.end_date || "",
-          avatarUrl: s.student?.avatar_url,
-        }));
+        const studentUserIds = Array.from(
+          new Set((studentData || []).map((s: any) => s.student_user_id))
+        );
+
+        // Fetch the `students` rows (program_id, cgpa, student_id_number) for
+        // these users in a separate query — PostgREST can't traverse
+        // student_internships → students directly (no FK).
+        let studentRecords: any[] = [];
+        let programMap: Record<string, string> = {};
+        if (studentUserIds.length > 0) {
+          const { data: records } = await supabase
+            .from("students")
+            .select("user_id, cgpa, student_id_number, program_id")
+            .in("user_id", studentUserIds);
+          studentRecords = records || [];
+          const programIds = Array.from(
+            new Set(studentRecords.map((r) => r.program_id).filter(Boolean))
+          );
+          if (programIds.length > 0) {
+            const { data: programs } = await supabase
+              .from("programs")
+              .select("id, name")
+              .in("id", programIds);
+            (programs || []).forEach((p: any) => {
+              programMap[p.id] = p.name;
+            });
+          }
+        }
+        const recordByUser = new Map<string, any>();
+        studentRecords.forEach((r) => recordByUser.set(r.user_id, r));
+
+        // Fetch weekly_logs for these students (to compute progress + last activity).
+        let logsByStudent = new Map<string, { approved: number; total: number; latest?: string; latestStatus?: string }>();
+        if (studentUserIds.length > 0) {
+          const { data: logs } = await supabase
+            .from("weekly_logs")
+            .select("student_user_id, status, week_start_date")
+            .in("student_user_id", studentUserIds);
+          (logs || []).forEach((log: any) => {
+            const cur = logsByStudent.get(log.student_user_id) || { approved: 0, total: 0 };
+            cur.total += 1;
+            if (log.status === "approved") cur.approved += 1;
+            const ws = log.week_start_date;
+            if (ws && (!cur.latest || ws > cur.latest)) {
+              cur.latest = ws;
+              cur.latestStatus = log.status;
+            }
+            logsByStudent.set(log.student_user_id, cur);
+          });
+        }
+
+        const studentList: Student[] = (studentData || []).map((s: any) => {
+          const meta = logsByStudent.get(s.student_user_id) || { approved: 0, total: 0 };
+          const progress = meta.total > 0 ? Math.round((meta.approved / meta.total) * 100) : 0;
+          const record = recordByUser.get(s.student_user_id);
+          const programName = record?.program_id ? programMap[record.program_id] || "Unknown Program" : "Unknown Program";
+          const weeklyStatus =
+            meta.latestStatus === "submitted"
+              ? "submitted"
+              : meta.latestStatus === "approved"
+              ? "approved"
+              : meta.latestStatus === "revision_required"
+              ? "pending"
+              : "not_submitted";
+          return {
+            id: s.student_user_id || s.id,
+            name:
+              s.student_profile?.full_name ||
+              `${s.student_profile?.first_name || ""} ${s.student_profile?.last_name || ""}`.trim() ||
+              `Student ${s.student_user_id?.slice(0, 6)}`,
+            email: s.student_profile?.email || "",
+            phone: s.student_profile?.phone,
+            university: "", // not on profile; could fetch via students.university_id
+            program: programName,
+            major: "", // not a column on students
+            semester: 0, // not a column on students
+            internshipTitle: s.internship?.title || "N/A",
+            company: s.company?.name || "N/A",
+            companyLocation: s.internship?.location || (s.internship?.remote ? "Remote" : "N/A"),
+            status: s.status === "active"
+              ? "active"
+              : s.status === "completed"
+              ? "completed"
+              : s.status === "paused"
+              ? "on_leave"
+              : s.status === "terminated"
+              ? "withdrawn"
+              : "active",
+            weeklyLogStatus: weeklyStatus as Student["weeklyLogStatus"],
+            overallProgress: progress,
+            lastActivity: meta.latest || s.start_date || "",
+            startDate: s.start_date || "",
+            endDate: s.end_date || "",
+            avatarUrl: s.student_profile?.avatar_url,
+          };
+        });
 
         setStudents(studentList);
       } catch (error) {
@@ -234,9 +295,150 @@ export default function FacultySupervisorStudentsPage() {
         setIsLoading(false);
       }
     }
-    
+
     fetchData();
   }, [user]);
+
+  // Fetch detail-tab data for the selected student.
+  useEffect(() => {
+    if (!user || !selectedStudent) return;
+    const studentUserId = selectedStudent.id;
+    const supervisorUserId = user.id;
+
+    async function fetchDetail() {
+      try {
+        const supabase = createClient();
+
+        // Tasks: assignments for this student created by this supervisor.
+        const [tasksRes, subsRes, evalsRes, attRes] = await Promise.all([
+          supabase
+            .from("task_assignments")
+            .select(`
+              id,
+              status,
+              due_date,
+              task_id,
+              task:tasks(id, title, due_date)
+            `)
+            .eq("student_user_id", studentUserId)
+            .eq("assigned_by", supervisorUserId),
+          supabase
+            .from("task_submissions")
+            .select(`
+              id,
+              status,
+              submitted_at,
+              feedback,
+              score,
+              task_id,
+              task:tasks(id, title)
+            `)
+            .eq("student_user_id", studentUserId)
+            .order("submitted_at", { ascending: false })
+            .limit(20),
+          supabase
+            .from("evaluations")
+            .select(`
+              id,
+              type,
+              status,
+              rating,
+              comments,
+              scores,
+              created_at,
+              submitted_at
+            `)
+            .eq("student_user_id", studentUserId)
+            .eq("evaluator_id", supervisorUserId)
+            .order("created_at", { ascending: false })
+            .limit(20),
+          supabase
+            .from("attendance")
+            .select("id, date, status")
+            .eq("student_user_id", studentUserId),
+        ]);
+
+        // Map tasks
+        const taskItems: TaskItem[] = (tasksRes.data || []).map((ta: any) => {
+          const due = ta.due_date || ta.task?.due_date;
+          const isOverdue = due ? new Date(due).getTime() < Date.now() && ta.status !== "approved" : false;
+          return {
+            id: ta.id,
+            title: ta.task?.title || "Untitled Task",
+            status: isOverdue
+              ? "overdue"
+              : ta.status === "approved"
+              ? "completed"
+              : ta.status === "submitted" || ta.status === "resubmitted"
+              ? "in_progress"
+              : "pending",
+            dueDate: due || new Date().toISOString(),
+          };
+        });
+
+        // Map submissions
+        const subItems: Submission[] = (subsRes.data || []).map((sub: any) => ({
+          id: sub.id,
+          type: "task",
+          title: sub.task?.title || "Untitled Task",
+          submittedAt: sub.submitted_at || "",
+          status:
+            sub.status === "approved"
+              ? "approved"
+              : sub.status === "rejected"
+              ? "rejected"
+              : sub.status === "resubmitted"
+              ? "revision_required"
+              : "pending",
+          feedback: sub.feedback,
+          grade: sub.score ? Number(sub.score) : undefined,
+        }));
+
+        // Map evaluations
+        const evalItems: EvaluationRecord[] = (evalsRes.data || []).map((e: any) => {
+          const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
+          const scoreValues = Object.values(scoresObj).filter((v): v is number => typeof v === "number");
+          const total = scoreValues.reduce((acc, v) => acc + v, 0);
+          const max = scoreValues.length * 10 || 100;
+          return {
+            id: e.id,
+            type: e.type === "weekly_log" ? "weekly" : e.type === "midterm" ? "midterm" : "final",
+            date: e.submitted_at || e.created_at || "",
+            score: total,
+            maxScore: max,
+            status: e.status === "approved" || e.status === "submitted" ? "completed" : "pending",
+            comments: e.comments,
+          };
+        });
+
+        // Map attendance
+        const attList = attRes.data || [];
+        const present = attList.filter((a: any) => a.status === "present").length;
+        const absent = attList.filter((a: any) => a.status === "absent").length;
+        const late = attList.filter((a: any) => a.status === "late" || a.status === "half_day").length;
+        const leave = attList.filter((a: any) => a.status === "leave").length;
+        const totalDays = attList.length;
+        const attendanceRate = totalDays > 0 ? Math.round(((present + late) / totalDays) * 100) : 0;
+        const attSummary: AttendanceSummary = {
+          totalDays,
+          present,
+          absent,
+          late,
+          leave,
+          attendanceRate,
+        };
+
+        setTasks((prev) => ({ ...prev, [studentUserId]: taskItems }));
+        setSubmissions((prev) => ({ ...prev, [studentUserId]: subItems }));
+        setEvaluations((prev) => ({ ...prev, [studentUserId]: evalItems }));
+        setAttendance((prev) => ({ ...prev, [studentUserId]: attSummary }));
+      } catch (error) {
+        console.error("Error fetching student detail:", error);
+      }
+    }
+
+    fetchDetail();
+  }, [user, selectedStudent]);
 
   // Get unique programs for filter
   const programs = useMemo(() => {

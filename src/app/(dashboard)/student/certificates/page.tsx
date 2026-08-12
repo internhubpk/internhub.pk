@@ -18,15 +18,19 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 // Types
+// `certificates.status` uses the `certificate_status` enum
+// (draft, issued, revoked, expired).
+// Schema: id, student_user_id, internship_id, university_id, company_id,
+// title, certificate_number, issued_at, issued_by, file_url, status, metadata,
+// created_at, updated_at. NO `duration`, NO `skills`, NO `grade`.
 interface Certificate {
   id: string;
   title: string;
   company: string;
   issueDate: string;
-  status: "issued" | "pending" | "processing";
+  status: "draft" | "issued" | "revoked" | "expired";
   certificateNumber: string;
-  internshipDuration: string;
-  skills: string[];
+  fileUrl: string | null;
 }
 
 // Default empty state - certificates will be fetched from database
@@ -47,28 +51,36 @@ export default function StudentCertificatesPage() {
     try {
       const supabase = createClient();
       
-      // Fetch certificates for current student
+      // Fetch certificates for current student. Only real columns. Join
+      // `companies` directly via `company_id` (NOT through `internships`).
       const { data, error } = await supabase
         .from('certificates')
         .select(`
-          *,
-          internships(title, companies(name))
+          id,
+          title,
+          certificate_number,
+          issued_at,
+          issued_by,
+          file_url,
+          status,
+          metadata,
+          created_at,
+          company:companies(name)
         `)
         .eq('student_user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      if (data && data.length > 0) {
+      if (data) {
         const certList: Certificate[] = data.map((cert: any) => ({
           id: cert.id,
-          title: `${cert.internships?.title || 'Internship'} Completion`,
-          company: cert.internships?.companies?.name || 'Company',
+          title: cert.title || 'Certificate',
+          company: cert.company?.name || 'Issuing Organization',
           issueDate: cert.issued_at || cert.created_at,
-          status: cert.status || 'pending',
-          certificateNumber: cert.certificate_number || `CERT-${cert.id}`,
-          internshipDuration: cert.duration || 'N/A',
-          skills: cert.skills || [],
+          status: cert.status || 'issued',
+          certificateNumber: cert.certificate_number || `CERT-${(cert.id || '').slice(0, 8)}`,
+          fileUrl: cert.file_url || null,
         }));
         setCertificates(certList);
       }
@@ -206,30 +218,57 @@ export default function StudentCertificatesPage() {
 
                     <div className="flex items-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span>Duration: {certificate.internshipDuration}</span>
+                      <span>{certificate.certificateNumber}</span>
                     </div>
                   </div>
 
-                  {/* Skills */}
-                  {certificate.skills && certificate.skills.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Skills Validated</p>
-                      <div className="flex flex-wrap gap-1">
-                        {certificate.skills.map((skill) => (
-                          <Badge key={skill} variant="outline" className="text-xs">
-                            {skill}
-                          </Badge>
-                        ))}
-                      </div>
+                  {/* Status badge for non-issued certs (issued already shown in header) */}
+                  {certificate.status !== "issued" && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge
+                        variant={certificate.status === "revoked" || certificate.status === "expired" ? "destructive" : "outline"}
+                      >
+                        {certificate.status}
+                      </Badge>
                     </div>
                   )}
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t">
-                    <Button variant="outline" size="sm" className="gap-1 flex-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 flex-1"
+                      onClick={() => {
+                        if (certificate.fileUrl) {
+                          window.open(certificate.fileUrl, "_blank", "noopener,noreferrer");
+                        } else {
+                          alert("Certificate file is not yet available.");
+                        }
+                      }}
+                      disabled={!certificate.fileUrl}
+                    >
                       <Eye className="h-3 w-3" /> View
                     </Button>
-                    <Button size="sm" className="gap-1 flex-1">
+                    <Button
+                      size="sm"
+                      className="gap-1 flex-1"
+                      onClick={() => {
+                        if (!certificate.fileUrl) {
+                          alert("Certificate not yet available for download.");
+                          return;
+                        }
+                        const a = document.createElement("a");
+                        a.href = certificate.fileUrl;
+                        a.download = `${certificate.certificateNumber}.pdf`;
+                        a.target = "_blank";
+                        a.rel = "noopener noreferrer";
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      disabled={!certificate.fileUrl}
+                    >
                       <Download className="h-3 w-3" /> Download PDF
                     </Button>
                   </div>

@@ -766,7 +766,7 @@ export default function StudentDocumentsPage() {
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            {getFileIcon(doc.mime_time, doc.type)}
+                            {getFileIcon(doc.mime_type, doc.type)}
                             <span className="font-medium text-sm truncate">
                               {doc.name}
                             </span>

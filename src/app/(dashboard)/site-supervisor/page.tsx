@@ -96,95 +96,196 @@ export default function SiteSupervisorDashboard() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      
-      // Get supervisor record
-      const { data: supervisor } = await supabase
-        .from("supervisors")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "site")
-        .single();
 
-      if (!supervisor) {
-        // No supervisor record found - keep empty state
-        setIsLoading(false);
-        return;
-      }
+      // student_internships.site_supervisor_id is FK to profiles.user_id,
+      // so we filter by the auth user's id (the supervisor's user_id) — NOT
+      // the supervisors table PK. RLS uses auth.uid() the same way.
+      const supervisorUserId = user.id;
 
-      // Fetch assigned students with their data
+      // Fetch assigned students with their profile data (real columns only)
       const { data: assignments } = await supabase
         .from("student_internships")
         .select(`
           id,
-          student_id,
+          student_user_id,
+          internship_id,
           status,
           start_date,
           end_date,
-          progress,
-          last_evaluation_at,
-          student:students(
-            id,
+          is_active,
+          created_at,
+          updated_at,
+          student_profile:student_user_id(
             full_name,
+            first_name,
+            last_name,
             email,
             avatar_url
           )
         `)
-        .eq("site_supervisor_id", supervisor.id)
+        .eq("site_supervisor_id", supervisorUserId)
         .order("updated_at", { ascending: false });
 
+      const internRows = (assignments || []) as any[];
+
+      const studentUserIds = internRows
+        .map((r) => r.student_user_id)
+        .filter((id): id is string => Boolean(id));
+
+      // Fetch most-recent evaluation per student (for the supervisor)
+      // and weekly log counts in parallel
+      const [evaluationsRes, weeklyLogsRes] = await Promise.all([
+        studentUserIds.length
+          ? supabase
+              .from("evaluations")
+              .select("id, student_user_id, created_at, evaluator_role")
+              .eq("evaluator_id", supervisorUserId)
+              .eq("evaluator_role", "site_supervisor")
+              .in("student_user_id", studentUserIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null }),
+        studentUserIds.length
+          ? supabase
+              .from("weekly_logs")
+              .select("id, student_user_id, status, week_start_date, reviewed_at, supervisor_feedback")
+              .eq("supervisor_id", supervisorUserId)
+              .in("student_user_id", studentUserIds)
+              .order("week_start_date", { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+
+      // Build a map of student_user_id -> most-recent evaluation date
+      const lastEvalByStudent = new Map<string, string>();
+      (evaluationsRes.data || []).forEach((ev: any) => {
+        if (ev.student_user_id && !lastEvalByStudent.has(ev.student_user_id)) {
+          lastEvalByStudent.set(ev.student_user_id, ev.created_at);
+        }
+      });
+
+      const weeklyLogs = (weeklyLogsRes.data || []) as any[];
+      const weeklyLogsPending = weeklyLogs.filter(
+        (l) => l.status === "submitted" || l.status === "revision_required"
+      ).length;
+      const weeklyLogsApproved = weeklyLogs.filter((l) => l.status === "approved").length;
+
       // Transform student data
-      const studentData = (assignments || []).map((intern: any) => {
-        const student = intern.student || {};
-        const lastEval = intern.last_evaluation_at ? new Date(intern.last_evaluation_at) : null;
-        
-        // Determine performance rating based on progress and time
+      const studentData: StudentSummary[] = internRows.map((intern: any) => {
+        const profile = intern.student_profile || {};
+        const studentUser = intern.student_user_id as string | undefined;
+        const lastEvalIso = studentUser ? lastEvalByStudent.get(studentUser) ?? null : null;
+        const lastEval = lastEvalIso ? new Date(lastEvalIso) : null;
+        const daysSinceEvaluation = lastEval
+          ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+
+        // Determine performance rating based on time since last evaluation
         let performanceRating: StudentSummary["performanceRating"] = null;
-        if (lastEval) {
-          const daysSinceEval = Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceEval <= 21 && intern.progress >= 75) performanceRating = "excellent";
-          else if (daysSinceEval <= 21 && intern.progress >= 50) performanceRating = "good";
-          else if (daysSinceEval <= 28) performanceRating = "satisfactory";
+        if (daysSinceEvaluation !== null) {
+          if (daysSinceEvaluation <= 21) performanceRating = "excellent";
+          else if (daysSinceEvaluation <= 28) performanceRating = "good";
+          else if (daysSinceEvaluation <= 42) performanceRating = "satisfactory";
           else performanceRating = "needs_attention";
         }
 
+        const fullName =
+          profile.full_name ||
+          [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+          (profile.email ? profile.email.split("@")[0] : "Unknown Student");
+
+        const status: StudentSummary["status"] =
+          intern.status === "active" ? "active" :
+          intern.status === "completed" ? "completed" : "on_leave";
+
         return {
           id: intern.id,
-          studentId: student.id,
-          name: student.full_name || `Student ${student.id?.slice(0, 6) || "Unknown"}`,
-          email: student.email || "",
-          avatarUrl: student.avatar_url,
-          progress: intern.progress || 0,
-          lastActivity: intern.updated_at ? new Date(intern.updated_at).toLocaleDateString() : "N/A",
-          lastEvaluationDate: intern.last_evaluation_at,
-          daysSinceEvaluation: lastEval 
-            ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24))
-            : null,
+          studentId: studentUser || intern.id,
+          name: fullName,
+          email: profile.email || "",
+          avatarUrl: profile.avatar_url ?? null,
+          progress: 0, // student_internships has no progress column; left as 0
+          lastActivity: intern.updated_at
+            ? new Date(intern.updated_at).toLocaleDateString()
+            : "N/A",
+          lastEvaluationDate: lastEvalIso,
+          daysSinceEvaluation,
           performanceRating,
-          status: intern.status === "active" ? "active" as const : 
-                  intern.status === "completed" ? "completed" as const : "on_leave" as const,
+          status,
         };
       });
 
       // Calculate stats
-      const activeStudents = studentData.filter(s => s.status === "active").length;
-      const pendingEvals = studentData.filter(s => 
-        !s.daysSinceEvaluation || s.daysSinceEvaluation > 18
+      const activeStudents = studentData.filter((s) => s.status === "active").length;
+      const pendingEvals = studentData.filter(
+        (s) => s.daysSinceEvaluation === null || s.daysSinceEvaluation > 18
       ).length;
 
       setStats({
         assignedStudents: studentData.length,
         activeStudents,
         pendingEvaluations: pendingEvals,
-        completedEvaluations: studentData.filter(s => s.status === "completed").length,
-        weeklyLogsPending: Math.floor(Math.random() * 5), // Would come from API
-        weeklyLogsApproved: Math.floor(Math.random() * 10),
+        completedEvaluations: studentData.filter((s) => s.status === "completed").length,
+        weeklyLogsPending,
+        weeklyLogsApproved,
         evaluationsDueThisWeek: pendingEvals,
       });
-      
+
       setStudents(studentData.slice(0, 5)); // Show only first 5 on dashboard
 
-      // Set empty recent activity - will be populated from activity logs table
-      setRecentActivity([]);
+      // Build a recent activity feed from weekly_logs (reviewed) and evaluations.
+      const profileByEmail = new Map<string, string>();
+      internRows.forEach((intern: any) => {
+        const p = intern.student_profile || {};
+        if (p.email && p.full_name) profileByEmail.set(p.email, p.full_name);
+      });
+      const studentIdToName = new Map<string, string>();
+      internRows.forEach((intern: any) => {
+        const p = intern.student_profile || {};
+        const name =
+          p.full_name ||
+          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+          p.email ||
+          "Student";
+        if (intern.student_user_id) studentIdToName.set(intern.student_user_id, name);
+      });
+
+      const activities: RecentActivity[] = [];
+
+      weeklyLogs
+        .filter((l) => l.status === "approved" || l.status === "rejected" || l.status === "revision_required")
+        .slice(0, 10)
+        .forEach((l: any) => {
+          const ts = l.reviewed_at || l.week_start_date;
+          if (!ts) return;
+          const verb =
+            l.status === "approved"
+              ? "Weekly log approved"
+              : l.status === "rejected"
+              ? "Weekly log rejected"
+              : "Weekly log returned for revision";
+          activities.push({
+            id: `log-${l.id}`,
+            type: "log_review",
+            studentName: studentIdToName.get(l.student_user_id) || "Student",
+            description: verb,
+            timestamp: ts,
+          });
+        });
+
+      (evaluationsRes.data || []).slice(0, 10).forEach((ev: any) => {
+        if (!ev.created_at) return;
+        activities.push({
+          id: `eval-${ev.id}`,
+          type: "evaluation",
+          studentName: studentIdToName.get(ev.student_user_id) || "Student",
+          description: "Site evaluation submitted",
+          timestamp: ev.created_at,
+        });
+      });
+
+      activities.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      setRecentActivity(activities.slice(0, 8));
 
     } catch (error) {
       console.error("Error fetching supervisor data:", error);

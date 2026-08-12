@@ -64,7 +64,7 @@ export async function GET(
         programs:program_id(*),
         universities:university_id(name, slug)
       `)
-      .eq("id", id)
+      .eq("user_id", id)
       .single();
 
     if (error || !student) {
@@ -79,10 +79,10 @@ export async function GET(
     if (profile.role === "student") {
       const { data: ownRecord } = await supabase
         .from("students")
-        .select("id")
+        .select("user_id")
         .eq("user_id", user.id)
-        .eq("id", id)
-        .single();
+        .eq("user_id", id)
+        .maybeSingle();
 
       if (!ownRecord) {
         return NextResponse.json<ApiResponse<never>>(
@@ -173,8 +173,8 @@ export async function PUT(
     const { data: existingStudent } = await supabase
       .from("students")
       .select("*")
-      .eq("id", id)
-      .single();
+      .eq("user_id", id)
+      .maybeSingle();
 
     if (!existingStudent) {
       return NextResponse.json<ApiResponse<never>>(
@@ -226,19 +226,19 @@ export async function PUT(
       });
     }
 
-    // If enrollment number is being changed, check uniqueness
-    if (updateData.enrollment_number && updateData.enrollment_number !== existingStudent.enrollment_number) {
+    // If student_id_number is being changed, check uniqueness
+    if (updateData.student_id_number && updateData.student_id_number !== existingStudent.student_id_number) {
       const { data: duplicateEnrollment } = await supabase
         .from("students")
-        .select("id")
-        .eq("enrollment_number", updateData.enrollment_number)
+        .select("user_id")
+        .eq("student_id_number", updateData.student_id_number)
         .eq("university_id", existingStudent.university_id)
-        .neq("id", id)
-        .single();
+        .neq("user_id", id)
+        .maybeSingle();
 
       if (duplicateEnrollment) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "A student with this enrollment number already exists" },
+          { success: false, error: "A student with this student ID number already exists" },
           { status: 409 }
         );
       }
@@ -251,7 +251,7 @@ export async function PUT(
         ...updateData,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
+      .eq("user_id", id)
       .select()
       .single();
 
@@ -260,7 +260,7 @@ export async function PUT(
       
       if (error.code === "23505") {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Duplicate enrollment number" },
+          { success: false, error: "Duplicate student ID number" },
           { status: 409 }
         );
       }

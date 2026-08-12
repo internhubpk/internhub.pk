@@ -22,7 +22,11 @@ const VIEW_ROLES: UserRole[] = [
 ];
 
 // Roles that can create supervisors
-const CREATE_ROLES: UserRole[] = ["super_admin", "university_admin"];
+const CREATE_ROLES: UserRole[] = [
+  "super_admin",
+  "university_admin",
+  "department_coordinator",
+];
 
 /**
  * GET /api/supervisors
@@ -78,14 +82,19 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "created_at";
     const sortOrder = searchParams.get("sort_order") === "asc" ? true : false;
 
-    // Build query with related data
+    // Build query with related data.
+    // NOTE: `phone` is added to the profiles join so the page can display it.
+    // The `supervisors` table also has its own `first_name`/`last_name`/`email`/
+    // `specialization` columns (added in migration 0024), so the `.or()` search
+    // below filters on those directly (the previous code used `title`, which
+    // never existed on this table and silently broke search).
     let query = supabase
       .from("supervisors")
       .select(`
         *,
         universities:university_id(name, slug),
         departments:department_id(name, code),
-        profiles:user_id(first_name, last_name, email, avatar_url)
+        profiles:user_id(first_name, last_name, email, avatar_url, phone)
       `, { count: "exact" });
 
     // Apply university scope based on role
@@ -131,12 +140,13 @@ export async function GET(request: NextRequest) {
       query = query.eq("type", supervisorType);
     }
 
-    // Apply search filter on name fields and specialization
+    // Apply search filter on name fields and specialization.
+    // `supervisors` has `specialization`, `first_name`, `last_name`, `email`
+    // columns (the latter three added in migration 0024); the legacy `title`
+    // column never existed and silently broke search.
     if (search) {
-      // Search in related profiles table for names
-      // This is a simplified approach - in production you might want a more sophisticated search
       query = query.or(
-        `specialization.ilike.%${search}%,title.ilike.%${search}%`
+        `specialization.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`
       );
     }
 
@@ -214,16 +224,19 @@ export async function POST(request: NextRequest) {
     // Check user role
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, university_id")
+      .select("role, university_id, department_id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (!profile || !CREATE_ROLES.includes(profile.role as UserRole)) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin access required to add supervisors" },
+        { success: false, error: "Forbidden: University Admin or Department Coordinator access required to add supervisors" },
         { status: 403 }
       );
     }
+
+    const userUniversityId = profile.university_id;
+    const userDepartmentId = profile.department_id;
 
     // Parse and validate request body
     const body = await request.json();
@@ -242,14 +255,39 @@ export async function POST(request: NextRequest) {
 
     const supervisorData = validation.data;
 
-    // University admins can only add supervisors to their own university
+    // University admins can only add supervisors to their own university.
+    // Department coordinators can ONLY add supervisors to their own department
+    // (and university) — and the body’s `department_id` must match the
+    // coordinator’s own `department_id` to prevent cross-department escalation.
     if (profile.role === "university_admin") {
-      if (supervisorData.university_id !== profile.university_id) {
+      if (supervisorData.university_id !== userUniversityId) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Cannot add supervisor to another university" },
           { status: 403 }
         );
       }
+    } else if (profile.role === "department_coordinator") {
+      if (!userUniversityId || !userDepartmentId) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "No department assigned to your account" },
+          { status: 403 }
+        );
+      }
+      if (supervisorData.university_id !== userUniversityId) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Cannot add supervisor to another university" },
+          { status: 403 }
+        );
+      }
+      // Coordinators cannot pick an arbitrary department_id — force it to their
+      // own department to prevent cross-department escalation.
+      if (supervisorData.department_id && supervisorData.department_id !== userDepartmentId) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Department coordinators can only add supervisors to their own department" },
+          { status: 403 }
+        );
+      }
+      supervisorData.department_id = userDepartmentId;
     }
 
     // Verify university exists

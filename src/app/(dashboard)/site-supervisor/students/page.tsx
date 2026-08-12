@@ -109,6 +109,65 @@ export default function SiteSupervisorStudentsPage() {
   // Detail view data
   const [studentLogs, setStudentLogs] = useState<WeeklyLogSummary[]>([]);
   const [studentEvaluations, setStudentEvaluations] = useState<EvaluationRecord[]>([]);
+  const [studentAttendance, setStudentAttendance] = useState<{
+    date: string;
+    checkIn?: string | null;
+    checkOut?: string | null;
+    status: string;
+    verified: boolean;
+    notes?: string | null;
+  }[]>([]);
+
+  function exportStudentsCsv(rows: StudentDetail[]) {
+    if (!rows.length) return;
+    const headers = [
+      "Name",
+      "Email",
+      "Phone",
+      "Enrollment Number",
+      "Internship Title",
+      "Company",
+      "Status",
+      "Start Date",
+      "End Date",
+      "Days Since Evaluation",
+      "Performance Rating",
+    ];
+    const escape = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.join(",")];
+    rows.forEach((s) => {
+      lines.push(
+        [
+          s.name,
+          s.email,
+          s.phone ?? "",
+          s.enrollmentNumber ?? "",
+          s.internshipTitle ?? "",
+          s.company ?? "",
+          s.status,
+          s.startDate ?? "",
+          s.endDate ?? "",
+          s.daysSinceEvaluation ?? "",
+          s.performanceRating ?? "",
+        ]
+          .map(escape)
+          .join(",")
+      );
+    });
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `assigned-students-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     fetchAssignedStudents();
@@ -120,40 +179,33 @@ export default function SiteSupervisorStudentsPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      
-      // Get supervisor record
-      const { data: supervisor } = await supabase
-        .from("supervisors")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "site")
-        .single();
 
-      if (!supervisor) {
-        // No supervisor record - keep empty state
-        setStudents([]);
-        setIsLoading(false);
-        return;
-      }
+      // student_internships.site_supervisor_id is FK to profiles.user_id,
+      // so filter by the auth user's id (the supervisor's user_id) — NOT
+      // the supervisors table PK. RLS uses auth.uid() the same way.
+      const supervisorUserId = user.id;
 
-      // Fetch assigned students
+      // Fetch assigned students (real columns only — student_internships has
+      // no `student_id`, `progress`, or `last_evaluation_at` columns).
       const { data: assignments } = await supabase
         .from("student_internships")
         .select(`
           id,
-          student_id,
+          student_user_id,
+          internship_id,
           status,
           start_date,
           end_date,
-          progress,
-          last_evaluation_at,
-          student:students(
-            id,
+          is_active,
+          updated_at,
+          student_profile:student_user_id(
             full_name,
+            first_name,
+            last_name,
             email,
             phone,
             avatar_url,
-            enrollment_number
+            student_id_number
           ),
           internship:internships(
             id,
@@ -161,43 +213,79 @@ export default function SiteSupervisorStudentsPage() {
             company:companies(name)
           )
         `)
-        .eq("site_supervisor_id", supervisor.id)
+        .eq("site_supervisor_id", supervisorUserId)
         .order("updated_at", { ascending: false });
 
-      const studentData = (assignments || []).map((assign: any) => {
-        const student = assign.student || {};
+      const internRows = (assignments || []) as any[];
+      const studentUserIds = internRows
+        .map((r) => r.student_user_id)
+        .filter((id): id is string => Boolean(id));
+
+      // Pull most-recent site_supervisor evaluation per student so we can
+      // compute "days since evaluation" without the (non-existent)
+      // `student_internships.last_evaluation_at` column.
+      const evalsRes = studentUserIds.length
+        ? await supabase
+            .from("evaluations")
+            .select("id, student_user_id, created_at, rating")
+            .eq("evaluator_id", supervisorUserId)
+            .eq("evaluator_role", "site_supervisor")
+            .in("student_user_id", studentUserIds)
+            .order("created_at", { ascending: false })
+        : { data: [] as any[], error: null };
+
+      const lastEvalByStudent = new Map<string, { date: string; rating: number | null }>();
+      (evalsRes.data || []).forEach((ev: any) => {
+        if (ev.student_user_id && !lastEvalByStudent.has(ev.student_user_id)) {
+          lastEvalByStudent.set(ev.student_user_id, {
+            date: ev.created_at,
+            rating: typeof ev.rating === "number" ? ev.rating : null,
+          });
+        }
+      });
+
+      const studentData: StudentDetail[] = internRows.map((assign: any) => {
+        const profile = assign.student_profile || {};
         const internship = assign.internship || {};
         const company = internship.company || {};
-        const lastEval = assign.last_evaluation_at ? new Date(assign.last_evaluation_at) : null;
+        const studentUser = assign.student_user_id as string | undefined;
+        const lastEvalInfo = studentUser ? lastEvalByStudent.get(studentUser) ?? null : null;
+        const lastEval = lastEvalInfo ? new Date(lastEvalInfo.date) : null;
+        const daysSinceEvaluation = lastEval
+          ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
 
         let rating: StudentDetail["performanceRating"] = null;
-        if (lastEval) {
-          const daysSinceEval = Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysSinceEval <= 21 && assign.progress >= 75) rating = "excellent";
-          else if (daysSinceEval <= 21 && assign.progress >= 50) rating = "good";
-          else if (daysSinceEval <= 28) rating = "satisfactory";
+        if (daysSinceEvaluation !== null) {
+          if (daysSinceEvaluation <= 21) rating = "excellent";
+          else if (daysSinceEvaluation <= 28) rating = "good";
+          else if (daysSinceEvaluation <= 42) rating = "satisfactory";
           else rating = "needs_attention";
         }
 
+        const fullName =
+          profile.full_name ||
+          [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+          (profile.email ? profile.email.split("@")[0] : "Unknown Student");
+
         return {
           id: assign.id,
-          studentId: student.id,
-          name: student.full_name || `Student ${student.id?.slice(0, 6)}`,
-          email: student.email || "",
-          phone: student.phone,
-          avatarUrl: student.avatar_url,
-          enrollmentNumber: student.enrollment_number,
+          studentId: studentUser || assign.id,
+          name: fullName,
+          email: profile.email || "",
+          phone: profile.phone ?? null,
+          avatarUrl: profile.avatar_url ?? null,
+          enrollmentNumber: profile.student_id_number ?? null,
           internshipTitle: internship.title,
           company: company.name,
           status: assign.status || "active",
           startDate: assign.start_date,
           endDate: assign.end_date,
-          progress: assign.progress || 0,
-          lastEvaluationDate: assign.last_evaluation_at,
-          daysSinceEvaluation: lastEval 
-            ? Math.floor((Date.now() - lastEval.getTime()) / (1000 * 60 * 60 * 24))
-            : null,
+          progress: 0, // student_internships has no progress column
+          lastEvaluationDate: lastEvalInfo?.date ?? null,
+          daysSinceEvaluation,
           performanceRating: rating,
+          overallRating: lastEvalInfo?.rating ?? null,
         };
       });
 
@@ -210,45 +298,103 @@ export default function SiteSupervisorStudentsPage() {
     }
   }
 
-  // Note: Mock data removed - page shows empty state until real data is available
-  // function setMockStudents() has been removed to prevent showing fake data
-
   async function openStudentDetail(student: StudentDetail) {
     setSelectedStudent(student);
     setShowDetailModal(true);
+    setStudentLogs([]);
+    setStudentEvaluations([]);
 
-    // Mock data for detail views
-    setStudentLogs([
-      { weekNumber: 6, weekStart: "2024-07-08", weekEnd: "2024-07-14", status: "approved", hoursLogged: 38 },
-      { weekNumber: 5, weekStart: "2024-07-01", weekEnd: "2024-07-07", status: "approved", hoursLogged: 40 },
-      { weekNumber: 4, weekStart: "2024-06-24", weekEnd: "2024-06-30", status: "submitted", hoursLogged: 36 },
-      { weekNumber: 3, weekStart: "2024-06-17", weekEnd: "2024-06-23", status: "approved", hoursLogged: 42 },
-      { weekNumber: 2, weekStart: "2024-06-10", weekEnd: "2024-06-16", status: "approved", hoursLogged: 39 },
-      { weekNumber: 1, weekStart: "2024-06-03", weekEnd: "2024-06-09", status: "approved", hoursLogged: 41 },
-    ]);
+    if (!user) return;
+    const supabase = createClient();
+    const supervisorUserId = user.id;
+    const studentUserId = student.studentId;
 
-    setStudentEvaluations([
-      {
-        id: "e1",
-        period: "Week 4-6",
-        overallRating: 8.2,
-        decision: "satisfactory",
-        date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        technicalScore: 8.0,
-        professionalScore: 8.5,
-        workQualityScore: 8.0,
-      },
-      {
-        id: "e2",
-        period: "Week 1-3",
-        overallRating: 7.5,
-        decision: "satisfactory",
-        date: new Date(Date.now() - 36 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        technicalScore: 7.5,
-        professionalScore: 7.5,
-        workQualityScore: 7.5,
-      },
-    ]);
+    try {
+      const [logsRes, evalsRes, attendanceRes] = await Promise.all([
+        supabase
+          .from("weekly_logs")
+          .select("id, week_start_date, week_end_date, status, submitted_at, supervisor_feedback")
+          .eq("supervisor_id", supervisorUserId)
+          .eq("student_user_id", studentUserId)
+          .order("week_start_date", { ascending: false }),
+        supabase
+          .from("evaluations")
+          .select("id, type, scores, rating, comments, submitted_at, created_at")
+          .eq("evaluator_id", supervisorUserId)
+          .eq("evaluator_role", "site_supervisor")
+          .eq("student_user_id", studentUserId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("attendance")
+          .select("id, date, check_in, check_out, status, notes, verified")
+          .eq("student_user_id", studentUserId)
+          .order("date", { ascending: false })
+          .limit(50),
+      ]);
+
+      // Build weekly log summaries. weekly_logs has no hours_worked column;
+      // we compute hours from check_in/check_out on the matching attendance
+      // record when available, otherwise default to 0.
+      const attendanceByDate = new Map<string, { check_in?: string; check_out?: string }>();
+      (attendanceRes.data || []).forEach((a: any) => {
+        if (a.date) attendanceByDate.set(a.date, { check_in: a.check_in, check_out: a.check_out });
+      });
+
+      const hourDiff = (start?: string, end?: string): number => {
+        if (!start || !end) return 0;
+        const ms = new Date(end).getTime() - new Date(start).getTime();
+        return ms > 0 ? Math.round((ms / (1000 * 60 * 60)) * 10) / 10 : 0;
+      };
+
+      const logs: WeeklyLogSummary[] = ((logsRes.data || []) as any[]).map((l: any, idx: number) => {
+        const start = l.week_start_date;
+        const end = l.week_end_date;
+        const att = start ? attendanceByDate.get(start) : undefined;
+        const hours = att ? hourDiff(att.check_in, att.check_out) : 0;
+        return {
+          weekNumber: (logsRes.data || []).length - idx,
+          weekStart: start,
+          weekEnd: end,
+          status: (l.status as WeeklyLogSummary["status"]) || "submitted",
+          hoursLogged: hours,
+        };
+      });
+      setStudentLogs(logs);
+
+      // Build evaluation records. `evaluations` has `scores` (jsonb) and
+      // `rating` (0-5); derive the legacy UI shape from those.
+      const evals: EvaluationRecord[] = ((evalsRes.data || []) as any[]).map((ev: any) => {
+        const scores = (ev.scores && typeof ev.scores === "object") ? ev.scores as Record<string, any> : {};
+        const overall = typeof ev.rating === "number" ? ev.rating : 0;
+        const decision: EvaluationRecord["decision"] =
+          overall >= 4 ? "satisfactory" : overall >= 3 ? "needs_improvement" : "unsatisfactory";
+        const num = (v: any) => (typeof v === "number" ? v : 0);
+        return {
+          id: ev.id,
+          period: ev.type ? String(ev.type).replace(/_/g, " ") : "Evaluation",
+          overallRating: overall,
+          decision,
+          date: ev.submitted_at || ev.created_at,
+          technicalScore: num(scores.technical_knowledge ?? scores.technical ?? 0),
+          professionalScore: num(scores.communication ?? scores.professional ?? 0),
+          workQualityScore: num(scores.deliverable_quality ?? scores.work_quality ?? 0),
+        };
+      });
+      setStudentEvaluations(evals);
+
+      setStudentAttendance(
+        ((attendanceRes.data || []) as any[]).map((a: any) => ({
+          date: a.date,
+          checkIn: a.check_in ?? null,
+          checkOut: a.check_out ?? null,
+          status: String(a.status ?? "present"),
+          verified: Boolean(a.verified),
+          notes: a.notes ?? null,
+        }))
+      );
+    } catch (error) {
+      console.error("Error fetching student detail:", error);
+    }
   }
 
   // Filter students based on search and filters
@@ -362,7 +508,7 @@ export default function SiteSupervisorStudentsPage() {
             View and manage interns assigned to your supervision
           </p>
         </div>
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => exportStudentsCsv(filteredStudents)}>
           <Download className="h-4 w-4 mr-2" />
           Export List
         </Button>
@@ -882,13 +1028,60 @@ export default function SiteSupervisorStudentsPage() {
                         <Clock className="h-4 w-4" />
                         Attendance Record
                       </CardTitle>
+                      <CardDescription>Recent attendance entries for this intern</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>Attendance tracking will be available here</p>
-                        <p className="text-sm mt-1">Integration with attendance system coming soon</p>
-                      </div>
+                      {studentAttendance.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground">
+                          <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>No attendance records found</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {studentAttendance.map((a) => (
+                            <div
+                              key={`${a.date}-${a.checkIn ?? ""}`}
+                              className="flex items-center justify-between p-3 rounded-lg border"
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-10 rounded-lg bg-primary/10 flex flex-col items-center justify-center">
+                                  <span className="text-[10px] uppercase text-muted-foreground">
+                                    {a.date ? new Date(a.date).toLocaleString("en-US", { month: "short" }) : ""}
+                                  </span>
+                                  <span className="text-sm font-semibold leading-none">
+                                    {a.date ? new Date(a.date).getDate() : "—"}
+                                  </span>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">
+                                    {a.date ? new Date(a.date).toLocaleDateString() : "N/A"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {a.checkIn ? `In: ${new Date(a.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "—"}
+                                    {a.checkOut ? ` · Out: ${new Date(a.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                                  </p>
+                                  {a.notes && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{a.notes}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {a.verified && (
+                                  <Badge className="bg-blue-100 text-blue-800">Verified</Badge>
+                                )}
+                                <Badge className={
+                                  a.status === "present" ? "bg-green-100 text-green-800" :
+                                  a.status === "absent" ? "bg-red-100 text-red-800" :
+                                  a.status === "leave" ? "bg-orange-100 text-orange-800" :
+                                  "bg-yellow-100 text-yellow-800"
+                                }>
+                                  {a.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>

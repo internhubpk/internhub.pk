@@ -136,7 +136,17 @@ export default function SuperAdminSettingsPage() {
 
       if (data?.value) {
         try {
-          setSettings({ ...defaultSettings, ...JSON.parse(data.value) });
+          // `platform_settings.value` is `jsonb`. PostgREST already returns
+          // it as a parsed JS object/array/primitive. Older rows may have been
+          // stored as a JSON-encoded *string* (a bug in the previous save
+          // path), so guard against both shapes.
+          const v =
+            typeof data.value === "string"
+              ? JSON.parse(data.value)
+              : data.value;
+          if (v && typeof v === "object") {
+            setSettings({ ...defaultSettings, ...v });
+          }
         } catch {
           // Bad JSON in DB — keep defaults
         }
@@ -170,7 +180,8 @@ export default function SuperAdminSettingsPage() {
           .select("user_id", { count: "exact", head: true })
           .eq("role", "faculty_supervisor"),
         supabase.from("internships").select("id", { count: "exact", head: true }),
-        supabase.from("applications").select("id", { count: "exact", head: true }),
+        // NOTE: real table is `internship_applications` — `applications` does not exist.
+        supabase.from("internship_applications").select("id", { count: "exact", head: true }),
       ]);
 
       setStats({
@@ -241,10 +252,13 @@ export default function SuperAdminSettingsPage() {
     try {
       const supabase = createClient();
 
+      // Send `value` as a plain object — PostgREST will serialize it to jsonb.
+      // Do NOT JSON.stringify it; storing a JSON string in a jsonb column
+      // breaks the round-trip (the read path would receive a string, not an object).
       const { error } = await supabase.from("platform_settings").upsert(
         {
           key: "global",
-          value: JSON.stringify(settings),
+          value: settings,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "key" }

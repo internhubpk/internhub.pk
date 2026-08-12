@@ -210,48 +210,132 @@ export default function FacultySupervisorEvaluationsPage() {
       
       try {
         const supabase = createClient();
-        
-        // Get supervisor record
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
 
-        if (!supervisor) {
-          setIsLoading(false);
-          return;
-        }
+        // Find supervised students (faculty_supervisor_id references profiles.user_id).
+        const { data: assignedInternships } = await supabase
+          .from("student_internships")
+          .select("student_user_id")
+          .eq("faculty_supervisor_id", user.id);
+        const supervisedStudentIds = Array.from(
+          new Set((assignedInternships || []).map((a) => a.student_user_id))
+        );
 
-        // Fetch pending evaluations (submissions awaiting review)
-        // This would query a submissions table filtered by status='pending_review'
-        // and faculty_supervisor_id matching the current supervisor
-        // const { data: pending } = await supabase
-        //   .from("submissions")
-        //   .select(`*, student:students(full_name, email, avatar_url)`)
-        //   .eq("faculty_supervisor_id", supervisor.id)
-        //   .eq("status", "pending_review");
-        
-        // setPendingEvaluations(pending || []);
+        // Fetch pending evaluations (evaluations with status pending/in_progress
+        // that this supervisor needs to complete).
+        const [pendingRes, historyRes, weeklyReportsRes] = await Promise.all([
+          supabase
+            .from("evaluations")
+            .select(`
+              id,
+              type,
+              status,
+              comments,
+              created_at,
+              submitted_at,
+              student_user_id,
+              student_profile:student_user_id(full_name, email, avatar_url)
+            `)
+            .eq("evaluator_id", user.id)
+            .eq("evaluator_role", "faculty_supervisor")
+            .in("status", ["pending", "in_progress"])
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("evaluations")
+            .select(`
+              id,
+              type,
+              status,
+              rating,
+              scores,
+              comments,
+              created_at,
+              submitted_at,
+              student_user_id,
+              student_profile:student_user_id(full_name)
+            `)
+            .eq("evaluator_id", user.id)
+            .eq("evaluator_role", "faculty_supervisor")
+            .in("status", ["submitted", "approved", "rejected"])
+            .order("created_at", { ascending: false })
+            .limit(50),
+          // Weekly reports: weekly_logs with status 'submitted' for supervised students.
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("weekly_logs")
+                .select(`
+                  id,
+                  week_number,
+                  week_start_date,
+                  week_end_date,
+                  hours_worked,
+                  status,
+                  supervisor_feedback,
+                  submitted_at,
+                  tasks_completed,
+                  challenges,
+                  learnings,
+                  student_user_id,
+                  student_profile:student_user_id(full_name)
+                `)
+                .in("student_user_id", supervisedStudentIds)
+                .eq("status", "submitted")
+                .order("submitted_at", { ascending: false })
+                .limit(20)
+            : Promise.resolve({ data: [] }),
+        ]);
 
-        // Fetch evaluation history
-        // const { data: history } = await supabase
-        //   .from("faculty_evaluations")
-        //   .select(`*, student:students(full_name)`)
-        //   .eq("evaluator_id", supervisor.id)
-        //   .order("evaluated_at", { ascending: false });
-        
-        // setEvaluationHistory(history || []);
+        const pending: PendingEvaluation[] = (pendingRes.data || []).map((e: any) => ({
+          id: e.id,
+          studentId: e.student_user_id,
+          studentName: e.student_profile?.full_name || "Unknown Student",
+          studentEmail: e.student_profile?.email || "",
+          studentAvatar: e.student_profile?.avatar_url,
+          submissionType: e.type === "weekly_log" ? "weekly_log" : e.type === "task" ? "task_submission" : e.type === "midterm" ? "midterm" : e.type === "final" ? "final" : "document",
+          title: `${(e.type || "evaluation").replace(/_/g, " ")} evaluation`,
+          description: e.comments || "Please complete this evaluation.",
+          submittedAt: e.created_at || "",
+          dueDate: e.submitted_at || new Date().toISOString(),
+          priority: "medium",
+        }));
+        setPendingEvaluations(pending);
 
-        // Fetch weekly reports
-        // const { data: reports } = await supabase
-        //   .from("weekly_reports")
-        //   .select(`*, student:students(full_name)`)
-        //   .eq("faculty_supervisor_id", supervisor.id)
-        //   .order("week_start", { ascending: false });
-        
-        // setWeeklyReports(reports || []);
+        const history: EvaluationRecord[] = (historyRes.data || []).map((e: any) => {
+          const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
+          const scoreValues = Object.values(scoresObj).filter((v): v is number => typeof v === "number");
+          const total = scoreValues.reduce((acc, v) => acc + v, 0);
+          const max = scoreValues.length * 10 || 100;
+          return {
+            id: e.id,
+            studentName: e.student_profile?.full_name || "Unknown Student",
+            type: e.type === "weekly_log" ? "weekly_log" : e.type === "task" ? "task_submission" : e.type === "midterm" ? "midterm" : e.type === "final" ? "final" : "document",
+            title: `${(e.type || "evaluation").replace(/_/g, " ")} evaluation`,
+            submittedAt: e.submitted_at || e.created_at || "",
+            evaluatedAt: e.submitted_at || e.created_at || "",
+            status: (e.status === "approved" ? "approved" : e.status === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
+            score: total,
+            maxScore: max,
+            evaluatorComments: e.comments || "",
+          };
+        });
+        setEvaluationHistory(history);
+
+        const reports: WeeklyReport[] = (weeklyReportsRes.data || []).map((log: any) => {
+          const tasksList = Array.isArray(log.tasks_completed) ? log.tasks_completed : [];
+          return {
+            id: log.id,
+            studentName: log.student_profile?.full_name || "Unknown Student",
+            weekNumber: log.week_number || 0,
+            weekStart: log.week_start_date || "",
+            weekEnd: log.week_end_date || "",
+            tasksCompleted: tasksList.length,
+            tasksPending: 0,
+            hoursLogged: Number(log.hours_worked) || 0,
+            overallScore: 0,
+            supervisorRemarks: log.supervisor_feedback || "",
+            status: "submitted" as const,
+          };
+        });
+        setWeeklyReports(reports);
       } catch (error) {
         console.error("Error fetching evaluation data:", error);
         // Keep empty state on error
@@ -409,20 +493,108 @@ export default function FacultySupervisorEvaluationsPage() {
   };
 
   const handleSubmitEvaluation = async () => {
+    if (!user || !selectedEvaluation) return;
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsSubmitting(false);
-    setIsEvaluateDialogOpen(false);
-    setSelectedEvaluation(null);
+
+    try {
+      const supabase = createClient();
+
+      // Build scores JSONB from criteria scores.
+      const scores: Record<string, number> = {};
+      evaluationForm.criteria.forEach((c) => {
+        scores[c.id] = c.score;
+      });
+
+      // Map decision → evaluation status (enum: pending, in_progress, submitted, approved, rejected).
+      const newStatus =
+        evaluationForm.decision === "approve"
+          ? "approved"
+          : evaluationForm.decision === "reject"
+          ? "rejected"
+          : "submitted"; // request_revision → submitted with feedback
+
+      const combinedComments =
+        [evaluationForm.comments, evaluationForm.feedback]
+          .filter(Boolean)
+          .join("\n\n--- Feedback for student ---\n") || null;
+
+      const { error } = await supabase
+        .from("evaluations")
+        .update({
+          rating: evaluationForm.rating,
+          scores,
+          comments: combinedComments,
+          status: newStatus,
+          submitted_at: new Date().toISOString(),
+        })
+        .eq("id", selectedEvaluation.id)
+        .eq("evaluator_id", user.id); // defense-in-depth: only update own evals
+
+      if (error) throw error;
+
+      // Send notification to student.
+      await supabase.from("notifications").insert({
+        user_id: selectedEvaluation.studentId,
+        sender_id: user.id,
+        title:
+          evaluationForm.decision === "approve"
+            ? "Evaluation Approved"
+            : evaluationForm.decision === "reject"
+            ? "Evaluation Rejected"
+            : "Evaluation Submitted — Revision Requested",
+        message: evaluationForm.feedback || evaluationForm.comments || "Your evaluation has been updated.",
+        category: "evaluation",
+        priority: evaluationForm.decision === "reject" ? "high" : "medium",
+        is_read: false,
+        metadata: { evaluation_id: selectedEvaluation.id, decision: evaluationForm.decision },
+      });
+
+      // Move the item from pending → history locally.
+      setPendingEvaluations((prev) => prev.filter((e) => e.id !== selectedEvaluation.id));
+      setEvaluationHistory((prev) => [
+        {
+          id: selectedEvaluation.id,
+          studentName: selectedEvaluation.studentName,
+          type: selectedEvaluation.submissionType,
+          title: selectedEvaluation.title,
+          submittedAt: selectedEvaluation.submittedAt,
+          evaluatedAt: new Date().toISOString(),
+          status: (newStatus === "approved" ? "approved" : newStatus === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
+          score: evaluationForm.criteria.reduce((acc, c) => acc + c.score, 0),
+          maxScore: evaluationForm.criteria.length * 10,
+          evaluatorComments: combinedComments || "",
+        },
+        ...prev,
+      ]);
+
+      setIsEvaluateDialogOpen(false);
+      setSelectedEvaluation(null);
+    } catch (error) {
+      console.error("Error submitting evaluation:", error);
+      alert("Failed to submit evaluation. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleApproveReport = async (reportId: string) => {
-    setWeeklyReports(prev =>
-      prev.map(r => r.id === reportId ? { ...r, status: "approved" as const } : r)
-    );
+    if (!user) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("weekly_logs")
+        .update({
+          status: "approved",
+          reviewed_at: new Date().toISOString(),
+          supervisor_id: user.id,
+        })
+        .eq("id", reportId);
+      if (error) throw error;
+      setWeeklyReports((prev) => prev.filter((r) => r.id !== reportId));
+    } catch (error) {
+      console.error("Error approving weekly report:", error);
+      alert("Failed to approve weekly report.");
+    }
   };
 
   // Loading state

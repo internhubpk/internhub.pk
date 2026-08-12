@@ -32,11 +32,9 @@ interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: string;
   category?: string;
   priority: "low" | "medium" | "high" | "urgent";
   is_read: boolean;
-  read_at?: string;
   action_url?: string;
   metadata?: Record<string, any>;
   created_at: string;
@@ -64,10 +62,15 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
+  // `notifications.category` is the real column (the schema has no `type`).
   announcement: <Bell className="h-5 w-5" />,
   reminder: <BellRing className="h-5 w-5" />,
   alert: <AlertCircle className="h-5 w-5" />,
   system: <Inbox className="h-5 w-5" />,
+  task: <BellRing className="h-5 w-5" />,
+  application: <Bell className="h-5 w-5" />,
+  evaluation: <Bell className="h-5 w-5" />,
+  message: <Bell className="h-5 w-5" />,
 };
 
 function timeAgo(dateString: string): string {
@@ -133,6 +136,12 @@ export default function StudentNotificationsPage() {
   }, [user, page, filterUnread, fetchNotifications]);
 
   const markAsRead = async (notificationId: string) => {
+    // Optimistically mark the notification as read in the local state so the
+    // UI updates immediately, then fire the PATCH. Roll back on failure.
+    const previous = notifications;
+    setNotifications(prev =>
+      prev.map(n => (n.id === notificationId ? { ...n, is_read: true } : n))
+    );
     setMarkingRead(prev => new Set(prev).add(notificationId));
     
     try {
@@ -142,18 +151,13 @@ export default function StudentNotificationsPage() {
         body: JSON.stringify({ notification_ids: [notificationId] }),
       });
 
-      if (response.ok) {
-        // Update local state
-        setNotifications(prev =>
-          prev.map(n =>
-            n.id === notificationId
-              ? { ...n, is_read: true, read_at: new Date().toISOString() }
-              : n
-          )
-        );
+      if (!response.ok) {
+        // Roll back the optimistic update.
+        setNotifications(previous);
       }
     } catch (err) {
       console.error("Error marking notification as read:", err);
+      setNotifications(previous);
     } finally {
       setMarkingRead(prev => {
         const next = new Set(prev);
@@ -164,6 +168,9 @@ export default function StudentNotificationsPage() {
   };
 
   const markAllAsRead = async () => {
+    const previous = notifications;
+    // Optimistically mark all as read.
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     try {
       const response = await fetch("/api/notifications/inbox", {
         method: "PATCH",
@@ -171,13 +178,12 @@ export default function StudentNotificationsPage() {
         body: JSON.stringify({ mark_all_read: true }),
       });
 
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
-        );
+      if (!response.ok) {
+        setNotifications(previous);
       }
     } catch (err) {
       console.error("Error marking all as read:", err);
+      setNotifications(previous);
     }
   };
 
@@ -322,7 +328,7 @@ export default function StudentNotificationsPage() {
                               ? "bg-primary/10 text-primary" 
                               : "bg-muted text-muted-foreground"
                           }`}>
-                            {TYPE_ICONS[notification.type] || TYPE_ICONS.system}
+                            {TYPE_ICONS[notification.category || ""] || TYPE_ICONS.system}
                           </div>
 
                           {/* Content */}

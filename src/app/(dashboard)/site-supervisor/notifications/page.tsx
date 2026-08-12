@@ -133,38 +133,45 @@ export default function SiteSupervisorNotificationsPage() {
 
     try {
       const supabase = createClient();
-      
-      const { data: supervisor } = await supabase
-        .from("supervisors")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("type", "site")
-        .single();
 
-      if (!supervisor) {
-        // No supervisor record - keep empty state
-        setStudents([]);
-        return;
-      }
+      // student_internships.site_supervisor_id is FK to profiles.user_id —
+      // filter by the auth user's id (the supervisor's user_id), NOT the
+      // supervisors table PK. RLS uses auth.uid() the same way.
+      const supervisorUserId = user.id;
 
       const { data: assignments } = await supabase
         .from("student_internships")
         .select(`
-          student_id,
-          student:students(id, full_name, email, avatar_url),
+          student_user_id,
+          internship_id,
+          student_profile:student_user_id(
+            full_name,
+            first_name,
+            last_name,
+            email,
+            avatar_url
+          ),
           internship:internships(title)
         `)
-        .eq("site_supervisor_id", supervisor.id)
-        .eq("status", "active");
+        .eq("site_supervisor_id", supervisorUserId)
+        .eq("is_active", true);
 
-      const studentList: AssignedStudent[] = (assignments || []).map((assign: any) => ({
-        id: assign.student_id,
-        studentId: assign.student?.id || assign.student_id,
-        name: assign.student?.full_name || `Student ${assign.student_id.slice(0, 6)}`,
-        email: assign.student?.email || "",
-        avatarUrl: assign.student?.avatar_url,
-        internshipTitle: assign.internship?.title,
-      }));
+      const studentList: AssignedStudent[] = (assignments || []).map((assign: any) => {
+        const p = assign.student_profile || {};
+        const studentUser = assign.student_user_id as string | undefined;
+        const fullName =
+          p.full_name ||
+          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+          (p.email ? p.email.split("@")[0] : "Unknown Student");
+        return {
+          id: studentUser || "",
+          studentId: studentUser || "",
+          name: fullName,
+          email: p.email || "",
+          avatarUrl: p.avatar_url ?? null,
+          internshipTitle: assign.internship?.title,
+        };
+      }).filter((s: AssignedStudent) => Boolean(s.id));
 
       setStudents(studentList);
     } catch (error) {

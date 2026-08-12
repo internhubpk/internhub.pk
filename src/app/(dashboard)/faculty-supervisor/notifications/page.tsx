@@ -143,60 +143,130 @@ export default function FacultySupervisorNotificationsPage() {
       
       try {
         const supabase = createClient();
-        
-        // Get supervisor record
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
 
-        if (!supervisor) {
-          setIsLoading(false);
-          return;
-        }
-
-        // Fetch supervised students. NOTE: the FK column is student_user_id,
-        // not student_id.
+        // Fetch supervised students. faculty_supervisor_id references
+        // profiles.user_id; student_internships has no FK to `students`,
+        // so we join profiles via student_user_id. We also fetch the
+        // `students` rows separately for program_id → program name.
         const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
             student_user_id,
-            student:students(id, full_name, email, program:programs(name))
+            status,
+            student_profile:student_user_id(full_name, email, avatar_url)
           `)
           .eq("faculty_supervisor_id", user.id)
-          .in("status", ["active", "in_progress"]);
+          .in("status", ["active"]); // student_internship_status has no "in_progress"
+
+        const studentUserIds = Array.from(
+          new Set((studentData || []).map((s: any) => s.student_user_id))
+        );
+
+        let programMap: Record<string, string> = {};
+        if (studentUserIds.length > 0) {
+          const { data: records } = await supabase
+            .from("students")
+            .select("user_id, program_id")
+            .in("user_id", studentUserIds);
+          const programIds = Array.from(
+            new Set((records || []).map((r: any) => r.program_id).filter(Boolean))
+          );
+          if (programIds.length > 0) {
+            const { data: programs } = await supabase
+              .from("programs")
+              .select("id, name")
+              .in("id", programIds);
+            (programs || []).forEach((p: any) => {
+              programMap[p.id] = p.name;
+            });
+          }
+        }
 
         const studentList: StudentOption[] = (studentData || []).map((s: any) => ({
-          id: s.student?.id || s.student_user_id,
-          name: s.student?.full_name || `Student ${s.student_user_id?.slice(0, 6)}`,
-          email: s.student?.email || "",
-          program: s.student?.program?.name || "Unknown Program",
+          id: s.student_user_id,
+          name: s.student_profile?.full_name || `Student ${s.student_user_id?.slice(0, 6)}`,
+          email: s.student_profile?.email || "",
+          program: "", // populated below if we have a program lookup
+          avatarUrl: s.student_profile?.avatar_url,
         }));
+
+        // Populate program names per student if we have them.
+        if (studentUserIds.length > 0) {
+          const { data: records } = await supabase
+            .from("students")
+            .select("user_id, program_id")
+            .in("user_id", studentUserIds);
+          const recByUser = new Map<string, any>();
+          (records || []).forEach((r: any) => recByUser.set(r.user_id, r));
+          studentList.forEach((s) => {
+            const rec = recByUser.get(s.id);
+            if (rec?.program_id) s.program = programMap[rec.program_id] || "Unknown Program";
+          });
+        }
 
         setStudents(studentList);
 
         // Group students by program for program selector
-        const programMap = new Map<string, number>();
+        const programMapCount = new Map<string, number>();
         studentList.forEach(s => {
-          programMap.set(s.program, (programMap.get(s.program) || 0) + 1);
+          if (s.program) {
+            programMapCount.set(s.program, (programMapCount.get(s.program) || 0) + 1);
+          }
         });
-        const programList = Array.from(programMap.entries()).map(([name, count], idx) => ({
+        const programList = Array.from(programMapCount.entries()).map(([name, count], idx) => ({
           id: `p${idx}`,
           name,
           studentCount: count,
         }));
         setPrograms(programList);
 
-        // Fetch notifications (when API is ready)
-        // const { data: notificationData } = await supabase
-        //   .from("notifications")
-        //   .select("*")
-        //   .eq("sender_id", supervisor.id)
-        //   .order("created_at", { ascending: false });
-        
-        // setNotifications(notificationData || []);
+        // Fetch notifications sent by this supervisor.
+        const { data: notificationData } = await supabase
+          .from("notifications")
+          .select(`
+            id,
+            title,
+            message,
+            category,
+            priority,
+            is_read,
+            action_url,
+            metadata,
+            created_at,
+            user_id
+          `)
+          .eq("sender_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        const recipientNameById = new Map<string, string>();
+        studentList.forEach(s => recipientNameById.set(s.id, s.name));
+
+        const notificationList: Notification[] = (notificationData || []).map((n: any) => {
+          const meta = (n.metadata && typeof n.metadata === "object") ? n.metadata : {};
+          const target = (meta.target as NotificationTarget) || "all";
+          const recipientCount = (meta.recipient_count as number) || 1;
+          const readCount = n.is_read ? 1 : 0;
+          return {
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            priority: (n.priority as NotificationPriority) || "medium",
+            target,
+            targetName: target === "all"
+              ? "All Students"
+              : target === "individual"
+              ? recipientNameById.get(n.user_id) || "Student"
+              : "Program",
+            recipientCount,
+            readCount,
+            status: n.is_read ? "read" : "sent",
+            sentAt: n.created_at,
+            createdAt: n.created_at,
+            senderName: "You",
+          };
+        });
+        setNotifications(notificationList);
       } catch (error) {
         console.error("Error fetching notification data:", error);
         // Keep empty state on error
@@ -329,38 +399,89 @@ export default function FacultySupervisorNotificationsPage() {
   };
 
   const handleSendNotification = async () => {
+    if (!user) return;
     setIsSending(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const newNotification: Notification = {
-      id: `n${Date.now()}`,
-      title: composeForm.title,
-      message: composeForm.message,
-      priority: composeForm.priority,
-      target: composeForm.target,
-      targetName: composeForm.target === "all"
+    try {
+      const supabase = createClient();
+
+      // Determine recipients based on the compose form.
+      let recipientIds: string[] = [];
+      if (composeForm.target === "all") {
+        recipientIds = students.map(s => s.id);
+      } else if (composeForm.target === "individual") {
+        if (composeForm.selectedStudentId) {
+          recipientIds = [composeForm.selectedStudentId];
+        }
+      } else if (composeForm.target === "program") {
+        // Programs use index IDs (p0, p1, ...) created client-side; map back
+        // to the program name and then look up students in that program.
+        const selectedProgram = programs.find(p => p.id === composeForm.selectedProgramId);
+        if (selectedProgram) {
+          recipientIds = students.filter(s => s.program === selectedProgram.name).map(s => s.id);
+        }
+      }
+
+      if (recipientIds.length === 0) {
+        alert("Please select at least one recipient.");
+        setIsSending(false);
+        return;
+      }
+
+      // notification_priority enum is low/medium/high/urgent.
+      const priority = composeForm.priority;
+      // notification_category enum has no "faculty"; use "announcement".
+      const category = "announcement";
+
+      // Insert one notifications row per recipient. notifications.user_id is
+      // NOT NULL and references the recipient.
+      const rows = recipientIds.map((rid) => ({
+        user_id: rid,
+        sender_id: user.id,
+        title: composeForm.title,
+        message: composeForm.message,
+        category,
+        priority,
+        is_read: false,
+        metadata: {
+          target: composeForm.target,
+          recipient_count: recipientIds.length,
+        },
+      }));
+
+      const { error } = await supabase.from("notifications").insert(rows);
+      if (error) throw error;
+
+      // Add a local notification row so the UI updates immediately.
+      const targetName = composeForm.target === "all"
         ? "All Students"
         : composeForm.target === "individual"
         ? students.find(s => s.id === composeForm.selectedStudentId)?.name || "Student"
-        : programs.find(p => p.id === composeForm.selectedProgramId)?.name || "Program",
-      recipientCount: composeForm.target === "all"
-        ? students.length
-        : composeForm.target === "individual"
-        ? 1
-        : programs.find(p => p.id === composeForm.selectedProgramId)?.studentCount || 0,
-      readCount: 0,
-      status: "sent",
-      sentAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      senderName: "Dr. Smith (You)",
-    };
+        : programs.find(p => p.id === composeForm.selectedProgramId)?.name || "Program";
+      const newNotification: Notification = {
+        id: `n${Date.now()}`,
+        title: composeForm.title,
+        message: composeForm.message,
+        priority: composeForm.priority,
+        target: composeForm.target,
+        targetName,
+        recipientCount: recipientIds.length,
+        readCount: 0,
+        status: "sent",
+        sentAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        senderName: "You",
+      };
 
-    setNotifications(prev => [newNotification, ...prev]);
-    setIsComposeDialogOpen(false);
-    resetComposeForm();
-    setIsSending(false);
+      setNotifications(prev => [newNotification, ...prev]);
+      setIsComposeDialogOpen(false);
+      resetComposeForm();
+    } catch (error) {
+      console.error("Error sending notification:", error);
+      alert("Failed to send notification. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const openViewDialog = (notification: Notification) => {

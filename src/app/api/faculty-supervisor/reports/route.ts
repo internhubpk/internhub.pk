@@ -1,21 +1,21 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
-// GET: Generate weekly/final reports for students
+// GET: Generate weekly/final/progress reports for students
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get supervisor's profile
+    // profiles PK is user_id (not id).
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name, university_id, department_id")
+      .select("user_id, role, full_name, university_id, department_id")
       .eq("user_id", user.id)
       .single();
 
@@ -26,58 +26,51 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get supervised program IDs
-    const { data: supervisor } = await supabase
-      .from("supervisors")
-      .select("program_ids")
-      .eq("user_id", user.id)
-      .eq("type", "faculty")
-      .single();
-
-    const programIds = supervisor?.program_ids || [];
-
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const reportType = searchParams.get("report_type"); // 'weekly', 'final', 'progress'
-    const studentId = searchParams.get("student_id");
+    const studentUserIdParam = searchParams.get("student_id") || searchParams.get("student_user_id");
     const weekNumber = searchParams.get("week_number");
-    const internshipId = searchParams.get("internship_id");
+
+    // Fetch all supervised student_user_ids via student_internships
+    // (faculty_supervisor_id references profiles.user_id).
+    const { data: assignedInternships } = await supabase
+      .from("student_internships")
+      .select("student_user_id, internship_id, company_id, start_date, end_date, status")
+      .eq("faculty_supervisor_id", user.id);
+
+    const supervisedStudentIds = Array.from(
+      new Set((assignedInternships || []).map((a) => a.student_user_id))
+    );
 
     if (reportType === "weekly") {
       // Generate weekly progress report
-      if (!studentId || !weekNumber) {
+      if (!studentUserIdParam || !weekNumber) {
         return NextResponse.json(
-          { error: "Student ID and week number are required for weekly reports" },
+          { error: "Student user ID and week number are required for weekly reports" },
           { status: 400 }
         );
       }
 
-      // Verify student is in supervised programs
-      const { data: student } = await supabase
-        .from("students")
-        .select("id, full_name, email, program_id, user_id")
-        .eq("id", studentId)
-        .single();
-
-      if (!student || !programIds.includes(student.program_id)) {
+      // Verify student is supervised by this faculty member.
+      if (!supervisedStudentIds.includes(studentUserIdParam)) {
         return NextResponse.json(
-          { error: "Student not found or not in your supervised programs" },
+          { error: "Student not found or not in your supervised students" },
           { status: 404 }
         );
       }
 
-      // Get weekly log data
+      // Get weekly log data (weekly_logs has no `student_id`; the FK is
+      // student_user_id → profiles).
       const { data: weeklyLog, error: logError } = await supabase
         .from("weekly_logs")
-        .select(`
+        .select(
+          `
           *,
-          internships (
-            id,
-            title,
-            company_name
-          )
-        `)
-        .eq("student_id", studentId)
+          internship:internships(id, title, location, remote, company:company_id(name))
+        `
+        )
+        .eq("student_user_id", studentUserIdParam)
         .eq("week_number", parseInt(weekNumber))
         .single();
 
@@ -88,28 +81,23 @@ export async function GET(request: Request) {
         );
       }
 
-      // Get tasks completed during this week
+      // Get the student's profile (for name).
+      const { data: studentProfile } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("user_id", studentUserIdParam)
+        .single();
+
+      // Get evaluations for this week.
       const weekStart = new Date(weeklyLog.week_start_date);
       const weekEnd = new Date(weeklyLog.week_end_date);
 
-      const { data: tasksCompleted } = await supabase
-        .from("task_assignments")
-        .select(`
-          tasks (id, title),
-          status,
-          completed_at
-        `)
-        .eq("student_id", studentId)
-        .in("status", ["completed"])
-        .gte("completed_at", weekStart.toISOString())
-        .lte("completed_at", weekEnd.toISOString());
-
-      // Get evaluations for this week
       const { data: evaluations } = await supabase
         .from("evaluations")
         .select("*")
-        .eq("student_id", studentId)
-        .eq("type", "weekly_log")
+        .eq("student_user_id", studentUserIdParam)
+        .eq("evaluator_id", user.id)
+        .eq("evaluator_role", "faculty_supervisor")
         .gte("created_at", weekStart.toISOString())
         .lte("created_at", weekEnd.toISOString());
 
@@ -118,16 +106,16 @@ export async function GET(request: Request) {
         data: {
           type: "weekly_report",
           student: {
-            id: student.id,
-            name: student.full_name,
-            email: student.email,
+            id: studentUserIdParam,
+            name: studentProfile?.full_name || "Unknown Student",
+            email: studentProfile?.email || "",
           },
           week: {
             number: weeklyLog.week_number,
             start: weeklyLog.week_start_date,
             end: weeklyLog.week_end_date,
           },
-          internship: weeklyLog.internships,
+          internship: weeklyLog.internship,
           content: {
             tasks_completed: weeklyLog.tasks_completed || [],
             challenges: weeklyLog.challenges,
@@ -136,75 +124,122 @@ export async function GET(request: Request) {
             hours_worked: weeklyLog.hours_worked,
           },
           evaluation: evaluations?.[0] || null,
-          tasks_completed_count: tasksCompleted?.length || 0,
           generated_at: new Date().toISOString(),
           generated_by: profile.full_name,
         },
       });
-
     } else if (reportType === "final") {
       // Generate final evaluation marksheet / certificate data
-      if (!studentId) {
+      if (!studentUserIdParam) {
         return NextResponse.json(
-          { error: "Student ID is required for final reports" },
+          { error: "Student user ID is required for final reports" },
           { status: 400 }
         );
       }
 
-      // Verify student is in supervised programs
-      const { data: student } = await supabase
-        .from("students")
-        .select(`
-          id,
-          full_name,
-          email,
-          program_id,
-          user_id,
-          programs (id, name),
-          internships (
-            id,
-            title,
-            company_name,
-            start_date,
-            end_date,
-            status
-          )
-        `)
-        .eq("id", studentId)
-        .single();
-
-      if (!student || !programIds.includes(student.program_id)) {
+      if (!supervisedStudentIds.includes(studentUserIdParam)) {
         return NextResponse.json(
-          { error: "Student not found or not in your supervised programs" },
+          { error: "Student not found or not in your supervised students" },
           { status: 404 }
         );
       }
 
-      const internship = student.internships;
+      // Get student profile + students-table record (program_id, cgpa).
+      const [profileRes, studentsRes, assignedRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("user_id", studentUserIdParam)
+          .single(),
+        supabase
+          .from("students")
+          .select("user_id, cgpa, student_id_number, program_id")
+          .eq("user_id", studentUserIdParam)
+          .single(),
+        supabase
+          .from("student_internships")
+          .select("internship_id, company_id, start_date, end_date, status")
+          .eq("student_user_id", studentUserIdParam)
+          .eq("faculty_supervisor_id", user.id)
+          .limit(1),
+      ]);
 
-      // Get all weekly logs for this internship
+      const studentProfile = profileRes.data;
+      const studentRecord = studentsRes.data;
+      const firstInternship = (assignedRes.data || [])[0];
+
+      let programName = "Unknown Program";
+      let companyName = "Unknown Company";
+      let internshipTitle = "Internship";
+      let internshipStart: string | null = null;
+      let internshipEnd: string | null = null;
+
+      if (studentRecord?.program_id) {
+        const { data: program } = await supabase
+          .from("programs")
+          .select("name")
+          .eq("id", studentRecord.program_id)
+          .single();
+        if (program) programName = program.name;
+      }
+
+      if (firstInternship?.internship_id) {
+        const { data: internship } = await supabase
+          .from("internships")
+          .select("id, title, start_date, end_date, company:company_id(name)")
+          .eq("id", firstInternship.internship_id)
+          .single();
+        if (internship) {
+          internshipTitle = internship.title || "Internship";
+          internshipStart = internship.start_date;
+          internshipEnd = internship.end_date;
+          companyName = (internship as any).company?.name || companyName;
+        }
+      }
+
+      // Get all weekly logs for this student (via student_user_id).
       const { data: weeklyLogs } = await supabase
         .from("weekly_logs")
         .select("*")
-        .eq("student_id", studentId)
-        .eq("internship_id", internship?.id)
+        .eq("student_user_id", studentUserIdParam)
         .order("week_number", { ascending: true });
 
-      // Get all evaluations
+      // Get all evaluations by this supervisor for this student.
       const { data: allEvaluations } = await supabase
         .from("evaluations")
         .select("*")
-        .eq("student_id", studentId)
+        .eq("student_user_id", studentUserIdParam)
+        .eq("evaluator_id", user.id)
         .order("created_at", { ascending: true });
 
-      // Calculate statistics
-      const totalWeeks = weeklyLogs?.length || 0;
-      const totalHours = weeklyLogs?.reduce((sum, log) => sum + (log.hours_worked || 0), 0) || 0;
-      const avgScore = allEvaluations?.length > 0 
-        ? allEvaluations.reduce((sum, evaluation) => sum + ((evaluation.total_score || 0) / (evaluation.max_score || 1) * 100), 0) / allEvaluations.length
+      // Attendance summary.
+      const { data: attendance } = await supabase
+        .from("attendance")
+        .select("date, status")
+        .eq("student_user_id", studentUserIdParam);
+
+      const attList = attendance || [];
+      const present = attList.filter((a) => a.status === "present").length;
+      const totalAtt = attList.length;
+      const avgAttendance = totalAtt > 0 ? Math.round((present / totalAtt) * 100) : 0;
+
+      // Calculate average evaluation score.
+      const avgScore = (allEvaluations || []).length > 0
+        ? (allEvaluations || []).reduce((acc, evaluation) => {
+            const scoresObj =
+              evaluation.scores && typeof evaluation.scores === "object"
+                ? evaluation.scores
+                : {};
+            const vals = Object.values(scoresObj).filter(
+              (v): v is number => typeof v === "number"
+            );
+            const total = vals.reduce((s, v) => s + v, 0);
+            const max = vals.length * 10 || 1;
+            return acc + (total / max) * 100;
+          }, 0) / (allEvaluations || []).length
         : 0;
 
-      // Determine final grade
+      // Determine final grade.
       const getGrade = (score: number) => {
         if (score >= 93) return "A";
         if (score >= 87) return "B+";
@@ -221,110 +256,113 @@ export async function GET(request: Request) {
         data: {
           type: "final_report",
           certificate_data: {
-            student_name: student.full_name,
-            program_name: student.programs?.name || "Unknown Program",
-            company_name: internship?.company_name || "Unknown Company",
-            internship_title: internship?.title || "Internship",
-            start_date: internship?.start_date,
-            end_date: internship?.end_date,
+            student_name: studentProfile?.full_name || "Unknown Student",
+            program_name: programName,
+            company_name: companyName,
+            internship_title: internshipTitle,
+            start_date: internshipStart || firstInternship?.start_date,
+            end_date: internshipEnd || firstInternship?.end_date,
             final_grade: getGrade(avgScore),
             supervisor_name: profile.full_name,
-            coordinator_name: null, // To be filled by department coordinator
-            issue_date: new Date().toISOString().split('T')[0],
-            certificate_id: `CERT-${Date.now()}-${studentId.toUpperCase()}`,
+            coordinator_name: null,
+            issue_date: new Date().toISOString().split("T")[0],
+            certificate_id: `CERT-${Date.now()}-${studentUserIdParam.toUpperCase()}`,
           },
           statistics: {
-            total_weeks: totalWeeks,
-            total_hours: totalHours,
-            average_attendance: 97, // Would be calculated from attendance records
+            total_weeks: weeklyLogs?.length || 0,
+            total_hours: weeklyLogs?.reduce((sum, log) => sum + (Number(log.hours_worked) || 0), 0) || 0,
+            average_attendance: avgAttendance,
             overall_score: Math.round(avgScore),
             letter_grade: getGrade(avgScore),
-            weekly_breakdown: weeklyLogs?.map(log => ({
-              week_number: log.week_number,
-              score: log.score || 0,
-              max_score: log.max_score || 20,
-              hours: log.hours_worked || 0,
-              status: log.status,
-              remarks: log.supervisor_feedback,
-            })) || [],
+            weekly_breakdown:
+              weeklyLogs?.map((log) => ({
+                week_number: log.week_number,
+                score: 0, // weekly_logs has no score column
+                max_score: 10,
+                hours: Number(log.hours_worked) || 0,
+                status: log.status,
+                remarks: log.supervisor_feedback,
+              })) || [],
           },
           generated_at: new Date().toISOString(),
           generated_by: profile.full_name,
         },
       });
-
     } else if (reportType === "progress") {
-      // Generate overall progress report for all supervised students
-      let query = supabase
-        .from("students")
-        .select(`
-          id,
-          full_name,
-          email,
-          program_id,
-          avatar_url,
-          programs (name),
-          internships (
-            id,
-            title,
-            company_name,
-            status,
-            start_date,
-            end_date
-          )
-        `)
-        .in("program_id", programIds.length > 0 ? programIds : ["none"]); // Fallback if no programs
+      // Generate overall progress report for all supervised students.
+      const studentUserIds =
+        studentUserIdParam && supervisedStudentIds.includes(studentUserIdParam)
+          ? [studentUserIdParam]
+          : supervisedStudentIds;
 
-      if (studentId) {
-        query = query.eq("id", studentId);
+      // Fetch profiles for these students.
+      let profileMap: Record<string, { full_name: string; email: string }> = {};
+      if (studentUserIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, email")
+          .in("user_id", studentUserIds);
+        (profilesData || []).forEach((p: any) => {
+          profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
+        });
       }
 
-      const { data: students, error: studentsError } = await query;
-
-      if (studentsError) {
-        console.error("Error fetching students:", studentsError);
-        return NextResponse.json({ error: "Failed to fetch students" }, { status: 500 });
-      }
-
-      // Enrich with progress data for each student
+      // Enrich with progress data for each student.
       const enrichedStudents = await Promise.all(
-        (students || []).map(async (student) => {
-          // Get task completion stats
+        studentUserIds.map(async (studentUserId) => {
+          // Get task completion stats.
           const { count: totalTasks } = await supabase
             .from("task_assignments")
             .select("*", { count: "exact", head: true })
-            .eq("student_id", student.id);
+            .eq("student_user_id", studentUserId)
+            .eq("assigned_by", user.id);
 
           const { count: completedTasks } = await supabase
             .from("task_assignments")
             .select("*", { count: "exact", head: true })
-            .eq("student_id", student.id)
-            .eq("status", "completed");
+            .eq("student_user_id", studentUserId)
+            .eq("assigned_by", user.id)
+            .eq("status", "approved");
 
-          // Get latest weekly log
+          // Get latest weekly log.
           const { data: latestLog } = await supabase
             .from("weekly_logs")
             .select("*")
-            .eq("student_id", student.id)
+            .eq("student_user_id", studentUserId)
             .order("week_number", { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
-          // Get evaluation summary
+          // Get evaluation summary (scores JSONB only — no total_score/max_score).
           const { data: evals } = await supabase
             .from("evaluations")
-            .select("total_score, max_score")
-            .eq("student_id", student.id)
-            .eq("status", "completed");
+            .select("scores, status")
+            .eq("student_user_id", studentUserId)
+            .eq("evaluator_id", user.id)
+            .in("status", ["submitted", "approved"]);
 
-          const avgEvalScore = evals && evals.length > 0
-            ? evals.reduce((sum, e) => sum + ((e.total_score || 0) / (e.max_score || 1)) * 100, 0) / evals.length
-            : 0;
+          let avgEvalScore = 0;
+          if (evals && evals.length > 0) {
+            const totals = evals.map((e) => {
+              const scoresObj = e.scores && typeof e.scores === "object" ? e.scores : {};
+              const vals = Object.values(scoresObj).filter(
+                (v): v is number => typeof v === "number"
+              );
+              const total = vals.reduce((s, v) => s + v, 0);
+              const max = vals.length * 10 || 1;
+              return (total / max) * 100;
+            });
+            avgEvalScore = totals.reduce((s, v) => s + v, 0) / totals.length;
+          }
 
           return {
-            ...student,
+            user_id: studentUserId,
+            name: profileMap[studentUserId]?.full_name || "Unknown Student",
+            email: profileMap[studentUserId]?.email || "",
             progress: {
-              task_completion_rate: totalTasks ? Math.round(((completedTasks || 0) / totalTasks) * 100) : 0,
+              task_completion_rate: totalTasks
+                ? Math.round(((completedTasks || 0) / totalTasks) * 100)
+                : 0,
               total_tasks: totalTasks || 0,
               completed_tasks: completedTasks || 0,
               latest_week_log: latestLog || null,
@@ -343,7 +381,6 @@ export async function GET(request: Request) {
           generated_by: profile.full_name,
         },
       });
-
     } else {
       return NextResponse.json(
         { error: "Invalid report_type. Use: weekly, final, or progress" },
@@ -356,21 +393,21 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Create/save a report template or generate certificate
+// POST: Save supervisor remarks / generate certificate / create report template
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get supervisor's profile
+    // profiles PK is user_id.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name")
+      .select("user_id, role, full_name, university_id")
       .eq("user_id", user.id)
       .single();
 
@@ -382,33 +419,25 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const {
-      action, // 'save_remarks', 'generate_certificate', 'create_report_template'
-      student_id,
-      report_data,
-      remarks,
-      coordinator_signature,
-    } = body;
+    const { action, student_user_id, report_data, remark, remarks, coordinator_signature } = body;
 
     if (action === "save_remarks") {
-      // Save supervisor remarks on a weekly log or final evaluation
-      if (!student_id || !remarks) {
+      // supervisor_remarks has student_user_id (not student_id), remark
+      // (singular, not remarks), no updated_at, and NO unique constraint on
+      // (student_user_id, supervisor_id) — so we use plain insert, not upsert.
+      const remarkText = remark || remarks;
+      if (!student_user_id || !remarkText) {
         return NextResponse.json(
-          { error: "Student ID and remarks are required" },
+          { error: "student_user_id and remark are required" },
           { status: 400 }
         );
       }
 
-      const { error } = await supabase
-        .from("supervisor_remarks")
-        .upsert({
-          student_id,
-          supervisor_id: user.id,
-          remarks,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: "student_id,supervisor_id"
-        });
+      const { error } = await supabase.from("supervisor_remarks").insert({
+        student_user_id,
+        supervisor_id: user.id,
+        remark: remarkText,
+      });
 
       if (error) {
         console.error("Error saving remarks:", error);
@@ -419,12 +448,13 @@ export async function POST(request: Request) {
         success: true,
         message: "Remarks saved successfully",
       });
-
     } else if (action === "generate_certificate") {
-      // Record that a certificate was generated
-      if (!student_id || !report_data) {
+      // certificates has student_user_id (not student_id), title (required),
+      // certificate_number, issued_at, issued_by, status, metadata. There is
+      // no certificate_type / grade / issue_date / data / coordinator_signature.
+      if (!student_user_id || !report_data) {
         return NextResponse.json(
-          { error: "Student ID and report data are required" },
+          { error: "student_user_id and report_data are required" },
           { status: 400 }
         );
       }
@@ -432,21 +462,25 @@ export async function POST(request: Request) {
       const { data: certificate, error } = await supabase
         .from("certificates")
         .insert({
-          student_id,
+          student_user_id,
           issued_by: user.id,
-          certificate_type: "internship_completion",
-          certificate_id: report_data.certificate_id,
-          grade: report_data.final_grade,
-          issue_date: report_data.issue_date,
-          data: report_data,
-          coordinator_signature: coordinator_signature || null,
+          title: report_data.title || "Internship Completion Certificate",
+          certificate_number: report_data.certificate_id || `CERT-${Date.now()}`,
+          status: "issued",
+          metadata: {
+            ...(report_data || {}),
+            coordinator_signature: coordinator_signature || null,
+          },
         })
         .select()
         .single();
 
       if (error) {
         console.error("Error generating certificate:", error);
-        return NextResponse.json({ error: "Failed to generate certificate" }, { status: 500 });
+        return NextResponse.json(
+          { error: "Failed to generate certificate (check RLS — faculty_supervisor may not be in cert_insert)" },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({
@@ -454,14 +488,14 @@ export async function POST(request: Request) {
         data: certificate,
         message: "Certificate generated successfully",
       });
-
     } else if (action === "create_report_template") {
-      // Create a custom report template
-      const { template_name, template_config } = body;
+      // report_templates has university_id, name, type, format, parameters,
+      // created_by, created_at. No `config` or `scope` columns.
+      const { template_name, template_config, template_type, template_format } = body;
 
-      if (!template_name || !template_config) {
+      if (!template_name) {
         return NextResponse.json(
-          { error: "Template name and config are required" },
+          { error: "Template name is required" },
           { status: 400 }
         );
       }
@@ -470,9 +504,11 @@ export async function POST(request: Request) {
         .from("report_templates")
         .insert({
           name: template_name,
+          type: template_type || "custom",
+          format: template_format || "csv",
+          parameters: template_config || {},
           created_by: user.id,
-          config: template_config,
-          scope: "faculty_supervisor",
+          university_id: profile.university_id,
         })
         .select()
         .single();
@@ -487,7 +523,6 @@ export async function POST(request: Request) {
         data: template,
         message: "Report template created successfully",
       });
-
     } else {
       return NextResponse.json(
         { error: "Invalid action. Use: save_remarks, generate_certificate, or create_report_template" },
