@@ -63,7 +63,7 @@ const statCardVariants = {
     transition: {
       delay: i * 0.1,
       duration: 0.5,
-      ease: "easeOut",
+      ease: "easeOut" as const,
     },
   }),
 };
@@ -77,14 +77,20 @@ export default function UniversityAdminDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+
+    // If we don't yet know which university this admin belongs to, don't
+    // fetch — but DO clear the loading state so the page renders with
+    // an empty-state instead of a perpetual spinner.
+    if (!universityId) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
       setError(null);
       const supabase = createClient();
-      
-      const universityId = profile?.university_id || university?.id;
 
       // Fetch all stats in parallel
       const [
@@ -439,6 +445,20 @@ export default function UniversityAdminDashboard() {
               <Button variant="ghost" size="sm" onClick={fetchDashboardData}>
                 Retry
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !profile?.university_id && !university?.id ? (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center justify-center text-center">
+              <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No university assigned</h3>
+              <p className="text-muted-foreground mb-4 max-w-md">
+                Your admin account is not linked to a university yet. Please ask
+                a Super Admin to assign you to a university before you can manage
+                students, departments, or coordinators.
+              </p>
             </div>
           </CardContent>
         </Card>

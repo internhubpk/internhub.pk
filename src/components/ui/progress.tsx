@@ -1,31 +1,45 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import * as ProgressPrimitive from "@radix-ui/react-progress"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-import { cn } from "@/lib/utils"
-
-function Progress({
-  className,
-  value,
-  ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root>) {
-  return (
-    <ProgressPrimitive.Root
-      data-slot="progress"
-      className={cn(
-        "bg-primary/20 relative h-2 w-full overflow-hidden rounded-full",
-        className
-      )}
-      {...props}
-    >
-      <ProgressPrimitive.Indicator
-        data-slot="progress-indicator"
-        className="bg-primary h-full w-full flex-1 transition-all"
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-      />
-    </ProgressPrimitive.Root>
-  )
+interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
+  value?: number;
+  max?: number;
 }
 
-export { Progress }
+/**
+ * Lightweight horizontal progress bar. Mirrors the shadcn/ui API
+ * (value 0–100) but does not depend on radix, so it's safe to use
+ * anywhere in the app.
+ */
+const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
+  ({ className, value = 0, max = 100, ...props }, ref) => {
+    const clamped = Math.max(0, Math.min(max, value));
+    const pct = max > 0 ? (clamped / max) * 100 : 0;
+
+    return (
+      <div
+        ref={ref}
+        role="progressbar"
+        aria-valuenow={clamped}
+        aria-valuemin={0}
+        aria-valuemax={max}
+        className={cn(
+          "relative h-2 w-full overflow-hidden rounded-full bg-muted",
+          className
+        )}
+        {...props}
+      >
+        <div
+          className="h-full bg-primary transition-all duration-300 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    );
+  }
+);
+
+Progress.displayName = "Progress";
+
+export { Progress };

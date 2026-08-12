@@ -90,12 +90,18 @@ export default function CoordinatorsPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const fetchCoordinators = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+
+    // No university assigned yet — clear loading state so the page can
+    // render an empty state instead of a perpetual spinner.
+    if (!universityId) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       // Build query
       let query = supabase
@@ -117,7 +123,7 @@ export default function CoordinatorsPage() {
       const coordinatorsWithDetails: CoordinatorWithDetails[] = [];
       
       for (const coord of (data || [])) {
-        let deptInfo = null;
+        let deptInfo: { name: string | null; code: string | null } | null = null;
         
         if (coord.department_id) {
           const { data: dept } = await supabase
@@ -126,7 +132,7 @@ export default function CoordinatorsPage() {
             .eq("id", coord.department_id)
             .single();
           
-          deptInfo = dept;
+          deptInfo = dept as { name: string | null; code: string | null } | null;
         }
 
         coordinatorsWithDetails.push({
@@ -162,11 +168,11 @@ export default function CoordinatorsPage() {
   }, [profile?.university_id, university?.id, searchQuery, showInactive, toast]);
 
   const fetchDepartments = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+    if (!universityId) return;
 
     try {
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       const { data, error } = await supabase
         .from("departments")
@@ -227,61 +233,42 @@ export default function CoordinatorsPage() {
 
     try {
       setIsSubmitting(true);
-      const supabase = createClient();
 
-      // Create auth user using admin API
-      const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
-        email: formData.email.trim(),
-        password: formData.password,
-        email_confirm: true,
-        user_metadata: {
+      // Call the server-side admin route. This uses the service role key
+      // to call supabase.auth.admin.createUser(), which does NOT establish
+      // a session for the new user — so the currently-signed-in
+      // University Admin stays signed in. Calling admin.createUser() from
+      // the browser does NOT work (requires the service_role key, which
+      // is never exposed to the client).
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email.trim(),
+          password: formData.password,
           full_name: formData.full_name.trim(),
           role: "department_coordinator",
-        },
+          department_id: formData.department_id || undefined,
+        }),
       });
 
-      if (createUserError) {
-        console.error("Error creating user:", createUserError);
-        
-        if (createUserError.message?.includes("already registered")) {
+      const json = await res.json();
+
+      if (!res.ok || !json?.success) {
+        if (json?.error?.toLowerCase?.().includes("already")) {
           toast({
             title: "Email Already Exists",
             description: "An account with this email already exists",
             variant: "destructive",
           });
-          return;
+        } else {
+          toast({
+            title: "Error",
+            description: json?.error || `Request failed (${res.status})`,
+            variant: "destructive",
+          });
         }
-        
-        throw createUserError;
-      }
-
-      if (!newUser?.user) {
-        throw new Error("Failed to create user account");
-      }
-
-      // Create profile
-      const universityId = profile?.university_id || university?.id;
-      
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          user_id: newUser.user.id,
-          email: formData.email.trim(),
-          full_name: formData.full_name.trim(),
-          first_name: formData.full_name.split(' ')[0],
-          last_name: formData.full_name.split(' ').slice(1).join(' ') || null,
-          role: "department_coordinator",
-          university_id: universityId,
-          department_id: formData.department_id || null,
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-
-      if (profileError) {
-        // Clean up auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(newUser.user.id);
-        throw profileError;
+        return;
       }
 
       toast({

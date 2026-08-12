@@ -89,12 +89,18 @@ export default function DepartmentsPage() {
   const [potentialHeads, setPotentialHeads] = useState<Profile[]>([]);
 
   const fetchDepartments = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+
+    // No university assigned yet — clear loading state so the page can
+    // render an empty state instead of a perpetual spinner.
+    if (!universityId) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       // Build query
       let query = supabase
@@ -168,11 +174,11 @@ export default function DepartmentsPage() {
   }, [profile?.university_id, university?.id, searchQuery, showInactive, toast]);
 
   const fetchPotentialHeads = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+    if (!universityId) return;
 
     try {
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       const { data, error } = await supabase
         .from("profiles")

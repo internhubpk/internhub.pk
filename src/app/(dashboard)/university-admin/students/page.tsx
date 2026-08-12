@@ -94,12 +94,18 @@ export default function UniversityAdminStudentsPage() {
   const onInternship = students.filter(s => s.internshipStatus === "active").length;
 
   const fetchStudents = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+
+    // No university assigned yet — clear loading state so the page can
+    // render an empty state instead of a perpetual spinner.
+    if (!universityId) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       // Build base query for student profiles
       let query = supabase
@@ -124,7 +130,7 @@ export default function UniversityAdminStudentsPage() {
       const studentsWithDetails: StudentWithDetails[] = [];
       
       for (const student of (data || [])) {
-        let deptInfo = null;
+        let deptInfo: { name: string | null; code: string | null } | null = null;
         
         if (student.department_id) {
           const { data: dept } = await supabase
@@ -133,24 +139,24 @@ export default function UniversityAdminStudentsPage() {
             .eq("id", student.department_id)
             .single();
           
-          deptInfo = dept;
+          deptInfo = dept as { name: string | null; code: string | null } | null;
         }
 
         // Get student-specific details if available
-        let studentDetails = null;
+        let studentDetails: { enrollment_number: string | null; program_id: string | null; cgpa: number | null; status: string | null } | null = null;
         try {
           const { data: details } = await supabase
             .from("students")
             .select("enrollment_number, program_id, cgpa, status")
             .eq("user_id", student.user_id)
             .single();
-          studentDetails = details;
+          studentDetails = details as { enrollment_number: string | null; program_id: string | null; cgpa: number | null; status: string | null } | null;
         } catch (e) {
           // Students table might not have this user yet
         }
 
         // Get program name if available
-        let programName = null;
+        let programName: string | null = null;
         if (studentDetails?.program_id) {
           const { data: program } = await supabase
             .from("programs")
@@ -161,7 +167,7 @@ export default function UniversityAdminStudentsPage() {
         }
 
         // Check for active internships
-        let internshipStatus = null;
+        let internshipStatus: string | null = null;
         try {
           const { data: internship } = await supabase
             .from("internships")
@@ -227,11 +233,11 @@ export default function UniversityAdminStudentsPage() {
   }, [profile?.university_id, university?.id, filters, toast]);
 
   const fetchDepartments = useCallback(async () => {
-    if (!profile?.university_id && !university?.id) return;
+    const universityId = profile?.university_id || university?.id;
+    if (!universityId) return;
 
     try {
       const supabase = createClient();
-      const universityId = profile?.university_id || university?.id;
 
       const { data, error } = await supabase
         .from("departments")
