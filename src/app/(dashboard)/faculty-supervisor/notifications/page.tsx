@@ -994,13 +994,54 @@ export default function FacultySupervisorNotificationsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-4 border-t">
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      if (!selectedNotification) return;
+                      // Pre-fill the compose form with this notification's
+                      // content so the user can quickly send a similar one.
+                      setComposeForm({
+                        title: selectedNotification.title,
+                        message: selectedNotification.message,
+                        priority: selectedNotification.priority,
+                        target: "all",
+                        selectedStudentId: "",
+                        selectedProgramId: "",
+                      });
+                      setIsViewDialogOpen(false);
+                      setIsComposeDialogOpen(true);
+                    }}
+                  >
                     <Copy className="h-4 w-4" /> Duplicate
                   </Button>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      if (!selectedNotification) return;
+                      setComposeForm({
+                        title: selectedNotification.title,
+                        message: selectedNotification.message,
+                        priority: selectedNotification.priority,
+                        target: "all",
+                        selectedStudentId: "",
+                        selectedProgramId: "",
+                      });
+                      setIsViewDialogOpen(false);
+                      setIsComposeDialogOpen(true);
+                    }}
+                  >
                     <Forward className="h-4 w-4" /> Resend
                   </Button>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => window.print()}
+                  >
                     <Printer className="h-4 w-4" /> Print
                   </Button>
                 </div>

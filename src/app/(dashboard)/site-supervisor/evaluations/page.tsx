@@ -1186,14 +1186,6 @@ export default function SiteSupervisorEvaluationsPage() {
                 Reset Form
               </Button>
               <Button
-                type="button"
-                variant="secondary"
-                disabled={!formData.studentId}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Draft
-              </Button>
-              <Button
                 type="submit"
                 disabled={!formData.studentId || !formData.signatureData}
                 size="lg"
@@ -1288,10 +1280,20 @@ export default function SiteSupervisorEvaluationsPage() {
                               <Eye className="h-4 w-4 mr-1" />
                               View
                             </Button>
-                            <Button variant="outline" size="icon">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => window.print()}
+                              title="Print"
+                            >
                               <Printer className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="icon">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => window.print()}
+                              title="Save as PDF"
+                            >
                               <Download className="h-4 w-4" />
                             </Button>
                           </div>
@@ -1464,11 +1466,11 @@ export default function SiteSupervisorEvaluationsPage() {
 
                 {/* Actions */}
                 <div className="flex gap-2 justify-end">
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => window.print()}>
                     <Printer className="h-4 w-4 mr-2" />
                     Print
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => window.print()}>
                     <Download className="h-4 w-4 mr-2" />
                     Export PDF
                   </Button>

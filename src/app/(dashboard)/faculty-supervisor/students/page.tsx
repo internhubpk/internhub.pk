@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { useSearchParams } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
@@ -150,6 +151,7 @@ const DEFAULT_ATTENDANCE: Record<string, AttendanceSummary> = {};
 
 export default function FacultySupervisorStudentsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>(DEFAULT_STUDENTS);
   const [tasks, setTasks] = useState<Record<string, TaskItem[]>>(DEFAULT_TASKS);
@@ -163,6 +165,57 @@ export default function FacultySupervisorStudentsPage() {
   const [progressFilter, setProgressFilter] = useState<string>("all");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // CSV export of the currently-loaded students list. Real download —
+  // builds the CSV in-memory and triggers a browser download. Mirrors
+  // the pattern at external-evaluator/evaluations/page.tsx and
+  // company-hr/attendance/page.tsx.
+  const handleExport = useCallback(() => {
+    if (!students || students.length === 0) {
+      alert("No students to export.");
+      return;
+    }
+    const headers = [
+      "Name",
+      "Email",
+      "Program",
+      "Company",
+      "Progress (%)",
+      "Status",
+      "Last Activity",
+    ];
+    const escape = (v: string) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
+    const rows = students.map((s) =>
+      [
+        escape(s.name),
+        escape(s.email),
+        escape(s.program),
+        escape(s.company),
+        escape(String(s.overallProgress ?? 0)),
+        escape(s.status),
+        escape(s.lastActivity || ""),
+      ].join(",")
+    );
+    const csv = [headers.map(escape).join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `faculty-supervisor-students-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [students]);
+
+  // Open the student detail dialog. Used by both the desktop table row
+  // and the mobile/grid "Details" button — previously the grid Details
+  // button had no onClick and was non-functional.
+  const openStudentDetail = useCallback((student: Student) => {
+    setSelectedStudent(student);
+    setIsDetailOpen(true);
+  }, []);
+
 
   // Fetch data from database
   useEffect(() => {
@@ -548,7 +601,12 @@ export default function FacultySupervisorStudentsPage() {
         description="Monitor and support your assigned interns across programs"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleExport}
+              disabled={students.length === 0}
+            >
               <Download className="h-4 w-4" />
               Export
             </Button>
@@ -677,7 +735,12 @@ export default function FacultySupervisorStudentsPage() {
 
                 <div className="flex items-center justify-between pt-2 border-t">
                   <StatusBadge status={student.weeklyLogStatus} />
-                  <Button variant="ghost" size="sm" className="gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => openStudentDetail(student)}
+                  >
                     <Eye className="h-3 w-3" /> Details
                   </Button>
                 </div>
@@ -918,14 +981,32 @@ export default function FacultySupervisorStudentsPage() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-4 border-t">
-                    <Button variant="outline" className="gap-2">
-                      <MessageSquare className="h-4 w-4" /> Send Message
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      asChild
+                    >
+                      <Link href="/faculty-supervisor/notifications">
+                        <MessageSquare className="h-4 w-4" /> Send Message
+                      </Link>
                     </Button>
-                    <Button variant="secondary" className="gap-2">
-                      <Star className="h-4 w-4" /> Evaluate
+                    <Button
+                      variant="secondary"
+                      className="gap-2"
+                      asChild
+                    >
+                      <Link
+                        href={`/faculty-supervisor/evaluations?student=${selectedStudent?.id || ""}`}
+                      >
+                        <Star className="h-4 w-4" /> Evaluate
+                      </Link>
                     </Button>
-                    <Button className="gap-2">
-                      <Eye className="h-4 w-4" /> Full Profile
+                    <Button className="gap-2" asChild>
+                      <Link
+                        href={`/faculty-supervisor/weekly-logs?student=${selectedStudent?.id || ""}`}
+                      >
+                        <Eye className="h-4 w-4" /> Weekly Logs
+                      </Link>
                     </Button>
                   </div>
                 </TabsContent>

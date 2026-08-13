@@ -139,7 +139,7 @@ export default function FacultySupervisorDashboard() {
       ).length;
 
       // Run all the remaining stats + section queries in parallel.
-      const [pendingRes, completedRes, recentSubsRes, tasksRes, weeklyLogsRes] =
+      const [pendingRes, completedRes, recentSubsRes, tasksRes, weeklyLogsRes, taskSubsForSupervisorRes] =
         await Promise.all([
           supervisedStudentIds.length > 0
             ? supabase
@@ -192,7 +192,35 @@ export default function FacultySupervisorDashboard() {
                 .select("student_user_id, status, week_start_date")
                 .in("student_user_id", supervisedStudentIds)
             : Promise.resolve({ data: [] }),
+          // All task_submissions by this supervisor's students —
+          // used to compute the real pending/completed task-submission
+          // counts (replacing the previously hardcoded 0/0 values that
+          // made the "Tasks Completed" stat card always show 0).
+          // We filter by student_user_id (NOT task_id) because the
+          // supervisor cares about their students' submissions,
+          // regardless of which supervisor created the task.
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("task_submissions")
+                .select("id, status")
+                .in("student_user_id", supervisedStudentIds)
+            : Promise.resolve({ data: [] }),
         ]);
+
+      // Compute real pending/completed task-submission counts.
+      // `pending` = submissions waiting for review (status "submitted" or "pending").
+      // `completed` = submissions that have been reviewed (status "approved" or "rejected").
+      const taskSubsRows: any[] = (taskSubsForSupervisorRes as any)?.data || [];
+      let tasksPendingCount = 0;
+      let tasksCompletedCount = 0;
+      taskSubsRows.forEach((s) => {
+        const st = (s.status || "").toLowerCase();
+        if (st === "approved" || st === "rejected") {
+          tasksCompletedCount += 1;
+        } else if (st === "submitted" || st === "pending" || st === "in_review") {
+          tasksPendingCount += 1;
+        }
+      });
 
       // Map assigned internships to the StudentOverview shape, computing a
       // simple progress proxy from weekly_logs (approved / total).
@@ -272,8 +300,8 @@ export default function FacultySupervisorDashboard() {
         activeInternships: activeInternshipsCount,
         pendingReviews: pendingRes.count || 0,
         evaluationsCompleted: completedRes.count || 0,
-        tasksPending: 0,
-        tasksCompleted: 0,
+        tasksPending: tasksPendingCount,
+        tasksCompleted: tasksCompletedCount,
         tasksOverdue: taskItems.length,
         avgProgress,
       });
@@ -587,8 +615,15 @@ export default function FacultySupervisorDashboard() {
                         {getPriorityBadge(task.priority)}
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8">
-                      <Eye className="h-4 w-4" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 h-8 w-8"
+                      asChild
+                    >
+                      <Link href="/faculty-supervisor/tasks">
+                        <Eye className="h-4 w-4" />
+                      </Link>
                     </Button>
                   </div>
                 ))}

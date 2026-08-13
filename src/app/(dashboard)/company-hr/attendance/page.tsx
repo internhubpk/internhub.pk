@@ -483,7 +483,7 @@ export default function CompanyHRAttendancePage() {
           </div>
 
           {/* Records Table */}
-          <Card>
+          <Card id="attendance-records-table">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -648,7 +648,25 @@ export default function CompanyHRAttendancePage() {
 
                       <div className="mt-3 pt-3 border-t flex justify-between text-sm text-muted-foreground">
                         <span>Total Days: {summary.total_days}</span>
-                        <Button variant="link" size="sm" className="h-auto p-0">
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0"
+                          onClick={() => {
+                            // Filter the records table below to just this
+                            // intern. The records table reads `searchTerm`
+                            // for filtering, so setting it to the intern's
+                            // name effectively drills in. The user can
+                            // clear the search box to see all records again.
+                            setSearchTerm(summary.intern_name);
+                            // Scroll the records table into view so the
+                            // user sees the filtered result.
+                            const tableEl = document.getElementById("attendance-records-table");
+                            if (tableEl) {
+                              tableEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }
+                          }}
+                        >
                           View Details →
                         </Button>
                       </div>

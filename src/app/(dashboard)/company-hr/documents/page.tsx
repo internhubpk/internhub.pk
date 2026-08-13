@@ -518,14 +518,58 @@ export default function CompanyHRDocumentsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (doc.file_url) {
+                                  window.open(doc.file_url, "_blank", "noopener,noreferrer");
+                                }
+                              }}
+                              disabled={!doc.file_url}
+                            >
                               <Eye className="mr-2 h-4 w-4" /> View
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (!doc.file_url) return;
+                                // Trigger a real browser download by creating
+                                // an anchor element with the `download` attribute.
+                                // Cross-origin URLs may ignore the suggested
+                                // filename, in which case the browser falls
+                                // back to the URL's basename.
+                                const a = document.createElement("a");
+                                a.href = doc.file_url;
+                                a.download = doc.file_name || "download";
+                                a.target = "_blank";
+                                a.rel = "noopener noreferrer";
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              disabled={!doc.file_url}
+                            >
                               <Download className="mr-2 h-4 w-4" /> Download
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive focus:text-destructive">
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={async () => {
+                                if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
+                                try {
+                                  const res = await fetch(`/api/company-hr/documents/${doc.id}`, {
+                                    method: "DELETE",
+                                  });
+                                  if (res.ok) {
+                                    // Refresh the documents list on success.
+                                    window.location.reload();
+                                  } else {
+                                    const err = await res.json().catch(() => ({}));
+                                    alert(err.error || "Failed to delete document.");
+                                  }
+                                } catch (e) {
+                                  alert("Network error while deleting document.");
+                                }
+                              }}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" /> Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>

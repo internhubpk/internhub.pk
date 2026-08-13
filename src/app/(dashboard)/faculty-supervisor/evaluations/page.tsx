@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -185,14 +185,58 @@ export default function FacultySupervisorEvaluationsPage() {
   const [evaluationHistory, setEvaluationHistory] = useState<EvaluationRecord[]>(DEFAULT_EVALUATION_HISTORY);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReport[]>(DEFAULT_WEEKLY_REPORTS);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  
+
   // Dialog states
   const [isEvaluateDialogOpen, setIsEvaluateDialogOpen] = useState(false);
+
+  // CSV export of the evaluation history. Mirrors the pattern at
+  // external-evaluator/evaluations/page.tsx.
+  const handleExport = useCallback(() => {
+    if (!evaluationHistory || evaluationHistory.length === 0) {
+      alert("No evaluations to export.");
+      return;
+    }
+    const headers = [
+      "Student",
+      "Type",
+      "Title",
+      "Submitted At",
+      "Evaluated At",
+      "Status",
+      "Score",
+      "Max Score",
+      "Comments",
+    ];
+    const escape = (v: string) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
+    const rows = evaluationHistory.map((e) =>
+      [
+        escape(e.studentName),
+        escape(e.type),
+        escape(e.title),
+        escape(e.submittedAt || ""),
+        escape(e.evaluatedAt || ""),
+        escape(e.status),
+        escape(String(e.score ?? 0)),
+        escape(String(e.maxScore ?? 0)),
+        escape(e.evaluatorComments || ""),
+      ].join(",")
+    );
+    const csv = [headers.map(escape).join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `faculty-supervisor-evaluations-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [evaluationHistory]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<PendingEvaluation | null>(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<EvaluationRecord | null>(null);
@@ -651,7 +695,12 @@ export default function FacultySupervisorEvaluationsPage() {
         title="Evaluation Center"
         description="Review submissions, grade students, and generate reports"
         actions={
-          <Button variant="outline" className="gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExport}
+            disabled={evaluationHistory.length === 0}
+          >
             <Download className="h-4 w-4" /> Export Data
           </Button>
         }
@@ -759,14 +808,11 @@ export default function FacultySupervisorEvaluationsPage() {
 
                       {/* Actions */}
                       <div className="flex lg:flex-col gap-2 lg:w-[140px] shrink-0 justify-end">
-                        <Button 
+                        <Button
                           onClick={() => openEvaluateDialog(evaluation)}
                           className="gap-2"
                         >
                           <Star className="h-4 w-4" /> Evaluate
-                        </Button>
-                        <Button variant="outline" className="gap-2">
-                          <Eye className="h-4 w-4" /> View
                         </Button>
                       </div>
                     </div>
@@ -948,19 +994,48 @@ export default function FacultySupervisorEvaluationsPage() {
                         </p>
                       )}
                       <div className="flex gap-2 mt-auto">
-                        <Button variant="outline" size="sm" className="gap-1 flex-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1 flex-1"
+                          onClick={() => {
+                            // Open the View dialog with the report's data.
+                            // The dialog below (isViewDialogOpen) renders a
+                            // read-only summary of selectedHistoryItem, so
+                            // we map the weekly report fields onto it.
+                            setSelectedHistoryItem({
+                              id: String(report.id),
+                              studentName: report.studentName,
+                              type: "weekly_log",
+                              title: `Weekly Report — Week ${report.weekNumber}`,
+                              submittedAt: report.weekEnd,
+                              evaluatedAt: report.status === "approved" ? report.weekEnd : "",
+                              status: report.status,
+                              score: report.overallScore,
+                              maxScore: 100,
+                              evaluatorComments: report.supervisorRemarks,
+                            });
+                            setIsViewDialogOpen(true);
+                          }}
+                        >
                           <Eye className="h-3 w-3" /> View
                         </Button>
                         {report.status !== "approved" && (
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             className="gap-1 flex-1"
                             onClick={() => handleApproveReport(report.id)}
                           >
                             <CheckCircle2 className="h-3 w-3" /> Approve
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => window.print()}
+                          title="Print"
+                        >
                           <Printer className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1018,7 +1093,24 @@ export default function FacultySupervisorEvaluationsPage() {
                                 ({formatFileSize(file.size)})
                               </span>
                             </div>
-                            <Button variant="ghost" size="sm">Download</Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!file.url) return;
+                                const a = document.createElement("a");
+                                a.href = file.url;
+                                a.download = file.name || "download";
+                                a.target = "_blank";
+                                a.rel = "noopener noreferrer";
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              disabled={!file.url}
+                            >
+                              Download
+                            </Button>
                           </div>
                         ))}
                       </div>

@@ -134,11 +134,66 @@ export default function FacultySupervisorReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  
+
   // Dialog states
   const [isMarksheetDialogOpen, setIsMarksheetDialogOpen] = useState(false);
   const [isCertificateDialogOpen, setIsCertificateDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentForReport | null>(null);
+
+  // CSV export of all students' summary data (the per-student marksheet
+  // is exported separately via the Print Marksheet / Download PDF buttons
+  // in the marksheet dialog). Mirrors the CSV pattern used across the
+  // other faculty-supervisor pages.
+  const handleExportAll = () => {
+    if (!students || students.length === 0) {
+      alert("No students to export.");
+      return;
+    }
+    const headers = [
+      "Name",
+      "Email",
+      "Student ID",
+      "Program",
+      "Company",
+      "Internship",
+      "Start Date",
+      "End Date",
+      "Status",
+      "Progress (%)",
+      "Final Grade",
+      "GPA",
+      "CGPA",
+    ];
+    const escape = (v: string) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
+    const rows = students.map((s) =>
+      [
+        escape(s.name),
+        escape(s.email),
+        escape(s.studentIdNumber || ""),
+        escape(s.program),
+        escape(s.company),
+        escape(s.internshipTitle),
+        escape(s.startDate || ""),
+        escape(s.endDate || ""),
+        escape(s.status),
+        escape(String(s.overallProgress ?? 0)),
+        escape(s.finalGrade || ""),
+        escape(s.gpa != null ? String(s.gpa) : ""),
+        escape(s.cgpa != null ? String(s.cgpa) : ""),
+      ].join(",")
+    );
+    const csv = [headers.map(escape).join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `faculty-supervisor-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   
   // Certificate form state
   const [certificateForm, setCertificateForm] = useState({
@@ -679,7 +734,12 @@ export default function FacultySupervisorReportsPage() {
         title="Reports & Certificates"
         description="Generate marksheets, certificates, and progress reports"
         actions={
-          <Button variant="outline" className="gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExportAll}
+            disabled={students.length === 0}
+          >
             <Download className="h-4 w-4" /> Export All Data
           </Button>
         }
@@ -1027,7 +1087,7 @@ export default function FacultySupervisorReportsPage() {
                   <Button variant="outline" className="gap-2" onClick={() => window.print()}>
                     <Printer className="h-4 w-4" /> Print Marksheet
                   </Button>
-                  <Button className="gap-2">
+                  <Button className="gap-2" onClick={() => window.print()}>
                     <Download className="h-4 w-4" /> Download PDF
                   </Button>
                   <Button 

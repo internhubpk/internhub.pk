@@ -4,7 +4,9 @@ import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +57,8 @@ import {
   Globe2,
   Star,
   AlertCircle,
+  Loader2,
+  User,
 } from "lucide-react";
 
 // Default empty internship - will be populated from database
@@ -105,6 +109,7 @@ const fadeInUp = {
 export default function InternshipDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user, profile } = useAuth();
   const [internship, setInternship] = useState<Internship & {
     company_name: string;
     company_logo_url?: string;
@@ -121,6 +126,7 @@ export default function InternshipDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
+  const [hasExistingApplication, setHasExistingApplication] = useState(false);
   const [applicationData, setApplicationData] = useState({
     coverLetter: "",
     resumeUrl: "",
@@ -140,7 +146,14 @@ export default function InternshipDetailPage() {
       try {
         const supabase = createClient();
         
-        // Fetch internship with company details
+        // Fetch internship with company details.
+        // IMPORTANT: the status filter here MUST match the list page's
+        // filter (["open", "active", "published"]) — otherwise an
+        // internship shown on the marketplace list would 404 when the
+        // user clicks into it. The previous code used `.eq("status",
+        // "published")` exclusively, which broke for any internship
+        // whose status was "open" or "active" (the values company HR
+        // actually sets when publishing).
         const { data: internshipData, error } = await supabase
           .from("internships")
           .select(`
@@ -148,12 +161,16 @@ export default function InternshipDetailPage() {
             company:companies(name, logo_url, description, website, size, industry)
           `)
           .eq("id", internshipId)
-          .eq("status", "published")
-          .single();
+          .in("status", ["open", "active", "published"])
+          .maybeSingle();
 
         if (error || !internshipData) {
           console.error("Error fetching internship:", error);
-          return; // Keep default/empty state
+          // Mark as not-found by setting an empty internship (the
+          // !internship.id check below catches this and shows the
+          // "Internship Not Found" UI).
+          setInternship(DEFAULT_INTERNSHIP);
+          return;
         }
 
         const formattedData: typeof internship = {
@@ -168,16 +185,41 @@ export default function InternshipDetailPage() {
 
         setInternship(formattedData);
 
+        // Check if the user has already applied (for the apply button
+        // state — show "Already Applied" instead of "Apply Now" when
+        // an application row already exists for this student + internship).
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: existingApp } = await supabase
+              .from("internship_applications")
+              .select("id, status")
+              .eq("internship_id", internshipId)
+              .eq("student_user_id", user.id)
+              .maybeSingle();
+            if (existingApp) {
+              setHasExistingApplication(true);
+            }
+          }
+        } catch {
+          // Not logged in — that's fine, the apply button will route
+          // them to /login when clicked.
+        }
+
         // Fetch similar internships (same category or company)
         const { data: similarData } = await supabase
           .from("internships")
-          .select(`id, title, company:companies(name), location, is_remote, is_paid, stipend, duration_weeks, skills`)
+          .select(`id, title, company:companies(name), location, is_remote, is_paid, stipend, duration_weeks, skills, image_url, status`)
           .neq("id", internshipId)
-          .eq("status", "published")
+          .in("status", ["open", "active", "published"])
           .limit(4);
 
         setSimilarInternships((similarData || []).map((s: any) => ({
           ...s,
+          // Postgres returns `remote` (the actual column name), but the
+          // Internship type expects `is_remote` (the back-compat alias).
+          // Normalize here so InternshipCard's `is_remote` read works.
+          is_remote: s.is_remote ?? s.remote ?? false,
           company_name: s.company?.name || "Unknown Company",
         })));
       } catch (error) {
@@ -209,17 +251,108 @@ export default function InternshipDetailPage() {
   }, [internship]);
 
   const handleSubmitApplication = async () => {
+    // Require authentication — non-students are blocked from applying.
+    if (!user) {
+      toast.info("Please sign in to apply", {
+        description: "You need a student account to submit applications.",
+        action: {
+          label: "Sign in",
+          onClick: () => router.push(`/login?returnUrl=/marketplace/${internshipId}`),
+        },
+      });
+      return;
+    }
+
+    if (profile?.role && profile.role !== "student") {
+      toast.error("Only students can apply", {
+        description: `Your account role is "${profile.role}". Apply with a student account instead.`,
+      });
+      return;
+    }
+
+    if (hasExistingApplication) {
+      toast.info("Already applied", {
+        description: "You've already applied to this internship. Track its status from your dashboard.",
+      });
+      setShowApplyModal(false);
+      return;
+    }
+
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    console.log("Submitting application:", applicationData);
-    setIsSubmitting(false);
-    setShowApplyModal(false);
-    
-    // Show success message (in real app, use toast)
-    alert("Application submitted successfully! You can track its status from your dashboard.");
+    try {
+      const supabase = createClient();
+
+      // Insert into internship_applications.
+      // The table schema (migration 0001) requires:
+      //   internship_id, student_user_id, company_id
+      // and accepts cover_letter + resume_url as optional fields.
+      // `status` defaults to 'pending' and applied_at/updated_at default
+      // to now() at the DB level.
+      const { error } = await supabase
+        .from("internship_applications")
+        .insert({
+          internship_id: internshipId,
+          student_user_id: user.id,
+          company_id: internship.company_id,
+          cover_letter: applicationData.coverLetter || null,
+          // The "resume" is currently just a filename captured client-
+          // side. Real resume upload is a separate feature — for now we
+          // store the filename so the company HR can at least see what
+          // the student named the file. NULL when no file was selected.
+          resume_url: applicationData.resumeUrl || null,
+          status: "pending",
+          applied_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        // The most common error is the UNIQUE(internship_id, student_user_id)
+        // constraint firing — i.e. the user already applied. Surface that
+        // as a friendly "already applied" message instead of a raw 409.
+        if (error.code === "23505") {
+          setHasExistingApplication(true);
+          toast.info("Already applied", {
+            description: "You've already applied to this internship.",
+          });
+          setShowApplyModal(false);
+          return;
+        }
+        throw error;
+      }
+
+      // Best-effort: bump internships.current_applicants so the marketplace
+      // card shows the updated applicant count without a re-fetch. Failure
+      // is non-fatal (the count is also re-computed by the company HR
+      // dashboard's query).
+      try {
+        await supabase.rpc("increment_applicant_count", { p_internship_id: internshipId });
+      } catch {
+        // The RPC may not exist on older deployments — silently ignore.
+      }
+
+      setHasExistingApplication(true);
+      toast.success("Application submitted!", {
+        description: "You can track its status from your dashboard.",
+        action: {
+          label: "View applications",
+          onClick: () => router.push("/student/applications"),
+        },
+      });
+      setShowApplyModal(false);
+      // Reset form for next time.
+      setApplicationData({
+        coverLetter: "",
+        resumeUrl: "",
+        additionalAnswers: {},
+      });
+    } catch (error) {
+      console.error("Error submitting application:", error);
+      toast.error("Couldn't submit application", {
+        description: error instanceof Error ? error.message : "Please try again later.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isLoading) {
@@ -298,10 +431,10 @@ export default function InternshipDetailPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero banner — internship cover image. Renders full-width above the
-            two-column layout when an image was uploaded. Object-cover + a
-            fixed aspect ratio keeps the page height predictable regardless of
-            the source image's dimensions. */}
-        {internship.image_url && (
+            two-column layout. When no image was uploaded we show a branded
+            gradient banner with the internship title overlaid, so the page
+            doesn't look bare for unpaid/draft posts. */}
+        {internship.image_url ? (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -316,6 +449,31 @@ export default function InternshipDetailPage() {
             {/* Gradient veil along the bottom for visual depth and so the
                 title (which appears below) doesn't fight a busy skyline. */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative w-full aspect-[1200/300] rounded-2xl overflow-hidden mb-8 shadow-sm bg-gradient-to-br from-primary/80 via-primary/60 to-primary/40"
+          >
+            {/* Decorative blurred orbs for visual interest */}
+            <div className="absolute -top-20 -right-20 w-72 h-72 bg-white/10 rounded-full blur-3xl" />
+            <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-white/10 rounded-full blur-3xl" />
+            {/* Title overlay */}
+            <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-10">
+              <Badge className="self-start mb-3 bg-white/20 text-white border-white/30 backdrop-blur">
+                <Briefcase className="h-3 w-3 mr-1" />
+                Internship
+              </Badge>
+              <h1 className="text-2xl md:text-4xl font-bold text-white drop-shadow-lg max-w-3xl">
+                {internship.title}
+              </h1>
+              <p className="text-white/80 mt-2 flex items-center gap-1.5">
+                <Building2 className="h-4 w-4" />
+                {internship.company_name}
+              </p>
+            </div>
           </motion.div>
         )}
 
@@ -489,147 +647,200 @@ export default function InternshipDetailPage() {
                   </div>
 
                   {/* Apply Button */}
-                  <Dialog open={showApplyModal} onOpenChange={setShowApplyModal}>
-                    <DialogTrigger asChild>
-                      <Button size="lg" className="w-full text-base py-6">
-                        Apply Now
-                        <ArrowRight className="h-4 w-4 ml-2" />
-                      </Button>
-                    </DialogTrigger>
+                  {hasExistingApplication ? (
+                    <Button size="lg" className="w-full text-base py-6" variant="secondary" disabled>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Already Applied
+                    </Button>
+                  ) : (
+                    <Dialog open={showApplyModal} onOpenChange={setShowApplyModal}>
+                      <DialogTrigger asChild>
+                        <Button size="lg" className="w-full text-base py-6">
+                          {user ? "Apply Now" : "Sign in to Apply"}
+                          <ArrowRight className="h-4 w-4 ml-2" />
+                        </Button>
+                      </DialogTrigger>
 
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Apply for {internship.title}</DialogTitle>
-                        <DialogDescription>
-                          at {internship.company_name}
-                        </DialogDescription>
-                      </DialogHeader>
+                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>Apply for {internship.title}</DialogTitle>
+                          <DialogDescription>
+                            at {internship.company_name}
+                          </DialogDescription>
+                        </DialogHeader>
 
-                      <div className="py-4 space-y-6">
-                        {/* Resume Upload */}
-                        <div className="space-y-2">
-                          <Label htmlFor="resume-upload" className="font-medium flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            Resume/CV *
-                          </Label>
-                          <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                            <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                            <p className="text-sm font-medium">Click to upload or drag and drop</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              PDF, DOC, DOCX (Max 5MB)
-                            </p>
-                            <input
-                              type="file"
-                              id="resume-upload"
-                              className="hidden"
-                              accept=".pdf,.doc,.docx"
-                              onChange={(e) => {
-                                if (e.target.files?.[0]) {
-                                  setApplicationData(prev => ({
-                                    ...prev,
-                                    resumeUrl: e.target.files![0].name
-                                  }));
-                                }
-                              }}
-                            />
-                          </div>
-                          {applicationData.resumeUrl && (
-                            <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg text-green-700 text-sm">
-                              <CheckCircle2 className="h-4 w-4" />
-                              {applicationData.resumeUrl}
+                        {/* Auth gate — if the user clicked "Sign in to Apply"
+                            but isn't logged in, show a sign-in prompt instead
+                            of the form. The button above already says "Sign in
+                            to Apply" when there's no user, so this is a
+                            defensive double-check. */}
+                        {!user ? (
+                          <div className="py-8 text-center space-y-4">
+                            <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-7 w-7 text-primary" />
                             </div>
+                            <div>
+                              <p className="font-medium">Sign in required</p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                You need a student account to apply for internships.
+                              </p>
+                            </div>
+                            <Button asChild>
+                              <Link href={`/login?returnUrl=/marketplace/${internshipId}`}>
+                                Sign in to continue
+                                <ArrowRight className="h-4 w-4 ml-2" />
+                              </Link>
+                            </Button>
+                          </div>
+                        ) : profile?.role && profile.role !== "student" ? (
+                          <div className="py-8 text-center space-y-3">
+                            <div className="w-14 h-14 mx-auto rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                              <AlertCircle className="h-7 w-7 text-amber-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium">Student account required</p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Your current account role is <strong>{profile.role}</strong>. Only student accounts can apply for internships.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="py-4 space-y-6">
+                            {/* Resume Upload */}
+                            <div className="space-y-2">
+                              <Label htmlFor="resume-upload" className="font-medium flex items-center gap-2">
+                                <FileText className="h-4 w-4" />
+                                Resume/CV *
+                              </Label>
+                              <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
+                                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                                <p className="text-sm font-medium">Click to upload or drag and drop</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  PDF, DOC, DOCX (Max 5MB)
+                                </p>
+                                <input
+                                  type="file"
+                                  id="resume-upload"
+                                  className="hidden"
+                                  accept=".pdf,.doc,.docx"
+                                  onChange={(e) => {
+                                    if (e.target.files?.[0]) {
+                                      setApplicationData(prev => ({
+                                        ...prev,
+                                        resumeUrl: e.target.files![0].name
+                                      }));
+                                    }
+                                  }}
+                                />
+                              </div>
+                              {applicationData.resumeUrl && (
+                                <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950 rounded-lg text-green-700 dark:text-green-400 text-sm">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  {applicationData.resumeUrl}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Cover Letter */}
+                            <div className="space-y-2">
+                              <Label htmlFor="cover-letter" className="font-medium">
+                                Cover Letter
+                              </Label>
+                              <Textarea
+                                id="cover-letter"
+                                placeholder="Tell us why you're interested in this role and what makes you a great fit..."
+                                value={applicationData.coverLetter}
+                                onChange={(e) =>
+                                  setApplicationData((prev) => ({
+                                    ...prev,
+                                    coverLetter: e.target.value,
+                                  }))
+                                }
+                                rows={6}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Optional but recommended
+                              </p>
+                            </div>
+
+                            {/* Additional Questions (if any) */}
+                            <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                              <h4 className="font-medium text-sm">Additional Questions</h4>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="availability" className="text-sm">
+                                  When can you start? *
+                                </Label>
+                                <Select onValueChange={(value) =>
+                                  setApplicationData((prev) => ({
+                                    ...prev,
+                                    additionalAnswers: { ...prev.additionalAnswers, availability: value },
+                                  }))
+                                }>
+                                  <SelectTrigger id="availability">
+                                    <SelectValue placeholder="Select your availability" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="immediately">Immediately</SelectItem>
+                                    <SelectItem value="2_weeks">Within 2 weeks</SelectItem>
+                                    <SelectItem value="1_month">Within 1 month</SelectItem>
+                                    <SelectItem value="flexible">Flexible</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label htmlFor="work-authorization" className="text-sm">
+                                  Are you authorized to work in this country? *
+                                </Label>
+                                <Select onValueChange={(value) =>
+                                  setApplicationData((prev) => ({
+                                    ...prev,
+                                    additionalAnswers: { ...prev.additionalAnswers, workAuth: value },
+                                  }))
+                                }>
+                                  <SelectTrigger id="work-authorization">
+                                    <SelectValue placeholder="Select an option" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="yes_citizen">Yes, I am a citizen</SelectItem>
+                                    <SelectItem value="yes_visa">Yes, I have a valid work visa</SelectItem>
+                                    <SelectItem value="sponsorship">I need visa sponsorship</SelectItem>
+                                    <SelectItem value="no">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowApplyModal(false)}
+                          >
+                            Cancel
+                          </Button>
+                          {user && (!profile?.role || profile.role === "student") && (
+                            <Button
+                              onClick={handleSubmitApplication}
+                              disabled={!applicationData.resumeUrl || isSubmitting}
+                              className="min-w-[120px]"
+                            >
+                              {isSubmitting ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Submitting...
+                                </>
+                              ) : (
+                                "Submit Application"
+                              )}
+                            </Button>
                           )}
-                        </div>
-
-                        {/* Cover Letter */}
-                        <div className="space-y-2">
-                          <Label htmlFor="cover-letter" className="font-medium">
-                            Cover Letter
-                          </Label>
-                          <Textarea
-                            id="cover-letter"
-                            placeholder="Tell us why you're interested in this role and what makes you a great fit..."
-                            value={applicationData.coverLetter}
-                            onChange={(e) =>
-                              setApplicationData((prev) => ({
-                                ...prev,
-                                coverLetter: e.target.value,
-                              }))
-                            }
-                            rows={6}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Optional but recommended
-                          </p>
-                        </div>
-
-                        {/* Additional Questions (if any) */}
-                        <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-                          <h4 className="font-medium text-sm">Additional Questions</h4>
-                          
-                          <div className="space-y-2">
-                            <Label htmlFor="availability" className="text-sm">
-                              When can you start? *
-                            </Label>
-                            <Select onValueChange={(value) =>
-                              setApplicationData((prev) => ({
-                                ...prev,
-                                additionalAnswers: { ...prev.additionalAnswers, availability: value },
-                              }))
-                            }>
-                              <SelectTrigger id="availability">
-                                <SelectValue placeholder="Select your availability" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="immediately">Immediately</SelectItem>
-                                <SelectItem value="2_weeks">Within 2 weeks</SelectItem>
-                                <SelectItem value="1_month">Within 1 month</SelectItem>
-                                <SelectItem value="flexible">Flexible</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="work-authorization" className="text-sm">
-                              Are you authorized to work in this country? *
-                            </Label>
-                            <Select onValueChange={(value) =>
-                              setApplicationData((prev) => ({
-                                ...prev,
-                                additionalAnswers: { ...prev.additionalAnswers, workAuth: value },
-                              }))
-                            }>
-                              <SelectTrigger id="work-authorization">
-                                <SelectValue placeholder="Select an option" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="yes_citizen">Yes, I am a citizen</SelectItem>
-                                <SelectItem value="yes_visa">Yes, I have a valid work visa</SelectItem>
-                                <SelectItem value="sponsorship">I need visa sponsorship</SelectItem>
-                                <SelectItem value="no">No</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-
-                      <DialogFooter className="gap-2 sm:gap-0">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowApplyModal(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleSubmitApplication}
-                          disabled={!applicationData.resumeUrl || isSubmitting}
-                          className="min-w-[120px]"
-                        >
-                          {isSubmitting ? "Submitting..." : "Submit Application"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
 
                   {/* Login Prompt */}
                   <p className="text-xs text-center text-muted-foreground">

@@ -78,7 +78,6 @@ import {
   Paperclip,
   Users,
   Send,
-  Copy,
   ListTodo,
   BarChart3,
   X,
@@ -634,9 +633,6 @@ export default function FacultySupervisorTasksPage() {
         description="Create and manage tasks for your supervised students"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2">
-              <Copy className="h-4 w-4" /> Bulk Create
-            </Button>
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2" onClick={resetForm}>
@@ -1092,9 +1088,6 @@ export default function FacultySupervisorTasksPage() {
                 <div className="flex flex-wrap gap-2 pt-4 border-t">
                   <Button variant="outline" className="gap-2" onClick={() => openEditDialog(selectedTask)}>
                     <Edit className="h-4 w-4" /> Edit Task
-                  </Button>
-                  <Button className="gap-2">
-                    <Eye className="h-4 w-4" /> View Submissions
                   </Button>
                 </div>
               </div>

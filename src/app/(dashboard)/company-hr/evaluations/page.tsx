@@ -598,10 +598,45 @@ export default function CompanyHREvaluationsPage() {
                             <DropdownMenuItem onClick={() => { setSelectedEvaluation(evaluation); setIsViewOpen(true); }}>
                               <Eye className="mr-2 h-4 w-4" /> Full Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                // Fetch the certificate PDF from the existing
+                                // /api/company-hr/evaluations/[id]/certificate
+                                // endpoint. The endpoint streams a PDF — opening
+                                // it in a new tab lets the browser handle the
+                                // download/print flow.
+                                try {
+                                  const res = await fetch(`/api/company-hr/evaluations/${evaluation.id}/certificate`);
+                                  if (!res.ok) {
+                                    const err = await res.json().catch(() => ({}));
+                                    alert(err.error || "Failed to generate certificate. The evaluation may not be approved yet.");
+                                    return;
+                                  }
+                                  const blob = await res.blob();
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = `evaluation-${evaluation.studentName || evaluation.id}.pdf`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  URL.revokeObjectURL(url);
+                                } catch (e) {
+                                  alert("Network error while generating certificate.");
+                                }
+                              }}
+                            >
                               <Download className="mr-2 h-4 w-4" /> Export PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                // Navigate to the notifications page so the
+                                // HR user can compose a message to the intern.
+                                // The notifications page has a real compose
+                                // dialog wired to the DB.
+                                window.location.href = "/company-hr/notifications";
+                              }}
+                            >
                               <MessageSquare className="mr-2 h-4 w-4" /> Send to Intern
                             </DropdownMenuItem>
                           </DropdownMenuContent>

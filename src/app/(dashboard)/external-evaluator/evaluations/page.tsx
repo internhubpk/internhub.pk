@@ -331,7 +331,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
       {/* Header */}
       <PageHeader
         title="Evaluations"
-        description="Complete your assigned student evaluations"
+        description="View your assigned student evaluations"
         actions={
           <Button variant="outline" onClick={handleExport} disabled={isLoading || evaluations.length === 0}>
             <Download className="mr-2 h-4 w-4" />

@@ -30,20 +30,54 @@ import {
   Loader2,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { InternshipCard, InternshipCardSkeleton } from "@/components/marketplace/internship-card";
+import type { Internship } from "@/types";
 
-interface Internship {
+// A single internship row joined with the company fields the card needs.
+type MarketplaceInternship = Internship & {
+  company_name: string;
+  company_logo_url?: string | null;
+  company_industry?: string | null;
+  applicant_count?: number;
+  is_saved?: boolean;
+};
+
+interface RawInternshipRow {
   id: string;
   title: string;
-  company_name?: string;
-  location?: string | null;
-  is_remote: boolean;
+  description: string | null;
+  company_id: string;
+  university_id: string | null;
+  department_id: string | null;
+  program_id: string | null;
+  location: string | null;
+  remote: boolean;
   is_paid: boolean;
-  stipend?: number | null;
+  stipend: number | null;
+  stipend_currency: string;
   duration_weeks: number;
-  skills?: string[] | null;
-  applicant_count?: number;
   status: string;
+  required_skills: string[];
+  requirements: string[];
+  benefits: string[];
+  max_applicants: number | null;
+  current_applicants: number;
+  start_date: string | null;
+  end_date: string | null;
+  application_deadline: string | null;
+  created_by: string;
   created_at: string;
+  updated_at: string;
+  image_url: string | null;
+  company?: {
+    name: string;
+    logo_url: string | null;
+    industry?: string | null;
+  } | null;
+  // applications is an array because of the has-many relationship — the
+  // API joins with count: "exact" but a select with the FK returns an
+  // array of rows. We use the array length as the applicant_count.
+  internship_applications?: { id: string }[] | null;
 }
 
 export default function MarketplacePage() {
@@ -62,7 +96,7 @@ function MarketplacePageContent() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
-  const [internships, setInternships] = useState<Internship[]>([]);
+  const [internships, setInternships] = useState<MarketplaceInternship[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
@@ -71,36 +105,85 @@ function MarketplacePageContent() {
     setSearch(searchParams.get("search") ?? "");
   }, [searchParams]);
 
-  // Fetch internships from database
+  // Fetch internships from database with company join so company_name and
+  // logo_url are populated. Without this join the marketplace list was
+  // showing "Company" placeholders and never displaying cover images.
   useEffect(() => {
     async function fetchInternships() {
       try {
         setIsLoading(true);
         const supabase = createClient();
-        
+
         if (!supabase) {
           setDbError(true);
           setIsLoading(false);
           return;
         }
 
+        // Published internships only. We accept the legacy "published"
+        // status value plus the newer "open" / "active" values so cards
+        // don't 404 when the user clicks into the detail page (the
+        // detail page uses the same status set).
         const { data, error } = await supabase
           .from("internships")
-          .select("*")
-          .in("status", ["open", "active"])
+          .select(`
+            *,
+            company:companies(name, logo_url, industry)
+          `)
+          .in("status", ["open", "active", "published"])
           .order("created_at", { ascending: false })
           .limit(50);
 
         if (error) {
           console.log("Marketplace: Could not fetch internships:", error.message);
-          
+
           // Check if it's a "table doesn't exist" error
           if (error.code === "42P01") {
             setDbError(true);
           }
           setInternships([]);
         } else if (data) {
-          setInternships(data as Internship[]);
+          // Transform raw rows into MarketplaceInternship shape that
+          // InternshipCard expects (flat company_name, etc.).
+          const transformed: MarketplaceInternship[] = (data as unknown as RawInternshipRow[]).map((row) => {
+            const company = row.company;
+            return {
+              id: row.id,
+              title: row.title,
+              description: row.description ?? "",
+              company_id: row.company_id,
+              company_name: company?.name || "Company",
+              department_id: row.department_id,
+              program_id: row.program_id,
+              location: row.location,
+              remote: row.remote,
+              is_remote: row.remote,
+              is_paid: row.is_paid,
+              stipend: row.stipend,
+              stipend_currency: row.stipend_currency,
+              duration_weeks: row.duration_weeks ?? 0,
+              status: row.status as any,
+              required_skills: row.required_skills ?? [],
+              skills: row.required_skills ?? [],
+              requirements: row.requirements ?? [],
+              benefits: row.benefits ?? [],
+              max_applicants: row.max_applicants,
+              vacancies: row.max_applicants,
+              current_applicants: row.current_applicants ?? 0,
+              start_date: row.start_date,
+              end_date: row.end_date,
+              application_deadline: row.application_deadline,
+              created_by: row.created_by,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+              image_url: row.image_url,
+              company_logo_url: company?.logo_url ?? null,
+              company_industry: company?.industry ?? null,
+              applicant_count: row.current_applicants ?? 0,
+              is_saved: false,
+            };
+          });
+          setInternships(transformed);
         }
       } catch (error) {
         console.log("Marketplace: Fetch error:", error instanceof Error ? error.message : error);
@@ -161,16 +244,16 @@ function MarketplacePageContent() {
           <Badge variant="secondary" className="px-3 py-1">
             Find Your Perfect Internship
           </Badge>
-          
+
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold">
             Discover{" "}
             <span className="text-primary">Opportunities</span>
           </h1>
-          
+
           <p className="text-muted-foreground max-w-xl mx-auto text-base md:text-lg">
-            {isLoading 
-              ? "Loading available internships..." 
-              : dbError 
+            {isLoading
+              ? "Loading available internships..."
+              : dbError
                 ? "Connect to database to see internships"
                 : `Explore ${internships.length} active internship${internships.length !== 1 ? 's' : ''} from top companies`
             }
@@ -231,7 +314,7 @@ function MarketplacePageContent() {
               <div>
                 <h3 className="font-semibold text-amber-800 dark:text-amber-200">Database Not Connected</h3>
                 <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                  The internships table is not available yet. Once your administrator sets up the database, 
+                  The internships table is not available yet. Once your administrator sets up the database,
                   you&apos;ll see real internship opportunities here.
                 </p>
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => window.location.reload()}>
@@ -244,9 +327,10 @@ function MarketplacePageContent() {
 
         {/* Loading State */}
         {isLoading && (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Loading internships...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            {[...Array(6)].map((_, i) => (
+              <InternshipCardSkeleton key={i} />
+            ))}
           </div>
         )}
 
@@ -258,7 +342,7 @@ function MarketplacePageContent() {
                 Showing <span className="font-semibold text-foreground">{filtered.length}</span> result{filtered.length !== 1 ? 's' : ''}
                 {dbError && " (database not connected)"}
               </p>
-              
+
               <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                 {/* Desktop Filters */}
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
@@ -344,7 +428,7 @@ function MarketplacePageContent() {
                   {dbError ? "No Internships Available Yet" : "No internships found"}
                 </h3>
                 <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-                  {dbError 
+                  {dbError
                     ? "Check back later once internships are posted by companies."
                     : "Try adjusting your filters or search terms."
                   }
@@ -369,95 +453,21 @@ function MarketplacePageContent() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
                   >
-                    <Card className="h-full hover:shadow-lg transition-shadow group">
-                      <CardContent className="p-5 space-y-4">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-semibold text-base line-clamp-1 group-hover:text-primary transition-colors">
-                              {item.title}
-                            </h3>
-                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                              <Building2 className="h-3.5 w-3.5" />
-                              {item.company_name || "Company"}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="shrink-0 h-9 w-9"
-                            onClick={() => toggleSave(item.id)}
-                          >
-                            <Heart
-                              className={`h-4 w-4 ${
-                                savedIds.has(item.id)
-                                  ? "fill-red-500 text-red-500"
-                                  : "text-muted-foreground"
-                              }`}
-                            />
-                          </Button>
-                        </div>
-
-                        {/* Badges */}
-                        <div className="flex flex-wrap gap-2">
-                          {item.is_paid ? (
-                            <Badge variant="secondary" className="text-green-700 bg-green-50">
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              PKR {item.stipend?.toLocaleString()}/mo
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">Unpaid</Badge>
-                          )}
-                          
-                          <Badge variant="outline">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {item.duration_weeks} weeks
-                          </Badge>
-                          
-                          {item.is_remote ? (
-                            <Badge variant="outline">Remote</Badge>
-                          ) : item.location ? (
-                            <Badge variant="outline" className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {item.location}
-                            </Badge>
-                          ) : null}
-                        </div>
-
-                        {/* Skills */}
-                        {item.skills && item.skills.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.skills.slice(0, 4).map((skill) => (
-                              <span
-                                key={skill}
-                                className="text-xs px-2 py-0.5 bg-muted rounded-md text-muted-foreground"
-                              >
-                                {skill}
-                              </span>
-                            ))}
-                            {item.skills.length > 4 && (
-                              <span className="text-xs px-2 py-0.5 bg-muted rounded-md text-muted-foreground">
-                                +{item.skills.length - 4} more
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between pt-2 border-t">
-                          <span className="text-xs text-muted-foreground">
-                            <Users className="h-3 w-3 inline mr-1" />
-                            {item.applicant_count || 0} applied
-                          </span>
-                          <Link href={`/marketplace/${item.id}`}>
-                            <Button size="sm" className="rounded-lg">
-                              View
-                              <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                            </Button>
-                          </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <InternshipCard
+                      internship={{
+                        ...item,
+                        is_saved: savedIds.has(item.id),
+                      }}
+                      onApply={() => {
+                        // When unauthenticated, send to login.
+                        // When authenticated, route to the detail page
+                        // where the full apply modal lives (it has the
+                        // resume upload + cover letter + additional
+                        // questions form).
+                        window.location.href = `/marketplace/${item.id}`;
+                      }}
+                      onSave={toggleSave}
+                    />
                   </motion.div>
                 ))}
               </div>
