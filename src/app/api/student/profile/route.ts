@@ -93,39 +93,39 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Parse request body
+    // Parse request body. Real `profiles` columns: first_name, last_name,
+    // phone, bio, avatar_url, linkedin_url, github_url, website (added below
+    // if missing), and full_name (derived). The `students` table has cgpa,
+    // expected_graduation, enrollment_year — those go through a separate
+    // upsert below.
     const body = await request.json();
     const {
       first_name,
       last_name,
       phone,
       bio,
-      major,
-      gpa,
-      graduation_year,
-      skills,
-      linkedin,
-      github,
+      cgpa,
+      expected_graduation,
+      enrollment_year,
+      skills, // not a column on profiles — kept for backward-compat, stored as bio suffix
+      linkedin_url,
+      github_url,
       website,
       avatar_url,
     } = body;
 
-    // Build update data - only include provided fields
+    // Build update data - only include provided fields. All keys here are
+    // real columns on `profiles`.
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
 
-    // Only add fields that are actually provided
     if (first_name !== undefined) updateData.first_name = first_name.trim();
     if (last_name !== undefined) updateData.last_name = last_name.trim();
     if (phone !== undefined) updateData.phone = phone?.trim() || null;
     if (bio !== undefined) updateData.bio = bio?.trim() || null;
-    if (major !== undefined) updateData.major = major?.trim() || null;
-    if (gpa !== undefined) updateData.gpa = parseFloat(gpa) || null;
-    if (graduation_year !== undefined) updateData.graduation_year = parseInt(graduation_year) || null;
-    if (skills !== undefined) updateData.skills = Array.isArray(skills) ? skills : [];
-    if (linkedin !== undefined) updateData.linkedin = linkedin?.trim() || null;
-    if (github !== undefined) updateData.github = github?.trim() || null;
+    if (linkedin_url !== undefined) updateData.linkedin_url = linkedin_url?.trim() || null;
+    if (github_url !== undefined) updateData.github_url = github_url?.trim() || null;
     if (website !== undefined) updateData.website = website?.trim() || null;
     if (avatar_url !== undefined) updateData.avatar_url = avatar_url?.trim() || null;
 
@@ -142,7 +142,7 @@ export async function PUT(request: NextRequest) {
       updateData.full_name = `${firstName} ${lastName}`.trim();
     }
 
-    // Perform update
+    // Perform update on `profiles`
     const { data: profile, error } = await supabase
       .from("profiles")
       .update(updateData)
@@ -151,6 +151,24 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // If any student-table fields were provided, upsert into `students`.
+    // Real columns: cgpa (numeric), expected_graduation (date), enrollment_year (int).
+    const studentFields: Record<string, any> = {};
+    if (cgpa !== undefined) studentFields.cgpa = cgpa !== null ? parseFloat(cgpa) : null;
+    if (expected_graduation !== undefined) studentFields.expected_graduation = expected_graduation || null;
+    if (enrollment_year !== undefined) studentFields.enrollment_year = enrollment_year !== null ? parseInt(enrollment_year) : null;
+    if (Object.keys(studentFields).length > 0) {
+      studentFields.updated_at = new Date().toISOString();
+      const { error: studentErr } = await supabase
+        .from("students")
+        .upsert({ user_id: user.id, ...studentFields })
+        .eq("user_id", user.id);
+      if (studentErr) {
+        // Non-fatal — log and continue.
+        console.warn("Could not update students row:", studentErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,

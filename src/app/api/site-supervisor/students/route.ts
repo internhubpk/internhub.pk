@@ -45,7 +45,6 @@ export async function GET(request: NextRequest) {
         status,
         start_date,
         end_date,
-        is_active,
         created_at,
         updated_at,
         student_profile:student_user_id(

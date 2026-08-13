@@ -113,11 +113,13 @@ export default function StudentDashboard() {
         // Fetch active student_internship (link table), then we'll hydrate the
         // internship row separately. `internships` has NO `student_id` column —
         // the link is via `student_internships.student_user_id`.
+        // NOTE: `student_internships` has no `is_active` column — use `status`.
+        // Valid statuses: assigned, active, paused, completed, terminated.
         supabase
           .from("student_internships")
-          .select("id, internship_id, start_date, end_date, status, is_active")
+          .select("id, internship_id, start_date, end_date, status")
           .eq("student_user_id", user.id)
-          .in("status", ["active", "pending"])
+          .in("status", ["active", "assigned"])
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -254,22 +256,24 @@ export default function StudentDashboard() {
         documentsSubmitted = documentsResult.value.count || 0;
       }
 
-      // Process attendance
+      // Process attendance. Valid `attendance_status` values:
+      //   present, absent, late, half_day, leave, holiday.
+      // (There is no `weekend` or `remote` status in the enum.)
       let attendanceRate = 0, streak = 0;
       if (attendanceResult.status === 'fulfilled' && attendanceResult.value.data) {
         const attendanceData = attendanceResult.value.data as any[];
-        const presentDays = attendanceData.filter(a => a.status === "present" || a.status === "late").length;
-        const totalWorkingDays = Math.max(attendanceData.filter(a => a.status !== "holiday" && a.status !== "weekend").length, 1);
+        const presentDays = attendanceData.filter(a => a.status === "present" || a.status === "late" || a.status === "half_day").length;
+        const totalWorkingDays = Math.max(attendanceData.filter(a => a.status !== "holiday" && a.status !== "leave").length, 1);
         attendanceRate = Math.round((presentDays / totalWorkingDays) * 100);
 
         // Calculate streak
         const sortedAttendance = [...attendanceData]
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        
+
         for (const record of sortedAttendance) {
-          if (record.status === "present" || record.status === "late") {
+          if (record.status === "present" || record.status === "late" || record.status === "half_day") {
             streak++;
-          } else if (record.status !== "holiday" && record.status !== "weekend") {
+          } else if (record.status !== "holiday" && record.status !== "leave") {
             break;
           }
         }

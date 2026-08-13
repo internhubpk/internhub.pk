@@ -60,23 +60,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Build query for weekly logs. weekly_logs has no `student_id` column —
-    // the student FK is `student_user_id`. The supervisor FK is
-    // `supervisor_id` (also profiles.user_id). The `student:students(...)`
-    // join was broken (no FK to students) — join `profiles` via
-    // `student_user_id` instead.
+    // Build query for weekly logs using REAL schema columns:
+    //   tasks_completed text[], challenges, learnings, next_week_goals,
+    //   hours_worked, week_number (migration 0042 made it nullable w/ default).
     let query = supabase
       .from("weekly_logs")
       .select(`
         id,
         student_user_id,
         supervisor_id,
+        week_number,
         week_start_date,
         week_end_date,
-        work_description,
         tasks_completed,
-        challenges_faced,
+        challenges,
         learnings,
+        next_week_goals,
+        hours_worked,
         status,
         supervisor_feedback,
         reviewed_at,
@@ -253,8 +253,9 @@ export async function PUT(request: NextRequest) {
     }
 
     // Create notification for student about log review. weekly_logs has no
-    // `student_id` column — use `student_user_id`. Also no `week_number`
-    // column — derive a display label from `week_start_date`.
+    // `student_id` column — use `student_user_id`. week_number IS a real
+    // column (migration 0042 made it nullable w/ default 1), but we use
+    // week_start_date for the human-readable label.
     const weekLabel = log.week_start_date
       ? new Date(log.week_start_date).toLocaleDateString()
       : "the week";
@@ -273,14 +274,14 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    // Create audit log
+    // Create audit log. `audit_logs` has a single `details` jsonb column
+    // (migration 0042 also adds compat `old_values`/`new_values` columns).
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: `weekly_log_${action}`,
       entity_type: "weekly_log",
       entity_id: logId,
-      old_values: { status: log.status },
-      new_values: { status: newStatus, feedback },
+      details: { old: { status: log.status }, new: { status: newStatus, feedback } },
     });
 
     return NextResponse.json<ApiResponse<any>>({

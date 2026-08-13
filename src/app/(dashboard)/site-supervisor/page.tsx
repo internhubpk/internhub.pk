@@ -103,7 +103,8 @@ export default function SiteSupervisorDashboard() {
       // the supervisors table PK. RLS uses auth.uid() the same way.
       const supervisorUserId = user.id;
 
-      // Fetch assigned students with their profile data (real columns only)
+      // Fetch assigned students with their profile data.
+      // NOTE: `student_internships` has no `is_active` column — only `status`.
       const { data: assignments } = await supabase
         .from("student_internships")
         .select(`
@@ -113,7 +114,6 @@ export default function SiteSupervisorDashboard() {
           status,
           start_date,
           end_date,
-          is_active,
           created_at,
           updated_at,
           student_profile:student_user_id(

@@ -42,7 +42,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 // `attendance.status` uses the `attendance_status` enum
-// (present, absent, late, remote, leave, holiday).
+// (present, absent, late, half_day, leave, holiday).
 // Schema: id, student_user_id, internship_id, student_internship_id, date,
 // check_in (timestamptz), check_out (timestamptz), status, notes, location_lat,
 // location_lng, verified, created_at, updated_at. NO `student_id`, NO `hours_worked`.
@@ -53,7 +53,7 @@ interface AttendanceRecord {
   date: string;
   check_in: string | null;
   check_out: string | null;
-  status: "present" | "absent" | "late" | "remote" | "leave" | "holiday";
+  status: "present" | "absent" | "late" | "half_day" | "leave" | "holiday";
   notes: string | null;
   verified: boolean | null;
   created_at: string;
@@ -132,22 +132,21 @@ export default function StudentAttendancePage() {
     fetchAttendance();
   }, [fetchAttendance]);
 
-  // Calculate stats
+  // Calculate stats. Valid `attendance_status` values:
+  //   present, absent, late, half_day, leave, holiday.
+  // (There is no `remote` or `weekend` enum value.)
   const calculateStats = (): AttendanceStats => {
-    // Filter out holidays for working days calculation. (`weekend` and
-    // `half_day` are NOT valid attendance_status values — only present, absent,
-    // late, remote, leave, holiday.)
-    const workingRecords = attendance.filter(r => r.status !== "holiday");
+    const workingRecords = attendance.filter(r => r.status !== "holiday" && r.status !== "leave");
     
     const totalWorkingDays = workingRecords.length || 1; // Avoid division by zero
     
-    const presentDays = attendance.filter(r => r.status === "present" || r.status === "remote").length;
+    const presentDays = attendance.filter(r => r.status === "present").length;
     const lateDays = attendance.filter(r => r.status === "late").length;
     const absentDays = attendance.filter(r => r.status === "absent").length;
-    const halfDays = 0; // `half_day` is not a valid enum value
+    const halfDays = attendance.filter(r => r.status === "half_day").length;
     const leaveDays = attendance.filter(r => r.status === "leave").length;
     const holidayDays = attendance.filter(r => r.status === "holiday").length;
-    const weekendDays = 0; // `weekend` is not a valid enum value
+    const weekendDays = 0; // No `weekend` enum value
     
     // Compute total hours from check_in/check_out timestamps (difference in
     // hours). If either is null, count as 0.
@@ -174,7 +173,7 @@ export default function StudentAttendancePage() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     sortedByDate.forEach(record => {
-      if (record.status === "present" || record.status === "late" || record.status === "remote") {
+      if (record.status === "present" || record.status === "late" || record.status === "half_day") {
         tempStreak++;
         bestStreak = Math.max(bestStreak, tempStreak);
       } else {
@@ -185,9 +184,9 @@ export default function StudentAttendancePage() {
     // Current streak (from most recent day going backwards)
     const sortedDesc = [...sortedByDate].reverse();
     for (const record of sortedDesc) {
-      if (record.status === "present" || record.status === "late" || record.status === "remote") {
+      if (record.status === "present" || record.status === "late" || record.status === "half_day") {
         currentStreak++;
-      } else if (record.status !== "holiday") {
+      } else if (record.status !== "holiday" && record.status !== "leave") {
         break;
       }
     }
@@ -211,7 +210,7 @@ export default function StudentAttendancePage() {
   const stats = calculateStats();
 
   // Status badge helper. Uses the real `attendance_status` enum values:
-  // present, absent, late, remote, leave, holiday.
+  // present, absent, late, half_day, leave, holiday.
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "present":
@@ -232,10 +231,10 @@ export default function StudentAttendancePage() {
             <AlertCircle className="mr-1 h-3 w-3" />Late
           </Badge>
         );
-      case "remote":
+      case "half_day":
         return (
           <Badge className="bg-purple-100 text-purple-700 border-purple-200">
-            Remote
+            Half Day
           </Badge>
         );
       case "leave":

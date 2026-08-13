@@ -17,67 +17,68 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   FileText,
   Plus,
   Clock,
   CheckCircle2,
-  XCircle,
-  Eye,
   Send,
   Calendar,
+  ListChecks,
+  Lightbulb,
+  Target,
+  Timer,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
-// Types
-// `weekly_logs.status` uses the `weekly_log_status` enum
-// (draft, submitted, approved, revision_required).
-// Schema: id, student_user_id, supervisor_id, week_start_date, week_end_date,
-// work_description, tasks_completed, challenges_faced, learnings, status,
-// supervisor_feedback, reviewed_at, submitted_at, created_at, updated_at.
+// Real schema columns on `weekly_logs`:
+//   id, student_user_id, internship_id, student_internship_id,
+//   week_number (nullable w/ default 1 after migration 0042),
+//   week_start_date, week_end_date,
+//   tasks_completed text[] NOT NULL DEFAULT '{}',
+//   challenges text, learnings text, next_week_goals text,
+//   hours_worked numeric(5,2), status weekly_log_status,
+//   supervisor_feedback text, supervisor_id uuid,
+//   reviewed_at timestamptz, submitted_at timestamptz,
+//   created_at timestamptz, updated_at timestamptz
 interface WeeklyLog {
   id: string;
+  week_number: number | null;
   week_start_date: string;
   week_end_date: string;
-  status: "draft" | "submitted" | "approved" | "revision_required";
-  work_description: string | null;
-  tasks_completed: string | string[] | null;
-  challenges_faced: string | null;
+  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
+  tasks_completed: string[];
+  challenges: string | null;
   learnings: string | null;
+  next_week_goals: string | null;
+  hours_worked: number | null;
   supervisor_feedback: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
 }
 
-// Default empty state - logs will be fetched from database
-const DEFAULT_LOGS: WeeklyLog[] = [];
-
 export default function StudentWeeklyLogsPage() {
   const { user } = useAuth();
-  const [logs, setLogs] = useState<WeeklyLog[]>(DEFAULT_LOGS);
+  const [logs, setLogs] = useState<WeeklyLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
-  
-  // Form state — mirrors the real `weekly_logs` columns.
-  const [formData, setFormData] = useState({
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Form state — mirrors the REAL `weekly_logs` columns.
+  const emptyForm = {
     week_start_date: "",
     week_end_date: "",
-    work_description: "",
-    tasks_completed: "",
-    challenges_faced: "",
+    tasks_completed: "", // textarea; converted to text[] on submit (one per line)
+    challenges: "",
     learnings: "",
-  });
+    next_week_goals: "",
+    hours_worked: "",
+  };
+  const [formData, setFormData] = useState(emptyForm);
 
   // Helper: compute the current week's Monday → Sunday (YYYY-MM-DD).
   const getCurrentWeekRange = () => {
@@ -101,26 +102,46 @@ export default function StudentWeeklyLogsPage() {
 
     try {
       const supabase = createClient();
-      
-      // Fetch weekly logs for current student. Use only real columns.
+
+      // Fetch weekly logs for current student using REAL columns only.
       const { data, error } = await supabase
         .from('weekly_logs')
-        .select('id, week_start_date, week_end_date, work_description, tasks_completed, challenges_faced, learnings, status, supervisor_feedback, submitted_at, reviewed_at, created_at')
+        .select(`
+          id,
+          week_number,
+          week_start_date,
+          week_end_date,
+          tasks_completed,
+          challenges,
+          learnings,
+          next_week_goals,
+          hours_worked,
+          status,
+          supervisor_feedback,
+          submitted_at,
+          reviewed_at,
+          created_at
+        `)
         .eq('student_user_id', user.id)
         .order('week_start_date', { ascending: false });
-      
+
       if (error) throw error;
-      
+
       if (data) {
         const logList: WeeklyLog[] = data.map((log: any) => ({
           id: log.id,
+          week_number: log.week_number ?? null,
           week_start_date: log.week_start_date || '',
           week_end_date: log.week_end_date || '',
           status: log.status || 'draft',
-          work_description: log.work_description,
-          tasks_completed: log.tasks_completed,
-          challenges_faced: log.challenges_faced,
+          tasks_completed: Array.isArray(log.tasks_completed)
+            ? log.tasks_completed
+            : (log.tasks_completed ? [String(log.tasks_completed)] : []),
+          challenges: log.challenges,
           learnings: log.learnings,
+          next_week_goals: log.next_week_goals,
+          hours_worked: log.hours_worked !== null && log.hours_worked !== undefined
+            ? Number(log.hours_worked) : null,
           supervisor_feedback: log.supervisor_feedback,
           submittedAt: log.submitted_at,
           reviewedAt: log.reviewed_at,
@@ -129,7 +150,6 @@ export default function StudentWeeklyLogsPage() {
       }
     } catch (error) {
       console.error("Error fetching weekly logs:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
@@ -137,9 +157,22 @@ export default function StudentWeeklyLogsPage() {
 
   const handleSubmitLog = async () => {
     if (!user) return;
-    // Require at least a work description or some tasks completed to submit.
-    if (!formData.work_description.trim() && !formData.tasks_completed.trim()) {
-      alert("Please describe your work or list the tasks you completed this week.");
+    setSubmitError(null);
+
+    // Require at least tasks_completed or challenges/learnings.
+    const tasksArr = formData.tasks_completed
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (
+      tasksArr.length === 0 &&
+      !formData.challenges.trim() &&
+      !formData.learnings.trim()
+    ) {
+      setSubmitError(
+        "Please describe your work — list tasks completed, challenges, or learnings."
+      );
       return;
     }
 
@@ -147,63 +180,119 @@ export default function StudentWeeklyLogsPage() {
     try {
       const supabase = createClient();
 
-      // Derive supervisor_id from the student's active student_internship.
+      // Derive supervisor_id + internship_id from the student's active student_internship.
       // Prefer site_supervisor_id; fall back to faculty_supervisor_id.
       const { data: si, error: siError } = await supabase
         .from("student_internships")
-        .select("site_supervisor_id, faculty_supervisor_id")
+        .select("id, internship_id, site_supervisor_id, faculty_supervisor_id, program_id, company_id, university_id, department_id")
         .eq("student_user_id", user.id)
-        .eq("status", "active")
+        .in("status", ["active", "assigned"])
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
-      if (siError) {
-        console.error("Error fetching student_internship for supervisor:", siError);
-      }
+
+      // It's OK to not have an internship yet — weekly logs can still be created
+      // (week_number has a default now; internship_id is nullable).
       const supervisorId = si?.site_supervisor_id || si?.faculty_supervisor_id || null;
 
-      // Default the week range to the current week if the user didn't pick.
       const defaultRange = getCurrentWeekRange();
       const weekStart = formData.week_start_date || defaultRange.start;
       const weekEnd = formData.week_end_date || defaultRange.end;
 
-      const payload = {
+      // Compute week_number from week_start_date: weeks since the student's first log
+      // (or just 1 for the first log). Simpler: use 1-based index for the year.
+      const start = new Date(weekStart);
+      const yearStart = new Date(start.getFullYear(), 0, 1);
+      const weekNumber = Math.ceil(
+        ((start.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / 7
+      );
+
+      const payload: any = {
         student_user_id: user.id,
         supervisor_id: supervisorId,
         week_start_date: weekStart,
         week_end_date: weekEnd,
-        work_description: formData.work_description.trim() || null,
-        tasks_completed: formData.tasks_completed.trim() || null,
-        challenges_faced: formData.challenges_faced.trim() || null,
+        week_number: weekNumber,
+        tasks_completed: tasksArr,
+        challenges: formData.challenges.trim() || null,
         learnings: formData.learnings.trim() || null,
-        status: "submitted" as const,
+        next_week_goals: formData.next_week_goals.trim() || null,
+        hours_worked: formData.hours_worked
+          ? Number(formData.hours_worked)
+          : null,
+        status: "submitted",
         submitted_at: new Date().toISOString(),
       };
+
+      // Link to internship if available (optional, internship_id is nullable).
+      if (si?.internship_id) {
+        payload.internship_id = si.internship_id;
+      }
+      if (si?.id) {
+        payload.student_internship_id = si.id;
+      }
 
       const { error: insertError } = await supabase
         .from("weekly_logs")
         .insert(payload);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        // If duplicate (student_user_id + week_start_date), update instead.
+        if (insertError.code === "23505") {
+          const { error: updateError } = await supabase
+            .from("weekly_logs")
+            .update({
+              tasks_completed: tasksArr,
+              challenges: payload.challenges,
+              learnings: payload.learnings,
+              next_week_goals: payload.next_week_goals,
+              hours_worked: payload.hours_worked,
+              status: "submitted",
+              submitted_at: new Date().toISOString(),
+              ...(supervisorId ? { supervisor_id: supervisorId } : {}),
+            })
+            .eq("student_user_id", user.id)
+            .eq("week_start_date", weekStart);
+          if (updateError) throw updateError;
+        } else {
+          throw insertError;
+        }
+      }
 
-      // Reset form, close dialog, refresh list.
-      setFormData({
-        week_start_date: "",
-        week_end_date: "",
-        work_description: "",
-        tasks_completed: "",
-        challenges_faced: "",
-        learnings: "",
-      });
+      // Send a notification to the supervisor (if any) so they know a log
+      // is awaiting review.
+      if (supervisorId) {
+        try {
+          await supabase.from("notifications").insert({
+            user_id: supervisorId,
+            sender_id: user.id,
+            title: "New weekly log submitted",
+            message: `Week of ${weekStart} → ${weekEnd} is awaiting your review.`,
+            category: "task",
+            priority: "medium",
+            is_read: false,
+            metadata: { week_start: weekStart, week_end: weekEnd, kind: "weekly_log" },
+          });
+        } catch (notifErr) {
+          // Non-fatal — don't fail the submit if the notification can't be sent.
+          console.warn("Could not send supervisor notification:", notifErr);
+        }
+      }
+
+      setFormData(emptyForm);
       setIsDialogOpen(false);
       await fetchWeeklyLogs();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting log:", error);
-      alert("Failed to submit log. Please try again.");
+      setSubmitError(error?.message || "Failed to submit log. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const pendingWeeks = logs.filter(log => log.status === "submitted" || log.status === "draft");
+  const pendingWeeks = logs.filter(
+    (log) => log.status === "submitted" || log.status === "draft"
+  );
 
   if (isLoading) {
     return (
@@ -244,92 +333,121 @@ export default function StudentWeeklyLogsPage() {
               description="Track your weekly internship activities and progress"
               actions={
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Submit Log
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Submit Weekly Log</DialogTitle>
-                    <DialogDescription>
-                      Defaults to the current week (Mon–Sun). Adjust the dates if needed.
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="space-y-4 mt-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <DialogTrigger asChild>
+                    <Button className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Submit Log
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Submit Weekly Log</DialogTitle>
+                      <DialogDescription>
+                        Defaults to the current week (Mon–Sun). Adjust the dates if needed.
+                        One task per line.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 mt-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Week Start Date</label>
+                          <Input
+                            type="date"
+                            value={formData.week_start_date || getCurrentWeekRange().start}
+                            onChange={(e) => setFormData({ ...formData, week_start_date: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Week End Date</label>
+                          <Input
+                            type="date"
+                            value={formData.week_end_date || getCurrentWeekRange().end}
+                            onChange={(e) => setFormData({ ...formData, week_end_date: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="text-sm font-medium mb-2 block">Week Start Date</label>
-                        <Input
-                          type="date"
-                          value={formData.week_start_date || getCurrentWeekRange().start}
-                          onChange={(e) => setFormData({ ...formData, week_start_date: e.target.value })}
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <ListChecks className="h-4 w-4" /> Tasks Completed (one per line)
+                        </label>
+                        <Textarea
+                          placeholder={"Built login page\nFixed bug in dashboard\nWrote unit tests"}
+                          value={formData.tasks_completed}
+                          onChange={(e) => setFormData({ ...formData, tasks_completed: e.target.value })}
+                          rows={4}
                         />
                       </div>
+
                       <div>
-                        <label className="text-sm font-medium mb-2 block">Week End Date</label>
-                        <Input
-                          type="date"
-                          value={formData.week_end_date || getCurrentWeekRange().end}
-                          onChange={(e) => setFormData({ ...formData, week_end_date: e.target.value })}
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" /> Challenges Faced
+                        </label>
+                        <Textarea
+                          placeholder="Any obstacles or challenges you encountered..."
+                          value={formData.challenges}
+                          onChange={(e) => setFormData({ ...formData, challenges: e.target.value })}
+                          rows={3}
                         />
                       </div>
-                    </div>
 
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Work Description</label>
-                      <Textarea
-                        placeholder="Summary of what you worked on this week..."
-                        value={formData.work_description}
-                        onChange={(e) => setFormData({ ...formData, work_description: e.target.value })}
-                        rows={4}
-                      />
-                    </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Lightbulb className="h-4 w-4" /> Learnings
+                        </label>
+                        <Textarea
+                          placeholder="Key takeaways and what you learned this week..."
+                          value={formData.learnings}
+                          onChange={(e) => setFormData({ ...formData, learnings: e.target.value })}
+                          rows={3}
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Tasks Completed</label>
-                      <Textarea
-                        placeholder="List the tasks you completed this week..."
-                        value={formData.tasks_completed}
-                        onChange={(e) => setFormData({ ...formData, tasks_completed: e.target.value })}
-                        rows={4}
-                      />
-                    </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Target className="h-4 w-4" /> Goals for Next Week
+                        </label>
+                        <Textarea
+                          placeholder="What you plan to work on next week..."
+                          value={formData.next_week_goals}
+                          onChange={(e) => setFormData({ ...formData, next_week_goals: e.target.value })}
+                          rows={2}
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Challenges Faced</label>
-                      <Textarea
-                        placeholder="Any obstacles or challenges you encountered..."
-                        value={formData.challenges_faced}
-                        onChange={(e) => setFormData({ ...formData, challenges_faced: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Timer className="h-4 w-4" /> Hours Worked
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder="40"
+                          value={formData.hours_worked}
+                          onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Learnings</label>
-                      <Textarea
-                        placeholder="Key takeaways and what you learned this week..."
-                        value={formData.learnings}
-                        onChange={(e) => setFormData({ ...formData, learnings: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
+                      {submitError && (
+                        <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300">
+                          {submitError}
+                        </div>
+                      )}
 
-                    <div className="flex justify-end gap-2 pt-4">
-                      <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleSubmitLog} className="gap-2" disabled={isSubmitting}>
-                        {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        {isSubmitting ? "Submitting..." : "Submit Log"}
-                      </Button>
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleSubmitLog} className="gap-2" disabled={isSubmitting}>
+                          {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          {isSubmitting ? "Submitting..." : "Submit Log"}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
               }
             />
           </motion.div>
@@ -344,10 +462,15 @@ export default function StudentWeeklyLogsPage() {
           transition={{ delay: 0.1, duration: 0.3 }}
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6"
         >
-          <StatCard label="Total Submitted" value={logs.filter(l => l.submittedAt).length} icon={FileText} variant="info" />
-          <StatCard label="Approved" value={logs.filter(l => l.status === "approved").length} icon={CheckCircle2} variant="success" />
+          <StatCard label="Total Submitted" value={logs.filter((l) => l.submittedAt).length} icon={FileText} variant="info" />
+          <StatCard label="Approved" value={logs.filter((l) => l.status === "approved").length} icon={CheckCircle2} variant="success" />
           <StatCard label="Pending" value={pendingWeeks.length} icon={Clock} variant="warning" />
-          <StatCard label="Weeks Logged" value={logs.length} icon={Calendar} variant="default" />
+          <StatCard
+            label="Hours Logged"
+            value={logs.reduce((acc, l) => acc + (l.hours_worked || 0), 0).toFixed(1)}
+            icon={Timer}
+            variant="default"
+          />
         </motion.div>
 
         {/* Weekly Logs List */}
@@ -358,7 +481,7 @@ export default function StudentWeeklyLogsPage() {
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="font-medium">No weekly logs yet</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Your weekly logs will appear here once you start your internship
+                  Click "Submit Log" above to record your first weekly entry.
                 </p>
               </CardContent>
             </Card>
@@ -375,11 +498,22 @@ export default function StudentWeeklyLogsPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <CardTitle className="text-lg">
-                          {log.week_start_date ? new Date(log.week_start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Week"}{log.week_end_date ? ` – ${new Date(log.week_end_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
+                          {log.week_number ? `Week ${log.week_number} · ` : ""}
+                          {log.week_start_date
+                            ? new Date(log.week_start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                            : "Week"}
+                          {log.week_end_date
+                            ? ` – ${new Date(log.week_end_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                            : ""}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-2 mt-1">
                           <Calendar className="h-3 w-3" />
                           {log.week_start_date} - {log.week_end_date}
+                          {log.hours_worked !== null && (
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Timer className="h-3 w-3" /> {log.hours_worked}h
+                            </span>
+                          )}
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
@@ -394,46 +528,52 @@ export default function StudentWeeklyLogsPage() {
                   </CardHeader>
 
                   <CardContent className="pt-0 space-y-3">
-                    {log.work_description && (
+                    {log.tasks_completed && log.tasks_completed.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-1">Work Description:</h4>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.work_description}</p>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <ListChecks className="h-4 w-4" /> Tasks Completed
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                          {log.tasks_completed.map((task, i) => (
+                            <li key={i}>{task}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
 
-                    {log.tasks_completed && (
+                    {log.challenges && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-1">Tasks Completed:</h4>
-                        {Array.isArray(log.tasks_completed) ? (
-                          <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                            {log.tasks_completed.map((task, i) => (
-                              <li key={i}>{task}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.tasks_completed}</p>
-                        )}
-                      </div>
-                    )}
-
-                    {log.challenges_faced && (
-                      <div>
-                        <h4 className="text-sm font-semibold mb-1">Challenges:</h4>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.challenges_faced}</p>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" /> Challenges
+                        </h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.challenges}</p>
                       </div>
                     )}
 
                     {log.learnings && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-1">Learnings:</h4>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <Lightbulb className="h-4 w-4" /> Learnings
+                        </h4>
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.learnings}</p>
+                      </div>
+                    )}
+
+                    {log.next_week_goals && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <Target className="h-4 w-4" /> Next Week Goals
+                        </h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.next_week_goals}</p>
                       </div>
                     )}
 
                     {log.supervisor_feedback && (
                       <div className="pt-2 border-t">
                         <h4 className="text-sm font-semibold mb-1">Supervisor Feedback:</h4>
-                        <p className="text-sm text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap">{log.supervisor_feedback}</p>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap">
+                          {log.supervisor_feedback}
+                        </p>
                       </div>
                     )}
                   </CardContent>

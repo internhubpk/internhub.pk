@@ -199,7 +199,6 @@ export default function SiteSupervisorStudentsPage() {
           status,
           start_date,
           end_date,
-          is_active,
           updated_at,
           student_profile:student_user_id(
             full_name,

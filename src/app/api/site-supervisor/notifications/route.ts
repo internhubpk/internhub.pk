@@ -131,15 +131,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create audit log
+    // Create audit log. `audit_logs` has a single `details` jsonb column.
     await supabase.from("audit_logs").insert({
       user_id: supervisorUserId,
       action: "send_notification",
       entity_type: "notification",
-      new_values: {
-        recipient_type: recipientType,
-        recipient_count: targetStudentIds.length,
-        title,
+      details: {
+        new: {
+          recipient_type: recipientType,
+          recipient_count: targetStudentIds.length,
+          title,
+        },
       },
     });
 

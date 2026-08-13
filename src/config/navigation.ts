@@ -160,6 +160,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       href: "/department-coordinator/reports",
       icon: BarChart3,
     },
+    {
+      title: "Settings",
+      href: "/department-coordinator/settings",
+      icon: Settings,
+    },
   ],
   faculty_supervisor: [
     {

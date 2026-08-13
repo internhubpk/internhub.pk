@@ -373,8 +373,7 @@ export default function SiteSupervisorEvaluationsPage() {
     ) / 4;
 
     const overallRating = Math.round(
-      (technicalAvg * 0.30) + (professionalAvg * 0.35) + (workQualityAvg * 0.35)
-      * 100
+      ((technicalAvg * 0.30) + (professionalAvg * 0.35) + (workQualityAvg * 0.35)) * 100
     ) / 100;
 
     return { technicalAvg, professionalAvg, workQualityAvg, overallRating };
@@ -470,7 +469,7 @@ export default function SiteSupervisorEvaluationsPage() {
           student_user_id: formData.studentId,
           evaluator_id: user.id,
           evaluator_role: "site_supervisor",
-          type: "site_evaluation",
+          type: "supervisor_evaluation",
           scores,
           rating,
           comments,

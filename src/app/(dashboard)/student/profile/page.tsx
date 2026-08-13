@@ -30,6 +30,7 @@ import {
   Mail,
   Phone,
   MapPin,
+  Building2,
   Save,
   Camera,
   GraduationCap,
@@ -368,7 +369,19 @@ export default function StudentProfilePage() {
 
       await supabase.storage.from('documents').remove([filePath]);
 
-      // Delete record from database would need server action or API route
+      // Delete the matching row from `documents` (entity_type='student',
+      // entity_id=user.id, type='cv') so the UI doesn't keep showing it.
+      const { error: docDeleteError } = await supabase
+        .from("documents")
+        .delete()
+        .eq("entity_type", "student")
+        .eq("entity_id", user.id)
+        .eq("type", "cv");
+
+      if (docDeleteError) {
+        // Non-fatal: file is already gone from storage; just log it.
+        console.warn("Could not delete documents row:", docDeleteError);
+      }
 
       setCvInfo(null);
     } catch (error) {
@@ -747,8 +760,12 @@ export default function StudentProfilePage() {
                   <span>{profileData.phone || "Not provided"}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span>{(profile as any)?.location || "Location not set"}</span>
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span>
+                    {(profile as any)?.department?.name ||
+                      (profileData as any)?.department_name ||
+                      "Department not set"}
+                  </span>
                 </div>
               </div>
             </CardContent>

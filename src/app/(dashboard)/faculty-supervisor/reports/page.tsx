@@ -56,6 +56,7 @@ import {
   Search,
   Filter,
   Download,
+  Save,
   Printer,
   FileText,
   Award,
@@ -145,6 +146,50 @@ export default function FacultySupervisorReportsPage() {
     additionalRemarks: "",
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingCertificate, setIsSavingCertificate] = useState(false);
+  const [universityName, setUniversityName] = useState<string>("University");
+  const [departmentName, setDepartmentName] = useState<string>("Department");
+
+  // Persist certificate to the `certificates` table via the
+  // /api/faculty-supervisor/reports endpoint. The certificate isn't a file
+  // upload — we save a metadata row so the student & coordinators can see
+  // that it was issued, and the print/PDF remains the actual certificate.
+  const handleSaveCertificateToDB = async () => {
+    if (!user || !selectedStudent) return;
+    setIsSavingCertificate(true);
+    try {
+      const res = await fetch("/api/faculty-supervisor/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_certificate",
+          student_user_id: selectedStudent.id,
+          report_data: {
+            student_name: selectedStudent.name,
+            program_name: selectedStudent.program || "Internship Program",
+            company_name: selectedStudent.company || "",
+            internship_title: selectedStudent.internshipTitle || "",
+            supervisor_name: profile?.full_name || "",
+            coordinator_name: certificateForm.coordinatorName || "",
+            additional_remarks: certificateForm.additionalRemarks || "",
+            issue_date: new Date().toISOString(),
+            certificate_id: `CERT-${Date.now()}-${selectedStudent.id.toUpperCase()}`,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error?.message || `Failed to save certificate (HTTP ${res.status})`);
+      }
+      // Toast-style feedback (no toast lib here — use alert as a fallback).
+      alert("Certificate saved to student's record.");
+    } catch (err) {
+      console.error("Error saving certificate:", err);
+      alert(err instanceof Error ? err.message : "Failed to save certificate.");
+    } finally {
+      setIsSavingCertificate(false);
+    }
+  };
 
   // Fetch data from database
   useEffect(() => {
@@ -237,6 +282,26 @@ export default function FacultySupervisorReportsPage() {
         });
 
         setStudents(studentList);
+
+        // Fetch the supervisor's university and department names so the
+        // certificate template uses real values instead of hardcoded "STATE
+        // UNIVERSITY" / "Department of Computer Science".
+        if (profile?.university_id) {
+          const { data: uni } = await supabase
+            .from("universities")
+            .select("name")
+            .eq("id", profile.university_id)
+            .maybeSingle();
+          if (uni?.name) setUniversityName(uni.name);
+        }
+        if (profile?.department_id) {
+          const { data: dept } = await supabase
+            .from("departments")
+            .select("name")
+            .eq("id", profile.department_id)
+            .maybeSingle();
+          if (dept?.name) setDepartmentName(dept.name);
+        }
       } catch (error) {
         console.error("Error fetching report data:", error);
         // Keep empty state on error
@@ -246,7 +311,7 @@ export default function FacultySupervisorReportsPage() {
     }
     
     fetchData();
-  }, [user]);
+  }, [user, profile]);
 
   // Fetch marksheet data when a student is selected.
   useEffect(() => {
@@ -453,9 +518,9 @@ export default function FacultySupervisorReportsPage() {
             <GraduationCap className="h-10 w-10 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-wide">STATE UNIVERSITY</h1>
-            <p className="text-sm text-gray-600">Department of Computer Science</p>
-            <p className="text-xs text-gray-500">Faculty of Engineering & Technology</p>
+            <h1 className="text-2xl font-bold tracking-wide">{universityName}</h1>
+            <p className="text-sm text-gray-600">{departmentName}</p>
+            <p className="text-xs text-gray-500">Internship Completion Certificate</p>
           </div>
           <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
             <Award className="h-10 w-10 text-primary" />
@@ -1024,16 +1089,30 @@ export default function FacultySupervisorReportsPage() {
                   />
 
                   <div className="flex flex-wrap justify-center gap-4 mt-6 print:hidden">
-                    <Button 
-                      variant="outline" 
-                      size="lg" 
+                    <Button
+                      variant="outline"
+                      size="lg"
                       className="gap-2"
                       onClick={handlePrintCertificate}
                     >
                       <Printer className="h-5 w-5" /> Print Certificate
                     </Button>
-                    <Button 
-                      size="lg" 
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2"
+                      onClick={handleSaveCertificateToDB}
+                      disabled={isSavingCertificate}
+                    >
+                      {isSavingCertificate ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Save className="h-5 w-5" />
+                      )}
+                      Save to Student Record
+                    </Button>
+                    <Button
+                      size="lg"
                       className="gap-2"
                       onClick={handleDownloadPDF}
                       disabled={isGenerating}

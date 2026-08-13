@@ -198,7 +198,10 @@ export async function POST(request: NextRequest) {
       student_user_id: body.student_user_id,
       evaluator_id: supervisorUserId,
       evaluator_role: "site_supervisor",
-      type: body.type || "site_evaluation",
+      // `evaluation_type` enum: weekly_log, midterm, final,
+      // company_evaluation, supervisor_evaluation, task.
+      // "site_evaluation" is NOT a valid enum value — use supervisor_evaluation.
+      type: body.type || "supervisor_evaluation",
       scores: body.scores,
       rating,
       comments: body.comments ?? null,
@@ -222,17 +225,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create audit log entry
+    // Create audit log entry. `audit_logs` has a single `details` jsonb column.
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       action: "create_evaluation",
       entity_type: "evaluation",
       entity_id: evaluation.id,
-      new_values: {
-        ...evaluation,
-        // Don't persist a giant signature blob to the audit log even if it
-        // was embedded in comments (it's truncated on the client side
-        // before submission, but be defensive).
+      details: {
+        new: {
+          student_user_id: evaluation.student_user_id,
+          evaluator_id: evaluation.evaluator_id,
+          evaluator_role: evaluation.evaluator_role,
+          type: evaluation.type,
+          status: evaluation.status,
+          rating: evaluation.rating,
+          // Don't persist a giant signature blob to the audit log even if it
+          // was embedded in comments (it's truncated on the client side
+          // before submission, but be defensive).
+        },
       },
     });
 
@@ -329,8 +339,7 @@ export async function PUT(request: NextRequest) {
       action: "update_evaluation",
       entity_type: "evaluation",
       entity_id: evaluationId,
-      old_values: { status: existingEval.status },
-      new_values: updateData,
+      details: { old: { status: existingEval.status }, new: updateData },
     });
 
     return NextResponse.json<ApiResponse<any>>({

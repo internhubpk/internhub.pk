@@ -146,20 +146,23 @@ export default function SiteSupervisorWeeklyLogsPage() {
       }
 
       // Fetch weekly logs for assigned students. weekly_logs.supervisor_id is
-      // FK to profiles.user_id; weekly_logs has no `student_id` column — the
-      // student FK column is `student_user_id`. Join profiles via that column.
+      // FK to profiles.user_id; the student FK column is `student_user_id`.
+      // Real columns: tasks_completed text[], challenges, learnings,
+      // next_week_goals, hours_worked, week_number.
       const { data: weeklyLogs } = await supabase
         .from("weekly_logs")
         .select(`
           id,
           student_user_id,
           supervisor_id,
+          week_number,
           week_start_date,
           week_end_date,
-          work_description,
           tasks_completed,
-          challenges_faced,
+          challenges,
           learnings,
+          next_week_goals,
+          hours_worked,
           status,
           supervisor_feedback,
           reviewed_at,
@@ -196,18 +199,18 @@ export default function SiteSupervisorWeeklyLogsPage() {
           studentName: fullName,
           studentEmail: profile.email || "",
           avatarUrl: profile.avatar_url ?? null,
-          // weekly_logs has no `week_number` column; derive a stable number
-          // from the position in the (desc-ordered) list for display only.
-          weekNumber: idx + 1,
+          // week_number is a real column (migration 0042 made it nullable w/ default).
+          weekNumber: log.week_number ?? idx + 1,
           weekStart: log.week_start_date,
           weekEnd: log.week_end_date,
           status: log.status as WeeklyLogEntry["status"],
           tasksCompleted: Array.isArray(log.tasks_completed) ? log.tasks_completed : [],
-          challenges: log.challenges_faced ?? null,
+          challenges: log.challenges ?? null,
           learnings: log.learnings ?? null,
-          // weekly_logs has no `next_week_goals` or `hours_worked` column
-          nextWeekGoals: null,
-          hoursWorked: null,
+          nextWeekGoals: log.next_week_goals ?? null,
+          hoursWorked: log.hours_worked !== null && log.hours_worked !== undefined
+            ? Number(log.hours_worked)
+            : null,
           submittedAt: log.submitted_at ?? null,
           reviewedAt: log.reviewed_at ?? null,
           supervisorFeedback: log.supervisor_feedback ?? null,
@@ -221,15 +224,16 @@ export default function SiteSupervisorWeeklyLogsPage() {
 
       setLogs(processedLogs);
 
-      // Calculate stats (hours are always null since weekly_logs has no
-      // `hours_worked` column, so averageHours stays 0).
+      // Calculate stats using real hours_worked from weekly_logs.
+      const totalHours = processedLogs.reduce((acc, l) => acc + (l.hoursWorked || 0), 0);
+      const logsWithHours = processedLogs.filter((l) => l.hoursWorked !== null).length;
       setStats({
         totalLogs: processedLogs.length,
         pendingReview: processedLogs.filter((l) => l.status === "submitted").length,
         approved: processedLogs.filter((l) => l.status === "approved").length,
         rejected: processedLogs.filter((l) => l.status === "rejected").length,
         lateSubmissions: processedLogs.filter((l) => l.isLate).length,
-        averageHours: 0,
+        averageHours: logsWithHours > 0 ? Math.round((totalHours / logsWithHours) * 10) / 10 : 0,
       });
 
     } catch (error) {

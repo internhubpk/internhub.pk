@@ -366,12 +366,42 @@ export default function FacultySupervisorEvaluationsPage() {
   }, [evaluationHistory, searchTerm, statusFilter, typeFilter]);
 
   // Stats
+  // `completedToday` — count evaluations submitted today (from history).
+  const today = new Date();
+  const isSameDay = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    return (
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate()
+    );
+  };
+  const completedToday = evaluationHistory.filter(
+    (e) => isSameDay(e.evaluatedAt) || isSameDay(e.submittedAt)
+  ).length;
+
+  // `highPriority` — consider pending evaluations older than 3 days as high priority.
+  const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const highPriority = pendingEvaluations.filter((e) => {
+    if (!e.submittedAt) return false;
+    return new Date(e.submittedAt) < threeDaysAgo;
+  }).length;
+
+  // Update the `priority` field on each pending evaluation based on age.
+  const pendingEvaluationsWithPriority = pendingEvaluations.map((e) => ({
+    ...e,
+    priority: (e.submittedAt && new Date(e.submittedAt) < threeDaysAgo
+      ? "high"
+      : "medium") as "high" | "medium" | "low",
+  }));
+
   const stats = {
-    pending: pendingEvaluations.length,
-    highPriority: pendingEvaluations.filter(e => e.priority === "high").length,
-    completedToday: 0,
+    pending: pendingEvaluationsWithPriority.length,
+    highPriority,
+    completedToday,
     totalEvaluated: evaluationHistory.length,
-    avgScore: evaluationHistory.length > 0 
+    avgScore: evaluationHistory.length > 0
       ? Math.round(evaluationHistory.reduce((acc, e) => acc + (e.score / e.maxScore) * 100, 0) / evaluationHistory.length)
       : 0,
   };
@@ -673,7 +703,7 @@ export default function FacultySupervisorEvaluationsPage() {
 
           {/* Queue List */}
           <div className="space-y-4">
-            {pendingEvaluations.map((evaluation, index) => (
+            {pendingEvaluationsWithPriority.map((evaluation, index) => (
               <motion.div
                 key={evaluation.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -745,7 +775,7 @@ export default function FacultySupervisorEvaluationsPage() {
               </motion.div>
             ))}
 
-            {pendingEvaluations.length === 0 && (
+            {pendingEvaluationsWithPriority.length === 0 && (
               <Card>
                 <CardContent className="py-12 text-center">
                   <CheckCircle2 className="h-12 w-12 mx-auto text-emerald-500 mb-4" />

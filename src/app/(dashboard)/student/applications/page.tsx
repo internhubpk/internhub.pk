@@ -63,7 +63,7 @@ interface Application {
   company_id?: string;
   status: "pending" | "reviewing" | "accepted" | "rejected" | "withdrawn";
   cover_letter?: string;
-  created_at: string;
+  applied_at: string;
   updated_at: string;
   // Extended info
   location?: string | null;
@@ -121,7 +121,7 @@ export default function StudentApplicationsPage() {
           )
         `)
         .eq("student_user_id", user.id)
-        .order("created_at", { ascending: false });
+        .order("applied_at", { ascending: false });
 
       if (!error && data) {
         // Transform data to flat structure
@@ -133,7 +133,7 @@ export default function StudentApplicationsPage() {
           company_id: app.internships?.company_id,
           status: app.status,
           cover_letter: app.cover_letter,
-          created_at: app.created_at,
+          applied_at: app.applied_at,
           updated_at: app.updated_at,
           location: app.internships?.location,
           remote: app.internships?.remote,
@@ -200,7 +200,7 @@ export default function StudentApplicationsPage() {
     
     // Applied
     timeline.push({
-      date: app.created_at,
+      date: app.applied_at,
       action: "Applied",
       description: `You applied for ${app.internship_title}`,
       type: "applied",
@@ -209,7 +209,7 @@ export default function StudentApplicationsPage() {
     // Under review
     if (app.status === "reviewing" || ["accepted", "rejected"].includes(app.status)) {
       timeline.push({
-        date: app.updated_at > app.created_at ? app.updated_at : app.created_at,
+        date: app.updated_at > app.applied_at ? app.updated_at : app.applied_at,
         action: "Under Review",
         description: "Your application is being reviewed by the employer",
         type: "reviewing",
@@ -470,7 +470,7 @@ export default function StudentApplicationsPage() {
                         <TableCell><StatusBadge status={application.status} size="md" /></TableCell>
                         <TableCell>
                           <span className="text-sm text-muted-foreground">
-                            {formatDate(application.created_at)}
+                            {formatDate(application.applied_at)}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -550,7 +550,7 @@ export default function StudentApplicationsPage() {
                       </div>
 
                       <div className="flex items-center justify-between text-sm text-muted-foreground pt-2 border-t">
-                        <span>Applied {formatRelativeTime(application.created_at)}</span>
+                        <span>Applied {formatRelativeTime(application.applied_at)}</span>
                         
                         <div className="flex gap-2">
                           <Button
@@ -644,7 +644,7 @@ export default function StudentApplicationsPage() {
                 <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50">
                   <div>
                     <span className="text-xs text-muted-foreground">Applied On</span>
-                    <p className="font-medium">{formatDate(detailApplication.created_at)}</p>
+                    <p className="font-medium">{formatDate(detailApplication.applied_at)}</p>
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">Last Updated</span>

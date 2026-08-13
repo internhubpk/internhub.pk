@@ -156,7 +156,7 @@ export default function SiteSupervisorNotificationsPage() {
           internship:internships(title)
         `)
         .eq("site_supervisor_id", supervisorUserId)
-        .eq("is_active", true);
+        .in("status", ["active", "assigned"]);
 
       const studentList: AssignedStudent[] = (assignments || []).map((assign: any) => {
         const p = assign.student_profile || {};
