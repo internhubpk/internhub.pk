@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Filter,
 } from "lucide-react";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface Notification {
   id: string;
@@ -192,31 +193,28 @@ export default function StudentNotificationsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>
-          <p className="text-muted-foreground mt-1">
-            Stay updated with announcements and important information
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {unreadCount > 0 && (
-            <Button variant="outline" onClick={markAllAsRead}>
-              <CheckCheck className="h-4 w-4 mr-2" />
-              Mark All Read
+      <PageHeader
+        title="Notifications"
+        description="Stay updated with announcements and important information"
+        actions={
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <Button variant="outline" onClick={markAllAsRead}>
+                <CheckCheck className="h-4 w-4 mr-2" />
+                Mark All Read
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => fetchNotifications(page, filterUnread)}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
-          )}
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={() => fetchNotifications(page, filterUnread)}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Filters */}
       <Card>

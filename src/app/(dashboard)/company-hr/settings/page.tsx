@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface CompanyForm {
   name: string;
@@ -273,12 +274,10 @@ export default function CompanyHRSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage your company profile, your personal details, notifications, and password.
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Manage your company profile, your personal details, notifications, and password."
+      />
 
       <Tabs defaultValue="company">
         <TabsList className="grid grid-cols-2 sm:grid-cols-4 mb-6">

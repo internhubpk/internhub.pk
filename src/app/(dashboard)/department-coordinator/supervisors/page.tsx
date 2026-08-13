@@ -22,6 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +64,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
 import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 interface Supervisor {
   id: string;
@@ -336,32 +339,28 @@ export default function SupervisorsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Supervisors</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage faculty supervisors in your department
-          </p>
-        </div>
-
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Supervisor
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>Add New Supervisor</DialogTitle>
-                <DialogDescription>
-                  Create a new faculty supervisor account. They will receive login credentials via email.
-                </DialogDescription>
-              </DialogHeader>
+      <PageHeader
+        title="Supervisors"
+        description="Manage faculty supervisors in your department"
+        actions={
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) resetForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Supervisor
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <form onSubmit={handleSubmit}>
+                <DialogHeader>
+                  <DialogTitle>Add New Supervisor</DialogTitle>
+                  <DialogDescription>
+                    Create a new faculty supervisor account. They will receive login credentials via email.
+                  </DialogDescription>
+                </DialogHeader>
 
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -493,55 +492,28 @@ export default function SupervisorsPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <UserCheck className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Supervisors</p>
-                <p className="text-2xl font-bold">{supervisors.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
-                <Users className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Assigned Students</p>
-                <p className="text-2xl font-bold">
-                  {supervisors.reduce((acc, s) => acc + (s.workload?.assigned_students || 0), 0)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-50 dark:bg-violet-950 flex items-center justify-center">
-                <Award className="h-5 w-5 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Avg. Workload</p>
-                <p className="text-2xl font-bold">
-                  {supervisors.length > 0
-                    ? Math.round(supervisors.reduce((acc, s) => acc + (s.workload?.assigned_students || 0), 0) / supervisors.length)
-                    : 0}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Supervisors" value={supervisors.length} icon={UserCheck} variant="default" />
+        <StatCard
+          label="Total Assigned Students"
+          value={supervisors.reduce((acc, s) => acc + (s.workload?.assigned_students || 0), 0)}
+          icon={Users}
+          variant="success"
+        />
+        <StatCard
+          label="Avg. Workload"
+          value={
+            supervisors.length > 0
+              ? Math.round(supervisors.reduce((acc, s) => acc + (s.workload?.assigned_students || 0), 0) / supervisors.length)
+              : 0
+          }
+          icon={Award}
+          variant="default"
+        />
       </div>
 
       {/* Filters */}
@@ -592,13 +564,13 @@ export default function SupervisorsPage() {
           <CardContent className="py-12">
             <div className="space-y-4">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
-                  <div className="h-12 w-12 rounded-full bg-muted" />
+                <div key={i} className="flex items-center gap-4 p-4">
+                  <Skeleton className="h-12 w-12 rounded-full" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 w-40 bg-muted rounded" />
-                    <div className="h-3 w-32 bg-muted rounded" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-32" />
                   </div>
-                  <div className="h-6 w-20 bg-muted rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
                 </div>
               ))}
             </div>

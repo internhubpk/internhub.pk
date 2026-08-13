@@ -18,7 +18,6 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  GraduationCap,
   Building2,
   BookOpen,
   CheckCircle2,
@@ -29,8 +28,10 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
@@ -52,6 +53,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface StudentDetail {
@@ -444,38 +447,6 @@ export default function SiteSupervisorStudentsPage() {
     }
   }
 
-  function getStatusBadge(status: string) {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-green-100 text-green-800"><span className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5" />Active</Badge>;
-      case "completed":
-        return <Badge className="bg-gray-100 text-gray-800">Completed</Badge>;
-      case "on_leave":
-        return <Badge className="bg-orange-100 text-orange-800">On Leave</Badge>;
-      case "suspended":
-        return <Badge className="bg-red-100 text-red-800">Suspended</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  }
-
-  function getLogStatusBadge(status: WeeklyLogSummary["status"]) {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
-      case "submitted":
-        return <Badge className="bg-blue-100 text-blue-800">Submitted</Badge>;
-      case "rejected":
-        return <Badge className="bg-red-100 text-red-800">Rejected</Badge>;
-      case "pending":
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
-      case "late":
-        return <Badge className="bg-orange-100 text-orange-800">Late</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  }
-
   function getDecisionBadge(decision: EvaluationRecord["decision"]) {
     switch (decision) {
       case "satisfactory":
@@ -498,80 +469,38 @@ export default function SiteSupervisorStudentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <GraduationCap className="h-8 w-8" />
-            Assigned Students
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            View and manage interns assigned to your supervision
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => exportStudentsCsv(filteredStudents)}>
-          <Download className="h-4 w-4 mr-2" />
-          Export List
-        </Button>
-      </div>
+      <PageHeader
+        title="Assigned Students"
+        description="View and manage interns assigned to your supervision"
+        actions={
+          <Button variant="outline" onClick={() => exportStudentsCsv(filteredStudents)}>
+            <Download className="h-4 w-4 mr-2" />
+            Export List
+          </Button>
+        }
+      />
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-50">
-                <Users className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{students.length}</p>
-                <p className="text-xs text-muted-foreground">Total Assigned</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-50">
-                <UserCheck className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{students.filter(s => s.status === "active").length}</p>
-                <p className="text-xs text-muted-foreground">Active</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-50">
-                <Clock className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {students.filter(s => (s.daysSinceEvaluation ?? 0) > 18).length}
-                </p>
-                <p className="text-xs text-muted-foreground">Eval Due Soon</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-50">
-                <AlertCircle className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {students.filter(s => (s.daysSinceEvaluation ?? 0) > 21).length}
-                </p>
-                <p className="text-xs text-muted-foreground">Overdue</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Assigned" value={students.length} icon={Users} variant="success" />
+        <StatCard
+          label="Active"
+          value={students.filter(s => s.status === "active").length}
+          icon={UserCheck}
+          variant="success"
+        />
+        <StatCard
+          label="Eval Due Soon"
+          value={students.filter(s => (s.daysSinceEvaluation ?? 0) > 18).length}
+          icon={Clock}
+          variant="warning"
+        />
+        <StatCard
+          label="Overdue"
+          value={students.filter(s => (s.daysSinceEvaluation ?? 0) > 21).length}
+          icon={AlertCircle}
+          variant="danger"
+        />
       </div>
 
       {/* Filters */}
@@ -619,9 +548,14 @@ export default function SiteSupervisorStudentsPage() {
 
       {/* Students Grid/List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="ml-3 text-muted-foreground">Loading students...</span>
+        <div className="grid gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <Skeleton className="h-16" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : filteredStudents.length === 0 ? (
         <Card>
@@ -663,7 +597,7 @@ export default function SiteSupervisorStudentsPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-lg truncate">{student.name}</h3>
-                          {getStatusBadge(student.status)}
+                          <StatusBadge status={student.status} />
                           {getPerformanceBadge(student.performanceRating)}
                         </div>
                         <p className="text-sm text-muted-foreground truncate">{student.email}</p>
@@ -796,7 +730,7 @@ export default function SiteSupervisorStudentsPage() {
                           </div>
                           <div>
                             <p className="text-muted-foreground">Status</p>
-                            <div>{getStatusBadge(selectedStudent.status)}</div>
+                            <div><StatusBadge status={selectedStudent.status} /></div>
                           </div>
                         </div>
                       </CardContent>
@@ -924,7 +858,7 @@ export default function SiteSupervisorStudentsPage() {
                                 <p className="text-sm font-medium">{log.hoursLogged} hrs</p>
                                 <p className="text-xs text-muted-foreground">Logged</p>
                               </div>
-                              {getLogStatusBadge(log.status)}
+                              <StatusBadge status={log.status} />
                             </div>
                           </div>
                         ))}

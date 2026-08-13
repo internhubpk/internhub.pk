@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface ReportData {
   company_id: string;
@@ -266,32 +267,30 @@ export default function CompanyHRReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports & Analytics</h1>
-          <p className="text-sm text-muted-foreground">
-            Generated {new Date(data.generated_at).toLocaleString()}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportFunnel}>
-            <Download className="h-4 w-4 mr-2" />
-            Summary CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportInternships}>
-            <Download className="h-4 w-4 mr-2" />
-            Internships CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportSupervisors}>
-            <Download className="h-4 w-4 mr-2" />
-            Supervisors CSV
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Reports & Analytics"
+        description={`Generated ${new Date(data.generated_at).toLocaleString()}`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportFunnel}>
+              <Download className="h-4 w-4 mr-2" />
+              Summary CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportInternships}>
+              <Download className="h-4 w-4 mr-2" />
+              Internships CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportSupervisors}>
+              <Download className="h-4 w-4 mr-2" />
+              Supervisors CSV
+            </Button>
+          </>
+        }
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

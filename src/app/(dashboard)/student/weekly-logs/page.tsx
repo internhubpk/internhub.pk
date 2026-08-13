@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -34,6 +35,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 // `weekly_logs.status` uses the `weekly_log_status` enum
@@ -132,21 +135,6 @@ export default function StudentWeeklyLogsPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>;
-      case "revision_required":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Revision Required</Badge>;
-      case "submitted":
-        return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Pending Review</Badge>;
-      case "draft":
-        return <Badge variant="outline"><FileText className="mr-1 h-3 w-3" />Draft</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const handleSubmitLog = async () => {
     if (!user) return;
     // Require at least a work description or some tasks completed to submit.
@@ -222,8 +210,8 @@ export default function StudentWeeklyLogsPage() {
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
           <div className="container mx-auto px-4 py-6 lg:px-8">
-            <div className="h-8 bg-muted animate-pulse rounded w-48" />
-            <div className="h-4 bg-muted animate-pulse rounded w-64 mt-2" />
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
           </div>
         </div>
         <div className="container mx-auto px-4 py-6 lg:px-8">
@@ -231,7 +219,7 @@ export default function StudentWeeklyLogsPage() {
             {[1, 2, 3, 4].map((i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  <div className="h-12 bg-muted animate-pulse rounded" />
+                  <Skeleton className="h-12" />
                 </CardContent>
               </Card>
             ))}
@@ -250,18 +238,12 @@ export default function StudentWeeklyLogsPage() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-                Weekly Logs
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Track your weekly internship activities and progress
-              </p>
-            </div>
-            
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <PageHeader
+              title="Weekly Logs"
+              description="Track your weekly internship activities and progress"
+              actions={
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="h-4 w-4" />
@@ -348,6 +330,8 @@ export default function StudentWeeklyLogsPage() {
                   </div>
                 </DialogContent>
               </Dialog>
+              }
+            />
           </motion.div>
         </div>
       </div>
@@ -360,53 +344,10 @@ export default function StudentWeeklyLogsPage() {
           transition={{ delay: 0.1, duration: 0.3 }}
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6"
         >
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <FileText className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Submitted</p>
-                <p className="text-2xl font-bold">{logs.filter(l => l.submittedAt).length}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Approved</p>
-                <p className="text-2xl font-bold">{logs.filter(l => l.status === "approved").length}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <Clock className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold">{pendingWeeks.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Calendar className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Weeks Logged</p>
-                <p className="text-2xl font-bold">{logs.length}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCard label="Total Submitted" value={logs.filter(l => l.submittedAt).length} icon={FileText} variant="info" />
+          <StatCard label="Approved" value={logs.filter(l => l.status === "approved").length} icon={CheckCircle2} variant="success" />
+          <StatCard label="Pending" value={pendingWeeks.length} icon={Clock} variant="warning" />
+          <StatCard label="Weeks Logged" value={logs.length} icon={Calendar} variant="default" />
         </motion.div>
 
         {/* Weekly Logs List */}
@@ -442,7 +383,7 @@ export default function StudentWeeklyLogsPage() {
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
-                        {getStatusBadge(log.status)}
+                        <StatusBadge status={log.status} />
                         {log.submittedAt && (
                           <span className="text-xs text-muted-foreground">
                             {new Date(log.submittedAt).toLocaleDateString()}

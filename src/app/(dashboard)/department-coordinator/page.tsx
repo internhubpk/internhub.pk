@@ -26,12 +26,14 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface DepartmentStats {
   totalStudents: number;
@@ -210,34 +212,30 @@ export default function DepartmentCoordinatorDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Department Coordinator
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {profile?.full_name || user?.email || "Coordinator"}
+      <PageHeader
+        title="Department Coordinator"
+        description={`Welcome back, ${profile?.full_name || user?.email || "Coordinator"}`}
+        actions={
+          <div className="flex items-center gap-2">
             {department && (
-              <Badge variant="outline" className="ml-2">
+              <Badge variant="outline">
                 <Building2 className="h-3 w-3 mr-1" />
                 {department.name} ({department.code})
               </Badge>
             )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchDashboardData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <Link href="/department-coordinator/students">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Manage Students
-            </Link>
-          </Button>
-        </div>
-      </div>
+            <Button variant="outline" onClick={fetchDashboardData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link href="/department-coordinator/students">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Manage Students
+              </Link>
+            </Button>
+          </div>
+        }
+      />
 
       {/* Department Info Card (View-Only) */}
       {department && (
@@ -386,13 +384,13 @@ export default function DepartmentCoordinatorDashboard() {
               {isLoading ? (
                 <div className="space-y-3">
                   {[...Array(4)].map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 animate-pulse">
-                      <div className="h-10 w-10 rounded-lg bg-muted" />
+                    <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
                       <div className="flex-1 space-y-2">
-                        <div className="h-4 w-32 bg-muted rounded" />
-                        <div className="h-3 w-20 bg-muted rounded" />
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-20" />
                       </div>
-                      <div className="h-6 w-16 bg-muted rounded-full" />
+                      <Skeleton className="h-6 w-16 rounded-full" />
                     </div>
                   ))}
                 </div>

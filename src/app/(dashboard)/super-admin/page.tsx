@@ -36,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";
+import { PageHeader } from "@/components/dashboard/page-header";
 import { 
   LineChartCard, 
   BarChartCard, 
@@ -504,18 +505,16 @@ export default function SuperAdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Super Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {profile?.full_name || user?.email || "Admin"}
-          </p>
-        </div>
-        <Button variant="outline" onClick={fetchDashboardData} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh Data
-        </Button>
-      </div>
+      <PageHeader
+        title="Super Admin Dashboard"
+        description={`Welcome back, ${profile?.full_name || user?.email || "Admin"}`}
+        actions={
+          <Button variant="outline" onClick={fetchDashboardData} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh Data
+          </Button>
+        }
+      />
 
       {/* Database Setup Required Alert */}
       {dataState === "no_tables" && (

@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface InternshipWithRelations {
   id: string;
@@ -199,16 +200,11 @@ export default function UniversityAdminInternshipsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Internships</h1>
-          <Badge variant="outline" className="text-xs">View only</Badge>
-        </div>
-        <p className="mt-2 text-muted-foreground flex items-center gap-1.5">
-          <Info className="h-3.5 w-3.5" />
-          Browse all internships available to students at {university?.name || "your university"}. Internship creation is handled by Company HRs.
-        </p>
-      </div>
+      <PageHeader
+        title="Internships"
+        description={`Browse all internships available to students at ${university?.name || "your university"}. Internship creation is handled by Company HRs.`}
+        actions={<Badge variant="outline" className="text-xs">View only</Badge>}
+      />
 
       {/* Filters */}
       <Card>

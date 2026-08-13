@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface ReportStats {
   totalStudents: number;
@@ -353,10 +354,7 @@ export default function UniversityAdminReportsPage() {
   if (!universityId) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-          <p className="text-muted-foreground">View statistics and analytics</p>
-        </div>
+        <PageHeader title="Reports" description="View statistics and analytics" />
         <Card>
           <CardContent className="py-12">
             <div className="flex flex-col items-center justify-center text-center">
@@ -376,10 +374,7 @@ export default function UniversityAdminReportsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-          <p className="text-muted-foreground">View statistics and analytics</p>
-        </div>
+        <PageHeader title="Reports" description="View statistics and analytics" />
         <Card className="border-destructive/50">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 text-destructive">
@@ -446,18 +441,16 @@ export default function UniversityAdminReportsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reports & Analytics</h1>
-          <p className="text-muted-foreground">
-            Statistics for {university?.name || "your university"}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={fetchReportData} disabled={isLoading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Reports & Analytics"
+        description={`Statistics for ${university?.name || "your university"}`}
+        actions={
+          <Button variant="outline" size="sm" onClick={fetchReportData} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Top Stat Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface Internship {
@@ -334,27 +336,27 @@ export default function StudentInternshipsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <div className="h-8 w-48 bg-muted animate-pulse rounded mb-2" />
-          <div className="h-4 w-80 bg-muted animate-pulse rounded" />
+          <Skeleton className="h-8 w-48 mb-2" />
+          <Skeleton className="h-4 w-80" />
         </div>
         
         <div className="flex gap-4">
-          <div className="h-10 flex-1 bg-muted animate-pulse rounded" />
-          <div className="h-10 w-40 bg-muted animate-pulse rounded" />
-          <div className="h-10 w-40 bg-muted animate-pulse rounded" />
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-40" />
+          <Skeleton className="h-10 w-40" />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6 space-y-4">
-                <div className="h-6 w-3/4 bg-muted animate-pulse rounded" />
-                <div className="h-4 w-1/2 bg-muted animate-pulse rounded" />
-                <div className="h-20 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-20" />
                 <div className="flex gap-2">
-                  <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
-                  <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
-                  <div className="h-6 w-20 bg-muted animate-pulse rounded-full" />
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
                 </div>
               </CardContent>
             </Card>
@@ -371,19 +373,16 @@ export default function StudentInternshipsPage() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Find Internships</h1>
-            <p className="text-muted-foreground mt-1">
-              Discover opportunities{profile?.department_id ? " matching your department" : ""}
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Briefcase className="h-4 w-4" />
-            <span>{filteredInternships.length} positions available</span>
-          </div>
-        </div>
+        <PageHeader
+          title="Find Internships"
+          description={`Discover opportunities${profile?.department_id ? " matching your department" : ""}`}
+          actions={
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Briefcase className="h-4 w-4" />
+              <span>{filteredInternships.length} positions available</span>
+            </div>
+          }
+        />
       </motion.div>
 
       {/* Filters */}

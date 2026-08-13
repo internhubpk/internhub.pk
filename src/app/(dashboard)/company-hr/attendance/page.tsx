@@ -70,6 +70,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 type AttendanceStatus = "present" | "absent" | "late" | "half_day" | "leave" | "holiday";
@@ -303,48 +304,45 @@ export default function CompanyHRAttendancePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Attendance Tracking</h1>
-          <p className="mt-2 text-muted-foreground">
-            Monitor and manage intern attendance records
-          </p>
-        </div>
-
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={() => {
-            const rows = [
-              ["Intern", "Email", "Program", "Date", "Status", "Check-in", "Check-out", "Notes"],
-              ...filteredRecords.map((r) => [
-                r.intern_name,
-                r.intern_email,
-                r.program,
-                r.date,
-                r.status,
-                r.check_in || "",
-                r.check_out || "",
-                r.notes || "",
-              ]),
-            ];
-            const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `attendance-${selectedDate}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }}
-          disabled={filteredRecords.length === 0}
-        >
-          <Download className="h-4 w-4" />
-          Export Report
-        </Button>
-      </div>
+      <PageHeader
+        title="Attendance Tracking"
+        description="Monitor and manage intern attendance records"
+        actions={
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              const rows = [
+                ["Intern", "Email", "Program", "Date", "Status", "Check-in", "Check-out", "Notes"],
+                ...filteredRecords.map((r) => [
+                  r.intern_name,
+                  r.intern_email,
+                  r.program,
+                  r.date,
+                  r.status,
+                  r.check_in || "",
+                  r.check_out || "",
+                  r.notes || "",
+                ]),
+              ];
+              const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `attendance-${selectedDate}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+            disabled={filteredRecords.length === 0}
+          >
+            <Download className="h-4 w-4" />
+            Export Report
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

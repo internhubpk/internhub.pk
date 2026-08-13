@@ -20,6 +20,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
 import { createClient } from "@/utils/supabase/client";
 import type { Profile } from "@/types";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface Program {
   id: string;
@@ -254,36 +256,32 @@ export default function ProgramsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Programs</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage internship programs in your department
-          </p>
-        </div>
-        
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Program
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>
-                  {editingProgram ? "Edit Program" : "Create New Program"}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingProgram
-                    ? "Update the program details below."
-                    : "Add a new internship program to your department."}
-                </DialogDescription>
-              </DialogHeader>
+      <PageHeader
+        title="Programs"
+        description="Manage internship programs in your department"
+        actions={
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) resetForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                New Program
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <form onSubmit={handleSubmit}>
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingProgram ? "Edit Program" : "Create New Program"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {editingProgram
+                      ? "Update the program details below."
+                      : "Add a new internship program to your department."}
+                  </DialogDescription>
+                </DialogHeader>
 
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -421,7 +419,8 @@ export default function ProgramsPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Filters */}
       <Card>
@@ -471,13 +470,13 @@ export default function ProgramsPage() {
           <CardContent className="py-12">
             <div className="space-y-4">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
-                  <div className="h-12 w-12 rounded-lg bg-muted" />
+                <div key={i} className="flex items-center gap-4 p-4">
+                  <Skeleton className="h-12 w-12 rounded-lg" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 w-40 bg-muted rounded" />
-                    <div className="h-3 w-24 bg-muted rounded" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
-                  <div className="h-6 w-20 bg-muted rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
                 </div>
               ))}
             </div>

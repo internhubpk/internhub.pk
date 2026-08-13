@@ -21,6 +21,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +55,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 interface University {
   id: string;
@@ -505,16 +508,16 @@ export default function SuperAdminUniversitiesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Universities</h1>
-          <p className="text-muted-foreground mt-1">Manage all registered universities</p>
-        </div>
-        <Button onClick={openCreateDialog} disabled={!tablesExist}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add University
-        </Button>
-      </div>
+      <PageHeader
+        title="Universities"
+        description="Manage all registered universities"
+        actions={
+          <Button onClick={openCreateDialog} disabled={!tablesExist}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add University
+          </Button>
+        }
+      />
 
       {/* Message Banner */}
       {message && (
@@ -582,43 +585,24 @@ export default function SuperAdminUniversitiesPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-blue-50 rounded-full">
-              <Building2 className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Universities</p>
-              <p className="text-3xl font-bold">{universities.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-green-50 rounded-full">
-              <Users className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Students</p>
-              <p className="text-3xl font-bold">{totalStudents.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-emerald-50 rounded-full">
-              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Active</p>
-              <p className="text-3xl font-bold">
-                {universities.filter(u => u.is_active !== false).length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Total Universities"
+          value={universities.length}
+          icon={Building2}
+          variant="info"
+        />
+        <StatCard
+          label="Total Students"
+          value={totalStudents.toLocaleString()}
+          icon={Users}
+          variant="success"
+        />
+        <StatCard
+          label="Active"
+          value={universities.filter(u => u.is_active !== false).length}
+          icon={CheckCircle2}
+          variant="success"
+        />
       </div>
 
       {/* Search */}
@@ -635,10 +619,11 @@ export default function SuperAdminUniversitiesPage() {
       {/* Universities List */}
       {isLoading ? (
         <Card>
-          <CardContent className="py-12">
-            <div className="flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-3 text-muted-foreground">Loading universities...</span>
+          <CardContent className="py-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14" />
+              ))}
             </div>
           </CardContent>
         </Card>

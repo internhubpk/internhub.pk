@@ -4,8 +4,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -51,6 +52,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface Application {
@@ -168,43 +170,7 @@ export default function StudentApplicationsPage() {
   const acceptedCount = applications.filter(a => a.status === "accepted").length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;
 
-  // Status badge helper
-  const getStatusBadge = (status: string, size: "sm" | "default" = "default") => {
-    const sizeClass = size === "sm" ? "text-xs px-2 py-0.5" : "";
-    
-    switch (status) {
-      case "accepted":
-        return (
-          <Badge className={`bg-emerald-100 text-emerald-700 border-emerald-200 ${sizeClass}`}>
-            <CheckCircle2 className="mr-1 h-3 w-3" />Accepted
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge variant="destructive" className={sizeClass}>
-            <XCircle className="mr-1 h-3 w-3" />Rejected
-          </Badge>
-        );
-      case "reviewing":
-        return (
-          <Badge className={`bg-blue-100 text-blue-700 border-blue-200 ${sizeClass}`}>
-            <Eye className="mr-1 h-3 w-3" />Under Review
-          </Badge>
-        );
-      case "withdrawn":
-        return (
-          <Badge variant="secondary" className={sizeClass}>
-            Withdrawn
-          </Badge>
-        );
-      default:
-        return (
-          <Badge className={`bg-amber-100 text-amber-700 border-amber-200 ${sizeClass}`}>
-            <Clock className="mr-1 h-3 w-3" />Pending
-          </Badge>
-        );
-    }
-  };
+  // Status badge helper removed in favor of <StatusBadge />
 
   // Format helpers
   const formatDate = (dateStr: string) => {
@@ -323,8 +289,8 @@ export default function StudentApplicationsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-8 w-48 bg-muted animate-pulse rounded mb-2" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded" />
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
           </div>
         </div>
         
@@ -332,7 +298,7 @@ export default function StudentApplicationsPage() {
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <div className="h-16 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-16" />
               </CardContent>
             </Card>
           ))}
@@ -342,7 +308,7 @@ export default function StudentApplicationsPage() {
           <CardContent className="p-8">
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
+                <Skeleton key={i} className="h-12" />
               ))}
             </div>
           </CardContent>
@@ -354,26 +320,24 @@ export default function StudentApplicationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">My Applications</h1>
-          <p className="text-muted-foreground mt-1">
-            Track and manage your internship applications
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchApplications} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <Link href="/student/internships">
-              <Plus className="h-4 w-4 mr-2" />
-              Apply for More
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="My Applications"
+        description="Track and manage your internship applications"
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchApplications} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link href="/student/internships">
+                <Plus className="h-4 w-4 mr-2" />
+                Apply for More
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -503,7 +467,7 @@ export default function StudentApplicationsPage() {
                         <TableCell>
                           <span>{application.company_name}</span>
                         </TableCell>
-                        <TableCell>{getStatusBadge(application.status)}</TableCell>
+                        <TableCell><StatusBadge status={application.status} size="md" /></TableCell>
                         <TableCell>
                           <span className="text-sm text-muted-foreground">
                             {formatDate(application.created_at)}
@@ -582,7 +546,7 @@ export default function StudentApplicationsPage() {
                             {application.company_name}
                           </p>
                         </div>
-                        {getStatusBadge(application.status, "sm")}
+                        <StatusBadge status={application.status} size="sm" />
                       </div>
 
                       <div className="flex items-center justify-between text-sm text-muted-foreground pt-2 border-t">
@@ -648,7 +612,7 @@ export default function StudentApplicationsPage() {
                 }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {getStatusBadge(detailApplication.status)}
+                      <StatusBadge status={detailApplication.status} size="md" />
                       <span className="text-sm">
                         {detailApplication.status === "pending" && "Waiting for employer response"}
                         {detailApplication.status === "reviewing" && "Employer is reviewing your application"}

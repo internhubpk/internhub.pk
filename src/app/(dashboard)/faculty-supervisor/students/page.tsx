@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -76,6 +77,8 @@ import {
   XCircle,
   ArrowRight,
 } from "lucide-react";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface Student {
@@ -478,138 +481,6 @@ export default function FacultySupervisorStudentsPage() {
     }
   }, [searchParams, students]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-            <UserCheck className="mr-1 h-3 w-3" />
-            Active
-          </Badge>
-        );
-      case "on_leave":
-        return (
-          <Badge variant="secondary">
-            <Clock className="mr-1 h-3 w-3" />
-            On Leave
-          </Badge>
-        );
-      case "completed":
-        return (
-          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            Completed
-          </Badge>
-        );
-      case "withdrawn":
-        return (
-          <Badge variant="destructive">
-            <XCircle className="mr-1 h-3 w-3" />
-            Withdrawn
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const getLogStatusBadge = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return (
-          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-            <Clock className="mr-1 h-3 w-3" />
-            Submitted
-          </Badge>
-        );
-      case "approved":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            Approved
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-            <AlertCircle className="mr-1 h-3 w-3" />
-            Pending Review
-          </Badge>
-        );
-      case "not_submitted":
-        return (
-          <Badge variant="destructive">
-            <XCircle className="mr-1 h-3 w-3" />
-            Not Submitted
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const getTaskStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">
-            Completed
-          </Badge>
-        );
-      case "in_progress":
-        return (
-          <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
-            In Progress
-          </Badge>
-        );
-      case "overdue":
-        return (
-          <Badge variant="destructive" className="text-xs">
-            Overdue
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge variant="secondary" className="text-xs">
-            Pending
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline" className="text-xs">{status}</Badge>;
-    }
-  };
-
-  const getSubmissionStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">
-            Approved
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
-            Pending
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge variant="destructive" className="text-xs">
-            Rejected
-          </Badge>
-        );
-      case "revision_required":
-        return (
-          <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">
-            Revision Required
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline" className="text-xs">{status}</Badge>;
-    }
-  };
-
   const getStudentInitials = (name: string) => {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase();
   };
@@ -648,18 +519,21 @@ export default function FacultySupervisorStudentsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
-                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
-                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
-                <div className="h-3 w-16 bg-muted rounded"></div>
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <Skeleton className="h-5 w-5 mb-2" />
+                <Skeleton className="h-7 w-12 mb-1" />
+                <Skeleton className="h-3 w-16" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Loading student data...</p>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -669,65 +543,27 @@ export default function FacultySupervisorStudentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Students</h1>
-          <p className="text-muted-foreground mt-1">
-            Monitor and support your assigned interns across programs
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="My Students"
+        description="Monitor and support your assigned interns across programs"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Users className="h-5 w-5 text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <UserCheck className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
-            <p className="text-xs text-muted-foreground">Active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Clock className="h-5 w-5 text-amber-600 mb-1" />
-            <p className="text-2xl font-bold text-amber-600">{stats.logsPending}</p>
-            <p className="text-xs text-muted-foreground">Logs Pending</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <TrendingUp className="h-5 w-5 text-blue-600 mb-1" />
-            <p className="text-2xl font-bold text-blue-600">{stats.avgProgress}%</p>
-            <p className="text-xs text-muted-foreground">Avg Progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.onTrack}</p>
-            <p className="text-xs text-muted-foreground">On Track</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <AlertCircle className="h-5 w-5 text-red-600 mb-1" />
-            <p className="text-2xl font-bold text-red-600">{stats.atRisk}</p>
-            <p className="text-xs text-muted-foreground">At Risk</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total" value={stats.total} icon={Users} variant="default" />
+        <StatCard label="Active" value={stats.active} icon={UserCheck} variant="success" />
+        <StatCard label="Logs Pending" value={stats.logsPending} icon={Clock} variant="warning" />
+        <StatCard label="Avg Progress" value={`${stats.avgProgress}%`} icon={TrendingUp} variant="info" />
+        <StatCard label="On Track" value={stats.onTrack} icon={CheckCircle2} variant="success" />
+        <StatCard label="At Risk" value={stats.atRisk} icon={AlertCircle} variant="danger" />
       </div>
 
       {/* Filters */}
@@ -820,7 +656,7 @@ export default function FacultySupervisorStudentsPage() {
                       <p className="text-sm text-muted-foreground">{student.internshipTitle}</p>
                     </div>
                   </div>
-                  {getStatusBadge(student.status)}
+                  <StatusBadge status={student.status} />
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
@@ -840,7 +676,7 @@ export default function FacultySupervisorStudentsPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t">
-                  {getLogStatusBadge(student.weeklyLogStatus)}
+                  <StatusBadge status={student.weeklyLogStatus} />
                   <Button variant="ghost" size="sm" className="gap-1">
                     <Eye className="h-3 w-3" /> Details
                   </Button>
@@ -897,8 +733,8 @@ export default function FacultySupervisorStudentsPage() {
                         <p className="text-xs text-muted-foreground">{student.companyLocation}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{getStatusBadge(student.status)}</TableCell>
-                    <TableCell>{getLogStatusBadge(student.weeklyLogStatus)}</TableCell>
+                    <TableCell><StatusBadge status={student.status} /></TableCell>
+                    <TableCell><StatusBadge status={student.weeklyLogStatus} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 min-w-[120px]">
                         <Progress value={student.overallProgress} className="h-2 flex-1" />
@@ -1121,7 +957,7 @@ export default function FacultySupervisorStudentsPage() {
                                 )}
                               </div>
                             </div>
-                            {getTaskStatusBadge(task.status)}
+                            <StatusBadge status={task.status} />
                           </div>
                         ))}
                         {(!tasks[selectedStudent.id] || tasks[selectedStudent.id].length === 0) && (
@@ -1169,7 +1005,7 @@ export default function FacultySupervisorStudentsPage() {
                                 </p>
                               )}
                             </div>
-                            {getSubmissionStatusBadge(submission.status)}
+                            <StatusBadge status={submission.status} />
                           </div>
                         ))}
                         {(!submissions[selectedStudent.id] || submissions[selectedStudent.id].length === 0) && (

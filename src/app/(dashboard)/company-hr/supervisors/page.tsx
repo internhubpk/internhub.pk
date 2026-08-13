@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,6 +75,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // ===========================================================================
 // Types
@@ -447,7 +450,7 @@ export default function CompanyHRSupervisorsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
-              <CardContent className="p-4 h-20 animate-pulse bg-muted/30" />
+              <CardContent className="p-4 h-20"><Skeleton className="h-full w-full" /></CardContent>
             </Card>
           ))}
         </div>
@@ -458,28 +461,24 @@ export default function CompanyHRSupervisorsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Site Supervisors</h1>
-          <p className="mt-2 text-muted-foreground">
-            Manage site supervisors who mentor and evaluate your interns
-          </p>
-        </div>
-
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <UserPlus className="h-4 w-4" />
-              Add Supervisor
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create Supervisor Account</DialogTitle>
-              <DialogDescription>
-                Add a new site supervisor to your company. They will be able to manage and evaluate assigned interns.
-              </DialogDescription>
-            </DialogHeader>
+      <PageHeader
+        title="Site Supervisors"
+        description="Manage site supervisors who mentor and evaluate your interns"
+        actions={
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <UserPlus className="h-4 w-4" />
+                Add Supervisor
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create Supervisor Account</DialogTitle>
+                <DialogDescription>
+                  Add a new site supervisor to your company. They will be able to manage and evaluate assigned interns.
+                </DialogDescription>
+              </DialogHeader>
 
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -571,54 +570,15 @@ export default function CompanyHRSupervisorsPage() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Users className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Supervisors</p>
-              <p className="text-2xl font-bold">{stats.total}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-emerald-100 rounded-lg">
-              <UserCheck className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold">{stats.active}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <UserX className="h-5 w-5 text-gray-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Inactive</p>
-              <p className="text-2xl font-bold">{stats.inactive}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <GraduationCap className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Interns Assigned</p>
-              <p className="text-2xl font-bold">{stats.totalInternsAssigned}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Supervisors" value={stats.total} icon={Users} variant="info" />
+        <StatCard label="Active" value={stats.active} icon={UserCheck} variant="success" />
+        <StatCard label="Inactive" value={stats.inactive} icon={UserX} variant="default" />
+        <StatCard label="Interns Assigned" value={stats.totalInternsAssigned} icon={GraduationCap} variant="default" />
       </div>
 
       {/* Filters */}

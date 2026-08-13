@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
@@ -65,6 +66,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface InternDocument {
@@ -227,19 +230,6 @@ export default function CompanyHRDocumentsPage() {
     return matchesSearch && matchesType;
   });
 
-  const getStatusBadge = (status: InternDocument["status"]) => {
-    switch (status) {
-      case "verified":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Verified</Badge>;
-      case "pending":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="mr-1 h-3 w-3" />Pending</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getDocumentIcon = (type: InternDocument["document_type"]) => {
     switch (type) {
       case "offer_letter":
@@ -272,15 +262,11 @@ export default function CompanyHRDocumentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Document Management</h1>
-          <p className="mt-2 text-muted-foreground">
-            Manage offer letters, certificates, and other internship documents
-          </p>
-        </div>
-
-        <div className="flex gap-2">
+      <PageHeader
+        title="Document Management"
+        description="Manage offer letters, certificates, and other internship documents"
+        actions={
+          <div className="flex gap-2">
           <Dialog open={isBulkOpen} onOpenChange={setIsBulkOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2">
@@ -457,57 +443,15 @@ export default function CompanyHRDocumentsPage() {
             </DialogContent>
           </Dialog>
         </div>
-      </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <FileText className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Documents</p>
-              <p className="text-2xl font-bold">{stats.totalDocuments}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <FileSignature className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Offer Letters</p>
-              <p className="text-2xl font-bold">{stats.offerLetters}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Award className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Certificates</p>
-              <p className="text-2xl font-bold">{stats.certificates}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-amber-100 rounded-lg">
-              <AlertCircle className="h-5 w-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Missing Letters</p>
-              <p className="text-2xl font-bold">{stats.totalInterns - stats.internsWithLetters}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Documents" value={stats.totalDocuments} icon={FileText} variant="info" />
+        <StatCard label="Offer Letters" value={stats.offerLetters} icon={FileSignature} variant="success" />
+        <StatCard label="Certificates" value={stats.certificates} icon={Award} variant="default" />
+        <StatCard label="Missing Letters" value={stats.totalInterns - stats.internsWithLetters} icon={AlertCircle} variant="warning" />
       </div>
 
       {/* Main Content */}
@@ -591,7 +535,7 @@ export default function CompanyHRDocumentsPage() {
                           <span>{doc.intern_name}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(doc.status)}</TableCell>
+                      <TableCell><StatusBadge status={doc.status} /></TableCell>
                       <TableCell>{formatFileSize(doc.file_size)}</TableCell>
                       <TableCell>{new Date(doc.uploaded_at).toLocaleDateString()}</TableCell>
                       <TableCell>

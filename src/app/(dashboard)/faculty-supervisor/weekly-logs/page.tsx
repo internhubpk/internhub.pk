@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import {
   Table,
   TableBody,
@@ -43,6 +44,8 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 interface WeeklyLog {
   id: string;
@@ -160,21 +163,6 @@ export default function FacultySupervisorWeeklyLogsPage() {
     });
   }, [logs, statusFilter, searchTerm]);
 
-  const getStatusBadge = (status: WeeklyLog["status"]) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      draft: "secondary",
-      submitted: "default",
-      approved: "default",
-      rejected: "destructive",
-      revision_required: "outline",
-    };
-    return (
-      <Badge variant={variants[status] || "secondary"}>
-        {status.replace("_", " ")}
-      </Badge>
-    );
-  };
-
   const openReviewDialog = (log: WeeklyLog) => {
     setSelectedLog(log);
     setReviewFeedback(log.supervisor_feedback || "");
@@ -227,55 +215,23 @@ export default function FacultySupervisorWeeklyLogsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Weekly Logs</h1>
-          <p className="text-muted-foreground">Review and approve student weekly logs</p>
-        </div>
-        <Button variant="outline" onClick={() => window.print()}>
-          <Calendar className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-      </div>
+      <PageHeader
+        title="Weekly Logs"
+        description="Review and approve student weekly logs"
+        actions={
+          <Button variant="outline" onClick={() => window.print()}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{logs.filter(l => l.status === "submitted").length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Approved</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{logs.filter(l => l.status === "approved").length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rejected</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{logs.filter(l => l.status === "rejected").length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Hours</CardTitle>
-            <ScrollText className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{logs.reduce((sum, l) => sum + (l.hours_worked || 0), 0)}</div>
-          </CardContent>
-        </Card>
+        <StatCard label="Pending Review" value={logs.filter(l => l.status === "submitted").length} icon={Clock} variant="warning" />
+        <StatCard label="Approved" value={logs.filter(l => l.status === "approved").length} icon={CheckCircle} variant="success" />
+        <StatCard label="Rejected" value={logs.filter(l => l.status === "rejected").length} icon={XCircle} variant="danger" />
+        <StatCard label="Total Hours" value={logs.reduce((sum, l) => sum + (l.hours_worked || 0), 0)} icon={ScrollText} variant="info" />
       </div>
 
       {/* Filters */}
@@ -316,8 +272,10 @@ export default function FacultySupervisorWeeklyLogsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="text-center py-12">
@@ -348,7 +306,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                       <TableCell>Week {log.week_number}</TableCell>
                       <TableCell>{log.week_start_date} - {log.week_end_date}</TableCell>
                       <TableCell>{log.hours_worked}h</TableCell>
-                      <TableCell>{getStatusBadge(log.status)}</TableCell>
+                      <TableCell><StatusBadge status={log.status} /></TableCell>
                       <TableCell>{log.submitted_at || "-"}</TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -396,7 +354,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                     <CardContent className="p-4 text-center">
                       <p className="text-xs text-muted-foreground">Status</p>
                       <div className="mt-1 flex justify-center">
-                        {getStatusBadge(selectedLog.status)}
+                        <StatusBadge status={selectedLog.status} />
                       </div>
                     </CardContent>
                   </Card>

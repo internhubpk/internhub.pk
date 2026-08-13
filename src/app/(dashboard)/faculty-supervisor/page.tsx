@@ -37,6 +37,7 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface FacultyStats {
@@ -402,34 +403,30 @@ export default function FacultySupervisorDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Program Supervisor Dashboard
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {profile?.full_name || user?.email || "Supervisor"}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={fetchFacultyData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <Link href="/faculty-supervisor/tasks">
-              <Plus className="h-4 w-4 mr-2" />
-              New Task
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/faculty-supervisor/notifications">
-              <Send className="h-4 w-4 mr-2" />
-              Notify
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Program Supervisor Dashboard"
+        description={`Welcome back, ${profile?.full_name || user?.email || "Supervisor"}`}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={fetchFacultyData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link href="/faculty-supervisor/tasks">
+                <Plus className="h-4 w-4 mr-2" />
+                New Task
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/faculty-supervisor/notifications">
+                <Send className="h-4 w-4 mr-2" />
+                Notify
+              </Link>
+            </Button>
+          </div>
+        }
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

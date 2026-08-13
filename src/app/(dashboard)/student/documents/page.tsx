@@ -4,8 +4,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -62,6 +63,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -209,37 +212,7 @@ export default function StudentDocumentsPage() {
   const verifiedDocs = documents.filter(d => d.status === "verified").length;
   const pendingDocs = documents.filter(d => d.status === "pending").length;
 
-  // Status badge helper
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "verified":
-        return (
-          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-            <CheckCircle2 className="mr-1 h-3 w-3" />Verified
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-            <Clock className="mr-1 h-3 w-3" />Pending Review
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge variant="destructive">
-            <XCircle className="mr-1 h-3 w-3" />Rejected
-          </Badge>
-        );
-      case "expired":
-        return (
-          <Badge variant="secondary">
-            Expired
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
+  // Status badge helper removed in favor of <StatusBadge />
 
   // File icon helper
   const getFileIcon = (mimeType: string, type?: string) => {
@@ -390,8 +363,8 @@ export default function StudentDocumentsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-8 w-48 bg-muted animate-pulse rounded mb-2" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded" />
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
           </div>
         </div>
 
@@ -399,7 +372,7 @@ export default function StudentDocumentsPage() {
           {[...Array(3)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <div className="h-16 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-16" />
               </CardContent>
             </Card>
           ))}
@@ -409,7 +382,7 @@ export default function StudentDocumentsPage() {
           <CardContent className="p-8">
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-16 bg-muted animate-pulse rounded" />
+                <Skeleton key={i} className="h-16" />
               ))}
             </div>
           </CardContent>
@@ -424,36 +397,32 @@ export default function StudentDocumentsPage() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div>
-          <h1 className="text-3xl font-bold">My Documents</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your internship-related documents and certificates
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchDocuments} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          
-          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Upload className="h-4 w-4" />
-                Upload Document
+        <PageHeader
+          title="My Documents"
+          description="Manage your internship-related documents and certificates"
+          actions={
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={fetchDocuments} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
               </Button>
-            </DialogTrigger>
-            
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Upload New Document</DialogTitle>
-                <DialogDescription>
-                  Add a new document to your profile. It will be reviewed by your supervisor.
-                </DialogDescription>
-              </DialogHeader>
+
+              <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    Upload Document
+                  </Button>
+                </DialogTrigger>
+
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Upload New Document</DialogTitle>
+                    <DialogDescription>
+                      Add a new document to your profile. It will be reviewed by your supervisor.
+                    </DialogDescription>
+                  </DialogHeader>
 
               <div className="space-y-4 mt-4">
                 {/* Document Type */}
@@ -558,6 +527,8 @@ export default function StudentDocumentsPage() {
             </DialogContent>
           </Dialog>
         </div>
+          }
+        />
       </motion.div>
 
       {/* Stats Cards */}
@@ -567,41 +538,9 @@ export default function StudentDocumentsPage() {
         transition={{ delay: 0.1 }}
         className="grid grid-cols-1 md:grid-cols-3 gap-4"
       >
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-50">
-              <FolderOpen className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Documents</p>
-              <p className="text-2xl font-bold">{totalDocs}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-50">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Verified</p>
-              <p className="text-2xl font-bold text-emerald-600">{verifiedDocs}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-50">
-              <Clock className="h-5 w-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Pending Review</p>
-              <p className="text-2xl font-bold text-amber-600">{pendingDocs}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Documents" value={totalDocs} icon={FolderOpen} variant="info" />
+        <StatCard label="Verified" value={verifiedDocs} icon={CheckCircle2} variant="success" />
+        <StatCard label="Pending Review" value={pendingDocs} icon={Clock} variant="warning" />
       </motion.div>
 
       {/* Filters */}
@@ -734,7 +673,7 @@ export default function StudentDocumentsPage() {
                                   {formatFileSize(doc.size)}
                                 </span>
                               </TableCell>
-                              <TableCell>{getStatusBadge(doc.status)}</TableCell>
+                              <TableCell><StatusBadge status={doc.status} /></TableCell>
                               <TableCell>
                                 <span className="text-sm text-muted-foreground">
                                   {formatDate(doc.created_at)}
@@ -794,7 +733,7 @@ export default function StudentDocumentsPage() {
                               {doc.name}
                             </span>
                           </div>
-                          {getStatusBadge(doc.status)}
+                          <StatusBadge status={doc.status} />
                         </div>
                         
                         <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
@@ -918,7 +857,7 @@ export default function StudentDocumentsPage() {
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">Status</span>
-                  <div>{getStatusBadge(viewDocument.status)}</div>
+                  <div><StatusBadge status={viewDocument.status} /></div>
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">Uploaded</span>

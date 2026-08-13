@@ -23,12 +23,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface StudentStats {
@@ -344,16 +345,6 @@ export default function StudentDashboard() {
     return "Good evening";
   };
 
-  const getInitials = () => {
-    if (profile?.first_name && profile?.last_name) {
-      return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
-    }
-    if (profile?.full_name) {
-      return profile.full_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
-    }
-    return user?.email?.[0]?.toUpperCase() || "S";
-  };
-
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
@@ -404,15 +395,15 @@ export default function StudentDashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6">
-                <div className="h-20 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-20" />
               </CardContent>
             </Card>
           ))}
@@ -444,39 +435,24 @@ export default function StudentDashboard() {
       )}
 
       {/* Header with Welcome */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div className="flex items-center gap-4">
-          <Avatar className="h-14 w-14">
-            <AvatarFallback className="text-lg bg-primary text-primary-foreground">
-              {getInitials()}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <h1 className="text-3xl font-bold">
-              {getGreeting()}, {profile?.first_name || profile?.full_name || "Student"}!
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Here&apos;s your internship progress overview
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchStudentStats} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <Link href="/marketplace">
-              <Plus className="h-4 w-4 mr-2" />
-              Browse Internships
-            </Link>
-          </Button>
-        </div>
-      </motion.div>
+      <PageHeader
+        title={`${getGreeting()}, ${profile?.first_name || profile?.full_name || "Student"}!`}
+        description="Here's your internship progress overview"
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchStudentStats} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link href="/marketplace">
+                <Plus className="h-4 w-4 mr-2" />
+                Browse Internships
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

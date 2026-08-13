@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import {
   CheckCircle2,
   Clock,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 // `evaluations.status` uses the `evaluation_status` enum
@@ -98,23 +100,6 @@ export default function StudentEvaluationsPage() {
     filter === "all" ? true : e.status === filter
   );
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-green-100 text-green-800"><CheckCircle2 className="h-3 w-3 mr-1" />Approved</Badge>;
-      case "submitted":
-        return <Badge className="bg-blue-100 text-blue-800"><CheckCircle2 className="h-3 w-3 mr-1" />Submitted</Badge>;
-      case "in_progress":
-        return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>;
-      case "pending":
-        return <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
-      default:
-        return <Badge>{status}</Badge>;
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
@@ -127,7 +112,7 @@ export default function StudentEvaluationsPage() {
             {[1, 2, 3, 4].map((i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  <div className="h-8 bg-muted animate-pulse rounded" />
+                  <Skeleton className="h-8" />
                 </CardContent>
               </Card>
             ))}
@@ -141,12 +126,10 @@ export default function StudentEvaluationsPage() {
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Evaluations</h1>
-          <p className="text-muted-foreground mt-1">
-            Track your internship evaluations and feedback
-          </p>
-        </div>
+        <PageHeader
+          title="Evaluations"
+          description="Track your internship evaluations and feedback"
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -212,7 +195,7 @@ export default function StudentEvaluationsPage() {
                           {eval_.company && <span>• {eval_.company}</span>}
                         </div>
                       </div>
-                      {getStatusBadge(eval_.status)}
+                      <StatusBadge status={eval_.status} />
                     </div>
                   </CardHeader>
                   

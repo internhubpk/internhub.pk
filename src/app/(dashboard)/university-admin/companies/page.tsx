@@ -14,7 +14,6 @@ import {
   Mail,
   Phone,
   ExternalLink,
-  Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface CompanyWithStats {
   id: string;
@@ -155,16 +155,11 @@ export default function UniversityAdminCompaniesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Companies</h1>
-          <Badge variant="outline" className="text-xs">View only</Badge>
-        </div>
-        <p className="mt-2 text-muted-foreground flex items-center gap-1.5">
-          <Info className="h-3.5 w-3.5" />
-          Browse all companies on the platform and the internships they offer. Company management is handled by Super Admins.
-        </p>
-      </div>
+      <PageHeader
+        title="Companies"
+        description="Browse all companies on the platform and the internships they offer. Company management is handled by Super Admins."
+        actions={<Badge variant="outline" className="text-xs">View only</Badge>}
+      />
 
       {/* Filters */}
       <Card>

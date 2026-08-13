@@ -9,8 +9,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,6 +61,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 import {
   Plus,
   Search,
@@ -424,31 +428,6 @@ export default function FacultySupervisorTasksPage() {
     overdue: tasks.filter(t => t.status === "overdue").length,
   };
 
-  const getStatusBadge = (status: TaskStatus) => {
-    switch (status) {
-      case "draft":
-        return <Badge variant="secondary">Draft</Badge>;
-      case "assigned":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Assigned</Badge>;
-      case "in_progress":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-          <Clock className="mr-1 h-3 w-3" /> In Progress
-        </Badge>;
-      case "completed":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-          <CheckCircle2 className="mr-1 h-3 w-3" /> Completed
-        </Badge>;
-      case "overdue":
-        return <Badge variant="destructive">
-          <AlertCircle className="mr-1 h-3 w-3" /> Overdue
-        </Badge>;
-      case "cancelled":
-        return <Badge variant="outline">Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getPriorityBadge = (priority: TaskPriority) => {
     switch (priority) {
       case "urgent":
@@ -626,18 +605,21 @@ export default function FacultySupervisorTasksPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
-                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
-                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
-                <div className="h-3 w-16 bg-muted rounded"></div>
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <Skeleton className="h-5 w-5 mb-2" />
+                <Skeleton className="h-7 w-12 mb-1" />
+                <Skeleton className="h-3 w-16" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Loading tasks...</p>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -647,99 +629,61 @@ export default function FacultySupervisorTasksPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Task Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Create and manage tasks for your supervised students
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Copy className="h-4 w-4" /> Bulk Create
-          </Button>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2" onClick={resetForm}>
-                <Plus className="h-4 w-4" /> New Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create New Task</DialogTitle>
-                <DialogDescription>
-                  Assign a new task to one or more students in your programs.
-                </DialogDescription>
-              </DialogHeader>
-              <TaskForm 
-                formData={formData}
-                students={students}
-                onFormDataChange={setFormData}
-                onSelectAllStudents={selectAllStudents}
-                onDeselectAllStudents={deselectAllStudents}
-                onToggleStudentSelection={toggleStudentSelection}
-              />
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
+      <PageHeader
+        title="Task Management"
+        description="Create and manage tasks for your supervised students"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-2">
+              <Copy className="h-4 w-4" /> Bulk Create
+            </Button>
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" onClick={resetForm}>
+                  <Plus className="h-4 w-4" /> New Task
                 </Button>
-                <Button 
-                  onClick={handleCreateTask}
-                  disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-                >
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Task
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create New Task</DialogTitle>
+                  <DialogDescription>
+                    Assign a new task to one or more students in your programs.
+                  </DialogDescription>
+                </DialogHeader>
+                <TaskForm
+                  formData={formData}
+                  students={students}
+                  onFormDataChange={setFormData}
+                  onSelectAllStudents={selectAllStudents}
+                  onDeselectAllStudents={deselectAllStudents}
+                  onToggleStudentSelection={toggleStudentSelection}
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateTask}
+                    disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
+                  >
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create Task
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <ListTodo className="h-5 w-5 text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <FileText className="h-5 w-5 text-gray-500 mb-1" />
-            <p className="text-2xl font-bold">{stats.draft}</p>
-            <p className="text-xs text-muted-foreground">Draft</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Send className="h-5 w-5 text-blue-600 mb-1" />
-            <p className="text-2xl font-bold text-blue-600">{stats.assigned}</p>
-            <p className="text-xs text-muted-foreground">Assigned</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Clock className="h-5 w-5 text-amber-600 mb-1" />
-            <p className="text-2xl font-bold text-amber-600">{stats.inProgress}</p>
-            <p className="text-xs text-muted-foreground">In Progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.completed}</p>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <AlertCircle className="h-5 w-5 text-red-600 mb-1" />
-            <p className="text-2xl font-bold text-red-600">{stats.overdue}</p>
-            <p className="text-xs text-muted-foreground">Overdue</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total" value={stats.total} icon={ListTodo} variant="default" />
+        <StatCard label="Draft" value={stats.draft} icon={FileText} variant="default" />
+        <StatCard label="Assigned" value={stats.assigned} icon={Send} variant="info" />
+        <StatCard label="In Progress" value={stats.inProgress} icon={Clock} variant="warning" />
+        <StatCard label="Completed" value={stats.completed} icon={CheckCircle2} variant="success" />
+        <StatCard label="Overdue" value={stats.overdue} icon={AlertCircle} variant="danger" />
       </div>
 
       {/* Filters */}
@@ -804,7 +748,7 @@ export default function FacultySupervisorTasksPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold truncate">{task.title}</h3>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {getStatusBadge(task.status)}
+                      <StatusBadge status={task.status} />
                       {getPriorityBadge(task.priority)}
                     </div>
                   </div>
@@ -906,7 +850,7 @@ export default function FacultySupervisorTasksPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{getStatusBadge(task.status)}</TableCell>
+                    <TableCell><StatusBadge status={task.status} /></TableCell>
                     <TableCell>{getPriorityBadge(task.priority)}</TableCell>
                     <TableCell>
                       <span className={`text-sm ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : ''}`}>
@@ -1041,7 +985,7 @@ export default function FacultySupervisorTasksPage() {
                     </DialogDescription>
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">
-                    {getStatusBadge(selectedTask.status)}
+                    <StatusBadge status={selectedTask.status} />
                     {getPriorityBadge(selectedTask.priority)}
                   </div>
                 </div>

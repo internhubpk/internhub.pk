@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -71,6 +72,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface InternshipProgram {
@@ -368,23 +371,6 @@ export default function CompanyHRInternshipsPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Active</Badge>;
-      case "open":
-        return <Badge className="bg-green-100 text-green-700 border-green-200">Open</Badge>;
-      case "draft":
-        return <Badge variant="secondary">Draft</Badge>;
-      case "cancelled":
-        return <Badge variant="destructive">Cancelled</Badge>;
-      case "expired":
-        return <Badge className="bg-orange-100 text-orange-700 border-orange-200">Expired</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getLocationIcon = (type: string) => {
     switch (type) {
       case "remote": return <MapPin className="h-4 w-4 text-blue-600" />;
@@ -432,30 +418,24 @@ export default function CompanyHRInternshipsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Internship Programs
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            Create and manage your company&apos;s internship offerings
-          </p>
-        </div>
-
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Program
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Internship Program</DialogTitle>
-              <DialogDescription>
-                Fill in the details to post a new internship opportunity. Fields marked with * are required.
-              </DialogDescription>
-            </DialogHeader>
+      <PageHeader
+        title="Internship Programs"
+        description="Create and manage your company's internship offerings"
+        actions={
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                New Program
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Create New Internship Program</DialogTitle>
+                <DialogDescription>
+                  Fill in the details to post a new internship opportunity. Fields marked with * are required.
+                </DialogDescription>
+              </DialogHeader>
 
             <div className="space-y-6 mt-4">
               {/* Basic Info */}
@@ -653,69 +633,16 @@ export default function CompanyHRInternshipsPage() {
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Briefcase className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold">{stats.total}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-emerald-100 rounded-lg">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold">{stats.active}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Send className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Open</p>
-              <p className="text-2xl font-bold">{stats.open}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <FileText className="h-5 w-5 text-gray-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Drafts</p>
-              <p className="text-2xl font-bold">{stats.draft}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Users className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Applicants</p>
-              <p className="text-2xl font-bold">{stats.totalApplicants}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total" value={stats.total} icon={Briefcase} variant="info" />
+        <StatCard label="Active" value={stats.active} icon={CheckCircle2} variant="success" />
+        <StatCard label="Open" value={stats.open} icon={Send} variant="success" />
+        <StatCard label="Drafts" value={stats.draft} icon={FileText} variant="default" />
+        <StatCard label="Applicants" value={stats.totalApplicants} icon={Users} variant="default" />
       </div>
 
       {/* Filters */}
@@ -781,7 +708,7 @@ export default function CompanyHRInternshipsPage() {
                     <div className="flex-1 space-y-3 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-lg">{internship.title}</h3>
-                        {getStatusBadge(internship.status)}
+                        <StatusBadge status={internship.status} />
                       </div>
 
                       <p className="text-sm text-muted-foreground line-clamp-2">

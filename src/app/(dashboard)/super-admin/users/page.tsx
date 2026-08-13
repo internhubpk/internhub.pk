@@ -28,9 +28,11 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import {
   Select,
   SelectContent,
@@ -73,6 +75,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 interface UserProfile {
   id?: string;
@@ -399,19 +403,6 @@ export default function SuperAdminUsersPage() {
     );
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"><UserCheck className="h-3 w-3 mr-1" />Active</Badge>;
-      case "suspended":
-        return <Badge variant="destructive"><Ban className="h-3 w-3 mr-1" />Suspended</Badge>;
-      case "pending_setup":
-        return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><RefreshCw className="h-3 w-3 mr-1" />Pending Setup</Badge>;
-      default:
-        return <Badge variant="secondary"><UserX className="h-3 w-3 mr-1" />Inactive</Badge>;
-    }
-  };
-
   // Stats
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.status === "active").length;
@@ -423,21 +414,19 @@ export default function SuperAdminUsersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Platform Users</h1>
-          <p className="text-muted-foreground mt-1">
-            View and manage all registered users across universities
-          </p>
-        </div>
-        {/* Read-only view — super admin can browse users but not create them.
-            New users join via the public /register page; their role is assigned
-            by their university admin (or via the dedicated Companies → Company HR
-            management page for company_hr accounts). */}
-        <Badge variant="outline" className="text-sm px-3 py-1">
-          Read-only
-        </Badge>
-      </div>
+      {/* Read-only view — super admin can browse users but not create them.
+          New users join via the public /register page; their role is assigned
+          by their university admin (or via the dedicated Companies → Company HR
+          management page for company_hr accounts). */}
+      <PageHeader
+        title="Platform Users"
+        description="View and manage all registered users across universities"
+        actions={
+          <Badge variant="outline" className="text-sm px-3 py-1">
+            Read-only
+          </Badge>
+        }
+      />
 
       {/* Message Banner */}
       {message && (
@@ -484,55 +473,30 @@ export default function SuperAdminUsersPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30">
-              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Users</p>
-              <p className="text-2xl font-bold">{totalUsers}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
-              <UserCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Active</p>
-              <p className="text-2xl font-bold">{activeUsers}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/30">
-              <GraduationCap className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Students</p>
-              <p className="text-2xl font-bold">{usersByRole.student || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-orange-50 dark:bg-orange-950/30">
-              <Shield className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Admins</p>
-              <p className="text-2xl font-bold">
-                {(usersByRole.super_admin || 0) + (usersByRole.university_admin || 0)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Total Users"
+          value={totalUsers}
+          icon={Users}
+          variant="info"
+        />
+        <StatCard
+          label="Active"
+          value={activeUsers}
+          icon={UserCheck}
+          variant="success"
+        />
+        <StatCard
+          label="Students"
+          value={usersByRole.student || 0}
+          icon={GraduationCap}
+          variant="default"
+        />
+        <StatCard
+          label="Admins"
+          value={(usersByRole.super_admin || 0) + (usersByRole.university_admin || 0)}
+          icon={Shield}
+          variant="warning"
+        />
       </div>
 
       {/* Filters */}
@@ -590,10 +554,11 @@ export default function SuperAdminUsersPage() {
       {/* Users Table */}
       {isLoading ? (
         <Card>
-          <CardContent className="py-12">
-            <div className="flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-3 text-muted-foreground">Loading users...</span>
+          <CardContent className="py-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -661,7 +626,7 @@ export default function SuperAdminUsersPage() {
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
                     </TableCell>
-                    <TableCell>{getStatusBadge(userItem.status)}</TableCell>
+                    <TableCell><StatusBadge status={userItem.status} /></TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <span className="text-sm text-muted-foreground">
                         {new Date(userItem.created_at).toLocaleDateString()}
@@ -928,7 +893,7 @@ export default function SuperAdminUsersPage() {
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <div className="mt-1">{getStatusBadge(selectedUser.status)}</div>
+                  <div className="mt-1"><StatusBadge status={selectedUser.status} /></div>
                 </div>
               </div>
 

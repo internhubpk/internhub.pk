@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,8 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 import {
   Send,
   Plus,
@@ -500,18 +503,21 @@ export default function FacultySupervisorNotificationsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
-                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
-                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
-                <div className="h-3 w-16 bg-muted rounded"></div>
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <Skeleton className="h-5 w-5 mb-2" />
+                <Skeleton className="h-7 w-12 mb-1" />
+                <Skeleton className="h-3 w-16" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Loading notification data...</p>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -521,26 +527,23 @@ export default function FacultySupervisorNotificationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Notifications</h1>
-          <p className="text-muted-foreground mt-1">
-            Send announcements and track communication with students
-          </p>
-        </div>
-        <Dialog open={isComposeDialogOpen} onOpenChange={setIsComposeDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" onClick={resetComposeForm}>
-              <Plus className="h-4 w-4" /> New Notification
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Compose Notification</DialogTitle>
-              <DialogDescription>
-                Send a notification to students in your supervised programs.
-              </DialogDescription>
-            </DialogHeader>
+      <PageHeader
+        title="Notifications"
+        description="Send announcements and track communication with students"
+        actions={
+          <Dialog open={isComposeDialogOpen} onOpenChange={setIsComposeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2" onClick={resetComposeForm}>
+                <Plus className="h-4 w-4" /> New Notification
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Compose Notification</DialogTitle>
+                <DialogDescription>
+                  Send a notification to students in your supervised programs.
+                </DialogDescription>
+              </DialogHeader>
 
             <div className="space-y-4 py-4">
               {/* Title */}
@@ -701,54 +704,22 @@ export default function FacultySupervisorNotificationsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Bell className="h-5 w-5 text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total Sent</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Send className="h-5 w-5 text-blue-600 mb-1" />
-            <p className="text-2xl font-bold text-blue-600">{stats.sentToday}</p>
-            <p className="text-xs text-muted-foreground">Sent Today</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <BellRing className="h-5 w-5 text-amber-600 mb-1" />
-            <p className="text-2xl font-bold text-amber-600">{stats.delivered}</p>
-            <p className="text-xs text-muted-foreground">Delivered</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.read}</p>
-            <p className="text-xs text-muted-foreground">Read</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Users className="h-5 w-5 text-purple-600 mb-1" />
-            <p className="text-2xl font-bold text-purple-600">{stats.totalRecipients}</p>
-            <p className="text-xs text-muted-foreground">Total Recipients</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Eye className="h-5 w-5 text-teal-600 mb-1" />
-            <p className="text-2xl font-bold text-teal-600">
-              {stats.totalRecipients > 0 ? Math.round((stats.totalReads / stats.totalRecipients) * 100) : 0}%
-            </p>
-            <p className="text-xs text-muted-foreground">Read Rate</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Sent" value={stats.total} icon={Bell} variant="default" />
+        <StatCard label="Sent Today" value={stats.sentToday} icon={Send} variant="info" />
+        <StatCard label="Delivered" value={stats.delivered} icon={BellRing} variant="warning" />
+        <StatCard label="Read" value={stats.read} icon={CheckCircle2} variant="success" />
+        <StatCard label="Total Recipients" value={stats.totalRecipients} icon={Users} variant="default" />
+        <StatCard
+          label="Read Rate"
+          value={stats.totalRecipients > 0 ? Math.round((stats.totalReads / stats.totalRecipients) * 100) : 0}
+          icon={Eye}
+          variant="info"
+        />
       </div>
 
       {/* Filters */}

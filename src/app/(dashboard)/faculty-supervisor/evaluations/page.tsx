@@ -9,8 +9,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,6 +74,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
@@ -389,25 +393,6 @@ export default function FacultySupervisorEvaluationsPage() {
     }
   };
 
-  const getStatusBadge = (status: EvaluationStatus) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-          <ThumbsUp className="mr-1 h-3 w-3" /> Approved
-        </Badge>;
-      case "rejected":
-        return <Badge variant="destructive">
-          <ThumbsDown className="mr-1 h-3 w-3" /> Rejected
-        </Badge>;
-      case "revision_required":
-        return <Badge className="bg-orange-100 text-orange-700 border-orange-200">Revision Required</Badge>;
-      case "pending":
-        return <Badge variant="secondary">Pending</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
       case "high":
@@ -608,18 +593,21 @@ export default function FacultySupervisorEvaluationsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
-                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
-                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
-                <div className="h-3 w-20 bg-muted rounded"></div>
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <Skeleton className="h-5 w-5 mb-2" />
+                <Skeleton className="h-7 w-12 mb-1" />
+                <Skeleton className="h-3 w-20" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Loading evaluation data...</p>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -629,55 +617,23 @@ export default function FacultySupervisorEvaluationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Evaluation Center</h1>
-          <p className="text-muted-foreground mt-1">
-            Review submissions, grade students, and generate reports
-          </p>
-        </div>
-        <Button variant="outline" className="gap-2">
-          <Download className="h-4 w-4" /> Export Data
-        </Button>
-      </div>
+      <PageHeader
+        title="Evaluation Center"
+        description="Review submissions, grade students, and generate reports"
+        actions={
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" /> Export Data
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Clock className="h-5 w-5 text-amber-600 mb-1" />
-            <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
-            <p className="text-xs text-muted-foreground">Pending Review</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <AlertCircle className="h-5 w-5 text-red-600 mb-1" />
-            <p className="text-2xl font-bold text-red-600">{stats.highPriority}</p>
-            <p className="text-xs text-muted-foreground">High Priority</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.completedToday}</p>
-            <p className="text-xs text-muted-foreground">Done Today</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <ClipboardCheck className="h-5 w-5 text-blue-600 mb-1" />
-            <p className="text-2xl font-bold text-blue-600">{stats.totalEvaluated}</p>
-            <p className="text-xs text-muted-foreground">Total Evaluated</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <BarChart3 className="h-5 w-5 text-purple-600 mb-1" />
-            <p className="text-2xl font-bold text-purple-600">{stats.avgScore}%</p>
-            <p className="text-xs text-muted-foreground">Avg Score</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Pending Review" value={stats.pending} icon={Clock} variant="warning" />
+        <StatCard label="High Priority" value={stats.highPriority} icon={AlertCircle} variant="danger" />
+        <StatCard label="Done Today" value={stats.completedToday} icon={CheckCircle2} variant="success" />
+        <StatCard label="Total Evaluated" value={stats.totalEvaluated} icon={ClipboardCheck} variant="info" />
+        <StatCard label="Avg Score" value={`${stats.avgScore}%`} icon={BarChart3} variant="default" />
       </div>
 
       {/* Main Content */}
@@ -873,7 +829,7 @@ export default function FacultySupervisorEvaluationsPage() {
                       <span className="max-w-[200px] block truncate">{record.title}</span>
                     </TableCell>
                     <TableCell>{formatDate(record.submittedAt)}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
+                    <TableCell><StatusBadge status={record.status} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Progress 
@@ -1226,7 +1182,7 @@ export default function FacultySupervisorEvaluationsPage() {
                   </div>
                   <div>
                     <Label className="text-muted-foreground">Status</Label>
-                    <div>{getStatusBadge(selectedHistoryItem.status)}</div>
+                    <div><StatusBadge status={selectedHistoryItem.status} /></div>
                   </div>
                 </div>
 

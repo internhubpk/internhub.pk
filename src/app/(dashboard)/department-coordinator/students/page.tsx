@@ -27,6 +27,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
 import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 interface Student {
   // `students` table has no `id` column — `user_id` is the PK.
@@ -679,98 +682,53 @@ export default function StudentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Students</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and assign students in your department
-          </p>
-        </div>
-        
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={exportToCSV} disabled={isLoading || displayedStudents.length === 0}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+      <PageHeader
+        title="Students"
+        description="Manage and assign students in your department"
+        actions={
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={exportToCSV} disabled={isLoading || displayedStudents.length === 0}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
 
-          <Button variant="outline" onClick={() => { setCsvFileName(""); setCsvText(""); setImportResult(null); setIsImportDialogOpen(true); }}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import CSV
-          </Button>
+            <Button variant="outline" onClick={() => { setCsvFileName(""); setCsvText(""); setImportResult(null); setIsImportDialogOpen(true); }}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
 
-          <Button onClick={() => setIsAddStudentDialogOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add Student
-          </Button>
+            <Button onClick={() => setIsAddStudentDialogOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Student
+            </Button>
 
-          <Button
-            onClick={() => setIsAssignDialogOpen(true)}
-            disabled={selectedStudents.size === 0}
-          >
-            <UserCheck className="h-4 w-4 mr-2" />
-            Assign ({selectedStudents.size})
-          </Button>
-        </div>
-      </div>
+            <Button
+              onClick={() => setIsAssignDialogOpen(true)}
+              disabled={selectedStudents.size === 0}
+            >
+              <UserCheck className="h-4 w-4 mr-2" />
+              Assign ({selectedStudents.size})
+            </Button>
+          </div>
+        }
+      />
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <GraduationCap className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-xl font-bold">{students.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
-                <Users className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-xl font-bold">
-                  {students.filter(s => s.status === "active").length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-50 dark:bg-violet-950 flex items-center justify-center">
-                <BookOpen className="h-5 w-5 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">In Programs</p>
-                <p className="text-xl font-bold">
-                  {students.filter(s => s.program_id).length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-amber-50 dark:bg-amber-950 flex items-center justify-center">
-                <UserCheck className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Selected</p>
-                <p className="text-xl font-bold">{selectedStudents.size}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total" value={students.length} icon={GraduationCap} variant="default" />
+        <StatCard
+          label="Active"
+          value={students.filter(s => s.status === "active").length}
+          icon={Users}
+          variant="success"
+        />
+        <StatCard
+          label="In Programs"
+          value={students.filter(s => s.program_id).length}
+          icon={BookOpen}
+          variant="default"
+        />
+        <StatCard label="Selected" value={selectedStudents.size} icon={UserCheck} variant="warning" />
       </div>
 
       {/* Active supervisor link filter banner */}
@@ -855,14 +813,14 @@ export default function StudentsPage() {
           <CardContent className="py-12">
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
-                  <div className="h-5 w-5 rounded bg-muted" />
-                  <div className="h-10 w-10 rounded-full bg-muted" />
+                <div key={i} className="flex items-center gap-4 p-4">
+                  <Skeleton className="h-5 w-5" />
+                  <Skeleton className="h-10 w-10 rounded-full" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 w-40 bg-muted rounded" />
-                    <div className="h-3 w-32 bg-muted rounded" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-32" />
                   </div>
-                  <div className="h-6 w-20 bg-muted rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
                 </div>
               ))}
             </div>

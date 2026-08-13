@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { ApiResponse, Profile, UserRole } from "@/types";
+import { setForceSessionRefreshCookie } from "@/lib/auth";
 
 /**
  * PATCH /api/coordinators/[id]
@@ -421,11 +422,17 @@ export async function PATCH(
 
     console.log(`[PATCH /api/coordinators/[id]] ${requestId} success`, updated);
 
-    return NextResponse.json<ApiResponse<Profile>>({
+    const res = NextResponse.json<ApiResponse<Profile>>({
       success: true,
       data: updated as Profile,
       message: "Coordinator updated",
     });
+    // If the admin is editing their own account (rare but possible),
+    // signal the proxy to refresh their session on next navigation so
+    // they see their new role/department immediately. For cross-user
+    // edits, the target user's JWT is stale until natural expiry.
+    setForceSessionRefreshCookie(res);
+    return res;
   } catch (err) {
     console.error(`[PATCH /api/coordinators/[id]] unhandled`, err);
     return NextResponse.json<ApiResponse<never>>(

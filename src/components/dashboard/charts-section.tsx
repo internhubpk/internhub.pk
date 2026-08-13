@@ -28,16 +28,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-// Color palette for charts
+// Color palette for charts — read from CSS custom properties so the
+// palette respects light/dark theme automatically. Recharts doesn't
+// reactively re-render on CSS variable changes, but a page reload
+// after theme toggle is the existing UX pattern in this app.
 const CHART_COLORS = {
-  primary: "#2563eb",
-  secondary: "#7c3aed",
-  success: "#10b981",
-  warning: "#f59e0b",
-  error: "#ef4444",
-  info: "#06b6d4",
-  purple: "#8b5cf6",
-  pink: "#ec4899",
+  primary: "var(--chart-1)",
+  secondary: "var(--chart-2)",
+  success: "var(--chart-3)",
+  warning: "var(--chart-4)",
+  error: "var(--chart-5)",
+  info: "var(--chart-1)",
+  purple: "var(--chart-2)",
+  pink: "var(--chart-2)",
 };
 
 const PALETTE = [
@@ -137,16 +140,16 @@ export function LineChartCard({
           <ResponsiveContainer width="100%" height={height}>
             <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
               {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
-              <XAxis 
-                dataKey={xAxisKey} 
+              <XAxis
+                dataKey={xAxisKey}
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                axisLine={{ stroke: "var(--border)" }}
               />
-              <YAxis 
+              <YAxis
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                axisLine={{ stroke: "var(--border)" }}
               />
               <Tooltip content={<CustomTooltip />} />
               {showLegend && <Legend />}
@@ -230,22 +233,22 @@ export function BarChartCard({
                 <>
                   <XAxis 
                     dataKey={xAxisKey} 
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                    axisLine={{ stroke: "var(--border)" }}
                   />
                   <YAxis 
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                    axisLine={{ stroke: "var(--border)" }}
                   />
                 </>
               ) : (
                 <>
-                  <XAxis type="number" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <XAxis type="number" tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
                   <YAxis 
                     dataKey={xAxisKey} 
                     type="category" 
-                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                    axisLine={{ stroke: "var(--border)" }}
                   />
                 </>
               )}
@@ -403,12 +406,12 @@ export function AreaChartCard({
               {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
               <XAxis 
                 dataKey={xAxisKey} 
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                axisLine={{ stroke: "var(--border)" }}
               />
               <YAxis 
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                axisLine={{ stroke: "var(--border)" }}
               />
               <Tooltip content={<CustomTooltip />} />
               {showLegend && <Legend />}

@@ -4,6 +4,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 import {
   Card,
   CardContent,
@@ -11,8 +13,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -356,19 +360,6 @@ export default function FacultySupervisorReportsPage() {
     avgGpa: students.length > 0 ? (students.reduce((acc, s) => acc + (s.gpa || 0), 0) / students.length).toFixed(2) : "0.00",
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Active</Badge>;
-      case "completed":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Completed</Badge>;
-      case "on_leave":
-        return <Badge variant="secondary">On Leave</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getGradeBadge = (grade?: string) => {
     if (!grade) return <Badge variant="secondary">In Progress</Badge>;
     
@@ -595,18 +586,21 @@ export default function FacultySupervisorReportsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-4 flex flex-col items-center text-center animate-pulse">
-                <div className="h-5 w-5 bg-muted rounded mb-2"></div>
-                <div className="h-7 w-12 bg-muted rounded mb-1"></div>
-                <div className="h-3 w-16 bg-muted rounded"></div>
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <Skeleton className="h-5 w-5 mb-2" />
+                <Skeleton className="h-7 w-12 mb-1" />
+                <Skeleton className="h-3 w-16" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Loading report data...</p>
+          <CardContent className="p-6">
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -616,55 +610,23 @@ export default function FacultySupervisorReportsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Reports & Certificates</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate marksheets, certificates, and progress reports
-          </p>
-        </div>
-        <Button variant="outline" className="gap-2">
-          <Download className="h-4 w-4" /> Export All Data
-        </Button>
-      </div>
+      <PageHeader
+        title="Reports & Certificates"
+        description="Generate marksheets, certificates, and progress reports"
+        actions={
+          <Button variant="outline" className="gap-2">
+            <Download className="h-4 w-4" /> Export All Data
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Users className="h-5 w-5 text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{stats.totalStudents}</p>
-            <p className="text-xs text-muted-foreground">Total Students</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 mb-1" />
-            <p className="text-2xl font-bold text-emerald-600">{stats.completedInternships}</p>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <TrendingUp className="h-5 w-5 text-blue-600 mb-1" />
-            <p className="text-2xl font-bold text-blue-600">{stats.activeInternships}</p>
-            <p className="text-xs text-muted-foreground">In Progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <BarChart3 className="h-5 w-5 text-purple-600 mb-1" />
-            <p className="text-2xl font-bold text-purple-600">{stats.avgProgress}%</p>
-            <p className="text-xs text-muted-foreground">Avg Progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex flex-col items-center text-center">
-            <Star className="h-5 w-5 text-amber-600 mb-1" />
-            <p className="text-2xl font-bold text-amber-600">{stats.avgGpa}</p>
-            <p className="text-xs text-muted-foreground">Avg GPA</p>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Students" value={stats.totalStudents} icon={Users} variant="default" />
+        <StatCard label="Completed" value={stats.completedInternships} icon={CheckCircle2} variant="success" />
+        <StatCard label="In Progress" value={stats.activeInternships} icon={TrendingUp} variant="info" />
+        <StatCard label="Avg Progress" value={`${stats.avgProgress}%`} icon={BarChart3} variant="default" />
+        <StatCard label="Avg GPA" value={stats.avgGpa} icon={Star} variant="warning" />
       </div>
 
       {/* Main Content */}
@@ -730,7 +692,7 @@ export default function FacultySupervisorReportsPage() {
                           <p className="font-semibold text-lg">{student.name}</p>
                           <p className="text-sm text-muted-foreground truncate">{student.program}</p>
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {getStatusBadge(student.status)}
+                            <StatusBadge status={student.status} />
                             {getGradeBadge(student.finalGrade)}
                           </div>
                         </div>

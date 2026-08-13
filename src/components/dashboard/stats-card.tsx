@@ -4,6 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { LucideIcon, TrendingUp, TrendingDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 interface StatsCardProps {
@@ -98,11 +99,11 @@ export function StatsCardSkeleton({ className }: { className?: string }) {
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-2 flex-1">
-            <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-            <div className="h-8 w-20 bg-muted animate-pulse rounded" />
-            <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-3 w-32" />
           </div>
-          <div className="h-12 w-12 bg-muted animate-pulse rounded-xl ml-4" />
+          <Skeleton className="h-12 w-12 rounded-xl ml-4" />
         </div>
       </CardContent>
     </Card>

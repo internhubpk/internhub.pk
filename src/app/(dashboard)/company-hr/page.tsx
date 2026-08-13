@@ -27,6 +27,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface CompanyStats {
   activeInternships: number;
@@ -213,27 +215,23 @@ export default function CompanyHRDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Welcome back, {profile?.full_name?.split(" ")[0] || profile?.first_name || "HR"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your internship programs, applications, and interns in one place.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Link href="/company-hr/internships">
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" /> New Internship
+      <PageHeader
+        title={`Welcome back, ${profile?.full_name?.split(" ")[0] || profile?.first_name || "HR"}`}
+        description="Manage your internship programs, applications, and interns in one place."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/company-hr/internships">
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" /> New Internship
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {error && (
         <Card className="border-red-200 bg-red-50">
@@ -333,7 +331,7 @@ export default function CompanyHRDashboard() {
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 bg-slate-100 animate-pulse rounded" />
+                  <Skeleton key={i} className="h-12" />
                 ))}
               </div>
             ) : recentApplications.length === 0 ? (
@@ -389,7 +387,7 @@ export default function CompanyHRDashboard() {
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-16 bg-slate-100 animate-pulse rounded" />
+                  <Skeleton key={i} className="h-16" />
                 ))}
               </div>
             ) : activePrograms.length === 0 ? (
@@ -450,7 +448,7 @@ export default function CompanyHRDashboard() {
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-10 bg-slate-100 animate-pulse rounded" />
+                <Skeleton key={i} className="h-10" />
               ))}
             </div>
           ) : internPerformance.length === 0 ? (

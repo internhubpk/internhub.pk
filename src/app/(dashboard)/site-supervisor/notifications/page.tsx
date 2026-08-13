@@ -27,6 +27,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface AssignedStudent {
@@ -329,21 +331,16 @@ export default function SiteSupervisorNotificationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Send className="h-8 w-8" />
-            Notifications
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Send messages and announcements to your assigned interns
-          </p>
-        </div>
-        <Button onClick={() => setActiveTab("compose")}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Message
-        </Button>
-      </div>
+      <PageHeader
+        title="Notifications"
+        description="Send messages and announcements to your assigned interns"
+        actions={
+          <Button onClick={() => setActiveTab("compose")}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Message
+          </Button>
+        }
+      />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
@@ -659,9 +656,10 @@ export default function SiteSupervisorNotificationsPage() {
 
           {/* Notifications List */}
           {isLoadingSent ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-              <span className="ml-3 text-muted-foreground">Loading notifications...</span>
+            <div className="py-4 space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14" />
+              ))}
             </div>
           ) : filteredNotifications.length === 0 ? (
             <Card>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -72,6 +73,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "submitted" | "approved" | "rejected";
@@ -291,23 +293,6 @@ export default function CompanyHREvaluationsPage() {
     return matchesSearch && matchesStatus && matchesProgram;
   });
 
-  const getStatusBadge = (status: EvaluationStatus) => {
-    switch (status) {
-      case "pending":
-        return <Badge className="bg-gray-100 text-gray-700 border-gray-200"><Clock className="mr-1 h-3 w-3" />Pending</Badge>;
-      case "in_progress":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><Edit3 className="mr-1 h-3 w-3" />In Progress</Badge>;
-      case "submitted":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Send className="mr-1 h-3 w-3" />Submitted</Badge>;
-      case "approved":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><AlertCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getRecommendationBadge = (rec: FinalEvaluation["recommendation"]) => {
     switch (rec) {
       case "strong_hire":
@@ -381,21 +366,18 @@ export default function CompanyHREvaluationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Final Evaluations</h1>
-          <p className="mt-2 text-muted-foreground">
-            Review final evaluations and issue completion certificates
-          </p>
-        </div>
-
-        <Button asChild variant="outline">
-          <a href="/company-hr/documents" className="gap-2">
-            <Award className="h-4 w-4" />
-            Manage Certificates
-          </a>
-        </Button>
-      </div>
+      <PageHeader
+        title="Final Evaluations"
+        description="Review final evaluations and issue completion certificates"
+        actions={
+          <Button asChild variant="outline">
+            <a href="/company-hr/documents" className="gap-2">
+              <Award className="h-4 w-4" />
+              Manage Certificates
+            </a>
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
@@ -513,7 +495,7 @@ export default function CompanyHREvaluationsPage() {
                             <h3 className="font-semibold">{evaluation.intern_name}</h3>
                             <p className="text-sm text-muted-foreground">{evaluation.internship_title}</p>
                           </div>
-                          {getStatusBadge(evaluation.status)}
+                          <StatusBadge status={evaluation.status} />
                         </div>
 
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground mb-3">
@@ -664,7 +646,7 @@ export default function CompanyHREvaluationsPage() {
                   </div>
                 </DialogTitle>
                 <DialogDescription className="flex items-center gap-2">
-                  {getStatusBadge(selectedEvaluation.status)}
+                  <StatusBadge status={selectedEvaluation.status} />
                   {selectedEvaluation.recommendation && getRecommendationBadge(selectedEvaluation.recommendation)}
                 </DialogDescription>
               </DialogHeader>

@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { ApiResponse } from "@/types";
+import { setForceSessionRefreshCookie } from "@/lib/auth";
 
 /**
  * POST /api/super-admin/update-admin-account
@@ -162,11 +163,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json<ApiResponse<{ user_id: string }>>({
+    const res = NextResponse.json<ApiResponse<{ user_id: string }>>({
       success: true,
       data: { user_id },
       message: "Admin account updated successfully",
     });
+    // The super-admin frequently edits their own account via this route
+    // (display name, email, password). For email/password changes the
+    // existing session remains valid but the user object should be
+    // refreshed. For self-edits the cookie triggers a refresh on next
+    // navigation; for cross-user edits the target user's JWT refreshes
+    // at natural expiry.
+    setForceSessionRefreshCookie(res);
+    return res;
   } catch (error) {
     console.error(
       "[/api/super-admin/update-admin-account] unhandled error:",

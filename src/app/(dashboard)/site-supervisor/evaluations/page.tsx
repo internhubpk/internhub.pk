@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  CheckSquare,
   Plus,
   Search,
   Calendar,
@@ -34,6 +33,7 @@ import {
   PenTool,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -60,6 +60,8 @@ import { Separator } from "@/components/ui/separator";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface EvaluationStudent {
@@ -576,21 +578,16 @@ export default function SiteSupervisorEvaluationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <CheckSquare className="h-8 w-8" />
-            HEC Evaluations
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            3-week cycle evaluations compliant with HEC guidelines
-          </p>
-        </div>
-        <Button onClick={() => setActiveTab("new")}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Evaluation
-        </Button>
-      </div>
+      <PageHeader
+        title="HEC Evaluations"
+        description="3-week cycle evaluations compliant with HEC guidelines"
+        actions={
+          <Button onClick={() => setActiveTab("new")}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Evaluation
+          </Button>
+        }
+      />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
@@ -613,64 +610,25 @@ export default function SiteSupervisorEvaluationsPage() {
         <TabsContent value="schedule" className="space-y-6 mt-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-red-50">
-                    <AlertCircle className="h-5 w-5 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-red-600">
-                      {students.filter(s => s.evaluationStatus === "overdue").length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Overdue</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-yellow-50">
-                    <Clock className="h-5 w-5 text-yellow-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-yellow-600">
-                      {students.filter(s => s.evaluationStatus === "due").length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Due This Week</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-green-50">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-green-600">
-                      {students.filter(s => s.evaluationStatus === "current").length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">On Track</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-50">
-                    <BarChart3 className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{evaluations.length}</p>
-                    <p className="text-xs text-muted-foreground">Total Completed</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label="Overdue"
+              value={students.filter(s => s.evaluationStatus === "overdue").length}
+              icon={AlertCircle}
+              variant="danger"
+            />
+            <StatCard
+              label="Due This Week"
+              value={students.filter(s => s.evaluationStatus === "due").length}
+              icon={Clock}
+              variant="warning"
+            />
+            <StatCard
+              label="On Track"
+              value={students.filter(s => s.evaluationStatus === "current").length}
+              icon={CheckCircle2}
+              variant="success"
+            />
+            <StatCard label="Total Completed" value={evaluations.length} icon={BarChart3} variant="info" />
           </div>
 
           {/* Search */}
@@ -694,8 +652,10 @@ export default function SiteSupervisorEvaluationsPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-16" />
+                  ))}
                 </div>
               ) : filteredStudents.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">

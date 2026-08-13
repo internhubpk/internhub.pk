@@ -195,3 +195,36 @@ export async function getSession() {
 
   return { user, profile, university };
 }
+
+/**
+ * Set a cookie on a NextResponse that tells the proxy (src/proxy.ts) to
+ * force a refreshSession() on the next navigation. Role-mutating API
+ * routes (coordinators/[id], supervisors, super-admin/update-admin-account,
+ * admin/create-user) call this on their response so that the affected
+ * user's next page load picks up their new app_metadata.role.
+ *
+ * This works together with the proxy's BUG-5 fix: the proxy reads this
+ * cookie, calls refreshSession(), then deletes the cookie so it only
+ * fires once.
+ *
+ * Note: the API route itself doesn't know which user's session to
+ * refresh — but the cookie is set on the *response* to the admin who
+ * made the call, AND if the admin is editing their own account, the
+ * cookie fires on their next navigation. For cross-user mutations
+ * (admin edits someone else's role), the target user's JWT is still
+ * stale until natural expiry OR until they re-login. The cookie
+ * approach only fully fixes the self-edit case; cross-user staleness
+ * is mitigated by the natural 1-hour JWT expiry. That's an acceptable
+ * tradeoff — the alternative (DB lookup on every protected route)
+ * would defeat the proxy's "JWT-only, no DB" design.
+ */
+export function setForceSessionRefreshCookie(
+  response: import("next/server").NextResponse
+): void {
+  response.cookies.set("internhub_force_refresh", "1", {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60, // short-lived — only needs to survive one navigation
+  });
+}

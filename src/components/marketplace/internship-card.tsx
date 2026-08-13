@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -503,31 +504,31 @@ export function InternshipCardSkeleton({ viewMode = "grid" }: { viewMode?: "grid
       <Card className="overflow-hidden">
         <div className="p-4 md:p-6">
           <div className="flex flex-col md:flex-row md:items-start gap-4">
-            <div className="w-16 h-16 rounded-xl bg-muted animate-pulse shrink-0" />
+            <Skeleton className="w-16 h-16 rounded-xl shrink-0" />
             <div className="flex-1 space-y-3">
               <div className="space-y-2">
-                <div className="h-5 bg-muted rounded w-2/3 animate-pulse" />
-                <div className="h-4 bg-muted rounded w-1/3 animate-pulse" />
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-1/3" />
               </div>
               <div className="flex gap-4">
-                <div className="h-4 bg-muted rounded w-24 animate-pulse" />
-                <div className="h-4 bg-muted rounded w-28 animate-pulse" />
-                <div className="h-4 bg-muted rounded w-20 animate-pulse" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-20" />
               </div>
               <div className="flex gap-2">
-                <div className="h-6 bg-muted rounded-full w-16 animate-pulse" />
-                <div className="h-6 bg-muted rounded-full w-20 animate-pulse" />
-                <div className="h-6 bg-muted rounded-full w-14 animate-pulse" />
-                <div className="h-6 bg-muted rounded-full w-18 animate-pulse" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-14 rounded-full" />
+                <Skeleton className="h-6 w-18 rounded-full" />
               </div>
               <div className="space-y-1.5">
-                <div className="h-3 bg-muted rounded w-full animate-pulse" />
-                <div className="h-3 bg-muted rounded w-3/4 animate-pulse" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-3/4" />
               </div>
             </div>
             <div className="flex md:flex-col items-center gap-3 shrink-0">
-              <div className="h-3 bg-muted rounded w-20 animate-pulse" />
-              <div className="h-9 bg-muted rounded-lg w-28 animate-pulse" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-9 w-28 rounded-lg" />
             </div>
           </div>
         </div>
@@ -536,47 +537,47 @@ export function InternshipCardSkeleton({ viewMode = "grid" }: { viewMode?: "grid
   }
 
   return (
-    <Card className="overflow-hidden h-full flex flex-col animate-pulse">
+    <Card className="overflow-hidden h-full flex flex-col">
       <CardHeader className="pb-3 pt-5 px-5">
         <div className="flex items-start gap-3">
-          <div className="w-14 h-14 rounded-xl bg-muted shrink-0" />
+          <Skeleton className="w-14 h-14 rounded-xl shrink-0" />
           <div className="flex-1 space-y-2">
-            <div className="h-5 bg-muted rounded w-3/4" />
-            <div className="h-4 bg-muted rounded w-1/2" />
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
           </div>
-          <div className="w-9 h-9 bg-muted rounded-lg" />
+          <Skeleton className="w-9 h-9 rounded-lg" />
         </div>
       </CardHeader>
       
       <CardContent className="pb-4 px-5 space-y-3 flex-1">
         <div className="bg-muted/40 rounded-lg p-3 space-y-2">
-          <div className="h-4 bg-muted rounded w-24" />
-          <div className="h-4 bg-muted rounded w-32" />
-          <div className="h-4 bg-muted rounded w-28" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-28" />
         </div>
         
         <div className="space-y-2">
-          <div className="h-3 bg-muted rounded w-24" />
+          <Skeleton className="h-3 w-24" />
           <div className="flex gap-1.5">
-            <div className="h-6 bg-muted rounded-full w-14 animate-pulse" />
-            <div className="h-6 bg-muted rounded-full w-18 animate-pulse" />
-            <div className="h-6 bg-muted rounded-full w-12 animate-pulse" />
+            <Skeleton className="h-6 w-14 rounded-full" />
+            <Skeleton className="h-6 w-18 rounded-full" />
+            <Skeleton className="h-6 w-12 rounded-full" />
           </div>
         </div>
         
         <div className="space-y-1.5 pt-1">
-          <div className="h-3 bg-muted rounded w-full" />
-          <div className="h-3 bg-muted rounded w-2/3" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-2/3" />
         </div>
       </CardContent>
       
       <CardFooter className="pt-3 pb-4 px-5 border-t bg-muted/20">
         <div className="flex justify-between w-full">
           <div className="flex gap-3">
-            <div className="h-3 bg-muted rounded w-16" />
-            <div className="h-3 bg-muted rounded w-16" />
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-3 w-16" />
           </div>
-          <div className="h-8 bg-muted rounded-lg w-22" />
+          <Skeleton className="h-8 w-22 rounded-lg" />
         </div>
       </CardFooter>
     </Card>

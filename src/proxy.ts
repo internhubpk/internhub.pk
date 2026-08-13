@@ -186,10 +186,52 @@ export async function proxy(request: NextRequest) {
     );
 
     // Get user from auth token (JWT verification only - NO DB call)
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    //
+    // BUG 5 FIX: getUser() validates the JWT signature and exp claim but
+    // does NOT refresh the session when the access token is still valid
+    // but stale (i.e. the user's app_metadata.role was changed server-side
+    // by an admin after this JWT was issued). The user would keep seeing
+    // their old role until the JWT naturally expires (default 1 hour).
+    //
+    // Fix: role-mutating API routes (coordinators/[id], supervisors,
+    // super-admin/update-admin-account, admin/create-user) set a cookie
+    // `internhub_force_refresh=1` on their response. The next navigation
+    // request carries that cookie; when the proxy sees it, it forces
+    // refreshSession() which picks up the new app_metadata. The proxy
+    // then clears the cookie so it only fires once.
+    const forceRefreshCookie = request.cookies.get("internhub_force_refresh");
+    const forceRefresh = forceRefreshCookie?.value === "1";
+    if (forceRefresh) {
+      // Clear the trigger cookie on the outgoing response so it doesn't
+      // fire again on subsequent navigations.
+      response.cookies.delete("internhub_force_refresh");
+    }
+
+    let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (forceRefresh && session?.refresh_token) {
+      // Explicit refresh — picks up new app_metadata.role /
+      // app_metadata.university_id / etc. that an admin just wrote.
+      // refreshSession() only needs the refresh_token; it returns a
+      // brand-new access_token + refresh_token pair.
+      const { data: refreshData, error: refreshError } =
+        await supabase.auth.refreshSession({
+          refresh_token: session.refresh_token,
+        });
+      if (!refreshError && refreshData.session) {
+        session = refreshData.session;
+        // refreshSession() inside createServerClient already persists the
+        // new tokens to cookies via the setAll callback above. The user
+        // object on the next request will reflect the new role.
+      }
+      // If refresh failed, fall through with the original session —
+      // the user will see stale role until natural expiry, but they
+      // still get access to the page they requested.
+    }
+
+    // The user object from the (possibly refreshed) session.
+    const user = session?.user ?? null;
+    const authError = sessionError;
 
     // ==========================================
     // PUBLIC ROUTES - Allow without auth

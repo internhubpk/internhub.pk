@@ -28,8 +28,10 @@ import {
   Hourglass,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,6 +55,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 interface WeeklyLogEntry {
@@ -300,35 +304,6 @@ export default function SiteSupervisorWeeklyLogsPage() {
     }
   }
 
-  function getStatusBadge(status: WeeklyLogEntry["status"]) {
-    switch (status) {
-      case "submitted":
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          <Clock className="h-3 w-3 mr-1" /> Pending Review
-        </Badge>;
-      case "approved":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-          <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
-        </Badge>;
-      case "rejected":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
-          <XCircle className="h-3 w-3 mr-1" /> Rejected
-        </Badge>;
-      case "revision_required":
-        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
-          <AlertTriangle className="h-3 w-3 mr-1" /> Revision Required
-        </Badge>;
-      case "pending":
-        return <Badge variant="secondary">Not Submitted</Badge>;
-      case "late":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-          <Hourglass className="h-3 w-3 mr-1" /> Late
-        </Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  }
-
   function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleDateString("en-US", {
       weekday: "short",
@@ -340,90 +315,25 @@ export default function SiteSupervisorWeeklyLogsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ScrollText className="h-8 w-8" />
-            Weekly Logs Review
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Review and approve weekly logs from your assigned interns
-          </p>
-        </div>
-        <Button variant="outline" onClick={fetchWeeklyLogs}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Weekly Logs Review"
+        description="Review and approve weekly logs from your assigned interns"
+        actions={
+          <Button variant="outline" onClick={fetchWeeklyLogs}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{stats?.totalLogs || 0}</p>
-                <p className="text-xs text-muted-foreground">Total Logs</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-blue-200 bg-blue-50/30">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Clock className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-2xl font-bold text-blue-600">{stats?.pendingReview || 0}</p>
-                <p className="text-xs text-muted-foreground">Pending Review</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-2xl font-bold text-green-600">{stats?.approved || 0}</p>
-                <p className="text-xs text-muted-foreground">Approved</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <XCircle className="h-5 w-5 text-red-600" />
-              <div>
-                <p className="text-2xl font-bold text-red-600">{stats?.rejected || 0}</p>
-                <p className="text-xs text-muted-foreground">Rejected</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-yellow-200 bg-yellow-50/30">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-yellow-600" />
-              <div>
-                <p className="text-2xl font-bold text-yellow-600">{stats?.lateSubmissions || 0}</p>
-                <p className="text-xs text-muted-foreground">Late Submissions</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <BarChart3 className="h-5 w-5 text-purple-600" />
-              <div>
-                <p className="text-2xl font-bold text-purple-600">{stats?.averageHours || 0}h</p>
-                <p className="text-xs text-muted-foreground">Avg Hours/Week</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Total Logs" value={stats?.totalLogs || 0} icon={FileText} variant="default" />
+        <StatCard label="Pending Review" value={stats?.pendingReview || 0} icon={Clock} variant="info" />
+        <StatCard label="Approved" value={stats?.approved || 0} icon={CheckCircle2} variant="success" />
+        <StatCard label="Rejected" value={stats?.rejected || 0} icon={XCircle} variant="danger" />
+        <StatCard label="Late Submissions" value={stats?.lateSubmissions || 0} icon={AlertTriangle} variant="warning" />
+        <StatCard label="Avg Hours/Week" value={`${stats?.averageHours || 0}h`} icon={BarChart3} variant="default" />
       </div>
 
       {/* Filters */}
@@ -469,9 +379,14 @@ export default function SiteSupervisorWeeklyLogsPage() {
 
       {/* Logs List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="ml-3 text-muted-foreground">Loading weekly logs...</span>
+        <div className="py-4 space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <Skeleton className="h-16" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : filteredLogs.length === 0 ? (
         <Card>
@@ -513,7 +428,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         <h3 className="font-semibold truncate">{log.studentName}</h3>
                         <p className="text-sm text-muted-foreground truncate">{log.studentEmail}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          {getStatusBadge(log.status)}
+                          <StatusBadge status={log.status} />
                           {log.isLate && (
                             <Badge variant="outline" className="text-yellow-700 border-yellow-300">
                               {log.daysLate}d late
@@ -620,7 +535,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         </div>
                         
                         <div className="text-right">
-                          {getStatusBadge(selectedLog.status)}
+                          <StatusBadge status={selectedLog.status} />
                           {selectedLog.isLate && (
                             <p className="text-sm text-yellow-600 mt-1">
                               Submitted {selectedLog.daysLate} days late
@@ -732,7 +647,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="flex items-center gap-2 mb-2">
-                          {getStatusBadge(selectedLog.status)}
+                          <StatusBadge status={selectedLog.status} />
                           <span className="text-sm text-muted-foreground">
                             Reviewed on {selectedLog.reviewedAt 
                               ? new Date(selectedLog.reviewedAt).toLocaleDateString()

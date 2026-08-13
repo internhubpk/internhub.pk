@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -442,48 +443,45 @@ export default function StudentProfilePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">My Profile</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your personal information and professional presence
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {saveSuccess && (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-1 text-sm text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Saved successfully!
-            </motion.div>
-          )}
-          
-          {!isEditing ? (
-            <Button onClick={() => setIsEditing(true)} className="gap-2">
-              <User className="h-4 w-4" />
-              Edit Profile
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
-                Cancel
+      <PageHeader
+        title="My Profile"
+        description="Manage your personal information and professional presence"
+        actions={
+          <div className="flex items-center gap-2">
+            {saveSuccess && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-1 text-sm text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Saved successfully!
+              </motion.div>
+            )}
+
+            {!isEditing ? (
+              <Button onClick={() => setIsEditing(true)} className="gap-2">
+                <User className="h-4 w-4" />
+                Edit Profile
               </Button>
-              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-                {isSaving ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                  {isSaving ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            )}
+          </div>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left Column - Avatar & Quick Info */}

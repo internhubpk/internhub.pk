@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,6 +81,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface Application {
@@ -190,23 +192,6 @@ export default function CompanyHRApplicationsPage() {
     return matchesSearch && matchesStatus && matchesProgram;
   });
 
-  const getStatusBadge = (status: Application["status"]) => {
-    switch (status) {
-      case "pending":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Pending</Badge>;
-      case "reviewing":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Reviewing</Badge>;
-      case "accepted":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Accepted</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
-      case "withdrawn":
-        return <Badge variant="secondary">Withdrawn</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getMatchScoreColor = (score: number) => {
     if (score >= 90) return "text-emerald-600 bg-emerald-50";
     if (score >= 70) return "text-amber-600 bg-amber-50";
@@ -312,12 +297,10 @@ export default function CompanyHRApplicationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Applications</h1>
-        <p className="mt-2 text-muted-foreground">
-          Review and manage internship applications
-        </p>
-      </div>
+      <PageHeader
+        title="Applications"
+        description="Review and manage internship applications"
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
@@ -413,7 +396,6 @@ export default function CompanyHRApplicationsPage() {
             setSelectedApplication={setSelectedApplication}
             isDetailOpen={isDetailOpen}
             setIsDetailOpen={setIsDetailOpen}
-            getStatusBadge={getStatusBadge}
             getMatchScoreColor={getMatchScoreColor}
             getInitials={getInitials}
             onAccept={handleAccept}
@@ -438,7 +420,6 @@ export default function CompanyHRApplicationsPage() {
             setSelectedApplication={setSelectedApplication}
             isDetailOpen={isDetailOpen}
             setIsDetailOpen={setIsDetailOpen}
-            getStatusBadge={getStatusBadge}
             getMatchScoreColor={getMatchScoreColor}
             getInitials={getInitials}
             onAccept={handleAccept}
@@ -464,7 +445,6 @@ export default function CompanyHRApplicationsPage() {
             setSelectedApplication={setSelectedApplication}
             isDetailOpen={isDetailOpen}
             setIsDetailOpen={setIsDetailOpen}
-            getStatusBadge={getStatusBadge}
             getMatchScoreColor={getMatchScoreColor}
             getInitials={getInitials}
             onAccept={handleAccept}
@@ -505,7 +485,7 @@ export default function CompanyHRApplicationsPage() {
                 {/* Status & Quick Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
-                    {getStatusBadge(selectedApplication.status)}
+                    <StatusBadge status={selectedApplication.status} />
                     <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(selectedApplication.match_score)}`}>
                       <Star className="inline h-3 w-3 mr-1" />
                       {selectedApplication.match_score}% Match
@@ -713,7 +693,6 @@ function ApplicationTable({
   setSelectedApplication,
   isDetailOpen,
   setIsDetailOpen,
-  getStatusBadge,
   getMatchScoreColor,
   getInitials,
   onAccept,
@@ -735,7 +714,6 @@ function ApplicationTable({
   setSelectedApplication: (a: Application | null) => void;
   isDetailOpen: boolean;
   setIsDetailOpen: (v: boolean) => void;
-  getStatusBadge: (s: Application["status"]) => React.ReactNode;
   getMatchScoreColor: (s: number) => string;
   getInitials: (n: string) => string;
   onAccept: (id: string) => void;
@@ -800,7 +778,7 @@ function ApplicationTable({
                       <p className="text-sm text-muted-foreground truncate">{app.internship_title}</p>
                     </div>
                   </div>
-                  {getStatusBadge(app.status)}
+                  <StatusBadge status={app.status} />
                 </div>
 
                 <div className="flex items-center gap-2 text-sm text-muted-foreground pl-12">
@@ -903,7 +881,7 @@ function ApplicationTable({
                         <p className="text-xs text-muted-foreground">{app.university}</p>
                       </div>
                     </TableCell>
-                    <TableCell>{getStatusBadge(app.status)}</TableCell>
+                    <TableCell><StatusBadge status={app.status} /></TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 rounded-full text-sm font-medium ${getMatchScoreColor(app.match_score)}`}>
                         {app.match_score}%

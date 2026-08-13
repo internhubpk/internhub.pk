@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,6 +17,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 // Types
 // `certificates.status` uses the `certificate_status` enum
@@ -97,8 +100,8 @@ export default function StudentCertificatesPage() {
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
           <div className="container mx-auto px-4 py-6 lg:px-8">
-            <div className="h-8 bg-muted animate-pulse rounded w-48" />
-            <div className="h-4 bg-muted animate-pulse rounded w-64 mt-2" />
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
           </div>
         </div>
         <div className="container mx-auto px-4 py-6 lg:px-8">
@@ -106,7 +109,7 @@ export default function StudentCertificatesPage() {
             {[1, 2].map((i) => (
               <Card key={i}>
                 <CardContent className="p-4">
-                  <div className="h-12 bg-muted animate-pulse rounded" />
+                  <Skeleton className="h-12" />
                 </CardContent>
               </Card>
             ))}
@@ -126,12 +129,10 @@ export default function StudentCertificatesPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              My Certificates
-            </h1>
-            <p className="mt-2 text-muted-foreground">
-              View and download your internship completion certificates
-            </p>
+            <PageHeader
+              title="My Certificates"
+              description="View and download your internship completion certificates"
+            />
           </motion.div>
         </div>
       </div>
@@ -144,29 +145,8 @@ export default function StudentCertificatesPage() {
           transition={{ delay: 0.1, duration: 0.3 }}
           className="grid gap-4 sm:grid-cols-2 mb-6"
         >
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Award className="h-5 w-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Certificates</p>
-                <p className="text-2xl font-bold">{certificates.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Issued</p>
-                <p className="text-2xl font-bold">{certificates.filter(c => c.status === "issued").length}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCard label="Total Certificates" value={certificates.length} icon={Award} variant="warning" />
+          <StatCard label="Issued" value={certificates.filter(c => c.status === "issued").length} icon={CheckCircle2} variant="success" />
         </motion.div>
 
         {/* Certificates List */}

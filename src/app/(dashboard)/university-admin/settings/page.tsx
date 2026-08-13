@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface UniversitySettings {
   name: string;
@@ -365,10 +366,7 @@ export default function UniversityAdminSettingsPage() {
   if (notFound || !universityId) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Manage your university settings</p>
-        </div>
+        <PageHeader title="Settings" description="Manage your university settings" />
         <Card>
           <CardContent className="py-12">
             <div className="flex flex-col items-center justify-center text-center">
@@ -389,12 +387,10 @@ export default function UniversityAdminSettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
-          Manage settings for {university?.name || "your university"}
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description={`Manage settings for ${university?.name || "your university"}`}
+      />
 
       <Tabs defaultValue="general" className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3">

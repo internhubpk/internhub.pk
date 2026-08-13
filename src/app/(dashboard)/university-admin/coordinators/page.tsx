@@ -54,6 +54,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 import type { Profile, Department } from "@/types";
 
 interface CoordinatorWithDetails extends Profile {
@@ -416,20 +417,16 @@ export default function CoordinatorsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Department Coordinators
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            Manage coordinator accounts for {university?.name || "your university"}
-          </p>
-        </div>
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create Coordinator
-        </Button>
-      </div>
+      <PageHeader
+        title="Department Coordinators"
+        description={`Manage coordinator accounts for ${university?.name || "your university"}`}
+        actions={
+          <Button onClick={openCreateDialog} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Create Coordinator
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <Card>

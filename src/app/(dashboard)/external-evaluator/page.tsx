@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle, Loader2 } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 type EvaluationStatus = "pending" | "in_progress" | "submitted" | "approved" | "rejected";
 
@@ -172,12 +174,10 @@ export default function ExternalEvaluatorDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">External Evaluator Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back, {greetingName}. Manage your assigned evaluations below.
-        </p>
-      </div>
+      <PageHeader
+        title="External Evaluator Dashboard"
+        description={`Welcome back, ${greetingName}. Manage your assigned evaluations below.`}
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -228,8 +228,10 @@ export default function ExternalEvaluatorDashboard() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-16" />
+              ))}
             </div>
           ) : evaluations.length === 0 ? (
             <div className="text-center py-12">

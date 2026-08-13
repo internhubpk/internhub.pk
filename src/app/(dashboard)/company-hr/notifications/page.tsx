@@ -5,12 +5,12 @@ import {
   Bell,
   CheckCheck,
   Trash2,
-  Loader2,
   RefreshCw,
   Filter,
   ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface Notification {
   id: string;
@@ -160,39 +161,37 @@ export default function CompanyHRNotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
-          <p className="text-sm text-muted-foreground">
-            {total} total · {unreadCount} unread
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-[160px]">
-              <Filter className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue placeholder="Filter" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              <SelectItem value="application">Applications</SelectItem>
-              <SelectItem value="evaluation">Evaluations</SelectItem>
-              <SelectItem value="certificate">Certificates</SelectItem>
-              <SelectItem value="deadline">Deadlines</SelectItem>
-              <SelectItem value="system">System</SelectItem>
-              <SelectItem value="announcement">Announcements</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={handleMarkAllRead} disabled={unreadCount === 0}>
-            <CheckCheck className="h-4 w-4 mr-2" />
-            Mark all read
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Notifications"
+        description={`${total} total · ${unreadCount} unread`}
+        actions={
+          <>
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger className="w-[160px]">
+                <Filter className="h-3.5 w-3.5 mr-1.5" />
+                <SelectValue placeholder="Filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                <SelectItem value="application">Applications</SelectItem>
+                <SelectItem value="evaluation">Evaluations</SelectItem>
+                <SelectItem value="certificate">Certificates</SelectItem>
+                <SelectItem value="deadline">Deadlines</SelectItem>
+                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="announcement">Announcements</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={handleMarkAllRead} disabled={unreadCount === 0}>
+              <CheckCheck className="h-4 w-4 mr-2" />
+              Mark all read
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -201,8 +200,10 @@ export default function CompanyHRNotificationsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="p-4 space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14" />
+              ))}
             </div>
           ) : notifications.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">

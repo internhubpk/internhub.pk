@@ -245,7 +245,7 @@ function SidebarContent({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0f1c] text-white">
+    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Custom scrollbar styles */}
       <style>{`
         .sidebar-scroll::-webkit-scrollbar {
@@ -366,7 +366,7 @@ function SidebarContent({
           {/* Avatar with ring */}
           <Avatar
             className={cn(
-              "h-10 w-10 ring-2 ring-primary/30 ring-offset-2 ring-offset-[#0a0f1c]"
+              "h-10 w-10 ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar"
             )}
           >
             <AvatarImage
@@ -809,7 +809,7 @@ export function Sidebar({ className }: SidebarProps) {
         </SheetTrigger>
         <SheetContent
           side="left"
-          className="w-[280px] p-0 bg-[#0a0f1c] border-r border-white/10"
+          className="w-[280px] p-0 bg-sidebar border-r border-sidebar-border"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation Menu</SheetTitle>
@@ -831,7 +831,7 @@ export function Sidebar({ className }: SidebarProps) {
         animate={{ width: collapsed ? 72 : 280 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className={cn(
-          "hidden lg:block h-screen sticky top-0 border-r border-white/10 bg-[#0a0f1c] z-30 overflow-hidden",
+          "hidden lg:block h-screen sticky top-0 border-r border-sidebar-border bg-sidebar z-30 overflow-hidden",
           className
         )}
       >

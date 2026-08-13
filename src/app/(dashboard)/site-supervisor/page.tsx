@@ -32,6 +32,7 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface SupervisorStats {
   assignedStudents: number;
@@ -374,26 +375,24 @@ export default function SiteSupervisorDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Site Supervisor Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {profile?.full_name || user?.email || "Supervisor"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={fetchSupervisorData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Link href="/site-supervisor/evaluations">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Evaluation
+      <PageHeader
+        title="Site Supervisor Dashboard"
+        description={`Welcome back, ${profile?.full_name || user?.email || "Supervisor"}`}
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchSupervisorData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/site-supervisor/evaluations">
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                New Evaluation
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

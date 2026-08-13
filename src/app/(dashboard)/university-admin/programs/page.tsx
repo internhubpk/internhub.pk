@@ -30,6 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 import type { Department } from "@/types";
 
 interface Program {
@@ -206,7 +207,7 @@ export default function UniversityAdminProgramsPage() {
   if (!universityId) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Programs</h1>
+        <PageHeader title="Programs" />
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             Your admin account is not linked to a university yet.
@@ -219,14 +220,10 @@ export default function UniversityAdminProgramsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Programs</h1>
-        <p className="mt-2 text-muted-foreground">
-          View internship programs across all departments in{" "}
-          {university?.name || "your university"}. Programs are created and
-          managed by department coordinators.
-        </p>
-      </div>
+      <PageHeader
+        title="Programs"
+        description={`View internship programs across all departments in ${university?.name || "your university"}. Programs are created and managed by department coordinators.`}
+      />
 
       {/* Filters */}
       <Card>

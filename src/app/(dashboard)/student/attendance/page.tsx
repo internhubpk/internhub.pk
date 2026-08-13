@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 // `attendance.status` uses the `attendance_status` enum
@@ -324,8 +326,8 @@ export default function StudentAttendancePage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-8 w-40 bg-muted animate-pulse rounded mb-2" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded" />
+            <Skeleton className="h-8 w-40 mb-2" />
+            <Skeleton className="h-4 w-64" />
           </div>
         </div>
         
@@ -333,7 +335,7 @@ export default function StudentAttendancePage() {
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <div className="h-16 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-16" />
               </CardContent>
             </Card>
           ))}
@@ -343,7 +345,7 @@ export default function StudentAttendancePage() {
           <CardContent className="p-8">
             <div className="space-y-4">
               {[...Array(10)].map((_, i) => (
-                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
+                <Skeleton key={i} className="h-12" />
               ))}
             </div>
           </CardContent>
@@ -358,19 +360,17 @@ export default function StudentAttendancePage() {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div>
-          <h1 className="text-3xl font-bold">Attendance Record</h1>
-          <p className="text-muted-foreground mt-1">
-            Track your internship attendance and working hours
-          </p>
-        </div>
-
-        <Button variant="outline" onClick={fetchAttendance} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <PageHeader
+          title="Attendance Record"
+          description="Track your internship attendance and working hours"
+          actions={
+            <Button variant="outline" onClick={fetchAttendance} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          }
+        />
       </motion.div>
 
       {/* Month Selector */}

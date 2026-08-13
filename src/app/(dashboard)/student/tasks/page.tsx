@@ -4,11 +4,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -59,6 +61,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface Task {
@@ -186,23 +189,6 @@ export default function StudentTasksPage() {
   const approvedCount = tasks.filter(t => t.submission?.status === "approved").length;
   const totalCount = tasks.length;
   const completionRate = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0;
-
-  // Status badge helper
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>;
-      case "submitted":
-      case "under_review":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><Eye className="mr-1 h-3 w-3" />Under Review</Badge>;
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Rejected</Badge>;
-      case "in_progress":
-        return <Badge className="bg-purple-100 text-purple-700 border-purple-200">In Progress</Badge>;
-      default:
-        return <Badge variant="outline"><Clock className="mr-1 h-3 w-3" />{status.replace("_", " ")}</Badge>;
-    }
-  };
 
   // Priority badge helper
   const getPriorityBadge = (priority: string) => {
@@ -364,15 +350,15 @@ export default function StudentTasksPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="h-8 w-40 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64 mt-2" />
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4">
-                <div className="h-16 bg-muted animate-pulse rounded" />
+                <Skeleton className="h-16" />
               </CardContent>
             </Card>
           ))}
@@ -384,18 +370,16 @@ export default function StudentTasksPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">My Tasks</h1>
-          <p className="text-muted-foreground mt-1">
-            View assignments, submit work, and track your progress
-          </p>
-        </div>
-        <Button variant="outline" onClick={fetchTasks} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="My Tasks"
+        description="View assignments, submit work, and track your progress"
+        actions={
+          <Button variant="outline" onClick={fetchTasks} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -542,8 +526,8 @@ export default function StudentTasksPage() {
                         </TableCell>
                         <TableCell>
                           {task.submission 
-                            ? getStatusBadge(task.submission.status)
-                            : getStatusBadge(task.status)
+                            ? <StatusBadge status={task.submission.status} />
+                            : <StatusBadge status={task.status} />
                           }
                         </TableCell>
                         <TableCell>
@@ -620,7 +604,7 @@ export default function StudentTasksPage() {
                         </div>
                         <div className="shrink-0">
                           {task.submission 
-                            ? getStatusBadge(task.submission.status)
+                            ? <StatusBadge status={task.submission.status} />
                             : getPriorityBadge(task.priority)
                           }
                         </div>
@@ -834,7 +818,7 @@ export default function StudentTasksPage() {
               {/* Status */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                 <span className="text-sm text-muted-foreground">Status</span>
-                {getStatusBadge(viewSubmission.status)}
+                <StatusBadge status={viewSubmission.status} />
               </div>
 
               {/* Notes */}

@@ -233,7 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMountedRef.current) return;
-        
+
         try {
           if (event === "SIGNED_IN" && session?.user) {
             setUser(session.user);
@@ -242,8 +242,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(null);
             setProfile(null);
             setUniversity(null);
+          } else if (event === "TOKEN_REFRESHED" && session?.user) {
+            // BUG 5 FIX: When the proxy (or Supabase SDK) refreshes the
+            // session, the user object's app_metadata is updated to the
+            // latest server-side state. We MUST propagate this to React
+            // state so the UI reflects any role/tenant changes an admin
+            // just made. Previously this event was ignored, which left
+            // the UI showing the stale role until a hard page reload.
+            setUser(session.user);
+            // Re-fetch the profile too — RLS now evaluates against the
+            // new role/tenant, so the profile data may change.
+            await fetchProfile(session.user.id, supabase, session.user);
           }
-          // Ignore TOKEN_REFRESHED and other events to avoid unnecessary re-renders
         } catch (error) {
           console.error("Auth state change error:", error instanceof Error ? error.message : error);
         } finally {

@@ -50,6 +50,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 import type { Profile, Department } from "@/types";
 
 interface StudentWithDetails extends Profile {
@@ -336,18 +338,12 @@ export default function UniversityAdminStudentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Students Overview
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            View all enrolled students in {university?.name || "your university"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+      <PageHeader
+        title="Students Overview"
+        description={`View all enrolled students in ${university?.name || "your university"}`}
+        actions={
+          <Button
+            variant="outline"
             onClick={exportToCSV}
             disabled={isLoading || students.length === 0}
             className="gap-2"
@@ -355,44 +351,29 @@ export default function UniversityAdminStudentsPage() {
             <FileSpreadsheet className="h-4 w-4" />
             Export CSV
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-primary/10">
-              <Users className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{totalCount}</p>
-              <p className="text-xs text-muted-foreground">Total Students</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50">
-              <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{activeStudents}</p>
-              <p className="text-xs text-muted-foreground">Active Students</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/50">
-              <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{onInternship}</p>
-              <p className="text-xs text-muted-foreground">On Internship</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Total Students"
+          value={totalCount}
+          icon={Users}
+          variant="default"
+        />
+        <StatCard
+          label="Active Students"
+          value={activeStudents}
+          icon={GraduationCap}
+          variant="success"
+        />
+        <StatCard
+          label="On Internship"
+          value={onInternship}
+          icon={Briefcase}
+          variant="info"
+        />
       </div>
 
       {/* Filters */}

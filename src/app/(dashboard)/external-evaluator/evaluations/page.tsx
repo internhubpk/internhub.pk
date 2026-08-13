@@ -7,14 +7,14 @@ import {
   Eye,
   CheckCircle,
   Clock,
-  Loader2,
   Download,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import {
   Table,
   TableBody,
@@ -41,6 +41,8 @@ import {
 import { useAuth } from "@/components/providers/auth-provider";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
 type EvaluationStatus = "pending" | "in_progress" | "submitted" | "approved" | "rejected";
 type EvaluationType =
@@ -66,14 +68,6 @@ interface Evaluation {
   submitted_at: string | null;
   created_at: string | null;
 }
-
-const STATUS_BADGE_VARIANT: Record<EvaluationStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "secondary",
-  in_progress: "default",
-  submitted: "default",
-  approved: "default",
-  rejected: "destructive",
-};
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All Status" },
@@ -266,14 +260,6 @@ export default function ExternalEvaluatorEvaluationsPage() {
     return { pending, inProgress, completed, avgRating };
   }, [evaluations]);
 
-  const getStatusBadge = (status: EvaluationStatus) => {
-    return (
-      <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>
-        {status.replace("_", " ")}
-      </Badge>
-    );
-  };
-
   const handleExport = () => {
     if (filteredEvaluations.length === 0) {
       toast({
@@ -343,57 +329,28 @@ export default function ExternalEvaluatorEvaluationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Evaluations</h1>
-          <p className="text-muted-foreground">Complete your assigned student evaluations</p>
-        </div>
-        <Button variant="outline" onClick={handleExport} disabled={isLoading || evaluations.length === 0}>
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-      </div>
+      <PageHeader
+        title="Evaluations"
+        description="Complete your assigned student evaluations"
+        actions={
+          <Button variant="outline" onClick={handleExport} disabled={isLoading || evaluations.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pending}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <ClipboardCheck className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.completed}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Rating</CardTitle>
-            <CheckCircle className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {stats.avgRating !== null ? stats.avgRating.toFixed(1) : "—"}
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="Pending" value={stats.pending} icon={Clock} variant="warning" />
+        <StatCard label="In Progress" value={stats.inProgress} icon={ClipboardCheck} variant="info" />
+        <StatCard label="Completed" value={stats.completed} icon={CheckCircle} variant="success" />
+        <StatCard
+          label="Avg Rating"
+          value={stats.avgRating !== null ? stats.avgRating.toFixed(1) : "—"}
+          icon={CheckCircle}
+          variant="default"
+        />
       </div>
 
       {/* Filters */}
@@ -449,8 +406,10 @@ export default function ExternalEvaluatorEvaluationsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-14" />
+              ))}
             </div>
           ) : evaluations.length === 0 ? (
             <div className="text-center py-12">
@@ -511,7 +470,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
                       <TableCell>
                         {evaluation.rating !== null ? `${evaluation.rating}/5` : "—"}
                       </TableCell>
-                      <TableCell>{getStatusBadge(evaluation.status)}</TableCell>
+                      <TableCell><StatusBadge status={evaluation.status} /></TableCell>
                       <TableCell>{formatDate(evaluation.submitted_at)}</TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -561,7 +520,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Status</p>
-                  <div>{getStatusBadge(detailEvaluation.status)}</div>
+                  <div><StatusBadge status={detailEvaluation.status} /></div>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Internship</p>

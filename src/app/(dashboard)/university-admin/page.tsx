@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 import Link from "next/link";
 
 interface UniversityStats {
@@ -424,27 +425,21 @@ export default function UniversityAdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            University Admin Dashboard
-          </h1>
-          <p className="mt-2 text-muted-foreground">
-            {university?.name || "University"} Management Portal
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={fetchDashboardData} 
+      <PageHeader
+        title="University Admin Dashboard"
+        description={`${university?.name || "University"} Management Portal`}
+        actions={
+          <Button
+            variant="outline"
+            onClick={fetchDashboardData}
             disabled={isLoading}
             size="sm"
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {error ? (
         <Card className="border-destructive/50">

@@ -4,6 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Progress } from "@/components/ui/progress";
 import {
   FileText,
@@ -14,7 +15,7 @@ import {
   Clock,
   Calendar,
 } from "lucide-react";
-import type { InternshipProgress as InternshipProgressType, CertificateStatus } from "@/types";
+import type { InternshipProgress as InternshipProgressType } from "@/types";
 
 interface InternshipProgressProps {
   progress: InternshipProgressType;
@@ -27,13 +28,6 @@ const statusColors = {
   pending: "bg-amber-500",
   overdue: "bg-red-500",
   active: "bg-blue-500",
-};
-
-const certificateStatusConfig: Record<CertificateStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  not_issued: { label: "Not Issued", variant: "outline" },
-  pending: { label: "Pending", variant: "secondary" },
-  issued: { label: "Issued", variant: "default" },
-  revoked: { label: "Revoked", variant: "destructive" },
 };
 
 const transcriptStatusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -187,9 +181,7 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
               <p className="text-xs text-muted-foreground">Certificate</p>
               <p className="text-sm font-medium">Completion Cert.</p>
             </div>
-            <Badge variant={certificateStatusConfig[progress.certificateStatus].variant} className="text-xs shrink-0">
-              {certificateStatusConfig[progress.certificateStatus].label}
-            </Badge>
+            <StatusBadge status={progress.certificateStatus} className="text-xs shrink-0" />
           </motion.div>
 
           {/* Transcript Status */}

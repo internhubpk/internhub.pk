@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -70,6 +71,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
 interface ActiveIntern {
@@ -177,23 +179,6 @@ export default function CompanyHRInternsPage() {
     return matchesSearch && matchesStatus && matchesProgram;
   });
 
-  const getStatusBadge = (status: ActiveIntern["status"]) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><UserCheck className="mr-1 h-3 w-3" />Active</Badge>;
-      case "paused":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200"><Clock className="mr-1 h-3 w-3" />Paused</Badge>;
-      case "assigned":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200"><UserCheck className="mr-1 h-3 w-3" />Assigned</Badge>;
-      case "completed":
-        return <Badge className="bg-purple-100 text-purple-700 border-purple-200"><CheckCircle2 className="mr-1 h-3 w-3" />Completed</Badge>;
-      case "terminated":
-        return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Terminated</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getInitials = (name: string) => name.split(" ").map(n => n[0]).join("").toUpperCase();
 
   const handleAssignSupervisor = async () => {
@@ -255,21 +240,18 @@ export default function CompanyHRInternsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Active Interns</h1>
-          <p className="mt-2 text-muted-foreground">
-            Manage and track your current interns&apos; progress
-          </p>
-        </div>
-        
-        <Button asChild variant="outline">
-          <Link href="/company-hr/documents" className="gap-2">
-            <FolderOpen className="h-4 w-4" />
-            Manage Documents
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Active Interns"
+        description="Manage and track your current interns' progress"
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/company-hr/documents" className="gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Manage Documents
+            </Link>
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -404,7 +386,7 @@ export default function CompanyHRInternsPage() {
                           <p className="text-sm text-muted-foreground truncate">{intern.internship_title}</p>
                         </div>
                       </div>
-                      {getStatusBadge(intern.status)}
+                      <StatusBadge status={intern.status} />
                     </div>
 
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground pl-13">
@@ -489,7 +471,7 @@ export default function CompanyHRInternsPage() {
                             </button>
                           )}
                         </TableCell>
-                        <TableCell>{getStatusBadge(intern.status)}</TableCell>
+                        <TableCell><StatusBadge status={intern.status} /></TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Progress value={intern.attendance_rate} className="h-2 w-16" />
@@ -576,7 +558,7 @@ export default function CompanyHRInternsPage() {
                   </div>
                 </DialogTitle>
                 <DialogDescription>
-                  {getStatusBadge(selectedIntern.status)}
+                  <StatusBadge status={selectedIntern.status} />
                 </DialogDescription>
               </DialogHeader>
 

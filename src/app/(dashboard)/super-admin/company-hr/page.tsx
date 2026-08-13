@@ -14,6 +14,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +54,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
+import { PageHeader } from "@/components/dashboard/page-header";
 
 interface Company {
   id: string;
@@ -322,31 +324,28 @@ export default function SuperAdminCompanyHrPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Company HR Accounts</h1>
-          <p className="text-muted-foreground mt-1">
-            Create and manage HR accounts for companies. Each HR manages their
-            company&apos;s interns, supervisors, and internships.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button
-            onClick={() => {
-              setCreateForm(emptyCreateForm);
-              setIsDialogOpen(true);
-            }}
-            disabled={companies.length === 0}
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add HR Account
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Company HR Accounts"
+        description="Create and manage HR accounts for companies. Each HR manages their company's interns, supervisors, and internships."
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button
+              onClick={() => {
+                setCreateForm(emptyCreateForm);
+                setIsDialogOpen(true);
+              }}
+              disabled={companies.length === 0}
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add HR Account
+            </Button>
+          </>
+        }
+      />
 
       {companies.length === 0 && (
         <Card>
@@ -400,8 +399,10 @@ export default function SuperAdminCompanyHrPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-14" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <Card>
