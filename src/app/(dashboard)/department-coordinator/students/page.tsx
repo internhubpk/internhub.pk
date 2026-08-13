@@ -66,6 +66,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
+import { useToast } from "@/hooks/use-toast";
 
 interface Student {
   // `students` table has no `id` column — `user_id` is the PK.
@@ -112,6 +113,7 @@ interface SupervisorOption {
 
 export default function StudentsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
@@ -124,16 +126,16 @@ export default function StudentsPage() {
   const [filterSupervisor, setFilterSupervisor] = useState<string>(
     searchParams.get("filter") === "no_supervisor" ? "unassigned" : "all"
   );
-  
+
   // Selection state
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [isSelectAll, setIsSelectAll] = useState(false);
-  
+
   // Assignment dialog
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>("");
   const [isAssigning, setIsAssigning] = useState(false);
-  
+
   // Student detail view
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
@@ -148,9 +150,10 @@ export default function StudentsPage() {
     last_name: "",
     email: "",
     student_id_number: "",
-    program_code: "",
+    program_id: "",
   });
   const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [importProgramId, setImportProgramId] = useState<string>("");
   const [importResult, setImportResult] = useState<{
     created: number;
     errors: number;
@@ -185,7 +188,11 @@ export default function StudentsPage() {
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudent.first_name.trim() || !newStudent.last_name.trim() || !newStudent.email.trim() || !newStudent.student_id_number.trim()) {
-      alert("Please fill in all required fields.");
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -205,7 +212,11 @@ export default function StudentsPage() {
       const data = await res.json();
 
       if (!data.success) {
-        alert(data.error || "Failed to create student");
+        toast({
+          title: "Failed to create student",
+          description: data.error || data.message || "Unknown error",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -213,12 +224,22 @@ export default function StudentsPage() {
       // The student's `user_id` is the auth user's id (returned as `id`).
       const userId = data.data?.id || data.data?.user_id || data.user_id;
       if (!userId) {
-        alert("Student auth account created but could not link student record. Please contact support.");
+        toast({
+          title: "Account created with warning",
+          description: "Auth account was created but the user ID could not be retrieved. The student record was not created. Please contact support.",
+          variant: "destructive",
+        });
         return;
       }
 
-      // Find the program_id from the code
-      const program = programs.find((p) => p.code.toLowerCase() === newStudent.program_code.trim().toLowerCase());
+      // Show warning if profile creation had issues
+      if (data.warning) {
+        toast({
+          title: "Account created (with warning)",
+          description: data.warning,
+          variant: "destructive",
+        });
+      }
 
       const studentRes = await fetch("/api/students", {
         method: "POST",
@@ -227,7 +248,7 @@ export default function StudentsPage() {
           user_id: userId,
           university_id: profile?.university_id,
           department_id: profile?.department_id,
-          program_id: program?.id || null,
+          program_id: newStudent.program_id || null,
           student_id_number: newStudent.student_id_number.trim(),
           enrollment_year: new Date().getFullYear(),
         }),
@@ -235,19 +256,29 @@ export default function StudentsPage() {
       const studentData = await studentRes.json();
 
       if (!studentData.success) {
-        // Profile was created but student record failed — surface the error
-        alert(`Auth + profile created, but student record failed: ${studentData.error || studentData.message || "Unknown error"}`);
+        toast({
+          title: "Student record failed",
+          description: `Auth + profile created, but student record failed: ${studentData.error || studentData.message || "Unknown error"}`,
+          variant: "destructive",
+        });
         return;
       }
 
       // Success — close dialog, reset form, refresh list
       setIsAddStudentDialogOpen(false);
-      setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_code: "" });
+      setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_id: "" });
       await fetchStudents();
-      alert(`Student ${newStudent.first_name} ${newStudent.last_name} created. They can sign in with their email at ${newStudent.email}.`);
+      toast({
+        title: "Student Created",
+        description: `${newStudent.first_name} ${newStudent.last_name} can sign in with ${newStudent.email}.`,
+      });
     } catch (error) {
       console.error("Error creating student:", error);
-      alert("Failed to create student");
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create student",
+        variant: "destructive",
+      });
     } finally {
       setIsCreatingStudent(false);
     }
@@ -269,33 +300,55 @@ export default function StudentsPage() {
   // Handle CSV import
   const handleImportCsv = async () => {
     if (!csvText.trim()) {
-      alert("Please select a CSV file first.");
+      toast({
+        title: "No CSV file",
+        description: "Please select a CSV file first.",
+        variant: "destructive",
+      });
       return;
     }
     setIsImporting(true);
     try {
+      // Send as JSON so we can include the program_id from the dropdown.
       const res = await fetch("/api/department-coordinator/students/bulk", {
         method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: csvText,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csv: csvText,
+          program_id: importProgramId || null,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         setImportResult(data.data);
         await fetchStudents();
+        toast({
+          title: "Import Complete",
+          description: `Imported ${data.data.created} student(s), ${data.data.errors} error(s).`,
+        });
       } else {
-        alert(data.error || "Import failed");
+        toast({
+          title: "Import failed",
+          description: data.error || data.message || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error importing CSV:", error);
-      alert("Import failed");
+      toast({
+        title: "Import failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setIsImporting(false);
     }
   };
 
   const downloadCsvTemplate = () => {
-    const template = "first_name,last_name,email,student_id_number,program_code\nJohn,Doe,john.doe@university.edu,FA21-BSCS-001,CS-INT\nJane,Smith,jane.smith@university.edu,FA21-BSCS-002,CS-INT\n";
+    // Template no longer includes program_code — program is selected via
+    // the dropdown in the import dialog and applies to all rows.
+    const template = "first_name,last_name,email,student_id_number\nJohn,Doe,john.doe@university.edu,FA21-BSCS-001\nJane,Smith,jane.smith@university.edu,FA21-BSCS-002\n";
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -310,6 +363,7 @@ export default function StudentsPage() {
     setIsImportDialogOpen(false);
     setCsvFileName("");
     setCsvText("");
+    setImportProgramId("");
     setImportResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -458,7 +512,8 @@ export default function StudentsPage() {
     setIsAssigning(true);
     try {
       let successCount = 0;
-      
+      let lastError = "";
+
       for (const studentId of selectedStudents) {
         const res = await fetch("/api/department-coordinator/assignments", {
           method: "POST",
@@ -468,12 +523,28 @@ export default function StudentsPage() {
             faculty_supervisor_id: selectedSupervisorId,
           }),
         });
-        
-        if (res.ok) successCount++;
+
+        if (res.ok) {
+          successCount++;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          lastError = data.error || `HTTP ${res.status}`;
+        }
       }
 
-      alert(`Successfully assigned ${successCount} of ${selectedStudents.size} students`);
-      
+      if (successCount === selectedStudents.size) {
+        toast({
+          title: "Assignment Complete",
+          description: `Successfully assigned ${successCount} of ${selectedStudents.size} students.`,
+        });
+      } else {
+        toast({
+          title: "Partial Assignment",
+          description: `Assigned ${successCount} of ${selectedStudents.size}. Last error: ${lastError}`,
+          variant: "destructive",
+        });
+      }
+
       await fetchStudents();
       setIsAssignDialogOpen(false);
       setSelectedSupervisorId("");
@@ -481,7 +552,11 @@ export default function StudentsPage() {
       setIsSelectAll(false);
     } catch (error) {
       console.error("Error assigning students:", error);
-      alert("Failed to assign some students");
+      toast({
+        title: "Assignment failed",
+        description: error instanceof Error ? error.message : "Failed to assign some students",
+        variant: "destructive",
+      });
     } finally {
       setIsAssigning(false);
     }
@@ -501,13 +576,25 @@ export default function StudentsPage() {
 
       if (res.ok) {
         await fetchStudents();
+        toast({
+          title: "Assigned",
+          description: "Student has been assigned to the selected supervisor.",
+        });
       } else {
-        const data = await res.json();
-        alert(data.error || "Failed to assign student");
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Assignment failed",
+          description: data.error || `HTTP ${res.status}`,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error assigning student:", error);
-      alert("Failed to assign student");
+      toast({
+        title: "Assignment failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1234,8 +1321,8 @@ export default function StudentsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="student-program">Program</Label>
                   <Select
-                    value={newStudent.program_code}
-                    onValueChange={(val) => setNewStudent({ ...newStudent, program_code: val === "__none__" ? "" : val })}
+                    value={newStudent.program_id || "__none__"}
+                    onValueChange={(val) => setNewStudent({ ...newStudent, program_id: val === "__none__" ? "" : val })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="No program" />
@@ -1243,7 +1330,7 @@ export default function StudentsPage() {
                     <SelectContent>
                       <SelectItem value="__none__">No program</SelectItem>
                       {programs.map((p) => (
-                        <SelectItem key={p.id} value={p.code}>
+                        <SelectItem key={p.id} value={p.id}>
                           {p.name} ({p.code})
                         </SelectItem>
                       ))}
@@ -1280,10 +1367,11 @@ export default function StudentsPage() {
             <DialogDescription>
               Upload a CSV file with the following columns (header row required, case-insensitive):
               <code className="block mt-2 p-2 bg-muted rounded text-xs">
-                first_name, last_name, email, student_id_number, program_code
+                first_name, last_name, email, student_id_number
               </code>
               <span className="block mt-2">
-                <code>program_code</code> is optional — match it to a program code in your university.
+                Select a program from the dropdown below — it applies to ALL rows in the CSV.
+                Do NOT include a program column in the CSV file.
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -1294,6 +1382,31 @@ export default function StudentsPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Download Template
               </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="import-program">Program (applies to all rows)</Label>
+              <Select
+                value={importProgramId || "__none__"}
+                onValueChange={(val) => setImportProgramId(val === "__none__" ? "" : val)}
+              >
+                <SelectTrigger id="import-program">
+                  <SelectValue placeholder="No program (students will be unassigned)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No program (unassigned)</SelectItem>
+                  {programs.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {programs.length === 0
+                  ? "No programs found in your department. Students will be created without a program."
+                  : "The selected program will be assigned to every student in the CSV."}
+              </p>
             </div>
 
             <div className="space-y-2">

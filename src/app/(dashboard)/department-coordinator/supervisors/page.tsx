@@ -62,6 +62,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
+import { useToast } from "@/hooks/use-toast";
 
 interface Supervisor {
   id: string;
@@ -127,6 +128,7 @@ const titleOptions = [
 
 export default function SupervisorsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [supervisors, setSupervisors] = useState<(Supervisor & { workload?: SupervisorWorkload })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -207,7 +209,11 @@ export default function SupervisorsPage() {
     e.preventDefault();
 
     if (!profile?.university_id || !profile?.department_id) {
-      alert("Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.");
+      toast({
+        title: "Cannot create supervisor",
+        description: "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -231,15 +237,32 @@ export default function SupervisorsPage() {
       const createUserData = await createUserRes.json();
 
       if (!createUserData.success) {
-        alert(createUserData.error || "Failed to create supervisor auth account");
+        toast({
+          title: "Failed to create supervisor",
+          description: createUserData.error || createUserData.message || "Unknown error",
+          variant: "destructive",
+        });
         return;
       }
 
       // /api/admin/create-user returns { data: { id, email, role, profile } }
       const userId: string | undefined = createUserData.data?.id;
       if (!userId) {
-        alert("Auth account created but no user id was returned. Please contact support.");
+        toast({
+          title: "Account created with warning",
+          description: "Auth account was created but no user ID was returned. Please contact support.",
+          variant: "destructive",
+        });
         return;
+      }
+
+      // Show warning if profile creation had issues
+      if (createUserData.warning) {
+        toast({
+          title: "Account created (with warning)",
+          description: createUserData.warning,
+          variant: "destructive",
+        });
       }
 
       // Step 2: create the supervisors row.
@@ -266,16 +289,25 @@ export default function SupervisorsPage() {
         await fetchSupervisors();
         setIsDialogOpen(false);
         resetForm();
-        alert(`Supervisor account created. They can sign in with ${formData.email} and the auto-generated password.`);
+        toast({
+          title: "Supervisor Created",
+          description: `${formData.first_name} ${formData.last_name} can sign in with ${formData.email}.`,
+        });
       } else {
         // The auth account was created but the supervisors row failed.
-        // Surface the error — the admin can manually fix the supervisors
-        // row from the DB side or try again.
-        alert(`Auth account created, but supervisor record failed: ${data.error || data.message || "Unknown error"}`);
+        toast({
+          title: "Supervisor record failed",
+          description: `Auth account created, but supervisor record failed: ${data.error || data.message || "Unknown error"}`,
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error creating supervisor:", error);
-      alert("Failed to create supervisor");
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create supervisor",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }

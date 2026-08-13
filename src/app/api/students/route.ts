@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import {
   CreateStudentSchema,
@@ -227,22 +228,54 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/students
- * Register new student - Uni Admin only
+ * Register new student - Uni Admin / Coordinator / Super Admin only.
+ *
+ * WHY SERVICE ROLE:
+ *   The previous version used the cookie-bound (publishable key) client for
+ *   the INSERT. This worked in most cases, but failed silently when RLS
+ *   blocked the SELECT of the target user's profile (e.g., new auth user
+ *   with NULL department_id in profile). The route would return a generic
+ *   "Failed to create student" 500 error with no diagnostic info.
+ *
+ *   Now: we authenticate the caller with the cookie-bound client (read-only
+ *   session check), but use the SERVICE ROLE client for the INSERT and all
+ *   validation lookups. Service role bypasses RLS, so we can always read
+ *   the target user's profile, verify department/program existence, and
+ *   insert the student row reliably.
+ *
+ *   Authorization is enforced EXPLICITLY via requireRole + manual tenant
+ *   scoping (university_id and department_id forced from caller's profile
+ *   for coordinator/university_admin roles).
+ *
  * SECURITY: Validates university ownership, logs audit trail
  */
 export async function POST(request: NextRequest) {
+  const requestId = `stu-post-${Date.now()}`;
   try {
-    // Require authentication and appropriate role
+    // Require authentication and appropriate role (uses cookie-bound client).
     const authContext = await requireRole(CREATE_STUDENT_ROLES);
-    
-    const cookieStore = await cookies();
-    const supabase = await createClient(cookieStore);
-    if (!supabase) {
-      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
-    }
 
-    // Parse and validate request body
-    const body = await request.json();
+    const userRole = authContext.profile?.role;
+    const userUniversityId = authContext.profile?.university_id;
+    const userDepartmentId = authContext.profile?.department_id;
+
+    // Build service role client for all DB operations.
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      console.error(`[${requestId}] SUPABASE_SERVICE_ROLE_KEY is not set`);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfiguration: service role key is not set" },
+        { status: 500 }
+      );
+    }
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
+
+    // Parse and validate request body.
+    const body = await request.json().catch(() => ({}));
     const validation = CreateStudentSchema.safeParse(body);
 
     if (!validation.success) {
@@ -251,6 +284,10 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "Validation failed",
           message: validation.error.issues[0]?.message,
+          details: validation.error.issues.map((i) => ({
+            path: i.path.join("."),
+            message: i.message,
+          })),
         },
         { status: 400 }
       );
@@ -258,52 +295,37 @@ export async function POST(request: NextRequest) {
 
     const studentData = validation.data;
 
-    // SECURITY: Validate that university_id matches authenticated user's university
-    const userRole = authContext.profile?.role;
-    const userUniversityId = authContext.profile?.university_id;
-    const userDepartmentId = authContext.profile?.department_id;
-
+    // SECURITY: Validate + force tenant IDs based on caller role.
     if (userRole === "university_admin") {
-      // Uni admins can ONLY create students in their own university
       if (!userUniversityId) {
-        return authorizationError("No university assigned to your account");
+        return authorizationError("No university assigned to your account. Ask a super admin to assign you to a university.");
       }
-
       if (studentData.university_id !== userUniversityId) {
-        // Audit log this security violation attempt
-        await audit.studentCreate(
-          "unknown",
-          studentData.university_id
-        );
-
+        await audit.studentCreate("unknown", studentData.university_id);
         return authorizationError("Cannot create student in another university");
       }
-
-      // Override with user's university ID for extra security
       studentData.university_id = userUniversityId;
     }
 
     if (userRole === "department_coordinator") {
-      // Coordinators can ONLY create students in their own university AND department
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account");
       }
       if (!userDepartmentId) {
-        return authorizationError("No department assigned to your account");
+        return authorizationError("No department assigned to your account. Ask a University Admin to assign you to a department first.");
       }
-
-      // Force both university_id and department_id from the caller's profile
+      // Force both university_id and department_id from the caller's profile.
       studentData.university_id = userUniversityId;
       studentData.department_id = userDepartmentId;
     }
 
-    // For super admins, verify the university exists
+    // For super admins, verify the university exists.
     if (userRole === "super_admin") {
-      const { data: university } = await supabase
+      const { data: university } = await admin
         .from("universities")
         .select("id")
         .eq("id", studentData.university_id)
-        .single();
+        .maybeSingle();
 
       if (!university) {
         return NextResponse.json<ApiResponse<never>>(
@@ -313,8 +335,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if student_id_number is unique within the university
-    const { data: existingEnrollment } = await supabase
+    // Ensure the target user's profile exists (idempotent — fixes the
+    // "auth user created but profile missing" issue from the broken trigger).
+    await admin.rpc("ensure_profile_exists", { p_user_id: studentData.user_id });
+
+    // Check if student_id_number is unique within the university.
+    const { data: existingEnrollment } = await admin
       .from("students")
       .select("user_id")
       .eq("student_id_number", studentData.student_id_number)
@@ -328,39 +354,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify that the referenced entities exist and belong to same university.
-    // department_id and program_id are optional (a student can be created
-    // without a program/department and assigned later).
-    let departmentCheck: { data: any } = { data: null };
-    let programCheck: { data: any } = { data: null };
-
+    // Verify department + program belong to the same university (only if set).
     if (studentData.department_id) {
-      const deptRes = await supabase
+      const { data: dept } = await admin
         .from("departments")
-        .select("id, university_id")
+        .select("id, university_id, name")
         .eq("id", studentData.department_id)
-        .single();
-      departmentCheck = { data: deptRes.data };
-    }
-    if (studentData.program_id) {
-      const progRes = await supabase
-        .from("programs")
-        .select("id, university_id")
-        .eq("id", studentData.program_id)
-        .single();
-      programCheck = { data: progRes.data };
-    }
+        .maybeSingle();
 
-    // SECURITY: Verify department belongs to the same university (only if set)
-    if (studentData.department_id) {
-      if (!departmentCheck.data) {
+      if (!dept) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Referenced department does not exist" },
           { status: 400 }
         );
       }
-
-      if (departmentCheck.data.university_id !== studentData.university_id) {
+      if (dept.university_id !== studentData.university_id) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Department does not belong to the specified university" },
           { status: 400 }
@@ -368,16 +376,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify program belongs to the same university (only if set)
     if (studentData.program_id) {
-      if (!programCheck.data) {
+      const { data: prog } = await admin
+        .from("programs")
+        .select("id, university_id, name")
+        .eq("id", studentData.program_id)
+        .maybeSingle();
+
+      if (!prog) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Referenced program does not exist" },
           { status: 400 }
         );
       }
-
-      if (programCheck.data.university_id !== studentData.university_id) {
+      if (prog.university_id !== studentData.university_id) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Program does not belong to the specified university" },
           { status: 400 }
@@ -385,11 +397,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get client info for audit log
+    // Get client info for audit log.
     const clientInfo = extractClientInfo(request);
 
-    // Create student
-    const { data: student, error } = await supabase
+    // Create student row.
+    const { data: student, error } = await admin
       .from("students")
       .insert({
         user_id: studentData.user_id,
@@ -407,22 +419,26 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Error creating student:", error);
-      
+      console.error(`[${requestId}] student INSERT error`, error);
+
       if (error.code === "23505") {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Student with this student ID number already exists" },
           { status: 409 }
         );
       }
-      
+
+      // Surface the actual PostgREST error.
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Failed to create student" },
+        {
+          success: false,
+          error: `Failed to create student: ${error.message} (code ${error.code})`,
+        },
         { status: 500 }
       );
     }
 
-    // AUDIT LOG: Log student creation for compliance
+    // AUDIT LOG: Log student creation for compliance.
     await audit.studentCreate(student!.user_id, studentData.university_id);
 
     return NextResponse.json<ApiResponse<Student>>({
@@ -432,16 +448,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in POST /api/students:", error);
-    
+
     if (error instanceof Error && error.message.includes("Authentication")) {
       return authenticationError(error.message);
     }
     if (error instanceof Error && (error.message.includes("role") || error.message.includes("Access"))) {
       return authorizationError(error.message);
     }
-    
+
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: "Internal server error" },
+      { success: false, error: `Internal server error: ${detail}` },
       { status: 500 }
     );
   }

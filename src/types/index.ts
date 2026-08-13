@@ -502,6 +502,11 @@ export interface ApiResponse<T> {
   // Optional human-readable message (used by some routes for both success
   // and error responses).
   message?: string;
+  // Optional structured validation details (e.g., zod error issues).
+  details?: unknown;
+  // Optional warning field for non-fatal issues (e.g., profile creation
+  // succeeded but with a warning that university_id may be missing).
+  warning?: string;
   meta?: {
     page: number;
     limit: number;

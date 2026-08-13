@@ -10,25 +10,28 @@ import type { ApiResponse, UserRole } from "@/types";
 // Bulk-create students via CSV upload. Department coordinators only.
 //
 // CSV format (header row required, case-insensitive):
-//   first_name,last_name,email,student_id_number,program_code
+//   first_name,last_name,email,student_id_number
 //
 // - first_name, last_name, email, student_id_number: required
-// - program_code: optional (matches programs.code in the coordinator's
-//   university). If omitted, the student is created without a program.
+// - program_id is NOT in the CSV. It is selected ONCE via a dropdown in the
+//   import dialog and passed as a top-level body field. The selected program
+//   applies to ALL rows in the CSV. This prevents per-row program code
+//   typos and makes the import flow much simpler.
 //
 // The route:
 //   1. Authenticates the caller via cookie-bound SSR client.
-//   2. Verifies role = department_coordinator.
+//   2. Verifies role = department_coordinator (or university_admin / super_admin).
 //   3. Fetches the caller's profile (university_id, department_id).
-//   4. Parses the CSV (sent as JSON: { csv: "..." } or as text/plain).
-//   5. For each row:
+//   4. Validates the optional program_id (must belong to caller's university).
+//   5. Parses the CSV (sent as JSON: { csv: "...", program_id: "..." } or
+//      as text/plain with program_id in query string).
+//   6. For each row:
 //      a. Validates required fields.
-//      b. Looks up program_id by code (if program_code provided).
-//      c. Creates auth.users row (admin.createUser, email_confirm: true).
-//      d. Upserts profiles row (role=student, university_id, department_id).
-//      e. Inserts students row (user_id, university_id, department_id,
+//      b. Creates auth.users row (admin.createUser, email_confirm: true).
+//      c. Calls internhub.ensure_profile_exists to guarantee the profile row.
+//      d. Inserts students row (user_id, university_id, department_id,
 //         program_id, student_id_number).
-//   6. Returns per-row results: { created: [...], errors: [...] }.
+//   7. Returns per-row results: { created: [...], errors: [...] }.
 //
 // The route uses the service_role key for all DB writes so RLS doesn't
 // block cross-user inserts. The caller's university_id / department_id
@@ -40,7 +43,6 @@ interface BulkRowInput {
   last_name: string;
   email: string;
   student_id_number: string;
-  program_code?: string;
 }
 
 interface BulkRowResult {
@@ -112,14 +114,12 @@ function rowsToObjects(rows: string[][]): BulkRowInput[] {
   const lastNameIdx = idx("last_name");
   const emailIdx = idx("email");
   const studentIdIdx = idx("student_id_number");
-  const programCodeIdx = idx("program_code");
 
   // Also accept common aliases
   const firstNameAlt = firstNameIdx < 0 ? idx("firstname") : firstNameIdx;
   const lastNameAlt = lastNameIdx < 0 ? idx("lastname") : lastNameIdx;
   const emailAlt = emailIdx < 0 ? idx("email_address") : emailIdx;
   const studentIdAlt = studentIdIdx < 0 ? idx("student_id") : studentIdIdx;
-  const programCodeAlt = programCodeIdx < 0 ? idx("program") : programCodeIdx;
 
   const out: BulkRowInput[] = [];
   for (let r = 1; r < rows.length; r++) {
@@ -129,7 +129,6 @@ function rowsToObjects(rows: string[][]): BulkRowInput[] {
       last_name: (lastNameAlt >= 0 ? row[lastNameAlt] : "")?.trim() || "",
       email: (emailAlt >= 0 ? row[emailAlt] : "")?.trim().toLowerCase() || "",
       student_id_number: (studentIdAlt >= 0 ? row[studentIdAlt] : "")?.trim() || "",
-      program_code: (programCodeAlt >= 0 ? row[programCodeAlt] : "")?.trim() || undefined,
     });
   }
   return out;
@@ -224,16 +223,24 @@ export async function POST(request: NextRequest) {
     );
 
     // ==========================================================
-    // 4. Parse the CSV from the request body.
+    // 4. Parse the CSV + program_id from the request body.
+    //    Two content types are supported:
+    //      - application/json: { csv: "...", program_id: "..." }
+    //      - text/plain: raw CSV text; program_id read from query string.
     // ==========================================================
     const contentType = request.headers.get("content-type") || "";
     let csvText = "";
+    let bodyProgramId: string | null = null;
 
     if (contentType.includes("application/json")) {
-      const body = await request.json();
+      const body = await request.json().catch(() => ({}));
       csvText = body.csv || body.text || "";
+      bodyProgramId = body.program_id || null;
     } else {
       csvText = await request.text();
+      // Read program_id from query string for text/plain requests.
+      const url = new URL(request.url);
+      bodyProgramId = url.searchParams.get("program_id");
     }
 
     if (!csvText.trim()) {
@@ -248,23 +255,50 @@ export async function POST(request: NextRequest) {
 
     if (inputs.length === 0) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "CSV has no data rows. Expected header: first_name,last_name,email,student_id_number,program_code" },
+        { success: false, error: "CSV has no data rows. Expected header: first_name,last_name,email,student_id_number" },
         { status: 400 }
       );
     }
 
     // ==========================================================
-    // 5. Pre-fetch all programs for the university (so we can resolve
-    //    program_code -> program_id without N+1 queries).
+    // 5. Validate the optional program_id (selected from dropdown in UI).
+    //    Must belong to the caller's university. If invalid, return 400.
     // ==========================================================
-    const { data: programs } = await adminClient
-      .from("programs")
-      .select("id, code, department_id")
-      .eq("university_id", effectiveUniversityId);
+    let effectiveProgramId: string | null = null;
+    let programDepartmentId: string | null = null;
 
-    const programByCode = new Map<string, { id: string; department_id: string | null }>();
-    for (const p of programs || []) {
-      programByCode.set((p.code as string).toLowerCase(), { id: p.id, department_id: p.department_id });
+    if (bodyProgramId) {
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(bodyProgramId)) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `Invalid program_id format: '${bodyProgramId}'. Expected a UUID.` },
+          { status: 400 }
+        );
+      }
+
+      const { data: program, error: progErr } = await adminClient
+        .from("programs")
+        .select("id, university_id, department_id, name")
+        .eq("id", bodyProgramId)
+        .maybeSingle();
+
+      if (progErr || !program) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Selected program does not exist." },
+          { status: 400 }
+        );
+      }
+
+      if (program.university_id !== effectiveUniversityId) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Selected program does not belong to your university." },
+          { status: 400 }
+        );
+      }
+
+      effectiveProgramId = program.id;
+      programDepartmentId = program.department_id;
     }
 
     // ==========================================================
@@ -296,18 +330,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Resolve program_id from program_code (if provided)
-      let programId: string | null = null;
-      let programDepartmentId: string | null = null;
-      if (input.program_code) {
-        const program = programByCode.get(input.program_code.toLowerCase());
-        if (!program) {
-          errors.push({ ...baseResult, error: `Program code '${input.program_code}' not found in your university` });
-          continue;
-        }
-        programId = program.id;
-        programDepartmentId = program.department_id;
-      }
+      // Use the program_id selected from the dropdown (applies to ALL rows).
+      const programId: string | null = effectiveProgramId;
 
       // Determine the department_id for this student.
       // - Coordinator: always their own department.
@@ -373,7 +397,18 @@ export async function POST(request: NextRequest) {
 
       const newUserId = authData.user.id;
 
-      // Upsert profiles row
+      // Ensure the profile row exists (idempotent — the
+      // on_auth_user_created trigger may have already created it; if not,
+      // this creates it from auth.users metadata). Then explicitly UPDATE
+      // the profile with the fields we know (in case the trigger's version
+      // is missing department_id, etc.).
+      try {
+        await adminClient.rpc("ensure_profile_exists", { p_user_id: newUserId });
+      } catch (ensureErr: any) {
+        // Non-fatal — we'll try the upsert below as a fallback.
+        console.warn(`[bulk] ensure_profile_exists failed for ${newUserId}:`, ensureErr?.message);
+      }
+
       const { error: profileUpsertErr } = await adminClient
         .from("profiles")
         .upsert({
@@ -391,10 +426,10 @@ export async function POST(request: NextRequest) {
         }, { onConflict: "user_id" });
 
       if (profileUpsertErr) {
-        // Rollback auth user
-        await adminClient.auth.admin.deleteUser(newUserId);
-        errors.push({ ...baseResult, error: `Profile creation failed: ${profileUpsertErr.message}` });
-        continue;
+        // Don't rollback the auth user — the profile may have been created
+        // by ensure_profile_exists. Surface the error and continue.
+        errors.push({ ...baseResult, error: `Profile upsert warning: ${profileUpsertErr.message}. Auth account was created.` });
+        // Continue to try the student record insert — the profile may be good enough.
       }
 
       // Insert students row

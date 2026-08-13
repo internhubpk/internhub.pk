@@ -346,11 +346,22 @@ export async function POST(request: NextRequest) {
 
     // ==========================================================
     // 6. The on_auth_user_created trigger should have inserted a
-    //    profiles row. Upsert it with the extra fields the caller
-    //    passed (company_id, university_id, department_id, job_title,
-    //    phone, etc.). Upsert handles both cases (trigger fired /
-    //    didn't fire).
+    //    profiles row. But the trigger can fail silently (it wraps
+    //    exceptions). Call internhub.ensure_profile_exists as a
+    //    guaranteed safety net — it's idempotent and creates the
+    //    profile from auth.users metadata if missing.
+    //    Then upsert the extra fields the caller passed (company_id,
+    //    university_id, department_id, job_title, phone, etc.).
     // ==========================================================
+    try {
+      await adminClient.rpc("ensure_profile_exists", { p_user_id: authData.user.id });
+    } catch (ensureErr: any) {
+      console.warn(
+        "[/api/admin/create-user] ensure_profile_exists RPC failed (non-fatal):",
+        ensureErr?.message
+      );
+    }
+
     const profileUpdate: Record<string, unknown> = {
       user_id: authData.user.id,
       email: email.trim(),
@@ -389,20 +400,21 @@ export async function POST(request: NextRequest) {
         profileUpsertError
       );
       // Don't fail the whole request — the auth user was created
-      // successfully, and the trigger likely already inserted a
-      // minimal profile row. But DO surface the error to the caller
+      // successfully, and ensure_profile_exists likely already inserted
+      // a minimal profile row. But DO surface the error to the caller
       // so the UI can warn the admin that the profile may be
       // incomplete (e.g. university_id missing → won't show in lists).
     }
 
     // ==========================================================
     // 6b. VERIFY the profile was actually written with the correct
-    //     university_id. If the upsert silently failed (trigger
-    //     inserted a row with NULL university_id and the upsert
-    //     somehow didn't overwrite it), the new coordinator won't
-    //     be visible to the university admin's RLS-scoped SELECT.
-    //     In that case, do a forceful UPDATE with the service role
-    //     client to fix the profile row.
+    //     university_id AND department_id. If the upsert silently
+    //     failed (trigger inserted a row with NULL university_id
+    //     and the upsert somehow didn't overwrite it), the new
+    //     coordinator won't be visible to the university admin's
+    //     RLS-scoped SELECT. In that case, do a forceful UPDATE
+    //     with the service role client to fix the profile row.
+    //     Also fix department_id if it's NULL but should be set.
     // ==========================================================
     let profileFixed = false;
     let verifyError: string | null = null;
@@ -410,7 +422,7 @@ export async function POST(request: NextRequest) {
     if (effectiveUniversityId) {
       const { data: verifyRow, error: verifyErr } = await adminClient
         .from("profiles")
-        .select("user_id, university_id, role, is_active")
+        .select("user_id, university_id, department_id, role, is_active")
         .eq("user_id", authData.user.id)
         .maybeSingle();
 
@@ -443,23 +455,30 @@ export async function POST(request: NextRequest) {
         } else {
           profileFixed = true;
         }
-      } else if (verifyRow.university_id !== effectiveUniversityId) {
-        // Profile exists but university_id is wrong/NULL — force UPDATE
-        // with service role client.
-        const { error: fixErr } = await adminClient
-          .from("profiles")
-          .update({
-            university_id: effectiveUniversityId,
+      } else {
+        // Profile exists. Check if university_id OR department_id is
+        // wrong/missing. If so, force UPDATE with service role client.
+        const needsUniFix = verifyRow.university_id !== effectiveUniversityId;
+        const needsDeptFix = effectiveDepartmentId && verifyRow.department_id !== effectiveDepartmentId;
+
+        if (needsUniFix || needsDeptFix) {
+          const updatePayload: Record<string, unknown> = {
             role,
             is_active: true,
-            ...(effectiveDepartmentId ? { department_id: effectiveDepartmentId } : {}),
             updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", authData.user.id);
-        if (fixErr) {
-          verifyError = `Profile university_id fix failed: ${fixErr.message}`;
-        } else {
-          profileFixed = true;
+          };
+          if (needsUniFix) updatePayload.university_id = effectiveUniversityId;
+          if (needsDeptFix) updatePayload.department_id = effectiveDepartmentId;
+
+          const { error: fixErr } = await adminClient
+            .from("profiles")
+            .update(updatePayload)
+            .eq("user_id", authData.user.id);
+          if (fixErr) {
+            verifyError = `Profile fix failed: ${fixErr.message}`;
+          } else {
+            profileFixed = true;
+          }
         }
       }
     }

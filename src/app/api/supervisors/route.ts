@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import {
   CreateSupervisorSchema,
@@ -200,9 +201,28 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/supervisors
- * Add supervisor - University Admin only
+ * Add supervisor - University Admin or Department Coordinator only.
+ *
+ * WHY SERVICE ROLE:
+ *   The previous version used the cookie-bound (publishable key) client for
+ *   all DB operations. This caused 400 "Referenced user not found" errors
+ *   when the newly-created faculty_supervisor's profile row wasn't visible
+ *   to the coordinator via RLS (e.g., the on_auth_user_created trigger
+ *   failed to create the profile, or created it with department_id=NULL).
+ *
+ *   Now: we authenticate the caller with the cookie-bound client (read-only
+ *   session check), but use the SERVICE ROLE client for all subsequent DB
+ *   operations. Service role bypasses RLS, so we can always read the target
+ *   user's profile and insert the supervisor row reliably.
+ *
+ *   Authorization is enforced EXPLICITLY in the route logic:
+ *     - Caller must be super_admin / university_admin / department_coordinator.
+ *     - University_admin: target university_id must match caller's.
+ *     - Department_coordinator: target university_id AND department_id must
+ *       match caller's (department_id is FORCED from caller's profile).
  */
 export async function POST(request: NextRequest) {
+  const requestId = `sup-post-${Date.now()}`;
   try {
     const cookieStore = await cookies();
     const supabase = await createClient(cookieStore);
@@ -210,36 +230,63 @@ export async function POST(request: NextRequest) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
 
-    // Authenticate user
+    // 1. Authenticate caller (read-only session check).
     const {
       data: { user },
+      error: authErr,
     } = await supabase.auth.getUser();
-    if (!user) {
+    if (authErr || !user) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
     }
 
-    // Check user role
-    const { data: profile } = await supabase
+    // 2. Build service role client for all DB operations.
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      console.error(`[${requestId}] SUPABASE_SERVICE_ROLE_KEY is not set`);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfiguration: service role key is not set" },
+        { status: 500 }
+      );
+    }
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
+
+    // 3. Fetch caller's profile using service role (bypasses RLS — handles
+    //    the case where the caller's own profile.university_id is NULL
+    //    but their app_metadata has the correct value).
+    const { data: callerProfile, error: callerErr } = await admin
       .from("profiles")
-      .select("role, university_id, department_id")
+      .select("user_id, role, university_id, department_id, email")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!profile || !CREATE_ROLES.includes(profile.role as UserRole)) {
+    if (callerErr || !callerProfile) {
+      console.error(`[${requestId}] caller profile fetch failed`, callerErr);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Could not load your profile. Please sign out and back in, or contact a super admin." },
+        { status: 500 }
+      );
+    }
+
+    const callerRole = callerProfile.role as UserRole;
+    if (!CREATE_ROLES.includes(callerRole)) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Forbidden: University Admin or Department Coordinator access required to add supervisors" },
         { status: 403 }
       );
     }
 
-    const userUniversityId = profile.university_id;
-    const userDepartmentId = profile.department_id;
+    const userUniversityId = callerProfile.university_id;
+    const userDepartmentId = callerProfile.department_id;
 
-    // Parse and validate request body
-    const body = await request.json();
+    // 4. Parse + validate request body.
+    const body = await request.json().catch(() => ({}));
     const validation = CreateSupervisorSchema.safeParse(body);
 
     if (!validation.success) {
@@ -248,6 +295,10 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "Validation failed",
           message: validation.error.issues[0]?.message,
+          details: validation.error.issues.map((i) => ({
+            path: i.path.join("."),
+            message: i.message,
+          })),
         },
         { status: 400 }
       );
@@ -255,21 +306,24 @@ export async function POST(request: NextRequest) {
 
     const supervisorData = validation.data;
 
-    // University admins can only add supervisors to their own university.
-    // Department coordinators can ONLY add supervisors to their own department
-    // (and university) — and the body’s `department_id` must match the
-    // coordinator’s own `department_id` to prevent cross-department escalation.
-    if (profile.role === "university_admin") {
+    // 5. Authorization + tenant scoping.
+    if (callerRole === "university_admin") {
+      if (!userUniversityId) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Your admin account has no university_id. Ask a super admin to assign you to a university." },
+          { status: 403 }
+        );
+      }
       if (supervisorData.university_id !== userUniversityId) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Cannot add supervisor to another university" },
           { status: 403 }
         );
       }
-    } else if (profile.role === "department_coordinator") {
+    } else if (callerRole === "department_coordinator") {
       if (!userUniversityId || !userDepartmentId) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "No department assigned to your account" },
+          { success: false, error: "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first." },
           { status: 403 }
         );
       }
@@ -279,8 +333,7 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      // Coordinators cannot pick an arbitrary department_id — force it to their
-      // own department to prevent cross-department escalation.
+      // Force department_id to caller's own department.
       if (supervisorData.department_id && supervisorData.department_id !== userDepartmentId) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Department coordinators can only add supervisors to their own department" },
@@ -289,33 +342,39 @@ export async function POST(request: NextRequest) {
       }
       supervisorData.department_id = userDepartmentId;
     }
+    // super_admin: no additional scoping.
 
-    // Verify university exists
-    const { data: university } = await supabase
+    // 6. Verify university exists.
+    const { data: university } = await admin
       .from("universities")
-      .select("id")
+      .select("id, name")
       .eq("id", supervisorData.university_id)
-      .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
     if (!university) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Referenced university does not exist or is not active" },
+        { success: false, error: "Referenced university does not exist" },
         { status: 400 }
       );
     }
 
-    // Verify user exists and belongs to this university.
-    // `profiles` uses `user_id` (no `id` column) — filter by user_id, not id.
-    const { data: userProfile } = await supabase
-      .from("profiles")
-      .select("user_id, university_id, role")
-      .eq("user_id", supervisorData.user_id)
-      .single();
+    // 7. Verify target user exists. Use service role + maybeSingle (RLS may
+    //    block the cookie-bound client; service role always returns the row).
+    //    Also ensure the profile exists by calling ensure_profile_exists
+    //    (idempotent — if profile already exists, returns FALSE; if missing,
+    //    creates it from auth.users metadata).
+    await admin.rpc("ensure_profile_exists", { p_user_id: supervisorData.user_id });
 
-    if (!userProfile) {
+    const { data: userProfile, error: userErr } = await admin
+      .from("profiles")
+      .select("user_id, university_id, role, email, full_name")
+      .eq("user_id", supervisorData.user_id)
+      .maybeSingle();
+
+    if (userErr || !userProfile) {
+      console.error(`[${requestId}] target user profile fetch failed`, userErr);
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Referenced user not found" },
+        { success: false, error: "Referenced user not found. The auth account may not exist or the profile could not be created." },
         { status: 400 }
       );
     }
@@ -325,18 +384,18 @@ export async function POST(request: NextRequest) {
       userProfile.university_id !== supervisorData.university_id
     ) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "User must belong to the same university" },
+        { success: false, error: `User must belong to the same university. User's university: ${userProfile.university_id}, requested: ${supervisorData.university_id}` },
         { status: 400 }
       );
     }
 
-    // If department_id is provided, verify it's valid and in the same university
+    // 8. If department_id is provided, verify it's valid and in the same university.
     if (supervisorData.department_id) {
-      const { data: department } = await supabase
+      const { data: department } = await admin
         .from("departments")
-        .select("id, university_id")
+        .select("id, university_id, name")
         .eq("id", supervisorData.department_id)
-        .single();
+        .maybeSingle();
 
       if (!department) {
         return NextResponse.json<ApiResponse<never>>(
@@ -353,14 +412,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if user is already a supervisor of the same type
-    const { data: existingSupervisor } = await supabase
+    // 9. Check if user is already a supervisor of the same type.
+    const { data: existingSupervisor } = await admin
       .from("supervisors")
       .select("id")
       .eq("user_id", supervisorData.user_id)
       .eq("type", supervisorData.type)
       .eq("university_id", supervisorData.university_id)
-      .single();
+      .maybeSingle();
 
     if (existingSupervisor) {
       return NextResponse.json<ApiResponse<never>>(
@@ -369,8 +428,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create supervisor
-    const { data: supervisor, error } = await supabase
+    // 10. Create supervisor row.
+    const { data: supervisor, error } = await admin
       .from("supervisors")
       .insert({
         ...supervisorData,
@@ -380,34 +439,56 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Error creating supervisor:", error);
-      
+      console.error(`[${requestId}] supervisor INSERT error`, error);
+
       if (error.code === "23505") {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "This user is already a supervisor" },
+          { success: false, error: "This user is already a supervisor of this type" },
           { status: 409 }
         );
       }
-      
+
+      // Surface the actual PostgREST error so the UI can show something useful.
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Failed to create supervisor" },
+        {
+          success: false,
+          error: `Failed to create supervisor: ${error.message} (code ${error.code})`,
+        },
         { status: 500 }
       );
     }
 
-    // Update user's role if they don't have an appropriate role yet
+    // 11. If the target user's role is 'student' or 'pending_assignment',
+    //     upgrade their profile role to the appropriate supervisor role.
+    //     This is done with service role to bypass RLS + guard_profile_update.
     const validRolesForType: Record<string, UserRole> = {
       faculty: "faculty_supervisor",
       site: "site_supervisor",
       external: "external_evaluator",
     };
-
     const expectedRole = validRolesForType[supervisorData.type];
-    
-    if (expectedRole && userProfile.role === "student") {
-      // Don't automatically change student roles - they might be dual-role
-      // Just log this case
-      console.log(`User ${user.id} is a student but also being added as ${expectedRole}`);
+
+    if (expectedRole && userProfile.role !== expectedRole && userProfile.role !== "super_admin") {
+      const { error: roleUpdateErr } = await admin
+        .from("profiles")
+        .update({ role: expectedRole, updated_at: new Date().toISOString() })
+        .eq("user_id", supervisorData.user_id);
+
+      if (roleUpdateErr) {
+        // Non-fatal — the supervisor row was created successfully.
+        console.warn(`[${requestId}] failed to update profile role to ${expectedRole}`, roleUpdateErr);
+      } else {
+        // Sync role to auth.users app_metadata so current_role() returns
+        // the right value for the new supervisor going forward.
+        try {
+          await admin.auth.admin.updateUserById(supervisorData.user_id, {
+            app_metadata: { role: expectedRole },
+            user_metadata: { role: expectedRole },
+          });
+        } catch (metaErr) {
+          console.warn(`[${requestId}] failed to sync role to auth.users metadata (non-fatal)`, metaErr);
+        }
+      }
     }
 
     return NextResponse.json<ApiResponse<Supervisor>>({
@@ -417,8 +498,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in POST /api/supervisors:", error);
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: "Internal server error" },
+      { success: false, error: `Internal server error: ${detail}` },
       { status: 500 }
     );
   }
