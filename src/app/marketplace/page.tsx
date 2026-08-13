@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,17 @@ interface Internship {
 }
 
 export default function MarketplacePage() {
-  const [search, setSearch] = useState("");
+  return (
+    <React.Suspense fallback={null}>
+      <MarketplacePageContent />
+    </React.Suspense>
+  );
+}
+
+function MarketplacePageContent() {
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get("search") ?? "";
+  const [search, setSearch] = useState(initialSearch);
   const [locationFilter, setLocationFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -54,6 +65,11 @@ export default function MarketplacePage() {
   const [internships, setInternships] = useState<Internship[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+
+  // Sync search state if the URL ?search= param changes (e.g. when the navbar search submits)
+  useEffect(() => {
+    setSearch(searchParams.get("search") ?? "");
+  }, [searchParams]);
 
   // Fetch internships from database
   useEffect(() => {
