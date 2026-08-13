@@ -1,15 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
   Search,
-  Edit3,
-  Trash2,
   Users,
   UserCheck,
-  MoreVertical,
   Filter,
   X,
   Mail,
@@ -18,26 +15,13 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
-  UserPlus,
-  Loader2,
+  Info,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -45,13 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -63,7 +40,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
-import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -77,7 +53,6 @@ interface Supervisor {
   university_id: string;
   department_id: string;
   created_at: string;
-  // Joined data
   profiles?: {
     first_name: string | null;
     last_name: string | null;
@@ -97,48 +72,12 @@ interface SupervisorWorkload {
   completed_supervisions: number;
 }
 
-interface SupervisorFormData {
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  title: string;
-  specialization: string;
-  is_active: boolean;
-}
-
-const emptyForm: SupervisorFormData = {
-  first_name: "",
-  last_name: "",
-  email: "",
-  phone: "",
-  title: "",
-  specialization: "",
-  is_active: true,
-};
-
-const titleOptions = [
-  "Professor",
-  "Associate Professor",
-  "Assistant Professor",
-  "Lecturer",
-  "Senior Lecturer",
-  "Instructor",
-  "Dr.",
-  "Mr.",
-  "Ms.",
-];
-
 export default function SupervisorsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [supervisors, setSupervisors] = useState<(Supervisor & { workload?: SupervisorWorkload })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActive, setFilterActive] = useState<string>("all");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState<SupervisorFormData>(emptyForm);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedSupervisor, setExpandedSupervisor] = useState<string | null>(null);
 
   // Fetch supervisors
@@ -197,130 +136,6 @@ export default function SupervisorsPage() {
     fetchSupervisors();
   }, [fetchSupervisors]);
 
-  // Handle form submission - create new supervisor account.
-  //
-  // Flow:
-  //   1. Create the auth user + profile row via /api/admin/create-user
-  //      (role=faculty_supervisor). Coordinators are allowed to create
-  //      faculty_supervisor accounts; university_id and department_id
-  //      are FORCED server-side from the caller's profile.
-  //   2. Insert the supervisors row via /api/supervisors POST, passing
-  //      the new user_id returned by step 1. The supervisors row holds
-  //      the academic fields (specialization, title via job_title on
-  //      profile, type=faculty).
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!profile?.university_id || !profile?.department_id) {
-      toast({
-        title: "Cannot create supervisor",
-        description: "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // Step 1: create the auth user + profile row.
-      const password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + "A1!";
-      const createUserRes = await fetch("/api/admin/create-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email.trim(),
-          password,
-          full_name: `${formData.first_name.trim()} ${formData.last_name.trim()}`,
-          role: "faculty_supervisor",
-          job_title: formData.title || undefined,
-          phone: formData.phone || undefined,
-        }),
-      });
-      const createUserData = await createUserRes.json();
-
-      if (!createUserData.success) {
-        toast({
-          title: "Failed to create supervisor",
-          description: createUserData.error || createUserData.message || "Unknown error",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // /api/admin/create-user returns { data: { id, email, role, profile } }
-      const userId: string | undefined = createUserData.data?.id;
-      if (!userId) {
-        toast({
-          title: "Account created with warning",
-          description: "Auth account was created but no user ID was returned. Please contact support.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Show warning if profile creation had issues
-      if (createUserData.warning) {
-        toast({
-          title: "Account created (with warning)",
-          description: createUserData.warning,
-          variant: "destructive",
-        });
-      }
-
-      // Step 2: create the supervisors row.
-      const createRes = await fetch("/api/supervisors", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          type: "faculty",
-          university_id: profile.university_id,
-          department_id: profile.department_id,
-          first_name: formData.first_name.trim(),
-          last_name: formData.last_name.trim(),
-          email: formData.email.trim(),
-          phone: formData.phone?.trim() || undefined,
-          specialization: formData.specialization?.trim() || undefined,
-          is_active: formData.is_active,
-        }),
-      });
-
-      const data = await createRes.json();
-
-      if (data.success) {
-        await fetchSupervisors();
-        setIsDialogOpen(false);
-        resetForm();
-        toast({
-          title: "Supervisor Created",
-          description: `${formData.first_name} ${formData.last_name} can sign in with ${formData.email}.`,
-        });
-      } else {
-        // The auth account was created but the supervisors row failed.
-        toast({
-          title: "Supervisor record failed",
-          description: `Auth account created, but supervisor record failed: ${data.error || data.message || "Unknown error"}`,
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error creating supervisor:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create supervisor",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Reset form
-  const resetForm = () => {
-    setFormData(emptyForm);
-  };
-
   // Get initials for avatar
   const getInitials = (supervisor: Supervisor) => {
     const firstName = supervisor.profiles?.first_name || "";
@@ -338,162 +153,32 @@ export default function SupervisorsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header — read-only, no creation button */}
       <PageHeader
         title="Supervisors"
-        description="Manage faculty supervisors in your department"
-        actions={
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Supervisor
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <form onSubmit={handleSubmit}>
-                <DialogHeader>
-                  <DialogTitle>Add New Supervisor</DialogTitle>
-                  <DialogDescription>
-                    Create a new faculty supervisor account. They will receive login credentials via email.
-                  </DialogDescription>
-                </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name *</Label>
-                    <Input
-                      id="firstName"
-                      value={formData.first_name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, first_name: e.target.value })
-                      }
-                      placeholder="John"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name *</Label>
-                    <Input
-                      id="lastName"
-                      value={formData.last_name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, last_name: e.target.value })
-                      }
-                      placeholder="Doe"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Address *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="john.doe@university.edu"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="+92 XXX XXXXXXX"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
-                    <Select
-                      value={formData.title}
-                      onValueChange={(val) =>
-                        setFormData({ ...formData, title: val })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select title" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {titleOptions.map((title) => (
-                          <SelectItem key={title} value={title}>
-                            {title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="specialization">Specialization</Label>
-                    <Input
-                      id="specialization"
-                      value={formData.specialization}
-                      onChange={(e) =>
-                        setFormData({ ...formData, specialization: e.target.value })
-                      }
-                      placeholder="e.g., Software Engineering"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="active" className="cursor-pointer">
-                      Active Status
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Inactive supervisors cannot be assigned students
-                    </p>
-                  </div>
-                  <Switch
-                    id="active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, is_active: checked })
-                    }
-                  />
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create Account"
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-        }
+        description="Faculty supervisors in your department (created via Programs)"
       />
+
+      {/* Info banner: explains supervisors are created with programs */}
+      <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-medium">
+            Supervisors are created automatically when you create a Program.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Each new program includes a Faculty Supervisor account that is linked as the
+            default supervisor for that program. Students enrolled in the program are
+            automatically assigned to this supervisor.
+          </p>
+          <Button asChild size="sm" className="mt-3">
+            <Link href="/department-coordinator/programs">
+              <BookOpen className="h-4 w-4 mr-1.5" />
+              Go to Programs
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -536,272 +221,148 @@ export default function SupervisorsPage() {
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   <SelectItem value="true">Active</SelectItem>
                   <SelectItem value="false">Inactive</SelectItem>
                 </SelectContent>
               </Select>
-              {(searchQuery || filterActive !== "all") && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setFilterActive("all");
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Supervisors List */}
-      {isLoading ? (
-        <Card>
-          <CardContent className="py-12">
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4">
-                  <Skeleton className="h-12 w-12 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-40" />
-                    <Skeleton className="h-3 w-32" />
-                  </div>
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                </div>
+      {/* Supervisors Table */}
+      <Card>
+        <CardContent className="pt-6">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          </CardContent>
-        </Card>
-      ) : supervisors.length === 0 ? (
-        <EmptyState
-          icon={<UserCheck className="h-10 w-10 text-muted-foreground" />}
-          title="No supervisors found"
-          description={
-            searchQuery || filterActive !== "all"
-              ? "Try adjusting your search or filters"
-              : "Add faculty members as supervisors to manage student internships"
-          }
-          action={
-            !searchQuery && filterActive === "all"
-              ? { label: "Add Supervisor", onClick: () => setIsDialogOpen(true) }
-              : undefined
-          }
-        />
-      ) : (
-        <div className="space-y-4">
-          {/* Cards View for Mobile */}
-          <div className="md:hidden space-y-3">
-            <AnimatePresence mode="popLayout">
-              {supervisors.map((supervisor) => (
-                <motion.div
-                  key={supervisor.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                >
-                  <Card className="overflow-hidden">
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <Avatar className="h-11 w-11">
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            {getInitials(supervisor)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-medium truncate">{getFullName(supervisor)}</p>
-                              <p className="text-sm text-muted-foreground truncate">
-                                {supervisor.profiles?.email}
-                              </p>
-                            </div>
-                            <Badge variant={supervisor.is_active ? "default" : "secondary"}>
-                              {supervisor.is_active ? "Active" : "Inactive"}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-
-                      {(supervisor.title || supervisor.specialization) && (
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {supervisor.title && (
-                            <Badge variant="outline">{supervisor.title}</Badge>
-                          )}
-                          {supervisor.specialization && (
-                            <Badge variant="outline">{supervisor.specialization}</Badge>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Workload Info */}
-                      <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg mb-3">
-                        <div className="text-center">
-                          <p className="text-lg font-semibold text-emerald-600">
-                            {supervisor.workload?.active_supervisions || 0}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Active</p>
-                        </div>
-                        <div className="text-center border-x">
-                          <p className="text-lg font-semibold text-blue-600">
-                            {supervisor.workload?.completed_supervisions || 0}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Completed</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-lg font-semibold">
-                            {supervisor.workload?.assigned_students || 0}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Total</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 pt-3 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                          asChild
-                        >
-                          <a href={`/department-coordinator/students?supervisor=${supervisor.user_id}`}>
-                            <Users className="h-3 w-3 mr-1" /> View Students
-                          </a>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-
-          {/* Table View for Desktop */}
-          <Card className="hidden md:block overflow-hidden">
+          ) : supervisors.length === 0 ? (
+            <EmptyState
+              icon={<UserCheck className="h-10 w-10 text-muted-foreground" />}
+              title="No supervisors found"
+              description={
+                searchQuery || filterActive !== "all"
+                  ? "Try adjusting your filters."
+                  : "Supervisors are created when you create a Program. Go to Programs to create one."
+              }
+              action={
+                !searchQuery && filterActive === "all"
+                  ? { label: "Create Program", href: "/department-coordinator/programs" }
+                  : undefined
+              }
+            />
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Supervisor</TableHead>
-                  <TableHead>Title / Specialization</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead className="text-center">Active</TableHead>
-                  <TableHead className="text-center">Students</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
+                  <TableHead>Specialization</TableHead>
+                  <TableHead className="text-center">Assigned Students</TableHead>
+                  <TableHead className="text-center">Active Supervisions</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <AnimatePresence mode="popLayout">
-                  {supervisors.map((supervisor) => (
-                    <motion.tr
-                      key={supervisor.id}
-                      layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="group hover:bg-muted/50 transition-colors"
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                              {getInitials(supervisor)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-[180px]">
-                            <p className="font-medium truncate">{getFullName(supervisor)}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {supervisor.profiles?.email}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-[160px]">
-                          {supervisor.title && (
-                            <p className="text-sm">{supervisor.title}</p>
-                          )}
-                          {supervisor.specialization && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {supervisor.specialization}
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">
-                          {supervisor.departments?.name || "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge
-                          variant={supervisor.is_active ? "default" : "secondary"}
-                          className="mx-auto"
-                        >
-                          {supervisor.is_active ? "Yes" : "No"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-center items-center gap-3">
-                          <span className="inline-flex items-center justify-center min-w-[40px] px-2 py-1 rounded-md bg-muted text-sm font-medium">
-                            {supervisor.workload?.assigned_students || 0}
-                          </span>
-                          {expandedSupervisor === supervisor.id && (
-                            <div className="flex gap-1 text-xs text-muted-foreground">
-                              <span className="text-emerald-600">
-                                {supervisor.workload?.active_supervisions || 0} active
-                              </span>
-                              <span className="text-blue-600">
-                                {supervisor.workload?.completed_supervisions || 0} done
-                              </span>
+                {supervisors.map((supervisor) => {
+                  const isExpanded = expandedSupervisor === supervisor.id;
+                  return (
+                    <React.Fragment key={supervisor.id}>
+                      <TableRow
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() =>
+                          setExpandedSupervisor(isExpanded ? null : supervisor.id)
+                        }
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                                {getInitials(supervisor)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{getFullName(supervisor)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {supervisor.profiles?.email || "No email"}
+                              </p>
                             </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {supervisor.specialization || (
+                            <span className="text-muted-foreground text-sm">—</span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setExpandedSupervisor(
-                              expandedSupervisor === supervisor.id ? null : supervisor.id
-                            )}>
-                              {expandedSupervisor === supervisor.id ? (
-                                <>
-                                  <ChevronUp className="h-4 w-4 mr-2" /> Hide Details
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="h-4 w-4 mr-2" /> Show Details
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <a href={`/department-coordinator/students?supervisor=${supervisor.user_id}`}>
-                                <Users className="h-4 w-4 mr-2" /> View Students
-                              </a>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </motion.tr>
-                  ))}
-                </AnimatePresence>
+                        </TableCell>
+                        <TableCell className="text-center font-medium">
+                          {supervisor.workload?.assigned_students ?? 0}
+                        </TableCell>
+                        <TableCell className="text-center font-medium">
+                          {supervisor.workload?.active_supervisions ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={supervisor.is_active ? "default" : "secondary"}>
+                            {supervisor.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.tr
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="border-b"
+                          >
+                            <TableCell colSpan={5} className="bg-muted/30 py-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-4">
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase">
+                                    Contact
+                                  </p>
+                                  {supervisor.profiles?.email && (
+                                    <p className="text-sm flex items-center gap-2">
+                                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                      {supervisor.profiles.email}
+                                    </p>
+                                  )}
+                                  {supervisor.profiles?.phone && (
+                                    <p className="text-sm flex items-center gap-2">
+                                      <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                      {supervisor.profiles.phone}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase">
+                                    Workload
+                                  </p>
+                                  <p className="text-sm">
+                                    Assigned: {supervisor.workload?.assigned_students ?? 0} students
+                                  </p>
+                                  <p className="text-sm">
+                                    Active supervisions: {supervisor.workload?.active_supervisions ?? 0}
+                                  </p>
+                                  <p className="text-sm">
+                                    Completed: {supervisor.workload?.completed_supervisions ?? 0}
+                                  </p>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
-          </Card>
-
-          {/* Summary */}
-          <div className="text-sm text-muted-foreground px-1">
-            Showing {supervisors.length} supervisor{supervisors.length !== 1 ? "s" : ""}
-          </div>
-        </div>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

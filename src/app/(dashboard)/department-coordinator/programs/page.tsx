@@ -63,6 +63,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { createClient } from "@/utils/supabase/client";
 import type { Profile } from "@/types";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { useToast } from "@/hooks/use-toast";
 
 interface Program {
   id: string;
@@ -113,6 +114,7 @@ const emptyForm: ProgramFormData = {
 
 export default function ProgramsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,17 +189,17 @@ export default function ProgramsPage() {
     // and the existing supervisor dropdown is used instead.
     if (!editingProgram) {
       if (!formData.supervisorEmail.trim() || !formData.supervisorEmail.includes("@")) {
-        alert("A valid supervisor email is required");
+        toast({ title: "Validation error", description: "A valid supervisor email is required.", variant: "destructive" });
         setIsSubmitting(false);
         return;
       }
       if (!formData.supervisorPassword || formData.supervisorPassword.length < 8) {
-        alert("Supervisor password must be at least 8 characters");
+        toast({ title: "Validation error", description: "Supervisor password must be at least 8 characters.", variant: "destructive" });
         setIsSubmitting(false);
         return;
       }
       if (!formData.supervisorName.trim()) {
-        alert("Supervisor name is required");
+        toast({ title: "Validation error", description: "Supervisor name is required.", variant: "destructive" });
         setIsSubmitting(false);
         return;
       }
@@ -234,7 +236,7 @@ export default function ProgramsPage() {
       const data = await res.json();
 
       if (!data.success) {
-        alert(data.error || "Failed to save program");
+        toast({ title: "Failed to save program", description: data.error || data.message || "Unknown error", variant: "destructive" });
         setIsSubmitting(false);
         return;
       }
@@ -313,9 +315,16 @@ export default function ProgramsPage() {
         }
 
         if (supervisorWarning) {
-          alert(
-            `Program created, but there was an issue: ${supervisorWarning}`
-          );
+          toast({
+            title: "Program created (with warning)",
+            description: supervisorWarning,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Program created",
+            description: `\"${formData.name}\" and its supervisor account were created successfully.`,
+          });
         }
       }
 
@@ -328,7 +337,7 @@ export default function ProgramsPage() {
       resetForm();
     } catch (error) {
       console.error("Error saving program:", error);
-      alert("Failed to save program");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to save program", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -343,12 +352,13 @@ export default function ProgramsPage() {
       if (data.success) {
         setPrograms(programs.filter((p) => p.id !== id));
         setDeleteConfirmId(null);
+        toast({ title: "Program deleted" });
       } else {
-        alert(data.error || "Failed to delete program");
+        toast({ title: "Failed to delete program", description: data.error || "Unknown error", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error deleting program:", error);
-      alert("Failed to delete program");
+      toast({ title: "Error", description: "Failed to delete program", variant: "destructive" });
     }
   };
 
