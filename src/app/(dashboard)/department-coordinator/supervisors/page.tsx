@@ -192,29 +192,70 @@ export default function SupervisorsPage() {
     fetchSupervisors();
   }, [fetchSupervisors]);
 
-  // Handle form submission - create new supervisor account
+  // Handle form submission - create new supervisor account.
+  //
+  // Flow:
+  //   1. Create the auth user + profile row via /api/admin/create-user
+  //      (role=faculty_supervisor). Coordinators are allowed to create
+  //      faculty_supervisor accounts; university_id and department_id
+  //      are FORCED server-side from the caller's profile.
+  //   2. Insert the supervisors row via /api/supervisors POST, passing
+  //      the new user_id returned by step 1. The supervisors row holds
+  //      the academic fields (specialization, title via job_title on
+  //      profile, type=faculty).
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!profile?.university_id || !profile?.department_id) {
+      alert("Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // First create auth user via API
+      // Step 1: create the auth user + profile row.
+      const password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + "A1!";
+      const createUserRes = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email.trim(),
+          password,
+          full_name: `${formData.first_name.trim()} ${formData.last_name.trim()}`,
+          role: "faculty_supervisor",
+          job_title: formData.title || undefined,
+          phone: formData.phone || undefined,
+        }),
+      });
+      const createUserData = await createUserRes.json();
+
+      if (!createUserData.success) {
+        alert(createUserData.error || "Failed to create supervisor auth account");
+        return;
+      }
+
+      // /api/admin/create-user returns { data: { id, email, role, profile } }
+      const userId: string | undefined = createUserData.data?.id;
+      if (!userId) {
+        alert("Auth account created but no user id was returned. Please contact support.");
+        return;
+      }
+
+      // Step 2: create the supervisors row.
       const createRes = await fetch("/api/supervisors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // For department coordinators, we'll need to handle this differently
-          // since they can't directly create users in Supabase Auth
-          // This would typically be done through an admin endpoint or invitation system
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email,
-          phone: formData.phone,
-          title: formData.title,
-          specialization: formData.specialization,
+          user_id: userId,
           type: "faculty",
-          university_id: profile?.university_id,
-          department_id: profile?.department_id,
+          university_id: profile.university_id,
+          department_id: profile.department_id,
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone?.trim() || undefined,
+          specialization: formData.specialization?.trim() || undefined,
           is_active: formData.is_active,
         }),
       });
@@ -225,8 +266,12 @@ export default function SupervisorsPage() {
         await fetchSupervisors();
         setIsDialogOpen(false);
         resetForm();
+        alert(`Supervisor account created. They can sign in with ${formData.email} and the auto-generated password.`);
       } else {
-        alert(data.error || "Failed to create supervisor");
+        // The auth account was created but the supervisors row failed.
+        // Surface the error — the admin can manually fix the supervisors
+        // row from the DB side or try again.
+        alert(`Auth account created, but supervisor record failed: ${data.error || data.message || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Error creating supervisor:", error);

@@ -66,25 +66,51 @@ interface PendingItem {
   description: string;
 }
 
+interface DepartmentInfo {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  university_id: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export default function DepartmentCoordinatorDashboard() {
   const { user, profile } = useAuth();
   const [stats, setStats] = useState<DepartmentStats | null>(null);
   const [programs, setPrograms] = useState<ProgramSummary[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
+  const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
       const supabase = createClient();
-      
+
       // Fetch department stats from our department-scoped API
       const statsRes = await fetch("/api/department-coordinator/reports?type=overview");
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         if (statsData.success) {
           setStats(statsData.data);
+        }
+      }
+
+      // Fetch the coordinator's own department info (VIEW ONLY — the
+      // coordinator cannot edit department fields, only see them).
+      // RLS on `departments` allows coordinators to SELECT their own
+      // department but not UPDATE it.
+      if (profile?.department_id) {
+        const { data: deptData } = await supabase
+          .from("departments")
+          .select("id, name, code, description, university_id, is_active, created_at")
+          .eq("id", profile.department_id)
+          .maybeSingle();
+        if (deptData) {
+          setDepartment(deptData as DepartmentInfo);
         }
       }
 
@@ -104,7 +130,7 @@ export default function DepartmentCoordinatorDashboard() {
           const studentsData = await studentsRes.json();
           if (studentsData.success && studentsData.data?.data) {
             const students = studentsData.data.data;
-            
+
             // Generate recent activities
             const activities: RecentActivity[] = students.slice(0, 5).map((s: any) => ({
               id: s.id,
@@ -135,7 +161,7 @@ export default function DepartmentCoordinatorDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [profile?.department_id]);
+  }, [profile?.department_id, profile?.university_id]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -191,10 +217,10 @@ export default function DepartmentCoordinatorDashboard() {
           </h1>
           <p className="text-muted-foreground mt-1">
             Welcome back, {profile?.full_name || user?.email || "Coordinator"}
-            {profile?.department_id && (
+            {department && (
               <Badge variant="outline" className="ml-2">
                 <Building2 className="h-3 w-3 mr-1" />
-                Department View
+                {department.name} ({department.code})
               </Badge>
             )}
           </p>
@@ -212,6 +238,82 @@ export default function DepartmentCoordinatorDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Department Info Card (View-Only) */}
+      {department && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                    Your Department
+                  </CardTitle>
+                  <CardDescription>
+                    You can view your department info but cannot modify it. Contact a University Admin to make changes.
+                  </CardDescription>
+                </div>
+                <Badge variant={department.is_active ? "default" : "secondary"}>
+                  {department.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Department Name</p>
+                  <p className="font-medium">{department.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Department Code</p>
+                  <p className="font-medium font-mono">{department.code}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total Students</p>
+                  <p className="font-medium">{stats?.totalStudents ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Active Programs</p>
+                  <p className="font-medium">{stats?.activePrograms ?? 0}</p>
+                </div>
+              </div>
+              {department.description && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm">{department.description}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {!department && profile && !profile.department_id && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-200">
+                    No Department Assigned
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    Your coordinator account is not linked to a department. You cannot add students, supervisors, or programs until a University Admin assigns you to a department.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Pending Items Alert */}
       {(stats?.pendingAssignments || 0) > 0 && (

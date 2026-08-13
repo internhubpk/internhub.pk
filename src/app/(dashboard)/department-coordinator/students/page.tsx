@@ -68,11 +68,19 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
 
 interface Student {
+  // `students` table has no `id` column — `user_id` is the PK.
+  // `id` is an alias for `user_id` populated by fetchStudents so that
+  // existing UI code that references `student.id` keeps working.
   id: string;
   user_id: string;
-  enrollment_number: string;
-  status: string;
+  // `enrollment_number` / `status` / `semester` are legacy fields kept
+  // for backwards-compat. The actual columns on `students` are
+  // `student_id_number` and `enrollment_year` (no `status`/`semester`).
+  enrollment_number?: string;
+  student_id_number?: string;
+  status?: string;
   semester?: number;
+  enrollment_year?: number;
   cgpa?: number;
   program_id: string | null;
   university_id: string;
@@ -201,8 +209,9 @@ export default function StudentsPage() {
         return;
       }
 
-      // Now insert the students extension row
-      const userId = data.data?.user_id || data.user_id;
+      // /api/admin/create-user returns { data: { id, email, role, profile } }.
+      // The student's `user_id` is the auth user's id (returned as `id`).
+      const userId = data.data?.id || data.data?.user_id || data.user_id;
       if (!userId) {
         alert("Student auth account created but could not link student record. Please contact support.");
         return;
@@ -319,7 +328,14 @@ export default function StudentsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setStudents(data.data.data || []);
+          // Normalize: alias `id` from `user_id` so existing UI code that
+          // references `student.id` keeps working. (The students table has
+          // no `id` column — `user_id` IS the PK.)
+          const rows: Student[] = (data.data.data || []).map((s: Student) => ({
+            ...s,
+            id: s.id ?? s.user_id,
+          }));
+          setStudents(rows);
         }
       }
     } catch (error) {
@@ -355,6 +371,14 @@ export default function StudentsPage() {
 
   // Fetch which students already have a faculty supervisor assigned,
   // so we can support filtering by supervisor assignment status/identity.
+  //
+  // /api/department-coordinator/assignments returns rows from
+  // `student_internships`, whose PK to the student is `student_user_id`
+  // (referencing profiles.user_id, which is also students.user_id).
+  // The students list from /api/students uses `user_id` as the student's
+  // identifier (students has no `id` column — user_id IS the PK).
+  // So we key the map by `student_user_id` and look it up with
+  // `student.user_id` in the page below.
   const fetchAssignedSupervisors = useCallback(async () => {
     try {
       const res = await fetch("/api/department-coordinator/assignments?pageSize=500");
@@ -363,8 +387,9 @@ export default function StudentsPage() {
         if (data.success && Array.isArray(data.data?.data)) {
           const map = new Map<string, string>();
           data.data.data.forEach((a: any) => {
-            if (a.faculty_supervisor_id) {
-              map.set(a.student_id, a.faculty_supervisor_id);
+            const studentKey: string | undefined = a.student_user_id || a.student_id;
+            if (a.faculty_supervisor_id && studentKey) {
+              map.set(studentKey, a.faculty_supervisor_id);
             }
           });
           setAssignedSupervisorByStudent(map);
@@ -391,11 +416,15 @@ export default function StudentsPage() {
   // /department-coordinator/students?supervisor=<id> from the Supervisors page.
   const supervisorIdParam = searchParams.get("supervisor");
 
-  // Students to display, honoring the supervisor-assignment filter
+  // Students to display, honoring the supervisor-assignment filter.
+  // NOTE: `students` rows use `user_id` as their identifier — there is no
+  // `id` column on the students table. The assignedSupervisorByStudent
+  // map is keyed by student_user_id (which equals students.user_id).
   const displayedStudents = students.filter((s) => {
-    if (supervisorIdParam) return assignedSupervisorByStudent.get(s.id) === supervisorIdParam;
-    if (filterSupervisor === "unassigned") return !assignedSupervisorByStudent.has(s.id);
-    if (filterSupervisor === "assigned") return assignedSupervisorByStudent.has(s.id);
+    const sid = s.user_id || s.id;
+    if (supervisorIdParam) return assignedSupervisorByStudent.get(sid) === supervisorIdParam;
+    if (filterSupervisor === "unassigned") return !assignedSupervisorByStudent.has(sid);
+    if (filterSupervisor === "assigned") return assignedSupervisorByStudent.has(sid);
     return true;
   });
 
@@ -482,33 +511,33 @@ export default function StudentsPage() {
     }
   };
 
-  // Export to CSV
+  // Export to CSV.
+  // NOTE: the `students` table has `student_id_number` (not `enrollment_number`),
+  // no `status` column, and no `semester` column. We export the real fields.
   const exportToCSV = () => {
     const headers = [
-      "Enrollment Number",
+      "Student ID Number",
       "First Name",
       "Last Name",
       "Email",
       "Phone",
-      "Status",
       "Program",
       "Department",
       "CGPA",
-      "Semester",
+      "Enrollment Year",
       "Enrolled Date",
     ];
 
     const csvData = displayedStudents.map((student) => [
-      student.enrollment_number,
+      student.student_id_number || student.enrollment_number || "",
       student.profiles?.first_name || "",
       student.profiles?.last_name || "",
       student.profiles?.email || "",
       student.profiles?.phone || "",
-      student.status,
       student.programs?.name || "Not Assigned",
       student.departments?.name || "",
       student.cgpa?.toString() || "",
-      student.semester?.toString() || "",
+      student.enrollment_year?.toString() || "",
       new Date(student.created_at).toLocaleDateString(),
     ]);
 
@@ -540,11 +569,14 @@ export default function StudentsPage() {
   const getFullName = (student: Student) => {
     const firstName = student.profiles?.first_name || "";
     const lastName = student.profiles?.last_name || "";
-    return `${firstName} ${lastName}`.trim() || student.enrollment_number;
+    return `${firstName} ${lastName}`.trim() || student.student_id_number || student.enrollment_number || "Unknown";
   };
 
-  // Status badge variant
+  // Status badge variant.
+  // The `students` table has no `status` column — this is kept for
+  // backwards-compat with UI that may still pass a status string.
   const getStatusVariant = (status: string) => {
+    if (!status) return "outline" as const;
     switch (status.toLowerCase()) {
       case "active":
         return "default" as const;
@@ -792,12 +824,14 @@ export default function StudentsPage() {
                             <div className="min-w-0">
                               <p className="font-medium truncate">{getFullName(student)}</p>
                               <p className="text-sm text-muted-foreground truncate">
-                                {student.enrollment_number}
+                                {student.student_id_number || student.enrollment_number || "No ID"}
                               </p>
                             </div>
-                            <Badge variant={getStatusVariant(student.status)}>
-                              {student.status}
-                            </Badge>
+                            {student.status && (
+                              <Badge variant={getStatusVariant(student.status)}>
+                                {student.status}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -898,7 +932,7 @@ export default function StudentsPage() {
                       </TableCell>
                       <TableCell>
                         <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {student.enrollment_number}
+                          {student.student_id_number || student.enrollment_number || "-"}
                         </code>
                       </TableCell>
                       <TableCell>
@@ -909,12 +943,16 @@ export default function StudentsPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(student.status)}>
-                          {student.status}
-                        </Badge>
+                        {student.status ? (
+                          <Badge variant={getStatusVariant(student.status)}>
+                            {student.status}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
                       </TableCell>
                       <TableCell>{student.cgpa?.toFixed(2) || "-"}</TableCell>
-                      <TableCell>{student.semester || "-"}</TableCell>
+                      <TableCell>{student.enrollment_year || student.semester || "-"}</TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1004,10 +1042,10 @@ export default function StudentsPage() {
                 <Label className="text-muted-foreground">Selected Students:</Label>
                 <div className="max-h-32 overflow-y-auto rounded-md border p-2 space-y-1">
                   {students
-                    .filter(s => selectedStudents.has(s.id))
+                    .filter(s => s.id && selectedStudents.has(s.id))
                     .map(student => (
                       <div key={student.id} className="text-sm py-1 px-2 rounded hover:bg-muted">
-                        {getFullName(student)} - {student.enrollment_number}
+                        {getFullName(student)} - {student.student_id_number || student.enrollment_number || "No ID"}
                       </div>
                     ))
                   }
@@ -1058,10 +1096,12 @@ export default function StudentsPage() {
                 </Avatar>
                 <div>
                   <h3 className="text-lg font-semibold">{getFullName(viewingStudent)}</h3>
-                  <p className="text-muted-foreground">{viewingStudent.enrollment_number}</p>
-                  <Badge variant={getStatusVariant(viewingStudent.status)} className="mt-1">
-                    {viewingStudent.status}
-                  </Badge>
+                  <p className="text-muted-foreground">{viewingStudent.student_id_number || viewingStudent.enrollment_number || "No ID"}</p>
+                  {viewingStudent.status && (
+                    <Badge variant={getStatusVariant(viewingStudent.status)} className="mt-1">
+                      {viewingStudent.status}
+                    </Badge>
+                  )}
                 </div>
               </div>
 

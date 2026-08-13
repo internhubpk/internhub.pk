@@ -45,6 +45,10 @@ import type { ApiResponse, UserRole } from "@/types";
  *   │                     │ external_evaluator, student                       │
  *   │ university_admin    │ department_coordinator, faculty_supervisor,       │
  *   │                     │ student (within their own university only)        │
+ *   │ department_coordinator │ student, faculty_supervisor                    │
+ *   │                     │ (within their own department + university only;   │
+ *   │                     │  university_id and department_id are FORCED       │
+ *   │                     │  from the caller's profile)                       │
  *   └─────────────────────┴───────────────────────────────────────────────────┘
  *
  *   For university_admin callers, the `university_id` field is FORCED to
@@ -74,9 +78,11 @@ const UNI_ADMIN_TARGET_ROLES: UserRole[] = [
   "student",
 ];
 
-// Roles a Department Coordinator can create — only students, and only in
-// their own department + university.
-const COORD_TARGET_ROLES: UserRole[] = ["student"];
+// Roles a Department Coordinator can create — students AND faculty
+// supervisors, both forced into the coordinator's own department +
+// university. (Coordinators manage faculty supervisors in their
+// department, per the InternHub role matrix.)
+const COORD_TARGET_ROLES: UserRole[] = ["student", "faculty_supervisor"];
 
 export async function POST(request: NextRequest) {
   try {
