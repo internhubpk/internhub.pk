@@ -28,7 +28,13 @@ export default function UnauthorizedPage() {
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    // Force a full page reload to /login to ensure session cookies are
+    // fully cleared before the next request hits the proxy.
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    } else {
+      router.push("/login");
+    }
   };
 
   return (

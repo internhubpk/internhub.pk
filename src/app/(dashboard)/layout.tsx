@@ -46,10 +46,16 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   // Once we know for sure there's no signed-in user, send them to /login
   // instead of ever rendering the dashboard shell or its children.
+  // Use a hard window.location replace (not router.replace) so the proxy
+  // re-evaluates auth from scratch with cleared cookies.
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       setRedirecting(true);
-      router.replace("/login");
+      if (typeof window !== "undefined") {
+        window.location.replace("/login");
+      } else {
+        router.replace("/login");
+      }
     }
   }, [authLoading, isAuthenticated, router]);
 

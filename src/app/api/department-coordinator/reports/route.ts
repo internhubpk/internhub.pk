@@ -200,25 +200,63 @@ async function getOverviewStats(
     internshipQuery.eq("status", "completed"),
   ]);
 
-  // Count students without supervisors (pending assignments)
+  // Count students without supervisors (pending assignments).
+  //
+  // A student is considered "assigned" if they have a supervisor via EITHER:
+  //   1. `students.faculty_supervisor_id` (pre-internship assignment —
+  //      migration 0041, set by coordinator via the Students page when the
+  //      student hasn't been placed into an internship yet), OR
+  //   2. `student_internships.faculty_supervisor_id` (internship-time
+  //      assignment, set when the student is placed into an internship).
+  //
+  // Previously this ONLY checked student_internships, which meant any
+  // student assigned via the new students.faculty_supervisor_id column was
+  // still counted as "pending" — and the dashboard showed the amber
+  // "Action Required: N students may need supervisor assignments" alert
+  // forever, even when every student had a supervisor. This fix makes the
+  // alert disappear as soon as every student has a supervisor via either
+  // path.
   let pendingAssignmentsCount = 0;
   if (filters.department_id) {
-    const { data: studentsWithoutSupervisor } = await supabase
+    // Fetch all students in the department that have a program_id
+    // (students without a program are counted in a different "incomplete
+    // profile" bucket on the dashboard, not here).
+    const { data: studentsWithProgram } = await supabase
       .from("students")
-      .select("user_id")
+      .select("user_id, faculty_supervisor_id")
       .eq("department_id", filters.department_id!)
       .not("program_id", "is", null);
 
-    if (studentsWithoutSupervisor && studentsWithoutSupervisor.length > 0) {
-      const studentIds = studentsWithoutSupervisor.map(s => s.user_id);
-      
-      const { count: assignedCount } = await supabase
-        .from("student_internships")
-        .select("id", { count: "exact" })
-        .in("student_user_id", studentIds)
-        .not("faculty_supervisor_id", "is", null);
+    if (studentsWithProgram && studentsWithProgram.length > 0) {
+      // Students already assigned via the new students.faculty_supervisor_id
+      // column (migration 0041) — these are NOT pending.
+      const assignedViaStudentsTable = new Set(
+        studentsWithProgram
+          .filter((s) => s.faculty_supervisor_id)
+          .map((s) => s.user_id)
+      );
 
-      pendingAssignmentsCount = (studentsWithoutSupervisor.length) - (assignedCount || 0);
+      // Students who DON'T have a students.faculty_supervisor_id — check
+      // whether they have a student_internships row with a faculty_supervisor_id.
+      const studentsNeedingInternshipCheck = studentsWithProgram
+        .filter((s) => !s.faculty_supervisor_id)
+        .map((s) => s.user_id);
+
+      let assignedViaInternshipCount = 0;
+      if (studentsNeedingInternshipCheck.length > 0) {
+        const { count: assignedCount } = await supabase
+          .from("student_internships")
+          .select("id", { count: "exact" })
+          .in("student_user_id", studentsNeedingInternshipCheck)
+          .not("faculty_supervisor_id", "is", null);
+        assignedViaInternshipCount = assignedCount || 0;
+      }
+
+      const totalAssigned =
+        assignedViaStudentsTable.size + assignedViaInternshipCount;
+      pendingAssignmentsCount = studentsWithProgram.length - totalAssigned;
+      // Defensive: never report a negative count.
+      if (pendingAssignmentsCount < 0) pendingAssignmentsCount = 0;
     }
   }
 

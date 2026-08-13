@@ -283,6 +283,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Logout error:", error instanceof Error ? error.message : error);
       }
     }
+    // Defensive: clear any lingering Supabase auth cookies directly.
+    // signOut() should already do this, but on some setups (subdomain
+    // cookies, third-party cookie blocking, etc.) the cookie can persist
+    // and the proxy will bounce the user back to /dashboard on their
+    // next navigation to /login. Clearing document.cookie explicitly
+    // guarantees the next request goes out unauthenticated.
+    if (typeof document !== "undefined") {
+      const clearCookie = (name: string) => {
+        // Clear for the current path/domain and a few common variants.
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`;
+        // Also clear for the parent domain (e.g. .internhub.pk) so the
+        // cookie doesn't survive a subdomain switch.
+        const host = window.location.hostname;
+        const parts = host.split(".");
+        if (parts.length >= 2) {
+          const parent = parts.slice(1).join(".");
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.${parent}`;
+        }
+      };
+      // Supabase auth cookies start with "sb-".
+      document.cookie.split(";").forEach((c) => {
+        const name = c.split("=")[0].trim();
+        if (name.startsWith("sb-")) {
+          clearCookie(name);
+        }
+      });
+    }
     setUser(null);
     setProfile(null);
     setUniversity(null);

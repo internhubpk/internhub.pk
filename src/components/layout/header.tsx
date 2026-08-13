@@ -741,7 +741,16 @@ export function Header({ className }: HeaderProps) {
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    // Force a full page reload to /login (NOT a client-side router.push).
+    // After signOut, the proxy would otherwise see the (now-cleared)
+    // session cookie and could bounce an unauthenticated user away from
+    // /login back to /dashboard. A hard reload guarantees the proxy sees
+    // the cleared cookies on the very next request.
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    } else {
+      router.push("/login");
+    }
   };
 
   const handleSearch = (e: React.FormEvent) => {

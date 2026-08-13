@@ -207,6 +207,16 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
 
 /**
  * Get current authentication context for server-side operations
+ *
+ * NOTE: This function performs a session refresh if the access token is
+ * expired. The Supabase server client's `getUser()` validates the JWT
+ * against the Supabase auth API, which fails if the access token has
+ * expired — even if the refresh token is still valid. The proxy runs
+ * `getSession()` (which does NOT validate the JWT) so the user appears
+ * logged-in client-side, but server-side API routes would 401. To fix
+ * this asymmetry, we call `refreshSession()` first when `getUser()`
+ * fails, then retry. The refreshed session cookies are persisted via
+ * the server client's `setAll` callback.
  */
 export async function getServerAuthContext(): Promise<AuthContext> {
   try {
@@ -215,57 +225,88 @@ export async function getServerAuthContext(): Promise<AuthContext> {
     if (!supabase) {
       return { user: null, profile: null, isAuthenticated: false };
     }
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
+
+    // If getUser() failed, try refreshing the session once before giving
+    // up. The refresh token is still in the cookie; refreshSession() will
+    // exchange it for a new access token and persist the new session via
+    // the server client's setAll callback.
     if (authError || !user) {
-      return {
-        user: null,
-        profile: null,
-        isAuthenticated: false
-      };
+      const { data: refreshData, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.user) {
+        return {
+          user: null,
+          profile: null,
+          isAuthenticated: false,
+        };
+      }
+      // Retry getUser() with the refreshed session.
+      const { data: { user: refreshedUser }, error: retryError } =
+        await supabase.auth.getUser();
+      if (retryError || !refreshedUser) {
+        return {
+          user: null,
+          profile: null,
+          isAuthenticated: false,
+        };
+      }
+      return await buildContextFromUser(supabase, refreshedUser);
     }
-    
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-    
-    if (profileError || !profile) {
-      return {
-        user: {
-          id: user.id,
-          email: user.email || ""
-        },
-        profile: null,
-        isAuthenticated: true
-      };
-    }
-    
-    return {
-      user: {
-        id: user.id,
-        email: user.email || ""
-      },
-      profile: {
-        // `profiles` uses `user_id` (no `id` column) — use user_id here.
-        id: profile.user_id,
-        role: profile.role as UserRole,
-        university_id: profile.university_id,
-        department_id: (profile as any).department_id || null
-      },
-      isAuthenticated: true
-    };
-    
+
+    return await buildContextFromUser(supabase, user);
   } catch (error) {
     console.error("Auth context error:", error);
     return {
       user: null,
       profile: null,
-      isAuthenticated: false
+      isAuthenticated: false,
     };
   }
+}
+
+/**
+ * Build the AuthContext from a validated user object by fetching the
+ * user's profile from the `profiles` table. If the profile can't be
+ * loaded (RLS, missing row, etc.), the context is returned with a
+ * null profile but the user still marked as authenticated.
+ */
+async function buildContextFromUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: any
+): Promise<AuthContext> {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("user_id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    return {
+      user: {
+        id: user.id,
+        email: user.email || "",
+      },
+      profile: null,
+      isAuthenticated: true,
+    };
+  }
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email || "",
+    },
+    profile: {
+      // `profiles` uses `user_id` (no `id` column) — use user_id here.
+      id: profile.user_id,
+      role: profile.role as UserRole,
+      university_id: profile.university_id,
+      department_id: (profile as any).department_id || null,
+    },
+    isAuthenticated: true,
+  };
 }
 
 /**
