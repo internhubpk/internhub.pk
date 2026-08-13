@@ -41,19 +41,25 @@ const statusConfig: Record<string, { variant: BadgeVariant; icon: LucideIcon; la
   active: { variant: "success", icon: CheckCircle2, label: "Active" },
   completed: { variant: "success", icon: CheckCircle2, label: "Completed" },
   approved: { variant: "success", icon: CheckCircle2, label: "Approved" },
+  accepted: { variant: "success", icon: CheckCircle2, label: "Accepted" },
   verified: { variant: "success", icon: CheckCircle2, label: "Verified" },
   published: { variant: "success", icon: Play, label: "Published" },
   issued: { variant: "success", icon: CheckCircle2, label: "Issued" },
   success: { variant: "success", icon: CheckCircle2, label: "Success" },
-  
+  assigned: { variant: "info", icon: CheckCircle2, label: "Assigned" },
+  graduated: { variant: "success", icon: CheckCircle2, label: "Graduated" },
+
   // Pending states
   pending: { variant: "warning", icon: Clock, label: "Pending" },
+  reviewing: { variant: "warning", icon: Eye, label: "Reviewing" },
   under_review: { variant: "warning", icon: Eye, label: "Under Review" },
   draft: { variant: "secondary", icon: FileEdit, label: "Draft" },
   in_progress: { variant: "info", icon: Play, label: "In Progress" },
+  ongoing: { variant: "info", icon: Play, label: "Ongoing" },
   trial: { variant: "info", icon: Clock, label: "Trial" },
   submitted: { variant: "info", icon: Send, label: "Submitted" },
-  
+  resubmitted: { variant: "info", icon: Send, label: "Resubmitted" },
+
   // Negative states
   inactive: { variant: "secondary", icon: Pause, label: "Inactive" },
   rejected: { variant: "destructive", icon: XCircle, label: "Rejected" },
@@ -63,11 +69,13 @@ const statusConfig: Record<string, { variant: BadgeVariant; icon: LucideIcon; la
   error: { variant: "destructive", icon: XCircle, label: "Error" },
   withdrawn: { variant: "secondary", icon: Ban, label: "Withdrawn" },
   revoked: { variant: "destructive", icon: Ban, label: "Revoked" },
-  
+  overdue: { variant: "destructive", icon: AlertTriangle, label: "Overdue" },
+
   // Special states
   closed: { variant: "secondary", icon: XCircle, label: "Closed" },
   not_issued: { variant: "secondary", icon: Clock, label: "Not Issued" },
-  graduated: { variant: "success", icon: CheckCircle2, label: "Graduated" },
+  open: { variant: "success", icon: Play, label: "Open" },
+  archived: { variant: "secondary", icon: Pause, label: "Archived" },
 };
 
 const variantStyles: Record<BadgeVariant, string> = {

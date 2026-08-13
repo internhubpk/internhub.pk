@@ -61,6 +61,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
@@ -126,6 +136,14 @@ export default function SuperAdminUsersPage() {
   // View user detail state
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+
+  // Suspend/activate confirmation dialog state
+  const [statusDialog, setStatusDialog] = useState<{
+    open: boolean;
+    userId: string;
+    currentStatus: string;
+    newStatus: string;
+  }>({ open: false, userId: "", currentStatus: "", newStatus: "" });
 
   useEffect(() => {
     fetchUsers();
@@ -212,19 +230,23 @@ export default function SuperAdminUsersPage() {
     }
   }
 
-  async function handleToggleUserStatus(userId: string, currentStatus: string) {
+  // Open the confirmation dialog instead of using native confirm().
+  function handleToggleUserStatus(userId: string, currentStatus: string) {
     const newStatus = currentStatus === "active" ? "suspended" : "active";
-    
-    if (!confirm(`Are you sure you want to ${newStatus === "suspended" ? "suspend" : "activate"} this user?`)) {
-      return;
-    }
+    setStatusDialog({ open: true, userId, currentStatus, newStatus });
+  }
+
+  // Actually perform the suspend/activate after the user confirms.
+  async function confirmToggleUserStatus() {
+    const { userId, newStatus } = statusDialog;
+    setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "" });
 
     try {
       const supabase = createClient();
-      
+
       const { error } = await supabase
         .from("profiles")
-        .update({ 
+        .update({
           status: newStatus,
           is_active: newStatus === "active",
           updated_at: new Date().toISOString(),
@@ -233,11 +255,11 @@ export default function SuperAdminUsersPage() {
 
       if (error) throw error;
 
-      setMessage({ 
-        type: "success", 
-        text: `User ${newStatus === "suspended" ? "suspended" : "activated"} successfully!` 
+      setMessage({
+        type: "success",
+        text: `User ${newStatus === "suspended" ? "suspended" : "activated"} successfully!`,
       });
-      
+
       fetchUsers();
     } catch (error: any) {
       setMessage({ type: "error", text: error.message || "Failed to update user status" });
@@ -940,6 +962,39 @@ export default function SuperAdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Suspend/Activate Confirmation Dialog */}
+      <AlertDialog
+        open={statusDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "" });
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {statusDialog.newStatus === "suspended" ? "Suspend User" : "Activate User"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to{" "}
+              {statusDialog.newStatus === "suspended" ? "suspend" : "activate"} this user?
+              {statusDialog.newStatus === "suspended" &&
+                " They will lose access to their dashboard immediately."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmToggleUserStatus}
+              className={statusDialog.newStatus === "suspended" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            >
+              {statusDialog.newStatus === "suspended" ? "Suspend" : "Activate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

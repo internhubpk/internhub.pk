@@ -62,6 +62,16 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Types
 interface Document {
@@ -142,6 +152,12 @@ export default function StudentDocumentsPage() {
 
   // View dialog state
   const [viewDocument, setViewDocument] = useState<Document | null>(null);
+
+  // Delete confirmation dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; doc: Document | null }>({
+    open: false,
+    doc: null,
+  });
 
   const fetchDocuments = useCallback(async () => {
     if (!user) return;
@@ -328,9 +344,16 @@ export default function StudentDocumentsPage() {
     }
   };
 
-  // Handle delete
-  const handleDelete = async (doc: Document) => {
-    if (!confirm(`Are you sure you want to delete "${doc.name}"?`)) return;
+  // Open the delete confirmation dialog instead of native confirm().
+  const handleDelete = (doc: Document) => {
+    setDeleteDialog({ open: true, doc });
+  };
+
+  // Actually perform the delete after the user confirms.
+  const confirmDelete = async () => {
+    const doc = deleteDialog.doc;
+    if (!doc) return;
+    setDeleteDialog({ open: false, doc: null });
 
     try {
       const supabase = createClient();
@@ -338,7 +361,7 @@ export default function StudentDocumentsPage() {
       // Delete from storage
       const urlParts = doc.url.split('/');
       const fileName = urlParts[urlParts.length - 1];
-      
+
       try {
         await supabase.storage.from('documents').remove([`documents/${fileName}`]);
       } catch (e) {
@@ -984,6 +1007,32 @@ export default function StudentDocumentsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDialog({ open: false, doc: null });
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{deleteDialog.doc?.name}&rdquo;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

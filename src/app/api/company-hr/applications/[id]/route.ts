@@ -152,10 +152,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // On accept, create student_internships row (idempotent)
+    // On accept, create student_internships row (idempotent).
+    //
+    // BUG FIX (0036): The previous upsert only set student_user_id,
+    // internship_id, application_id, company_id, start_date, status —
+    // leaving university_id, department_id, program_id as NULL. This made
+    // the row invisible to university_admin and department_coordinator
+    // dashboards (si_select used plain equality, no IS NULL fallback).
+    //
+    // Now: fetch the student's university_id/department_id/program_id from
+    // the students table and include them in the upsert payload. The
+    // trg_backfill_si_tenant trigger (migration 0036) also fills these
+    // as a safety net, but setting them explicitly here is more reliable
+    // (the trigger only fires on INSERT, not on conflict-update).
     if (status === "accepted" && existing.status !== "accepted") {
       const internship = Array.isArray(existing.internships) ? existing.internships[0] : existing.internships;
       const startDate = internship?.start_date || new Date().toISOString().slice(0, 10);
+
+      // Fetch student's tenant IDs so the student_internships row is
+      // visible to the owning university/dept coordinators.
+      const { data: studentRow } = await supabase
+        .from("students")
+        .select("university_id, department_id, program_id")
+        .eq("user_id", existing.student_user_id)
+        .maybeSingle();
+
       await supabase
         .from("student_internships")
         .upsert(
@@ -164,6 +185,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             internship_id: existing.internship_id,
             application_id: existing.id,
             company_id: profile.company_id,
+            university_id: studentRow?.university_id || null,
+            department_id: studentRow?.department_id || null,
+            program_id: studentRow?.program_id || null,
             start_date: startDate,
             status: "assigned",
           },

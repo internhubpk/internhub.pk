@@ -48,6 +48,16 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ProfileData {
   firstName: string;
@@ -84,6 +94,7 @@ export default function StudentProfilePage() {
   const [cvUploadProgress, setCvUploadProgress] = useState(0);
   const [cvDialogOpen, setCvDialogOpen] = useState(false);
   const [cvFile, setCvFile] = useState<File | null>(null);
+  const [cvDeleteDialogOpen, setCvDeleteDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Profile picture state
@@ -338,20 +349,26 @@ export default function StudentProfilePage() {
 
   const handleCVDelete = async () => {
     if (!cvInfo || !user) return;
+    // Open the AlertDialog instead of native confirm().
+    setCvDeleteDialogOpen(true);
+  };
 
-    if (!confirm("Are you sure you want to delete your CV?")) return;
+  // Actually perform the delete after the user confirms.
+  const confirmCVDelete = async () => {
+    if (!cvInfo || !user) return;
+    setCvDeleteDialogOpen(false);
 
     try {
       const supabase = createClient();
-      
+
       // Delete from storage (extract path from URL)
       const urlParts = cvInfo.url.split('/');
       const filePath = `cvs/${urlParts[urlParts.length - 1]}`;
-      
+
       await supabase.storage.from('documents').remove([filePath]);
-      
+
       // Delete record from database would need server action or API route
-      
+
       setCvInfo(null);
     } catch (error) {
       console.error("Error deleting CV:", error);
@@ -950,6 +967,27 @@ export default function StudentProfilePage() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Delete CV Confirmation Dialog */}
+      <AlertDialog open={cvDeleteDialogOpen} onOpenChange={setCvDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete CV?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete your CV? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCVDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

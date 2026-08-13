@@ -290,22 +290,48 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // When accepting, create student_internships record (idempotent)
+    // When accepting, create student_internships record (idempotent).
+    //
+    // BUG FIX (0036): Include university_id, department_id, program_id
+    // from the students table so the row is visible to university_admin
+    // and department_coordinator dashboards. The trg_backfill_si_tenant
+    // trigger also fills these as a safety net.
     if (status === "accepted") {
-      const newSIs = ownedApps
-        .filter((a) => a.status !== "accepted")
-        .map((a) => {
-          const internship = Array.isArray(a.internships) ? a.internships[0] : a.internships;
-          const startDate = internship?.start_date || new Date().toISOString().slice(0, 10);
-          return {
-            student_user_id: a.student_user_id,
-            internship_id: a.internship_id,
-            application_id: a.id,
-            company_id: profile.company_id,
-            start_date: startDate,
-            status: "assigned" as const,
+      const appsToAccept = ownedApps.filter((a) => a.status !== "accepted");
+
+      // Fetch student tenant IDs in bulk (one query instead of N).
+      let studentTenantMap: Record<string, { university_id: string | null; department_id: string | null; program_id: string | null }> = {};
+      if (appsToAccept.length > 0) {
+        const studentIds = appsToAccept.map((a) => a.student_user_id);
+        const { data: studentRows } = await supabase
+          .from("students")
+          .select("user_id, university_id, department_id, program_id")
+          .in("user_id", studentIds);
+        for (const s of studentRows || []) {
+          studentTenantMap[s.user_id] = {
+            university_id: s.university_id,
+            department_id: s.department_id,
+            program_id: s.program_id,
           };
-        });
+        }
+      }
+
+      const newSIs = appsToAccept.map((a) => {
+        const internship = Array.isArray(a.internships) ? a.internships[0] : a.internships;
+        const startDate = internship?.start_date || new Date().toISOString().slice(0, 10);
+        const tenant = studentTenantMap[a.student_user_id] || { university_id: null, department_id: null, program_id: null };
+        return {
+          student_user_id: a.student_user_id,
+          internship_id: a.internship_id,
+          application_id: a.id,
+          company_id: profile.company_id,
+          university_id: tenant.university_id,
+          department_id: tenant.department_id,
+          program_id: tenant.program_id,
+          start_date: startDate,
+          status: "assigned" as const,
+        };
+      });
 
       if (newSIs.length > 0) {
         await supabase
