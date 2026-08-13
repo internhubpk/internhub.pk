@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Profile, University, UserRole } from "@/types";
@@ -321,17 +321,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
 
-  const value: AuthContextType = {
-    user,
-    profile,
-    university,
-    isLoading,
-    isAuthenticated: !!user,
-    role: getEffectiveRole(),
-    refreshProfile,
-    logout,
-    hasRole,
-  };
+  // Compute the effective role once per render. The value is a primitive
+  // (string or null), so identical inputs produce identical outputs — this
+  // won't cause useMemo to think the value changed.
+  const effectiveRole = getEffectiveRole();
+
+  // Memoize the context value so consumers only re-render when one of the
+  // actual values changes. Without this, every AuthProvider re-render
+  // (e.g. isLoading flipping from true to false) creates a new value object
+  // and forces ALL consumers to re-render — which can cascade through
+  // RouteGuard's useCallback/useEffect chains and trigger "Maximum update
+  // depth exceeded" (React #185) on login, when setUser → setProfile →
+  // setUniversity → setIsLoading(false) all fire in quick succession.
+  const value: AuthContextType = useMemo(
+    () => ({
+      user,
+      profile,
+      university,
+      isLoading,
+      isAuthenticated: !!user,
+      role: effectiveRole,
+      refreshProfile,
+      logout,
+      hasRole,
+    }),
+    [
+      user,
+      profile,
+      university,
+      isLoading,
+      effectiveRole,
+      refreshProfile,
+      logout,
+      hasRole,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={value}>

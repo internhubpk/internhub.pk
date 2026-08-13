@@ -141,35 +141,51 @@ export function RouteGuard({
     setIsMounted(true);
   }, []);
 
-  /**
-   * Resolve the user's role from multiple sources, preferring the most
-   * authoritative. app_metadata is kept in sync with profiles.role by the
-   * profiles_sync_role_to_auth trigger (migration 0011), so it's more
-   * reliable than user_metadata on legacy accounts.
-   */
+  // ----------------------------------------------------------------
+  // PRIMITIVE-ONLY DEPS for resolveRole.
+  //
+  // The previous version depended on `user` and `profile` object
+  // references, which change on every AuthProvider re-render even when
+  // the underlying values are identical. That made `resolveRole`'s
+  // reference change on every render, which cascaded into
+  // `checkAuthorization`'s reference changing, which fired the
+  // useEffect, which called setGuardState, which re-rendered — and
+  // under the rapid auth-state transitions of login this became the
+  // "Maximum update depth exceeded" (React #185) loop.
+  //
+  // By depending only on the primitive fields we actually read
+  // (authRole, profile.role, app_metadata.role, user_metadata.role),
+  // the callback reference stays stable across renders that don't
+  // actually change the user's role.
+  // ----------------------------------------------------------------
+  const appMetaRole = user?.app_metadata?.role as string | undefined;
+  const userMetaRole = user?.user_metadata?.role as string | undefined;
+  const profileRole = profile?.role as string | undefined;
+
   const resolveRole = useCallback((): UserRole | null => {
     // Source 1: From auth context (AuthProvider computes this from
     // profile.role → app_metadata.role → user_metadata.role)
     if (authRole) return authRole;
 
     // Source 2: From profile object (DB row, may be a metadata fallback)
-    if (profile?.role) return profile.role as UserRole;
+    if (profileRole) return profileRole as UserRole;
 
     // Source 3: From app_metadata (system-managed, kept in sync by trigger)
-    if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
+    if (appMetaRole) return appMetaRole as UserRole;
 
     // Source 4: From user_metadata (set at signup)
-    if (user?.user_metadata?.role) {
-      const metaRole = user.user_metadata.role;
-      if (typeof metaRole === 'string') return metaRole as UserRole;
+    if (userMetaRole && typeof userMetaRole === 'string') {
+      return userMetaRole as UserRole;
     }
 
     return null;
-  }, [authRole, profile, user]);
+  }, [authRole, profileRole, appMetaRole, userMetaRole]);
 
   /**
-   * Perform authorization check
-   * FIXED: Uses multiple sources for role, doesn't block if profile fails
+   * Perform authorization check.
+   *
+   * Deps are deliberately primitive-only (no object refs) so the
+   * callback reference stays stable across unrelated re-renders.
    */
   const checkAuthorization = useCallback(() => {
     // Still loading auth state - show loader
@@ -191,13 +207,13 @@ export function RouteGuard({
     if (requiredRoles && requiredRoles.length > 0) {
       // If we have a role, check it. If no role, allow through (middleware handles real blocking)
       const hasRequiredRole = userRole ? requiredRoles.includes(userRole) : true;
-      
+
       setGuardState({
         isAuthorized: hasRequiredRole,
         isLoading: false,
         checked: true,
       });
-      
+
       if (!hasRequiredRole && userRole) {
         console.warn("[RouteGuard] Access denied - missing required role:", {
           pathname,
@@ -211,7 +227,7 @@ export function RouteGuard({
     // Otherwise, use centralized route permissions
     // If we have a role, check it. If no role, allow through (defensive)
     const allowed = userRole ? isRoleAllowedForRoute(userRole, pathname) : true;
-    
+
     setGuardState({
       isAuthorized: allowed,
       isLoading: false,
@@ -235,6 +251,10 @@ export function RouteGuard({
   // a dead-end access-denied page when we have enough info to route them
   // somewhere useful. Only show the static UnauthorizedComponent if we
   // genuinely can't determine the role (e.g. transient session state).
+  //
+  // `router.replace` is idempotent for the same target path, but we still
+  // gate on `pathname !== dashboardPath` to avoid queueing redundant
+  // navigations on every render.
   useEffect(() => {
     if (guardState.checked && !guardState.isAuthorized) {
       const userRole = resolveRole();
@@ -248,13 +268,19 @@ export function RouteGuard({
         }
       }
     }
+    // resolveRole is stable (primitive deps), so this effect only fires
+    // when guardState.checked, guardState.isAuthorized, router, or pathname
+    // actually change — not on every AuthProvider re-render.
   }, [guardState.checked, guardState.isAuthorized, resolveRole, router, pathname]);
 
   // Show loading state during auth initialization
-  // But don't block forever - timeout after 3 seconds
+  // But don't block forever - timeout after 3 seconds. This is a safety
+  // net for the rare case where the auth state never resolves (e.g. the
+  // Supabase client throws during getSession and the finally block doesn't
+  // fire). It is NOT involved in the normal login flow.
   useEffect(() => {
     if (guardState.isLoading && guardState.checked) return;
-    
+
     const timer = setTimeout(() => {
       if (guardState.isLoading && !guardState.checked) {
         // Force allow after timeout to prevent infinite loading
@@ -327,13 +353,19 @@ export function useRouteAuthorization() {
   const { profile, user, isAuthenticated, role: authRole } = useAuth();
   const pathname = usePathname();
 
+  // Primitive-only deps — see the comment on RouteGuard.resolveRole for
+  // why we don't depend on the `user` / `profile` object references.
+  const appMetaRole = user?.app_metadata?.role as string | undefined;
+  const userMetaRole = user?.user_metadata?.role as string | undefined;
+  const profileRole = profile?.role as string | undefined;
+
   const resolveRole = useCallback((): UserRole | null => {
     if (authRole) return authRole;
-    if (profile?.role) return profile.role as UserRole;
-    if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
-    if (user?.user_metadata?.role) return user.user_metadata.role as UserRole;
+    if (profileRole) return profileRole as UserRole;
+    if (appMetaRole) return appMetaRole as UserRole;
+    if (userMetaRole && typeof userMetaRole === 'string') return userMetaRole as UserRole;
     return null;
-  }, [authRole, profile, user]);
+  }, [authRole, profileRole, appMetaRole, userMetaRole]);
 
   const canAccess = useCallback(
     (path?: string, roles?: UserRole[]) => {
