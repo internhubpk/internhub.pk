@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { notifyEvaluationSubmitted } from "@/lib/notifications";
 
 // GET: Get pending/completed evaluations for the faculty supervisor
 export async function GET(request: Request) {
@@ -267,6 +268,17 @@ export async function POST(request: Request) {
       is_read: false,
       metadata: { evaluation_id: evaluation.id, decision },
     });
+
+    // Also fire the centralized helper notification so the student gets a
+    // consistent "{type} Evaluation Submitted" in-app alert (with the
+    // evaluator's name + role). Best-effort: helper swallows its own errors.
+    await notifyEvaluationSubmitted(
+      supabase,
+      evaluation.student_user_id,
+      evaluation.type || "faculty_evaluation",
+      profile.full_name || "Faculty Supervisor",
+      "faculty_supervisor"
+    ).catch(() => {});
 
     return NextResponse.json({
       success: true,

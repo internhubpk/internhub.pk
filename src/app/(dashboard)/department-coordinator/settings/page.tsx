@@ -60,19 +60,23 @@ interface UniversityInfo {
 }
 
 interface NotificationPrefs {
-  email_on_weekly_log: boolean;
-  email_on_evaluation: boolean;
-  email_on_task_submission: boolean;
-  email_on_student_enrollment: boolean;
-  weekly_summary: boolean;
+  in_app_on_application: boolean;
+  in_app_on_task_submission: boolean;
+  in_app_on_evaluation: boolean;
+  in_app_on_weekly_log: boolean;
+  in_app_on_student_enrollment: boolean;
+  desktop_notifications: boolean;
+  sound_enabled: boolean;
 }
 
 const DEFAULT_PREFS: NotificationPrefs = {
-  email_on_weekly_log: true,
-  email_on_evaluation: true,
-  email_on_task_submission: true,
-  email_on_student_enrollment: false,
-  weekly_summary: true,
+  in_app_on_application: true,
+  in_app_on_task_submission: true,
+  in_app_on_evaluation: true,
+  in_app_on_weekly_log: true,
+  in_app_on_student_enrollment: false,
+  desktop_notifications: true,
+  sound_enabled: false,
 };
 
 export default function CoordinatorSettingsPage() {
@@ -348,6 +352,31 @@ export default function CoordinatorSettingsPage() {
             <CardContent className="space-y-4">
               {profileForm ? (
                 <>
+                  {/* Department & University assignment banner — always visible */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+                    <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">University</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{university?.name || "Not assigned"}</p>
+                          {university?.slug && (
+                            <Badge variant="outline" className="text-xs">{university.slug}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Department</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{department?.name || "Not assigned"}</p>
+                          {department?.code && (
+                            <Badge variant="outline" className="text-xs">{department.code}</Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="first_name">First name</Label>
@@ -530,43 +559,55 @@ export default function CoordinatorSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" /> Notification Preferences
+                <Bell className="h-5 w-5" /> In-App Notification Preferences
               </CardTitle>
               <CardDescription>
-                Choose which events trigger an email notification to your registered address.
+                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {[
                 {
-                  key: "email_on_weekly_log" as const,
-                  title: "Weekly log submissions",
+                  key: "in_app_on_application" as const,
+                  title: "Application updates",
                   description:
-                    "Email me when a student in my department submits a weekly log for review.",
+                    "Notify me when a student in my department submits, gets accepted, or is rejected from an internship application.",
                 },
                 {
-                  key: "email_on_evaluation" as const,
-                  title: "Evaluation submissions",
-                  description:
-                    "Email me when a supervisor submits an evaluation for a student in my department.",
-                },
-                {
-                  key: "email_on_task_submission" as const,
+                  key: "in_app_on_task_submission" as const,
                   title: "Task submissions",
                   description:
-                    "Email me when a student submits a task assigned by a supervisor in my department.",
+                    "Notify me when a student submits a task assigned by a supervisor in my department.",
                 },
                 {
-                  key: "email_on_student_enrollment" as const,
+                  key: "in_app_on_evaluation" as const,
+                  title: "Evaluation submissions",
+                  description:
+                    "Notify me when a supervisor submits an evaluation for a student in my department.",
+                },
+                {
+                  key: "in_app_on_weekly_log" as const,
+                  title: "Weekly log submissions",
+                  description:
+                    "Notify me when a student in my department submits a weekly log for review.",
+                },
+                {
+                  key: "in_app_on_student_enrollment" as const,
                   title: "Student enrollments",
                   description:
-                    "Email me when a new student is enrolled in a program in my department.",
+                    "Notify me when a new student is enrolled in a program in my department.",
                 },
                 {
-                  key: "weekly_summary" as const,
-                  title: "Weekly digest",
+                  key: "desktop_notifications" as const,
+                  title: "Browser desktop notifications",
                   description:
-                    "Send me a weekly summary of activity in my department every Monday morning.",
+                    "Show browser-level desktop notifications (requires permission) when new notifications arrive.",
+                },
+                {
+                  key: "sound_enabled" as const,
+                  title: "Notification sound",
+                  description:
+                    "Play a subtle sound when a new notification arrives while you have the dashboard open.",
                 },
               ].map((item) => (
                 <div
@@ -600,6 +641,20 @@ export default function CoordinatorSettingsPage() {
                   Save Preferences
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Notification Activity
+              </CardTitle>
+              <CardDescription>
+                Recent notifications from your department&apos;s internship workflow.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentNotificationsWidget userId={user?.id} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -767,6 +822,86 @@ export default function CoordinatorSettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ============================================================
+// RecentNotificationsWidget — shows latest in-app notifications
+// for the coordinator inside the settings page.
+// ============================================================
+function RecentNotificationsWidget({ userId }: { userId?: string }) {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/inbox?limit=8");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.data)) {
+          setNotifications(data.data);
+        }
+      } catch {
+        // best-effort
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  if (notifications.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-muted-foreground">
+        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p>No notifications yet</p>
+      </div>
+    );
+  }
+
+  const formatTime = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          className={`flex gap-3 p-3 rounded-lg border ${
+            !n.is_read ? "bg-primary/5 border-primary/20" : "bg-muted/30"
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{n.title}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+              {n.message}
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              {formatTime(n.created_at)}
+              {n.metadata?.sender_name && ` · ${n.metadata.sender_name}`}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

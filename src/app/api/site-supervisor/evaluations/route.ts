@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
+import { notifyEvaluationSubmitted } from "@/lib/notifications";
 
 // Real `evaluations` columns (from 0001_initial_schema.sql):
 //   id, type, student_user_id, internship_id, student_internship_id,
@@ -245,6 +246,31 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Notify the student that their site-supervisor evaluation was submitted.
+    // Best-effort: the helper swallows its own errors, so this can never
+    // break the evaluation flow.
+    try {
+      const { data: evaluatorProfile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", supervisorUserId)
+        .maybeSingle();
+      const evaluatorName = evaluatorProfile?.full_name || "Site Supervisor";
+
+      await notifyEvaluationSubmitted(
+        supabase,
+        body.student_user_id!,
+        evaluation.type || "supervisor_evaluation",
+        evaluatorName,
+        "site_supervisor"
+      ).catch(() => {});
+    } catch (notifErr) {
+      console.warn(
+        "[/api/site-supervisor/evaluations] student notification failed (non-fatal):",
+        notifErr
+      );
+    }
 
     return NextResponse.json<ApiResponse<any>>({
       success: true,

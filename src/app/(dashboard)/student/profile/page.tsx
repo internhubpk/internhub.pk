@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -45,9 +47,12 @@ import {
   Linkedin,
   Github,
   Globe,
+  Bell,
+  Loader2,
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import {
@@ -83,13 +88,40 @@ interface CVInfo {
   uploadedAt: string;
 }
 
+// In-app notification preferences — stored client-side in localStorage
+// keyed by user.id (matches the coordinator/company-hr/university-admin
+// settings pattern). No `preferences` column on `profiles`/`students`,
+// so we keep this purely client-side for now.
+interface NotificationPrefs {
+  in_app_on_application: boolean;
+  in_app_on_task_submission: boolean;
+  in_app_on_evaluation: boolean;
+  in_app_on_weekly_log: boolean;
+  desktop_notifications: boolean;
+  sound_enabled: boolean;
+}
+
+const DEFAULT_NOTIF_PREFS: NotificationPrefs = {
+  in_app_on_application: true,
+  in_app_on_task_submission: true,
+  in_app_on_evaluation: true,
+  in_app_on_weekly_log: true,
+  desktop_notifications: true,
+  sound_enabled: false,
+};
+
 export default function StudentProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  
+
+  // In-app notification preferences (stored in localStorage per-user)
+  const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIF_PREFS);
+  const [isSavingPrefs, setIsSavingPrefs] = useState(false);
+
   // CV Upload state
   const [cvInfo, setCvInfo] = useState<CVInfo | null>(null);
   const [cvUploading, setCvUploading] = useState(false);
@@ -174,6 +206,40 @@ export default function StudentProfilePage() {
   useEffect(() => {
     fetchCVInfo();
   }, [user]);
+
+  // Load in-app notification prefs from localStorage keyed by user.id
+  // (matches the coordinator pattern — client-side only).
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const stored = localStorage.getItem(`student_prefs_${user.id}`);
+      if (stored) setPrefs({ ...DEFAULT_NOTIF_PREFS, ...JSON.parse(stored) });
+    } catch {
+      // ignore — fall back to defaults
+    }
+  }, [user]);
+
+  const handleSavePrefs = async () => {
+    if (!user) return;
+    setIsSavingPrefs(true);
+    try {
+      localStorage.setItem(`student_prefs_${user.id}`, JSON.stringify(prefs));
+      // Small artificial delay so the spinner is visible — purely cosmetic.
+      await new Promise((r) => setTimeout(r, 200));
+      toast({
+        title: "Preferences saved",
+        description: "Your notification preferences have been updated.",
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to save preferences",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingPrefs(false);
+    }
+  };
 
   async function fetchCVInfo() {
     if (!user) return;
@@ -980,6 +1046,105 @@ export default function StudentProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* In-App Notification Preferences */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                In-App Notification Preferences
+              </CardTitle>
+              <CardDescription>
+                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime. Preferences are saved per-student in this browser.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {[
+                {
+                  key: "in_app_on_application" as const,
+                  title: "Application updates",
+                  description:
+                    "Notify me when my internship application status changes (submitted, accepted, rejected).",
+                },
+                {
+                  key: "in_app_on_task_submission" as const,
+                  title: "Task submissions",
+                  description:
+                    "Notify me when a task I submitted is reviewed, returned, or graded by a supervisor.",
+                },
+                {
+                  key: "in_app_on_evaluation" as const,
+                  title: "Evaluation submissions",
+                  description:
+                    "Notify me when a supervisor or faculty member submits an evaluation for me.",
+                },
+                {
+                  key: "in_app_on_weekly_log" as const,
+                  title: "Weekly log feedback",
+                  description:
+                    "Notify me when a supervisor or faculty member reviews one of my weekly logs.",
+                },
+                {
+                  key: "desktop_notifications" as const,
+                  title: "Browser desktop notifications",
+                  description:
+                    "Show browser-level desktop notifications (requires permission) when new notifications arrive.",
+                },
+                {
+                  key: "sound_enabled" as const,
+                  title: "Notification sound",
+                  description:
+                    "Play a subtle sound when a new notification arrives while you have the dashboard open.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.key}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b last:border-b-0 last:pb-0"
+                >
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{item.title}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <Switch
+                    checked={prefs[item.key]}
+                    onCheckedChange={(checked) =>
+                      setPrefs({ ...prefs, [item.key]: checked })
+                    }
+                  />
+                </div>
+              ))}
+
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handleSavePrefs}
+                  disabled={isSavingPrefs}
+                  className="gap-2"
+                >
+                  {isSavingPrefs ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save Preferences
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Notifications */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Notification Activity
+              </CardTitle>
+              <CardDescription>
+                Recent notifications from your internship workflow.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentNotificationsWidget userId={user?.id} />
+            </CardContent>
+          </Card>
         </motion.div>
       </div>
 
@@ -1014,5 +1179,85 @@ function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
       <path d="M5 12h14" />
       <path d="M12 5v14" />
     </svg>
+  );
+}
+
+// ============================================================
+// RecentNotificationsWidget — shows latest in-app notifications
+// for the student inside the profile page.
+// ============================================================
+function RecentNotificationsWidget({ userId }: { userId?: string }) {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/inbox?limit=8");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.data)) {
+          setNotifications(data.data);
+        }
+      } catch {
+        // best-effort
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  if (notifications.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-muted-foreground">
+        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p>No notifications yet</p>
+      </div>
+    );
+  }
+
+  const formatTime = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          className={`flex gap-3 p-3 rounded-lg border ${
+            !n.is_read ? "bg-primary/5 border-primary/20" : "bg-muted/30"
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{n.title}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+              {n.message}
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              {formatTime(n.created_at)}
+              {n.metadata?.sender_name && ` · ${n.metadata.sender_name}`}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

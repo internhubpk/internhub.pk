@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
+import { notifyTaskSubmitted } from "@/lib/notifications";
 
 /**
  * /api/student/tasks
@@ -314,6 +315,61 @@ export async function POST(request: NextRequest) {
 
     if (updAssignErr) {
       console.warn("[/api/student/tasks] failed to update assignment status (non-fatal):", updAssignErr);
+    }
+
+    // Notify supervisors (faculty + site) and the task creator that the
+    // student submitted. Best-effort: failures inside the helper are logged
+    // but never thrown, so they can't break the submission flow.
+    try {
+      const [taskInfo, studentProfile, supervisorRows] = await Promise.all([
+        supabase
+          .from("tasks")
+          .select("title, created_by")
+          .eq("id", task_id)
+          .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("student_internships")
+          .select("faculty_supervisor_id, site_supervisor_id")
+          .eq("student_user_id", user.id)
+          .in("status", ["assigned", "active"]),
+      ]);
+
+      const taskTitle = taskInfo.data?.title ?? "a task";
+      const studentName =
+        studentProfile.data?.full_name || "A student";
+      const taskCreatorId = taskInfo.data?.created_by ?? null;
+
+      // Collect unique, non-null supervisor user_ids.
+      const supervisorIds = new Set<string>();
+      for (const row of (supervisorRows.data || []) as Array<{
+        faculty_supervisor_id: string | null;
+        site_supervisor_id: string | null;
+      }>) {
+        if (row.faculty_supervisor_id) supervisorIds.add(row.faculty_supervisor_id);
+        if (row.site_supervisor_id) supervisorIds.add(row.site_supervisor_id);
+      }
+      // Also notify the task creator (if not already in the set).
+      if (taskCreatorId) supervisorIds.add(taskCreatorId);
+
+      if (supervisorIds.size > 0) {
+        await notifyTaskSubmitted(
+          supabase,
+          Array.from(supervisorIds),
+          studentName,
+          taskTitle,
+          user.id
+        ).catch(() => {});
+      }
+    } catch (notifErr) {
+      console.warn(
+        "[/api/student/tasks] supervisor notification failed (non-fatal):",
+        notifErr
+      );
     }
 
     return NextResponse.json({

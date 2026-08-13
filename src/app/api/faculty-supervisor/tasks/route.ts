@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
+import { notifyTaskAssigned } from "@/lib/notifications";
 
 /**
  * /api/faculty-supervisor/tasks
@@ -283,7 +284,7 @@ export async function POST(request: NextRequest) {
     // Caller profile (use user_id, NOT id)
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("user_id, role, university_id, department_id")
+      .select("user_id, role, full_name, university_id, department_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -447,22 +448,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send notifications to assigned students
-    try {
-      const notifRows = student_user_ids.map((student_user_id) => ({
-        user_id: student_user_id,
-        sender_id: user.id,
-        title: "New Task Assigned",
-        message: `You have been assigned a new task: ${title.trim()}`,
-        category: "system",
-        priority: priority === "urgent" ? "high" : "medium",
-        action_url: `/student/tasks`,
-        metadata: { task_id: task.id },
-      }));
-      await supabase.from("notifications").insert(notifRows);
-    } catch (notifErr) {
-      console.warn("[/api/faculty-supervisor/tasks] notifications insert failed (non-fatal):", notifErr);
-    }
+    // Send notifications to assigned students (best-effort — failures are
+    // logged inside the helper but never throw, so they can't break the
+    // task-creation flow).
+    const senderName = profile.full_name || "Faculty Supervisor";
+    await Promise.all(
+      student_user_ids.map((studentUserId) =>
+        notifyTaskAssigned(
+          supabase,
+          studentUserId,
+          title.trim(),
+          due_date ?? null,
+          user.id,
+          senderName
+        ).catch(() => {})
+      )
+    );
 
     return NextResponse.json({
       success: true,

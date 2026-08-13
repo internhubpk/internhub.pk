@@ -168,62 +168,89 @@ export default function LoginPage() {
       }
 
       // ============================================================
-      // CROSS-TENANT LOGIN GUARD
+      // CROSS-TENANT LOGIN GUARD + MAIN-SITE → TENANT REDIRECT
       // ============================================================
       // Tenant-scoped roles (student / coordinator / supervisor /
       // university_admin) must sign in on their OWN tenant subdomain.
-      // If they try to sign in on a different tenant's subdomain (or on
-      // the apex domain when they belong to a tenant), we sign them out
-      // immediately and redirect them to their correct tenant subdomain.
       //
-      // Without this guard, a student from university A could authenticate
-      // at university-b.internhub.pk — they'd see university B's branding
-      // for a moment before the proxy's tenant redirect kicks in. Worse,
-      // if their JWT has no tenant_slug (e.g. legacy accounts from before
-      // migration 0038), the proxy wouldn't redirect at all and they'd
-      // stay cross-tenant.
+      // 1. If they sign in on a DIFFERENT tenant's subdomain → sign out
+      //    and redirect them to their correct tenant subdomain.
       //
-      // The check uses app_metadata.tenant_slug (synced by migration 0038
-      // trigger) with a user_metadata fallback for legacy JWTs.
+      // 2. If they sign in on the MAIN (apex) domain → look up their
+      //    tenant slug (from JWT metadata, or from profiles.university_id
+      //    → universities.slug) and redirect them to their tenant
+      //    subdomain. Do NOT block the login.
+      //
+      // 3. If we can't determine their tenant at all → block with a
+      //    helpful error.
       const userRole =
         (data.user?.app_metadata?.role as string | undefined) ||
         (data.user?.user_metadata?.role as string | undefined) ||
         null;
-      const userTenantSlug =
+      let userTenantSlug =
         (data.user?.app_metadata?.tenant_slug as string | undefined) ||
         (data.user?.user_metadata?.tenant_slug as string | undefined) ||
         null;
       const currentHostname = window.location.hostname;
       const currentSubdomain = extractSubdomain(currentHostname);
 
+      // If tenant_slug is missing from JWT, try to look it up from the
+      // profiles table (university_id) → universities table (slug).
+      // This handles legacy accounts created before migration 0038.
+      if (!userTenantSlug && userRole && TENANT_SCOPED_ROLES.has(userRole)) {
+        try {
+          const { data: profileRow } = await supabase
+            .from("profiles")
+            .select("university_id, universities:university_id(slug)")
+            .eq("user_id", data.user.id)
+            .maybeSingle();
+          const slug =
+            (profileRow as any)?.universities?.slug ||
+            (profileRow as any)?.universities?.[0]?.slug ||
+            null;
+          if (slug) userTenantSlug = slug;
+        } catch {
+          // Lookup failed — continue with null slug; the block below
+          // will show a helpful error.
+        }
+      }
+
       if (
         userRole &&
         TENANT_SCOPED_ROLES.has(userRole) &&
-        userTenantSlug &&
-        userTenantSlug !== currentSubdomain
+        userTenantSlug
       ) {
-        // Sign out the wrong-tenant session immediately — we don't want
-        // any cookies left behind on a subdomain the user shouldn't be on.
-        await supabase.auth.signOut();
+        // CASE 1: User is on a different tenant subdomain → redirect to
+        // their correct tenant subdomain.
+        // CASE 2: User is on the apex (main) domain → redirect to their
+        // tenant subdomain (don't block!).
+        if (userTenantSlug !== currentSubdomain) {
+          // Keep the session — the redirect target is the user's own
+          // tenant subdomain, so the session is valid there.
+          const apex = getApexDomain(currentHostname);
+          const port = window.location.port ? `:${window.location.port}` : "";
+          const correctUrl = `${window.location.protocol}//${userTenantSlug}.${apex}${port}/login?redirected=wrong_tenant`;
 
-        const apex = getApexDomain(currentHostname);
-        const port = window.location.port ? `:${window.location.port}` : "";
-        const correctUrl = `${window.location.protocol}//${userTenantSlug}.${apex}${port}/login?redirected=wrong_tenant`;
+          // Only sign out if we're on a DIFFERENT tenant subdomain (not apex).
+          // On the apex domain, the session cookies will carry over to the
+          // subdomain because Supabase uses a `.internhub.pk`-scoped cookie.
+          if (currentSubdomain) {
+            await supabase.auth.signOut();
+          }
 
-        toast.error("Wrong tenant", {
-          description: `This account belongs to the "${userTenantSlug}" portal. Redirecting you there…`,
-        });
+          toast.info("Redirecting to your portal", {
+            description: `This account belongs to the "${userTenantSlug}" portal. Taking you there…`,
+          });
 
-        // Brief delay so the toast is visible before the redirect.
-        setTimeout(() => {
-          window.location.href = correctUrl;
-        }, 1200);
-        return;
+          setTimeout(() => {
+            window.location.href = correctUrl;
+          }, 1200);
+          return;
+        }
       }
 
-      // If a tenant-scoped user is on the apex (no subdomain) and has no
-      // tenant_slug in their JWT, block the login instead of letting them
-      // wander into the global dashboard with the wrong context.
+      // CASE 3: Tenant-scoped user with NO tenant slug anywhere — can't
+      // determine where they belong. Block with a helpful error.
       if (
         userRole &&
         TENANT_SCOPED_ROLES.has(userRole) &&

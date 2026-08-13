@@ -7,7 +7,6 @@ import {
   Bell,
   Shield,
   Globe,
-  Mail,
   Phone,
   MapPin,
   Building2,
@@ -45,21 +44,25 @@ interface UniversitySettings {
 }
 
 interface NotificationPrefs {
-  email_notifications: boolean;
-  new_applications: boolean;
-  weekly_reports: boolean;
-  system_alerts: boolean;
+  in_app_on_application: boolean;
+  in_app_on_task_submission: boolean;
+  in_app_on_evaluation: boolean;
+  in_app_on_weekly_log: boolean;
+  desktop_notifications: boolean;
+  sound_enabled: boolean;
 }
 
 const defaultNotifications: NotificationPrefs = {
-  email_notifications: true,
-  new_applications: true,
-  weekly_reports: false,
-  system_alerts: true,
+  in_app_on_application: true,
+  in_app_on_task_submission: true,
+  in_app_on_evaluation: true,
+  in_app_on_weekly_log: true,
+  desktop_notifications: true,
+  sound_enabled: false,
 };
 
 export default function UniversityAdminSettingsPage() {
-  const { profile, university, refreshProfile } = useAuth();
+  const { user, profile, university, refreshProfile } = useAuth();
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -77,9 +80,6 @@ export default function UniversityAdminSettingsPage() {
     is_active: true,
   });
   const [notifications, setNotifications] = useState<NotificationPrefs>(defaultNotifications);
-  // Preserve any other keys already stored in universities.settings so
-  // saving notification prefs doesn't wipe out unrelated settings data.
-  const [rawSettings, setRawSettings] = useState<Record<string, unknown>>({});
   const [notFound, setNotFound] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
@@ -126,17 +126,9 @@ export default function UniversityAdminSettingsPage() {
           country: data.country || "",
           is_active: data.is_active ?? true,
         });
-
-        // Load notification prefs from jsonb settings column if present
-        const settings = (data.settings as Record<string, unknown> | null) ?? {};
-        setRawSettings(settings);
-        const notif = (settings.notifications as Partial<NotificationPrefs> | null) ?? {};
-        setNotifications({
-          email_notifications: notif.email_notifications ?? true,
-          new_applications: notif.new_applications ?? true,
-          weekly_reports: notif.weekly_reports ?? false,
-          system_alerts: notif.system_alerts ?? true,
-        });
+        // Notification prefs are now stored in localStorage keyed by
+        // user.id (see the dedicated useEffect below) to match the
+        // coordinator pattern — no longer coupled to universities.settings.
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -153,6 +145,18 @@ export default function UniversityAdminSettingsPage() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Load in-app notification prefs from localStorage keyed by user.id
+  // (matches the coordinator settings pattern — client-side only).
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const stored = localStorage.getItem(`univ_admin_prefs_${user.id}`);
+      if (stored) setNotifications({ ...defaultNotifications, ...JSON.parse(stored) });
+    } catch {
+      // ignore — fall back to defaults
+    }
+  }, [user]);
 
   const handleSaveGeneral = async () => {
     if (!universityId) return;
@@ -217,28 +221,12 @@ export default function UniversityAdminSettingsPage() {
   };
 
   const handleSaveNotifications = async () => {
-    if (!universityId) return;
-
+    if (!user) return;
     try {
       setIsSaving(true);
-      const supabase = createClient();
-
-      // Merge the new notification prefs into the existing settings jsonb
-      // instead of overwriting the whole column, so other keys that may
-      // live under `settings` aren't lost.
-      const mergedSettings = { ...rawSettings, notifications };
-      const { error } = await supabase
-        .from("universities")
-        .update({
-          settings: mergedSettings,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", universityId);
-
-      if (error) throw error;
-
-      setRawSettings(mergedSettings);
-
+      localStorage.setItem(`univ_admin_prefs_${user.id}`, JSON.stringify(notifications));
+      // Small artificial delay so the spinner is visible — purely cosmetic.
+      await new Promise((r) => setTimeout(r, 200));
       toast({
         title: "Saved",
         description: "Notification preferences updated",
@@ -538,92 +526,101 @@ export default function UniversityAdminSettingsPage() {
         </TabsContent>
 
         {/* Notification Settings */}
-        <TabsContent value="notifications">
+        <TabsContent value="notifications" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                Notification Preferences
+                <Bell className="h-5 w-5" /> In-App Notification Preferences
               </CardTitle>
               <CardDescription>
-                Configure how you receive notifications about university activity.
-                Preferences are saved per-university.
+                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime. Preferences are saved per-admin in this browser.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    Email Notifications
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive email updates for important events
-                  </p>
+              {[
+                {
+                  key: "in_app_on_application" as const,
+                  title: "Application updates",
+                  description:
+                    "Notify me when a student applies to, is accepted for, or is rejected from an internship at my university.",
+                },
+                {
+                  key: "in_app_on_task_submission" as const,
+                  title: "Task submissions",
+                  description:
+                    "Notify me when a student submits a task assigned by a supervisor.",
+                },
+                {
+                  key: "in_app_on_evaluation" as const,
+                  title: "Evaluation submissions",
+                  description:
+                    "Notify me when a supervisor submits an evaluation for a student at my university.",
+                },
+                {
+                  key: "in_app_on_weekly_log" as const,
+                  title: "Weekly log submissions",
+                  description:
+                    "Notify me when a student submits a weekly log for review.",
+                },
+                {
+                  key: "desktop_notifications" as const,
+                  title: "Browser desktop notifications",
+                  description:
+                    "Show browser-level desktop notifications (requires permission) when new notifications arrive.",
+                },
+                {
+                  key: "sound_enabled" as const,
+                  title: "Notification sound",
+                  description:
+                    "Play a subtle sound when a new notification arrives while you have the dashboard open.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.key}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b last:border-b-0 last:pb-0"
+                >
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{item.title}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <Switch
+                    checked={notifications[item.key]}
+                    onCheckedChange={(checked) =>
+                      setNotifications({ ...notifications, [item.key]: checked })
+                    }
+                  />
                 </div>
-                <Switch
-                  checked={notifications.email_notifications}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, email_notifications: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>New Applications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Get notified when students apply for internships
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.new_applications}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, new_applications: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Weekly Reports</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Summary of weekly internship activity
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.weekly_reports}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, weekly_reports: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>System Alerts</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Important system notifications and security alerts
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.system_alerts}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, system_alerts: checked })
-                  }
-                />
-              </div>
+              ))}
 
-              <Button onClick={handleSaveNotifications} disabled={isSaving} className="gap-2">
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Save Preferences
-                  </>
-                )}
-              </Button>
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSaveNotifications} disabled={isSaving} className="gap-2">
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Preferences
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Notification Activity
+              </CardTitle>
+              <CardDescription>
+                Recent notifications from your university&apos;s internship workflow.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentNotificationsWidget userId={user?.id} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -800,6 +797,86 @@ export default function UniversityAdminSettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ============================================================
+// RecentNotificationsWidget — shows latest in-app notifications
+// for the university admin inside the settings page.
+// ============================================================
+function RecentNotificationsWidget({ userId }: { userId?: string }) {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/inbox?limit=8");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.data)) {
+          setNotifications(data.data);
+        }
+      } catch {
+        // best-effort
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  if (notifications.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-muted-foreground">
+        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p>No notifications yet</p>
+      </div>
+    );
+  }
+
+  const formatTime = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          className={`flex gap-3 p-3 rounded-lg border ${
+            !n.is_read ? "bg-primary/5 border-primary/20" : "bg-muted/30"
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{n.title}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+              {n.message}
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              {formatTime(n.created_at)}
+              {n.metadata?.sender_name && ` · ${n.metadata.sender_name}`}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

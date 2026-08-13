@@ -18,6 +18,9 @@ import {
   Briefcase,
   BookOpen,
   FileText,
+  Clock,
+  ClipboardCheck,
+  CheckCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -599,37 +602,94 @@ export function Header({ className }: HeaderProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   
-  // Fetch notification count from API (uses server client with proper auth)
-  useEffect(() => {
-    // Skip on server-side or if no user
+  // Fetch notification count + recent notifications from API
+  const refreshNotifications = useCallback(async () => {
     if (typeof window === "undefined" || !user?.id) return;
-    
-    async function fetchNotificationCount() {
-      try {
-        const response = await fetch("/api/notifications/count");
-        
-        if (!response.ok) {
-          console.debug("Notification count API returned:", response.status);
-          return; // Keep current count on error
-        }
-        
-        const data = await response.json();
-        if (typeof data.count === "number") {
-          setNotificationCount(data.count);
-        }
-      } catch (error) {
-        // Network errors shouldn't break the UI - badge will show 0 or cached value
-        console.debug("Failed to fetch notification count:", error instanceof Error ? error.message : error);
+    try {
+      const [countRes, inboxRes] = await Promise.all([
+        fetch("/api/notifications/count"),
+        fetch("/api/notifications/inbox?limit=15"),
+      ]);
+      if (countRes.ok) {
+        const data = await countRes.json();
+        if (typeof data.count === "number") setNotificationCount(data.count);
       }
+      if (inboxRes.ok) {
+        const data = await inboxRes.json();
+        if (data.success && Array.isArray(data.data)) {
+          setNotifications(data.data);
+        }
+      }
+    } catch (error) {
+      console.debug("Failed to fetch notifications:", error instanceof Error ? error.message : error);
     }
-    
-    fetchNotificationCount();
-    
-    // Refresh count every 60 seconds for real-time feel
-    const interval = setInterval(fetchNotificationCount, 60000);
-    return () => clearInterval(interval);
   }, [user?.id]);
+
+  // Initial fetch + polling
+  useEffect(() => {
+    refreshNotifications();
+    const interval = setInterval(refreshNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [refreshNotifications]);
+
+  // Mark all as read when dropdown opens (only if there are unread)
+  const handleNotifOpenChange = useCallback(
+    (open: boolean) => {
+      setNotifOpen(open);
+      if (open && notificationCount > 0) {
+        // Fire-and-forget mark-all-read
+        fetch("/api/notifications/inbox", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mark_all_read: true }),
+        }).then(() => {
+          setNotificationCount(0);
+          // Update local state to show as read
+          setNotifications((prev) =>
+            prev.map((n) => ({ ...n, is_read: true }))
+          );
+        }).catch(() => {});
+      }
+    },
+    [notificationCount]
+  );
+
+  // Format relative time for notifications
+  const formatNotifTime = (dateStr: string) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Get icon + color for notification category
+  const getNotifIcon = (category: string) => {
+    switch (category) {
+      case "application":
+        return { icon: Briefcase, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950" };
+      case "evaluation":
+        return { icon: ClipboardCheck, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" };
+      case "task":
+        return { icon: FileText, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" };
+      case "certificate":
+        return { icon: GraduationCap, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950" };
+      case "deadline":
+        return { icon: Clock, color: "text-red-500", bg: "bg-red-50 dark:bg-red-950" };
+      default:
+        return { icon: Bell, color: "text-gray-500", bg: "bg-gray-50 dark:bg-gray-800" };
+    }
+  };
   const [breadcrumbs, setBreadcrumbs] = useState<
     { label: string; href?: string }[]
   >([]);
@@ -830,7 +890,7 @@ export function Header({ className }: HeaderProps) {
             <ThemeToggle />
 
             {/* Notifications */}
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={handleNotifOpenChange}>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
@@ -845,30 +905,82 @@ export function Header({ className }: HeaderProps) {
                       animate={{ scale: 1 }}
                       className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white"
                     >
-                      {notificationCount}
+                      {notificationCount > 99 ? "99+" : notificationCount}
                     </motion.span>
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel className="flex items-center justify-between">
-                  <span className="font-semibold">Notifications</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {notificationCount} new
-                  </Badge>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <div className="max-h-[280px] overflow-y-auto">
-                  {/* Notification items would go here */}
-                  <div className="p-6 text-center text-sm text-muted-foreground">
-                    <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p>No new notifications</p>
-                  </div>
+              <DropdownMenuContent align="end" className="w-80 sm:w-96 p-0">
+                <div className="flex items-center justify-between px-3 py-2.5 border-b">
+                  <span className="font-semibold text-sm">Notifications</span>
+                  {notificationCount > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {notificationCount} new
+                    </Badge>
+                  )}
                 </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
-                  <Link href="/notifications">View all notifications</Link>
-                </DropdownMenuItem>
+                {/* Scrollable notification list */}
+                <div className="max-h-[400px] overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">
+                      <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p>No notifications yet</p>
+                      <p className="text-xs mt-1">
+                        You&apos;ll see updates about applications, tasks, and evaluations here.
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((notif) => {
+                      const { icon: Icon, color, bg } = getNotifIcon(notif.category);
+                      return (
+                        <div
+                          key={notif.id}
+                          className={`flex gap-3 px-3 py-2.5 border-b last:border-b-0 hover:bg-accent/50 transition-colors cursor-pointer ${
+                            !notif.is_read ? "bg-primary/5" : ""
+                          }`}
+                          onClick={() => {
+                            if (notif.action_url) {
+                              router.push(notif.action_url);
+                              setNotifOpen(false);
+                            }
+                          }}
+                        >
+                          <div className={`shrink-0 rounded-lg p-2 ${bg}`}>
+                            <Icon className={`h-4 w-4 ${color}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium leading-tight">
+                                {notif.title}
+                              </p>
+                              {!notif.is_read && (
+                                <span className="shrink-0 h-2 w-2 rounded-full bg-destructive mt-1" />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                              {notif.message}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground/70 mt-1">
+                              {formatNotifTime(notif.created_at)}
+                              {notif.metadata?.sender_name &&
+                                ` · ${notif.metadata.sender_name}`}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="border-t">
+                  <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
+                    <Link href={
+                      profile?.role === "faculty_supervisor" ? "/faculty-supervisor/notifications" :
+                      profile?.role === "site_supervisor" ? "/site-supervisor/notifications" :
+                      profile?.role === "company_hr" ? "/company-hr/notifications" :
+                      "/student/notifications"
+                    }>View all notifications</Link>
+                  </DropdownMenuItem>
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
 

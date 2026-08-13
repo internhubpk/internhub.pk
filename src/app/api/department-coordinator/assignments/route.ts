@@ -7,6 +7,7 @@ import {
   authorizationError,
   authenticationError,
 } from "@/lib/authorization";
+import { notifyStudentAssigned } from "@/lib/notifications";
 
 // Roles that can manage assignments
 const MANAGE_ASSIGNMENT_ROLES: UserRole[] = [
@@ -364,6 +365,45 @@ export async function POST(request: NextRequest) {
         );
       }
       result = updatedStudent;
+    }
+
+    // Notify the student that a supervisor has been assigned. Best-effort:
+    // the helper swallows its own errors, so a notification failure can
+    // never break the assignment flow.
+    try {
+      // Resolve a human-readable supervisor name + internship title.
+      const [supervisorProfile, internship] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", faculty_supervisor_id)
+          .maybeSingle(),
+        // Prefer the body's internship_id; otherwise read it off the updated
+        // student_internships row (if we took that path).
+        (internship_id || (result as any)?.internship_id)
+          ? supabase
+              .from("internships")
+              .select("title")
+              .eq("id", (internship_id || (result as any)?.internship_id) as string)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      const supervisorName = supervisorProfile.data?.full_name || "your supervisor";
+      const internshipTitle = (internship as any)?.data?.title || "your internship";
+
+      await notifyStudentAssigned(
+        supabase,
+        student_id,
+        supervisorName,
+        internshipTitle,
+        authContext.user!.id
+      ).catch(() => {});
+    } catch (notifErr) {
+      console.warn(
+        "[/api/department-coordinator/assignments] student notification failed (non-fatal):",
+        notifErr
+      );
     }
 
     return NextResponse.json<ApiResponse<typeof result>>({

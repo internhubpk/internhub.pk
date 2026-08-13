@@ -18,6 +18,7 @@ import {
   Target,
   Award,
   BookOpen,
+  GraduationCap,
   Flame,
   User,
   ChevronRight,
@@ -54,6 +55,10 @@ interface InternshipInfo {
   end_date: string;
   status: string;
   progress: number;
+  faculty_supervisor_name?: string | null;
+  faculty_supervisor_email?: string | null;
+  site_supervisor_name?: string | null;
+  site_supervisor_email?: string | null;
 }
 
 interface RecentSubmission {
@@ -115,9 +120,16 @@ export default function StudentDashboard() {
         // the link is via `student_internships.student_user_id`.
         // NOTE: `student_internships` has no `is_active` column — use `status`.
         // Valid statuses: assigned, active, paused, completed, terminated.
+        // We also join faculty + site supervisor profiles so we can display
+        // "Assigned Supervisor" in the Active Internship card.
         supabase
           .from("student_internships")
-          .select("id, internship_id, start_date, end_date, status")
+          .select(`
+            id, internship_id, start_date, end_date, status,
+            faculty_supervisor_id, site_supervisor_id,
+            faculty_supervisor:faculty_supervisor_id(full_name, email),
+            site_supervisor:site_supervisor_id(full_name, email)
+          `)
           .eq("student_user_id", user.id)
           .in("status", ["active", "assigned"])
           .order("created_at", { ascending: false })
@@ -208,6 +220,12 @@ export default function StudentDashboard() {
             progress = Math.max(0, Math.min(100, Math.round(((nowMs - startMs) / (endMs - startMs)) * 100)));
           }
         }
+        // Extract supervisor info from the joined data. PostgREST may
+        // return a single object (for FK relationship) or an array.
+        const fs = (studentInternship as any).faculty_supervisor;
+        const ss = (studentInternship as any).site_supervisor;
+        const fsObj = Array.isArray(fs) ? fs[0] : fs;
+        const ssObj = Array.isArray(ss) ? ss[0] : ss;
         internshipData = {
           id: internshipRow?.id || studentInternship.internship_id,
           title: internshipRow?.title || "Active Internship",
@@ -217,6 +235,10 @@ export default function StudentDashboard() {
           end_date: end,
           status: studentInternship.status || internshipRow?.status || "active",
           progress,
+          faculty_supervisor_name: fsObj?.full_name || null,
+          faculty_supervisor_email: fsObj?.email || null,
+          site_supervisor_name: ssObj?.full_name || null,
+          site_supervisor_email: ssObj?.email || null,
         };
       }
 
@@ -620,6 +642,40 @@ export default function StudentDashboard() {
                     </div>
                     <Progress value={stats.internshipData.progress} className="h-2" />
                   </div>
+
+                  {/* Assigned Supervisors */}
+                  {(stats.internshipData.faculty_supervisor_name || stats.internshipData.site_supervisor_name) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
+                      {stats.internshipData.faculty_supervisor_name && (
+                        <div className="flex items-start gap-2">
+                          <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950 shrink-0">
+                            <GraduationCap className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Faculty Supervisor</p>
+                            <p className="text-sm font-medium truncate">{stats.internshipData.faculty_supervisor_name}</p>
+                            {stats.internshipData.faculty_supervisor_email && (
+                              <p className="text-xs text-muted-foreground truncate">{stats.internshipData.faculty_supervisor_email}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {stats.internshipData.site_supervisor_name && (
+                        <div className="flex items-start gap-2">
+                          <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 shrink-0">
+                            <Briefcase className="h-4 w-4 text-emerald-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">Site Supervisor</p>
+                            <p className="text-sm font-medium truncate">{stats.internshipData.site_supervisor_name}</p>
+                            {stats.internshipData.site_supervisor_email && (
+                              <p className="text-xs text-muted-foreground truncate">{stats.internshipData.site_supervisor_email}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   <Button variant="outline" className="w-full" asChild>
                     <Link href="/student/internships">

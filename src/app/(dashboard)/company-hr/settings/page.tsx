@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -56,10 +57,12 @@ interface ProfileForm {
 }
 
 interface NotificationPrefs {
-  email_notifications: boolean;
-  new_applications: boolean;
-  weekly_reports: boolean;
-  system_alerts: boolean;
+  in_app_on_application: boolean;
+  in_app_on_task_submission: boolean;
+  in_app_on_evaluation: boolean;
+  in_app_on_weekly_log: boolean;
+  desktop_notifications: boolean;
+  sound_enabled: boolean;
 }
 
 const defaultCompany: CompanyForm = {
@@ -88,14 +91,16 @@ const defaultProfile: ProfileForm = {
 };
 
 const defaultNotifs: NotificationPrefs = {
-  email_notifications: true,
-  new_applications: true,
-  weekly_reports: false,
-  system_alerts: true,
+  in_app_on_application: true,
+  in_app_on_task_submission: true,
+  in_app_on_evaluation: true,
+  in_app_on_weekly_log: true,
+  desktop_notifications: true,
+  sound_enabled: false,
 };
 
 export default function CompanyHRSettingsPage() {
-  const { refreshProfile } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
   const [profileForm, setProfileForm] = useState<ProfileForm>(defaultProfile);
@@ -166,13 +171,14 @@ export default function CompanyHRSettingsPage() {
   }, [load]);
 
   useEffect(() => {
+    if (!user) return;
     try {
-      const stored = localStorage.getItem("company_hr_notif_prefs");
-      if (stored) setNotifs(JSON.parse(stored));
+      const stored = localStorage.getItem(`company_hr_prefs_${user.id}`);
+      if (stored) setNotifs({ ...defaultNotifs, ...JSON.parse(stored) });
     } catch {
       // ignore
     }
-  }, []);
+  }, [user]);
 
   const handleSaveCompany = async () => {
     if (!companyForm.name.trim()) {
@@ -224,9 +230,11 @@ export default function CompanyHRSettingsPage() {
   };
 
   const handleSaveNotifs = async () => {
+    if (!user) return;
     setSavingNotifs(true);
     try {
-      localStorage.setItem("company_hr_notif_prefs", JSON.stringify(notifs));
+      localStorage.setItem(`company_hr_prefs_${user.id}`, JSON.stringify(notifs));
+      await new Promise((r) => setTimeout(r, 200));
       toast({ title: "Saved", description: "Notification preferences updated" });
     } catch (e) {
       toast({ title: "Save failed", description: "Failed to save", variant: "destructive" });
@@ -434,32 +442,93 @@ export default function CompanyHRSettingsPage() {
         <TabsContent value="notifications" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Choose what you want to be notified about.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> In-App Notification Preferences
+              </CardTitle>
+              <CardDescription>
+                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               {[
-                { key: "email_notifications" as const, title: "Email Notifications", desc: "Receive email updates about activity on your account" },
-                { key: "new_applications" as const, title: "New Applications", desc: "Get notified when a student applies to one of your internships" },
-                { key: "weekly_reports" as const, title: "Weekly Reports", desc: "Receive a weekly summary of internship activity" },
-                { key: "system_alerts" as const, title: "System Alerts", desc: "Important system messages and account security alerts" },
+                {
+                  key: "in_app_on_application" as const,
+                  title: "Application updates",
+                  description:
+                    "Notify me when a student applies to, is accepted for, or is rejected from one of my internships.",
+                },
+                {
+                  key: "in_app_on_task_submission" as const,
+                  title: "Task submissions",
+                  description:
+                    "Notify me when an intern submits a task assigned to them at my company.",
+                },
+                {
+                  key: "in_app_on_evaluation" as const,
+                  title: "Evaluation submissions",
+                  description:
+                    "Notify me when a site supervisor submits an evaluation for one of my interns.",
+                },
+                {
+                  key: "in_app_on_weekly_log" as const,
+                  title: "Weekly log submissions",
+                  description:
+                    "Notify me when an intern submits a weekly log for review.",
+                },
+                {
+                  key: "desktop_notifications" as const,
+                  title: "Browser desktop notifications",
+                  description:
+                    "Show browser-level desktop notifications (requires permission) when new notifications arrive.",
+                },
+                {
+                  key: "sound_enabled" as const,
+                  title: "Notification sound",
+                  description:
+                    "Play a subtle sound when a new notification arrives while you have the dashboard open.",
+                },
               ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium text-sm">{item.title}</p>
-                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+                <div
+                  key={item.key}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b last:border-b-0 last:pb-0"
+                >
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{item.title}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
                   </div>
-                  <Switch checked={notifs[item.key]} onCheckedChange={(v) => setNotifs({ ...notifs, [item.key]: v })} />
+                  <Switch
+                    checked={notifs[item.key]}
+                    onCheckedChange={(v) => setNotifs({ ...notifs, [item.key]: v })}
+                  />
                 </div>
               ))}
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSaveNotifs} disabled={savingNotifs} className="gap-2">
+                  {savingNotifs ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save Preferences
+                </Button>
+              </div>
             </CardContent>
           </Card>
-          <div className="flex justify-end">
-            <Button onClick={handleSaveNotifs} disabled={savingNotifs}>
-              {savingNotifs ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Save Preferences
-            </Button>
-          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Notification Activity
+              </CardTitle>
+              <CardDescription>
+                Recent notifications from your company&apos;s internship workflow.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentNotificationsWidget userId={user?.id} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="security" className="space-y-6">
@@ -505,6 +574,86 @@ export default function CompanyHRSettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ============================================================
+// RecentNotificationsWidget — shows latest in-app notifications
+// for the company HR user inside the settings page.
+// ============================================================
+function RecentNotificationsWidget({ userId }: { userId?: string }) {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/notifications/inbox?limit=8");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.data)) {
+          setNotifications(data.data);
+        }
+      } catch {
+        // best-effort
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  if (isLoading) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+
+  if (notifications.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-muted-foreground">
+        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p>No notifications yet</p>
+      </div>
+    );
+  }
+
+  const formatTime = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {notifications.map((n) => (
+        <div
+          key={n.id}
+          className={`flex gap-3 p-3 rounded-lg border ${
+            !n.is_read ? "bg-primary/5 border-primary/20" : "bg-muted/30"
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium">{n.title}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+              {n.message}
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              {formatTime(n.created_at)}
+              {n.metadata?.sender_name && ` · ${n.metadata.sender_name}`}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
