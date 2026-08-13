@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, createContext, useContext, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,7 +34,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -459,7 +458,22 @@ function SidebarContent({
       {/* ============================================ */}
       {/* NAVIGATION ITEMS                            */}
       {/* ============================================ */}
-      <ScrollArea className="flex-1 px-3 py-4 sidebar-scroll">
+      {/*
+        NOTE: This used to be a Radix <ScrollArea> from
+        @/components/ui/scroll-area, but it was the source of the
+        "Maximum update depth exceeded" (React #185) crash on login.
+        Radix ScrollArea's useComposedRefs creates a new ref callback
+        on every render, and that ref callback dispatches setState
+        internally (to measure the viewport). When the sidebar
+        re-renders rapidly during login (user -> profile -> university
+        -> isLoading all flip in quick succession), the new ref
+        callback triggers setState -> re-render -> new ref callback ->
+        setState -> loop, exceeding React's max update depth.
+        Replaced with a plain div + overflow-y-auto. The custom thin
+        scrollbar is preserved via the `sidebar-scroll` CSS class
+        (defined inline in <style> below).
+      */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 sidebar-scroll">
         <nav className="space-y-1">
           {/* BUG 6 FIX: explicit retry state when auth has resolved but
               profile.role is missing or returned an empty nav list.
@@ -779,7 +793,7 @@ function SidebarContent({
             return <NavItemContent key={item.href} />;
           })}
         </nav>
-      </ScrollArea>
+      </div>
 
       {/* ============================================ */}
       {/* FOOTER SECTION                              */}
@@ -912,6 +926,18 @@ export function Sidebar({ className }: SidebarProps) {
   // state variable. The loading skeleton (BUG 6) is handled inside
   // SidebarContent via its own useAuth() call.
 
+  // Stable callbacks so SidebarContent doesn't get new function props
+  // on every parent render — important because the sidebar re-renders
+  // frequently during login (auth state flutter), and unstable props
+  // would cascade re-renders through SidebarContent's children even
+  // when the underlying state didn't actually change.
+  const handleToggle = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+  const handleClose = useCallback(() => {
+    setMobileOpen(false);
+  }, []);
+
   return (
     <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
       {/* Mobile trigger + sheet — hidden on desktop via `lg:hidden` */}
@@ -936,7 +962,7 @@ export function Sidebar({ className }: SidebarProps) {
             </SheetHeader>
             <SidebarContent
               isMobile
-              onClose={() => setMobileOpen(false)}
+              onClose={handleClose}
             />
           </SheetContent>
         </Sheet>
@@ -954,7 +980,7 @@ export function Sidebar({ className }: SidebarProps) {
       >
         <SidebarContent
           collapsed={collapsed}
-          onToggle={() => setCollapsed(!collapsed)}
+          onToggle={handleToggle}
         />
       </motion.aside>
     </SidebarContext.Provider>
