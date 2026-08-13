@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
+import { extractSubdomain } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,6 +31,25 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+
+// Tenant-scoped roles — must sign in on their own tenant subdomain.
+// Mirrors the TENANT_SCOPED_ROLES list in src/proxy.ts. Cross-tenant
+// login is blocked for these roles (a student from university A cannot
+// sign in at university-b.internhub.pk). Super admins and company-scoped
+// roles can sign in anywhere.
+const TENANT_SCOPED_ROLES = new Set([
+  "university_admin",
+  "department_coordinator",
+  "faculty_supervisor",
+  "student",
+]);
+
+// Helper: get the apex domain (everything after the first label) so we can
+// build a redirect URL to the user's correct tenant subdomain.
+function getApexDomain(hostname: string): string {
+  const parts = hostname.split(".");
+  return parts.length >= 3 ? parts.slice(1).join(".") : hostname;
+}
 
 // Enhanced form validation - accepts email OR username
 const loginSchema = z.object({
@@ -48,6 +68,23 @@ export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Show a banner when the user was redirected here from another tenant
+  // subdomain because their account belongs to this one. The query param
+  // is set by the cross-tenant guard in onSubmit() above.
+  const [showWrongTenantBanner, setShowWrongTenantBanner] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("redirected") === "wrong_tenant") {
+        setShowWrongTenantBanner(true);
+        // Clean the URL so the banner doesn't reappear on refresh.
+        params.delete("redirected");
+        const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", newUrl);
+      }
+    }
+  }, []);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -126,6 +163,78 @@ export default function LoginPage() {
             description: error.message,
           });
         }
+        setIsLoading(false);
+        return;
+      }
+
+      // ============================================================
+      // CROSS-TENANT LOGIN GUARD
+      // ============================================================
+      // Tenant-scoped roles (student / coordinator / supervisor /
+      // university_admin) must sign in on their OWN tenant subdomain.
+      // If they try to sign in on a different tenant's subdomain (or on
+      // the apex domain when they belong to a tenant), we sign them out
+      // immediately and redirect them to their correct tenant subdomain.
+      //
+      // Without this guard, a student from university A could authenticate
+      // at university-b.internhub.pk — they'd see university B's branding
+      // for a moment before the proxy's tenant redirect kicks in. Worse,
+      // if their JWT has no tenant_slug (e.g. legacy accounts from before
+      // migration 0038), the proxy wouldn't redirect at all and they'd
+      // stay cross-tenant.
+      //
+      // The check uses app_metadata.tenant_slug (synced by migration 0038
+      // trigger) with a user_metadata fallback for legacy JWTs.
+      const userRole =
+        (data.user?.app_metadata?.role as string | undefined) ||
+        (data.user?.user_metadata?.role as string | undefined) ||
+        null;
+      const userTenantSlug =
+        (data.user?.app_metadata?.tenant_slug as string | undefined) ||
+        (data.user?.user_metadata?.tenant_slug as string | undefined) ||
+        null;
+      const currentHostname = window.location.hostname;
+      const currentSubdomain = extractSubdomain(currentHostname);
+
+      if (
+        userRole &&
+        TENANT_SCOPED_ROLES.has(userRole) &&
+        userTenantSlug &&
+        userTenantSlug !== currentSubdomain
+      ) {
+        // Sign out the wrong-tenant session immediately — we don't want
+        // any cookies left behind on a subdomain the user shouldn't be on.
+        await supabase.auth.signOut();
+
+        const apex = getApexDomain(currentHostname);
+        const port = window.location.port ? `:${window.location.port}` : "";
+        const correctUrl = `${window.location.protocol}//${userTenantSlug}.${apex}${port}/login?redirected=wrong_tenant`;
+
+        toast.error("Wrong tenant", {
+          description: `This account belongs to the "${userTenantSlug}" portal. Redirecting you there…`,
+        });
+
+        // Brief delay so the toast is visible before the redirect.
+        setTimeout(() => {
+          window.location.href = correctUrl;
+        }, 1200);
+        return;
+      }
+
+      // If a tenant-scoped user is on the apex (no subdomain) and has no
+      // tenant_slug in their JWT, block the login instead of letting them
+      // wander into the global dashboard with the wrong context.
+      if (
+        userRole &&
+        TENANT_SCOPED_ROLES.has(userRole) &&
+        !userTenantSlug &&
+        !currentSubdomain
+      ) {
+        await supabase.auth.signOut();
+        toast.error("Account not provisioned", {
+          description:
+            "Your account is not linked to a university tenant. Please contact your administrator.",
+        });
         setIsLoading(false);
         return;
       }
@@ -230,6 +339,17 @@ export default function LoginPage() {
             <strong>Staff (Admins, Coordinators, Supervisors, HR):</strong> Sign in with username
           </p>
         </div>
+
+        {/* Wrong-tenant redirect banner — shown when the user was redirected
+            here from another tenant subdomain because their account belongs
+            to this one. */}
+        {showWrongTenantBanner && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <p className="text-xs text-emerald-700 dark:text-emerald-300 text-center">
+              You were redirected to your home portal. Please sign in here.
+            </p>
+          </div>
+        )}
 
         {/* Login Form Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-5 sm:p-8">

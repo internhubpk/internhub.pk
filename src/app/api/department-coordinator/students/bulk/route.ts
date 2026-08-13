@@ -17,21 +17,27 @@ import type { ApiResponse, UserRole } from "@/types";
 //   import dialog and passed as a top-level body field. The selected program
 //   applies to ALL rows in the CSV. This prevents per-row program code
 //   typos and makes the import flow much simpler.
+// - password is NOT in the CSV. It is entered ONCE via a password field in
+//   the import dialog and passed as a top-level body field. The same
+//   password is used for EVERY account created from this CSV. The
+//   coordinator can choose any password (min 6 chars) and share it with
+//   students out-of-band; students can change it after first login.
 //
 // The route:
 //   1. Authenticates the caller via cookie-bound SSR client.
 //   2. Verifies role = department_coordinator (or university_admin / super_admin).
 //   3. Fetches the caller's profile (university_id, department_id).
 //   4. Validates the optional program_id (must belong to caller's university).
-//   5. Parses the CSV (sent as JSON: { csv: "...", program_id: "..." } or
-//      as text/plain with program_id in query string).
-//   6. For each row:
+//   5. Validates the password (required, min 6 chars).
+//   6. Parses the CSV (sent as JSON: { csv, program_id, password } or
+//      as text/plain with program_id + password in query string).
+//   7. For each row:
 //      a. Validates required fields.
 //      b. Creates auth.users row (admin.createUser, email_confirm: true).
 //      c. Calls internhub.ensure_profile_exists to guarantee the profile row.
 //      d. Inserts students row (user_id, university_id, department_id,
 //         program_id, student_id_number).
-//   7. Returns per-row results: { created: [...], errors: [...] }.
+//   8. Returns per-row results: { created: [...], errors: [...] }.
 //
 // The route uses the service_role key for all DB writes so RLS doesn't
 // block cross-user inserts. The caller's university_id / department_id
@@ -223,24 +229,27 @@ export async function POST(request: NextRequest) {
     );
 
     // ==========================================================
-    // 4. Parse the CSV + program_id from the request body.
+    // 4. Parse the CSV + program_id + password from the request body.
     //    Two content types are supported:
-    //      - application/json: { csv: "...", program_id: "..." }
-    //      - text/plain: raw CSV text; program_id read from query string.
+    //      - application/json: { csv: "...", program_id: "...", password: "..." }
+    //      - text/plain: raw CSV text; program_id and password read from query string.
     // ==========================================================
     const contentType = request.headers.get("content-type") || "";
     let csvText = "";
     let bodyProgramId: string | null = null;
+    let bodyPassword: string | null = null;
 
     if (contentType.includes("application/json")) {
       const body = await request.json().catch(() => ({}));
       csvText = body.csv || body.text || "";
       bodyProgramId = body.program_id || null;
+      bodyPassword = body.password || null;
     } else {
       csvText = await request.text();
-      // Read program_id from query string for text/plain requests.
+      // Read program_id + password from query string for text/plain requests.
       const url = new URL(request.url);
       bodyProgramId = url.searchParams.get("program_id");
+      bodyPassword = url.searchParams.get("password");
     }
 
     if (!csvText.trim()) {
@@ -249,6 +258,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Password is REQUIRED — it's used for every account created from this CSV.
+    // Min 6 chars matches Supabase's default password policy.
+    if (!bodyPassword || bodyPassword.trim().length < 6) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "A password of at least 6 characters is required. It will be used for every account created from this CSV." },
+        { status: 400 }
+      );
+    }
+    const sharedPassword: string = bodyPassword.trim();
 
     const rows = parseCsv(csvText);
     const inputs = rowsToObjects(rows);
@@ -367,8 +386,10 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Generate a random password (student will use password reset)
-      const password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + "A1!";
+      // Use the shared password provided in the request body (validated above).
+      // The coordinator chooses this password once and shares it with all
+      // students from this CSV — students can change it after first login.
+      const password = sharedPassword;
 
       // Create auth user
       const { data: authData, error: authErr } = await adminClient.auth.admin.createUser({

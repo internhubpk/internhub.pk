@@ -425,6 +425,42 @@ export async function proxy(request: NextRequest) {
     if (TENANT_SCOPED_ROLES.has(userRole) && userTenantSlug) {
       const currentSubdomain = getCurrentSubdomain(request.nextUrl.hostname);
       if (currentSubdomain !== userTenantSlug) {
+        // ==========================================
+        // CROSS-TENANT BLOCK (defense in depth)
+        // ==========================================
+        // The login page already signs the user out and redirects them to
+        // their home tenant. This block handles the case where a tenant-
+        // scoped user is somehow carrying a valid session on the WRONG
+        // tenant subdomain (e.g. cookies leaked across subdomains, or the
+        // login guard was bypassed). Instead of silently redirecting them
+        // (which keeps the session alive), we clear their cookies by
+        // redirecting to /login?redirected=wrong_tenant on their correct
+        // subdomain. The login page's wrong-tenant banner will explain.
+        //
+        // We only do this for non-public paths — public paths fall through
+        // to the existing redirect (so the user lands on the right tenant's
+        // login page without a hard sign-out, which is fine because they
+        // aren't authenticated on the right tenant yet anyway).
+        if (!isPublicRoute(pathname)) {
+          const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug);
+          const loginUrl = new URL("/login", redirectUrl);
+          loginUrl.searchParams.set("redirected", "wrong_tenant");
+          // Carry returnUrl so the user lands on their original destination
+          // after they re-authenticate on the correct subdomain.
+          loginUrl.searchParams.set("returnUrl", pathname);
+          // Sign out by clearing auth cookies on the response. The actual
+          // session invalidation happens via Supabase when the user signs
+          // in again on the correct subdomain.
+          const signOutResponse = NextResponse.redirect(loginUrl);
+          // Clear all sb-* cookies (Supabase auth cookies follow this prefix).
+          request.cookies.getAll().forEach((c) => {
+            if (c.name.startsWith("sb-")) {
+              signOutResponse.cookies.delete(c.name);
+            }
+          });
+          return signOutResponse;
+        }
+        // Public route → just redirect to the right tenant subdomain.
         const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug);
         return NextResponse.redirect(redirectUrl);
       }

@@ -372,29 +372,32 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
 // Tenant-Specific Hero Section Component
 function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
   const { tenant } = useTenant();
-  
+
   return (
-    <section 
+    <section
       className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden"
       style={{
-        background: `linear-gradient(135deg, ${branding.primaryColor}08 0%, white 50%, ${branding.primaryColor}05 100%)`,
+        // Mirror MainHero's bold gradient, but tinted with the tenant's brand
+        // colors so each university's portal has a distinctive, on-brand hero
+        // instead of the washed-out near-white gradient used previously.
+        background: `linear-gradient(135deg, ${branding.primaryColor}14 0%, white 50%, ${branding.secondaryColor}14 100%)`,
         position: 'relative',
         zIndex: 1
       }}
     >
       {/* Background decorative elements using tenant colors - responsive sizes */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
-        <div 
+        <div
           className="absolute top-10 left-0 right-auto w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl -translate-x-1/4 sm:translate-x-0 sm:left-10"
-          style={{ backgroundColor: `${branding.primaryColor}15` }}
+          style={{ backgroundColor: `${branding.primaryColor}26` }}
         />
-        <div 
+        <div
           className="absolute bottom-10 right-0 left-auto w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl translate-x-1/4 sm:translate-x-0 sm:right-10"
-          style={{ backgroundColor: `${branding.secondaryColor}12` }}
+          style={{ backgroundColor: `${branding.secondaryColor}26` }}
         />
-        <div 
+        <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full blur-2xl sm:blur-3xl"
-          style={{ background: `linear-gradient(to right, ${branding.primaryColor}05, ${branding.secondaryColor}05)` }}
+          style={{ background: `linear-gradient(to right, ${branding.primaryColor}14, ${branding.secondaryColor}14)` }}
         />
       </div>
 

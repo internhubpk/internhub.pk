@@ -70,30 +70,51 @@ export async function GET(request: NextRequest) {
       // but the audit spec asks us to filter via the `students` table lookup so the
       // filter is authoritative regardless of how the row was inserted.
       if (userDepartmentId && userUniversityId) {
-        // Get students (their user_ids) in this department
+        // Get students (their user_ids) in this department, INCLUDING their
+        // direct faculty_supervisor_id (migration 0041 — pre-internship
+        // assignment). We synthesize "assignment" rows from this column so
+        // the students-page UI sees the same shape as student_internships.
         const { data: deptStudents } = await supabase
           .from("students")
-          .select("user_id")
+          .select("user_id, faculty_supervisor_id")
           .eq("department_id", userDepartmentId)
           .eq("university_id", userUniversityId);
 
         const deptStudentIds = deptStudents?.map(s => s.user_id) || [];
-        
+
         if (deptStudentIds.length > 0) {
           query = query.in("student_user_id", deptStudentIds);
         } else {
-          // No students in department
+          // No students in department — but we still need to fall through
+          // to the synthesized-rows step below, which may produce results
+          // from the direct students.faculty_supervisor_id column.
+          // Return early only if there are also no pre-internship
+          // assignments to synthesize.
+          const synthesized = (deptStudents || [])
+            .filter(s => s.faculty_supervisor_id)
+            .map(s => ({
+              student_user_id: s.user_id,
+              faculty_supervisor_id: s.faculty_supervisor_id,
+              // The students-page UI only reads these two fields from this
+              // endpoint to build the assignedSupervisorByStudent map.
+              _source: "students_table",
+            }));
+
           return NextResponse.json<ApiResponse<any>>({
             success: true,
             data: {
-              data: [],
-              total: 0,
+              data: synthesized,
+              total: synthesized.length,
               page,
               pageSize,
-              totalPages: 0,
+              totalPages: Math.ceil(synthesized.length / pageSize) || 0,
             },
           });
         }
+
+        // Stash deptStudents so we can synthesize rows for pre-internship
+        // assignments after the main query runs.
+        (request as any)._deptStudents = deptStudents;
       } else {
         // No department assigned → empty result
         return NextResponse.json<ApiResponse<any>>({
@@ -137,12 +158,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Merge in pre-internship assignments from `students.faculty_supervisor_id`
+    // (migration 0041). These are students who have a faculty supervisor
+    // assigned directly on the students row but no student_internships row
+    // yet. We synthesize a minimal row shape that the students-page UI
+    // reads (student_user_id + faculty_supervisor_id).
+    let merged: any[] = assignments || [];
+    const deptStudents: any[] | undefined = (request as any)._deptStudents;
+    if (deptStudents && deptStudents.length > 0) {
+      const seenStudentIds = new Set(
+        merged
+          .map((a: any) => a.student_user_id || a.student_id)
+          .filter(Boolean)
+      );
+      const synthesized = deptStudents
+        .filter(s => s.faculty_supervisor_id && !seenStudentIds.has(s.user_id))
+        .map(s => ({
+          student_user_id: s.user_id,
+          faculty_supervisor_id: s.faculty_supervisor_id,
+          _source: "students_table",
+        }));
+      merged = [...merged, ...synthesized];
+    }
+
     const response = {
-      data: assignments || [],
-      total: count || 0,
+      data: merged,
+      total: merged.length,
       page,
       pageSize,
-      totalPages: Math.ceil((count || 0) / pageSize),
+      totalPages: Math.ceil(merged.length / pageSize),
     };
 
     return NextResponse.json<ApiResponse<typeof response>>({
@@ -263,11 +307,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if there's an existing student_internships row to update.
-    // The department-coordinator flow is “assign a faculty supervisor to a student
-    // who already has an internship” — so we expect a row to already exist.
-    // INSERTing a fresh `student_internships` row would require `internship_id`,
-    // `company_id`, and `start_date` (all NOT NULL) which this endpoint does not
-    // (and should not) provide.
+    // The department-coordinator flow is “assign a faculty supervisor to a student”.
+    // If a student_internships row exists (student already placed in an internship),
+    // we update that row's faculty_supervisor_id.
+    // Otherwise, we fall back to setting `students.faculty_supervisor_id` directly
+    // (migration 0041) so coordinators can pre-assign supervisors before the
+    // student is placed in an internship.
     const { data: existingSI } = await supabase
       .from("student_internships")
       .select("id, status")
@@ -299,11 +344,26 @@ export async function POST(request: NextRequest) {
       result = data;
     } else {
       // No existing student_internships row — the student has not been placed
-      // into an internship yet, so a faculty-supervisor assignment is meaningless.
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Student has no active internship — cannot assign supervisor" },
-        { status: 400 }
-      );
+      // into an internship yet. Fall back to setting `students.faculty_supervisor_id`
+      // directly (migration 0041) so the coordinator can pre-assign a supervisor.
+      const { data: updatedStudent, error: updateErr } = await supabase
+        .from("students")
+        .update({
+          faculty_supervisor_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", student_id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        console.error("Error updating student faculty_supervisor_id:", updateErr);
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Failed to assign supervisor to student" },
+          { status: 500 }
+        );
+      }
+      result = updatedStudent;
     }
 
     return NextResponse.json<ApiResponse<typeof result>>({
@@ -370,9 +430,11 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Remove assignment (set supervisor to null).
+    // Remove assignment (set supervisor to null) on BOTH tables:
+    //   1. student_internships.faculty_supervisor_id (internship-time assignment)
+    //   2. students.faculty_supervisor_id (pre-internship assignment, migration 0041)
     // NOTE: `student_internships.student_user_id` (not `student_id`) is the FK to profiles.
-    const { error } = await supabase
+    const { error: siErr } = await supabase
       .from("student_internships")
       .update({ 
         faculty_supervisor_id: null,
@@ -381,10 +443,28 @@ export async function DELETE(request: NextRequest) {
       .eq("student_user_id", studentId)
       .eq("faculty_supervisor_id", supervisorId);
 
-    if (error) {
-      console.error("Error removing assignment:", error);
+    if (siErr) {
+      console.error("Error removing student_internships assignment:", siErr);
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Failed to remove assignment" },
+        { status: 500 }
+      );
+    }
+
+    // Also clear the pre-internship assignment on students.faculty_supervisor_id.
+    const { error: stuErr } = await supabase
+      .from("students")
+      .update({
+        faculty_supervisor_id: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", studentId)
+      .eq("faculty_supervisor_id", supervisorId);
+
+    if (stuErr) {
+      console.error("Error removing students.faculty_supervisor_id assignment:", stuErr);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Failed to remove student-level assignment" },
         { status: 500 }
       );
     }

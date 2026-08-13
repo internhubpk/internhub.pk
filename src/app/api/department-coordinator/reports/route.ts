@@ -446,6 +446,22 @@ async function getSupervisorWorkload(
   const { data: supervisorInternships, error: internshipsError } = await internshipsQuery;
   if (internshipsError) throw internshipsError;
 
+  // (c') Pre-internship direct assignments: students.faculty_supervisor_id
+  //      (migration 0041) — students who have a faculty supervisor assigned
+  //      directly on the students row but no student_internships row yet.
+  let preInternshipStudentsQuery = supabase
+    .from("students")
+    .select("user_id, faculty_supervisor_id")
+    .in("faculty_supervisor_id", supervisorUserIds);
+  if (filters.department_id) {
+    preInternshipStudentsQuery = preInternshipStudentsQuery.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    preInternshipStudentsQuery = preInternshipStudentsQuery.eq("university_id", filters.university_id);
+  }
+  const { data: preInternshipStudents, error: preErr } = await preInternshipStudentsQuery;
+  if (preErr) throw preErr;
+
   // ---------- Aggregate per supervisor ----------
   const workloadData: SupervisorWorkload[] = [];
 
@@ -472,6 +488,14 @@ async function getSupervisorWorkload(
       directStudentIds.add(si.student_user_id);
       if (si.status === "active") activeCount++;
       else if (si.status === "completed") completedCount++;
+    }
+
+    // Direct (pre-internship): students.faculty_supervisor_id = this supervisor.
+    // These are students who were assigned a supervisor via the Students page
+    // but haven't been placed in an internship yet.
+    for (const s of preInternshipStudents || []) {
+      if (s.faculty_supervisor_id !== supervisor.user_id) continue;
+      directStudentIds.add(s.user_id);
     }
 
     // Union of indirect + direct student ids.

@@ -25,6 +25,8 @@ import {
   Loader2,
   Eye,
   GraduationCap,
+  Building2,
+  Lock,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,6 +91,7 @@ interface Student {
   program_id: string | null;
   university_id: string;
   department_id: string;
+  faculty_supervisor_id?: string | null;
   created_at: string;
   // Joined data
   profiles?: {
@@ -105,6 +108,11 @@ interface Student {
     name: string | null;
     code: string | null;
   };
+  faculty_supervisor?: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+  } | null;
 }
 
 interface SupervisorOption {
@@ -126,9 +134,11 @@ export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterProgram, setFilterProgram] = useState<string>("all");
+  const [filterDepartment, setFilterDepartment] = useState<string>("all");
   const [filterSupervisor, setFilterSupervisor] = useState<string>(
     searchParams.get("filter") === "no_supervisor" ? "unassigned" : "all"
   );
+  const [departments, setDepartments] = useState<{ id: string; name: string; code: string }[]>([]);
 
   // Selection state
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -157,6 +167,7 @@ export default function StudentsPage() {
   });
   const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
   const [importProgramId, setImportProgramId] = useState<string>("");
+  const [importPassword, setImportPassword] = useState<string>("");
   const [importResult, setImportResult] = useState<{
     created: number;
     errors: number;
@@ -183,9 +194,29 @@ export default function StudentsPage() {
     }
   }, []);
 
+  // Fetch departments for the filter dropdown. The /api/departments endpoint
+  // is university-scoped for university_admin/super_admin and department-scoped
+  // for department_coordinator (returns just their own department).
+  const fetchDepartments = useCallback(async () => {
+    try {
+      const res = await fetch("/api/departments?pageSize=100");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data?.data)) {
+          setDepartments(data.data.data.map((d: any) => ({ id: d.id, name: d.name, code: d.code })));
+        } else if (Array.isArray(data.data)) {
+          setDepartments(data.data.map((d: any) => ({ id: d.id, name: d.name, code: d.code })));
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPrograms();
-  }, [fetchPrograms]);
+    fetchDepartments();
+  }, [fetchPrograms, fetchDepartments]);
 
   // Handle single student creation (form)
   const handleCreateStudent = async (e: React.FormEvent) => {
@@ -310,15 +341,24 @@ export default function StudentsPage() {
       });
       return;
     }
+    if (!importPassword.trim() || importPassword.trim().length < 6) {
+      toast({
+        title: "Password required",
+        description: "Please enter a password of at least 6 characters. It will be used for ALL accounts created from this CSV.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsImporting(true);
     try {
-      // Send as JSON so we can include the program_id from the dropdown.
+      // Send as JSON so we can include the program_id and password.
       const res = await fetch("/api/department-coordinator/students/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           csv: csvText,
           program_id: importProgramId || null,
+          password: importPassword.trim(),
         }),
       });
       const data = await res.json();
@@ -327,7 +367,7 @@ export default function StudentsPage() {
         await fetchStudents();
         toast({
           title: "Import Complete",
-          description: `Imported ${data.data.created} student(s), ${data.data.errors} error(s).`,
+          description: `Imported ${data.data.created} student(s), ${data.data.errors} error(s). All accounts use the password you entered.`,
         });
       } else {
         toast({
@@ -367,6 +407,7 @@ export default function StudentsPage() {
     setCsvFileName("");
     setCsvText("");
     setImportProgramId("");
+    setImportPassword("");
     setImportResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -379,6 +420,7 @@ export default function StudentsPage() {
       if (searchQuery) params.set("search", searchQuery);
       if (filterStatus !== "all") params.set("status", filterStatus);
       if (filterProgram !== "all") params.set("program_id", filterProgram);
+      if (filterDepartment !== "all") params.set("department_id", filterDepartment);
       params.set("pageSize", "100");
 
       const res = await fetch(`/api/students?${params.toString()}`);
@@ -400,7 +442,7 @@ export default function StudentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, filterStatus, filterProgram]);
+  }, [searchQuery, filterStatus, filterProgram, filterDepartment]);
 
   // Fetch supervisors for assignment dropdown
   const fetchSupervisors = useCallback(async () => {
@@ -764,6 +806,21 @@ export default function StudentsPage() {
               />
             </div>
             <div className="flex flex-wrap gap-2">
+              <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                <SelectTrigger className="w-[170px]">
+                  <Building2 className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} ({d.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-[130px]">
                   <Filter className="h-4 w-4 mr-2" />
@@ -788,8 +845,8 @@ export default function StudentsPage() {
                   <SelectItem value="unassigned">Not Assigned</SelectItem>
                 </SelectContent>
               </Select>
-              
-              {(searchQuery || filterStatus !== "all" || filterSupervisor !== "all") && (
+
+              {(searchQuery || filterStatus !== "all" || filterSupervisor !== "all" || filterDepartment !== "all") && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -797,6 +854,7 @@ export default function StudentsPage() {
                     setSearchQuery("");
                     setFilterStatus("all");
                     setFilterSupervisor("all");
+                    setFilterDepartment("all");
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -831,7 +889,7 @@ export default function StudentsPage() {
           icon={<GraduationCap className="h-10 w-10 text-muted-foreground" />}
           title="No students found"
           description={
-            searchQuery || filterStatus !== "all" || filterSupervisor !== "all"
+            searchQuery || filterStatus !== "all" || filterSupervisor !== "all" || filterDepartment !== "all"
               ? "Try adjusting your search or filters"
               : "No students are enrolled in this department yet"
           }
@@ -935,15 +993,29 @@ export default function StudentsPage() {
                   <TableHead>Student</TableHead>
                   <TableHead>Enrollment #</TableHead>
                   <TableHead>Program</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Faculty Supervisor</TableHead>
                   <TableHead>CGPA</TableHead>
-                  <TableHead>Semester</TableHead>
+                  <TableHead>Enrollment Year</TableHead>
                   <TableHead className="w-[70px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <AnimatePresence mode="popLayout">
-                  {displayedStudents.map((student) => (
+                  {displayedStudents.map((student) => {
+                    // Resolve the assigned supervisor: prefer the explicit
+                    // `faculty_supervisor` join (set on students.faculty_supervisor_id
+                    // via migration 0041). Fall back to the assignedSupervisorByStudent
+                    // map (built from /api/department-coordinator/assignments which
+                    // includes student_internships rows).
+                    const assignedSupId = student.faculty_supervisor_id
+                      || assignedSupervisorByStudent.get(student.user_id || student.id)
+                      || null;
+                    const assignedSupervisorName = student.faculty_supervisor
+                      ? `${student.faculty_supervisor.first_name || ""} ${student.faculty_supervisor.last_name || ""}`.trim()
+                      : (assignedSupId
+                          ? (supervisors.find(s => s.id === assignedSupId)?.name || "Assigned")
+                          : null);
+                    return (
                     <motion.tr
                       key={student.id}
                       layout
@@ -988,12 +1060,13 @@ export default function StudentsPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {student.status ? (
-                          <Badge variant={getStatusVariant(student.status)}>
-                            {student.status}
+                        {assignedSupervisorName ? (
+                          <Badge variant="secondary" className="font-normal">
+                            <UserCheck className="h-3 w-3 mr-1" />
+                            {assignedSupervisorName}
                           </Badge>
                         ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
+                          <span className="text-muted-foreground text-sm">Unassigned</span>
                         )}
                       </TableCell>
                       <TableCell>{student.cgpa?.toFixed(2) || "-"}</TableCell>
@@ -1010,7 +1083,7 @@ export default function StudentsPage() {
                               <Eye className="h-4 w-4 mr-2" /> View Profile
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => {
                                 setSelectedStudents(new Set([student.id]));
                                 setIsAssignDialogOpen(true);
@@ -1018,11 +1091,44 @@ export default function StudentsPage() {
                             >
                               <UserCheck className="h-4 w-4 mr-2" /> Assign Supervisor
                             </DropdownMenuItem>
+                            {assignedSupId && (
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/department-coordinator/assignments?student_id=${student.user_id || student.id}&supervisor_id=${assignedSupId}`, {
+                                      method: "DELETE",
+                                    });
+                                    if (res.ok) {
+                                      await fetchStudents();
+                                      await fetchAssignedSupervisors();
+                                      toast({ title: "Unassigned", description: "Supervisor was removed from this student." });
+                                    } else {
+                                      const data = await res.json().catch(() => ({}));
+                                      toast({
+                                        title: "Failed to unassign",
+                                        description: data.error || `HTTP ${res.status}`,
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  } catch (e) {
+                                    toast({
+                                      title: "Failed to unassign",
+                                      description: e instanceof Error ? e.message : "Unknown error",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }}
+                              >
+                                <X className="h-4 w-4 mr-2" /> Remove Supervisor
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </motion.tr>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
               </TableBody>
             </Table>
@@ -1328,8 +1434,8 @@ export default function StudentsPage() {
                 first_name, last_name, email, student_id_number
               </code>
               <span className="block mt-2">
-                Select a program from the dropdown below — it applies to ALL rows in the CSV.
-                Do NOT include a program column in the CSV file.
+                Select a program and choose a password — both apply to ALL rows in the CSV.
+                Do NOT include a program or password column in the CSV file.
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -1364,6 +1470,28 @@ export default function StudentsPage() {
                 {programs.length === 0
                   ? "No programs found in your department. Students will be created without a program."
                   : "The selected program will be assigned to every student in the CSV."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="import-password">
+                Password for all accounts <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="import-password"
+                  type="text"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  placeholder="Choose a password (min 6 characters)"
+                  className="pl-9"
+                  autoComplete="new-password"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This password will be used for <strong>every account</strong> created from this CSV.
+                Students can sign in with their email + this password and change it later.
               </p>
             </div>
 
@@ -1420,7 +1548,7 @@ export default function StudentsPage() {
             <Button type="button" variant="outline" onClick={resetImportDialog} disabled={isImporting}>
               Close
             </Button>
-            <Button type="button" onClick={handleImportCsv} disabled={isImporting || !csvText.trim()}>
+            <Button type="button" onClick={handleImportCsv} disabled={isImporting || !csvText.trim() || importPassword.trim().length < 6}>
               {isImporting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
     // NOTE: a `status` query param is accepted for backwards-compat but ignored —
     // the `students` table has no `status` column.
     const programIdFilter = searchParams.get("program_id");
+    const departmentIdFilter = searchParams.get("department_id");
     
     // Validate sort parameters
     const { sortBy, ascending } = validateSortParam(
@@ -108,14 +109,18 @@ export async function GET(request: NextRequest) {
       searchParams.get("sort_order")
     );
 
-    // Build base query with joins for related data
+    // Build base query with joins for related data.
+    // `faculty_supervisor_id` is included so the Students page can show the
+    // currently-assigned supervisor inline (set via the assignment endpoint
+    // — migration 0041 backstops this for students without an internship row).
     let query = supabase
       .from("students")
       .select(`
         *,
         profiles:user_id(first_name, last_name, email),
         departments:department_id(name, code),
-        programs:program_id(name, code)
+        programs:program_id(name, code),
+        faculty_supervisor:faculty_supervisor_id(first_name, last_name, email)
       `, { count: "exact" });
 
     // Apply role-based filtering with university access enforcement
@@ -170,6 +175,14 @@ export async function GET(request: NextRequest) {
     // Apply additional filters (only if not already restricted by role)
     if (programIdFilter) {
       query = query.eq("program_id", programIdFilter);
+    }
+
+    // Department filter: for university_admin / super_admin / faculty_supervisor
+    // (who can see students across the whole university), this narrows the
+    // result to a single department. Department coordinators are already
+    // restricted to their own department above, so this is a no-op for them.
+    if (departmentIdFilter) {
+      query = query.eq("department_id", departmentIdFilter);
     }
 
     // Apply sanitized search filter
