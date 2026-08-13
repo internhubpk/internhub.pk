@@ -44,14 +44,14 @@ const tourSteps = [
   },
 ];
 
-export function QuickTourDialog() {
+export function QuickTourDialog({ buttonClassName }: { buttonClassName?: string }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button
           variant="outline"
           size="lg"
-          className="w-full sm:w-auto min-w-[160px]"
+          className={buttonClassName ?? "w-full sm:w-auto min-w-[160px]"}
         >
           <PlayCircle className="h-4 w-4" />
           Watch How It Works

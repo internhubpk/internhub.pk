@@ -68,6 +68,42 @@ const ROLE_DASHBOARDS: Record<UserRole, string> = {
   external_evaluator: "/external-evaluator",
 };
 
+/**
+ * Roles that are scoped to a university tenant and therefore subject to
+ * tenant-subdomain redirection. Company-scoped roles (company_hr,
+ * site_supervisor, external_evaluator) and cross-tenant roles (super_admin)
+ * are NOT redirected — they can sign in on any subdomain or the apex.
+ */
+const TENANT_SCOPED_ROLES: ReadonlySet<UserRole> = new Set<UserRole>([
+  "university_admin",
+  "department_coordinator",
+  "faculty_supervisor",
+  "student",
+]);
+
+/**
+ * Subdomain labels reserved for infrastructure / common use. Mirrors the
+ * list in src/lib/tenant.ts — kept in sync deliberately rather than
+ * imported because proxy.ts runs in the Edge runtime and we want zero
+ * module-level side effects from the tenant lib.
+ */
+const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set<string>([
+  "www", "app", "admin", "api", "mail", "cdn", "static",
+  "auth", "docs", "blog", "support", "help", "status",
+  "assets", "media", "staging", "dev", "test", "preview", "demo",
+]);
+
+/**
+ * Infrastructure / hosting domains where the leftmost label is a deployment
+ * name, not a tenant slug. Mirrors src/lib/tenant.ts.
+ */
+const INFRA_DOMAINS: ReadonlySet<string> = new Set<string>([
+  "vercel.app", "vercel.dev", "netlify.app", "netlify.com",
+  "cloudflarepages.dev", "pages.dev", "onrender.com", "railway.app",
+  "fly.dev", "herokuapp.com", "firebaseapp.com", "web.app",
+  "azurewebsites.net", "amazonaws.com",
+]);
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -102,34 +138,118 @@ function getDashboardPath(role: UserRole | null): string {
 
 /**
  * Get role from JWT metadata ONLY - NO DATABASE CALLS!
- * This prevents RLS errors and memory issues.
  *
  * PRIORITY: app_metadata FIRST, then user_metadata.
- *   - app_metadata is system-managed: our profiles_sync_role_to_auth trigger
- *     (migration 0011) keeps auth.users.raw_app_meta_data->>'role' in lockstep
- *     with profiles.role. When an admin changes someone's role in the DB,
- *     app_metadata is updated automatically.
+ *   - app_metadata is system-managed: our profiles_sync_auth_metadata trigger
+ *     (migration 0011/0013/0038) keeps auth.users.raw_app_meta_data->>'role'
+ *     in lockstep with profiles.role, and raw_app_meta_data->>'tenant_slug'
+ *     in lockstep with universities.slug. When an admin changes someone's
+ *     role or university in the DB, app_metadata is updated automatically.
  *   - user_metadata is set once at signup (raw_user_meta_data) and is also
- *     synced by the trigger as of 0011, but historically was NOT updated on
- *     role changes. Reading app_metadata first protects us from stale
- *     user_metadata on accounts whose role was changed before 0011 was
- *     applied to the live DB.
+ *     synced by the trigger, but historically was NOT updated on role
+ *     changes. Reading app_metadata first protects us from stale
+ *     user_metadata on accounts whose role was changed before 0011.
  */
 function getRoleFromUser(user: any): UserRole | null {
-  // Priority 1: app_metadata (kept in sync with profiles.role by trigger)
   const appRole = user?.app_metadata?.role;
   if (appRole && ROLE_DASHBOARDS[appRole as UserRole]) {
     return appRole as UserRole;
   }
 
-  // Priority 2: user_metadata (also synced by trigger as of 0011, but kept
-  // as a fallback for legacy accounts / older JWTs)
   const metaRole = user?.user_metadata?.role;
   if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
     return metaRole as UserRole;
   }
 
   return null;
+}
+
+/**
+ * Get the user's tenant slug from JWT metadata (NO DB CALLS).
+ * Reads app_metadata.tenant_slug (synced by migration 0038 trigger) with
+ * a user_metadata fallback. Returns null if not set (e.g. legacy JWT
+ * issued before 0038 was applied, or the user has no university_id).
+ */
+function getTenantSlugFromUser(user: any): string | null {
+  const appSlug = user?.app_metadata?.tenant_slug;
+  if (typeof appSlug === "string" && appSlug.length > 0) {
+    return appSlug;
+  }
+  const metaSlug = user?.user_metadata?.tenant_slug;
+  if (typeof metaSlug === "string" && metaSlug.length > 0) {
+    return metaSlug;
+  }
+  return null;
+}
+
+/**
+ * Extract the current subdomain from the request hostname — DOMAIN-AGNOSTIC.
+ * Mirrors src/lib/tenant.ts::extractSubdomain. Returns null for apex
+ * domains, reserved subdomains, infrastructure domains, and localhost.
+ *
+ * The proxy duplicates this logic rather than importing from tenant.ts
+ * because the proxy runs in the Edge runtime and we want to keep its
+ * module graph minimal. The two implementations are kept in sync by tests.
+ */
+function getCurrentSubdomain(hostname: string): string | null {
+  const hostWithoutPort = hostname.split(":")[0];
+
+  if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
+    return null;
+  }
+
+  // Infrastructure / hosting domains: leftmost label is a deployment name.
+  if (INFRA_DOMAINS.has(hostWithoutPort)) return null;
+  for (const d of INFRA_DOMAINS) {
+    if (hostWithoutPort.endsWith(`.${d}`)) return null;
+  }
+
+  const parts = hostWithoutPort.split(".");
+  if (parts.length < 3) return null;
+
+  const subdomain = parts[0];
+  if (RESERVED_SUBDOMAINS.has(subdomain)) return null;
+
+  // Slug-shape sanity check.
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(subdomain)) return null;
+
+  return subdomain;
+}
+
+/**
+ * Build the URL for a tenant subdomain on the SAME apex domain the user is
+ * currently visiting. Domain-agnostic — works on internhub.pk,
+ * internship-portal.com, or any future apex domain the platform deploys to.
+ *
+ * Example:
+ *   currentUrl = https://internhub.pk/login
+ *   tenantSlug = "iiui"
+ *   →  https://iiui.internhub.pk/login
+ *
+ *   currentUrl = https://example.com/dashboard
+ *   tenantSlug = "nust"
+ *   →  https://nust.example.com/dashboard
+ *
+ * Port is preserved for local dev (e.g. localhost:3000 → iiui.localhost:3000).
+ * Search params are preserved so returnUrl etc. survive the redirect.
+ */
+function buildTenantRedirectUrl(
+  request: NextRequest,
+  tenantSlug: string
+): URL {
+  const { hostname, port, pathname, search, protocol } = request.nextUrl;
+  const hostWithoutPort = hostname.split(":")[0];
+
+  // Build the new hostname: <tenantSlug>.<apex>
+  // The apex is everything after the first label of the current hostname.
+  // For an apex request (no subdomain) the apex IS the current hostname.
+  const parts = hostWithoutPort.split(".");
+  const apex = parts.length >= 3 ? parts.slice(1).join(".") : hostWithoutPort;
+  const newHostname = `${tenantSlug}.${apex}`;
+  const newHost = port ? `${newHostname}:${port}` : newHostname;
+
+  const redirectUrl = new URL(`${protocol}//${newHost}${pathname}${search}`);
+  return redirectUrl;
 }
 
 // ============================================================
@@ -185,8 +305,9 @@ export async function proxy(request: NextRequest) {
       }
     );
 
-    // Get user from auth token (JWT verification only - NO DB call)
-    //
+    // ==========================================
+    // FORCE-REFRESH COOKIE (set by role-mutating API routes)
+    // ==========================================
     // BUG 5 FIX: getUser() validates the JWT signature and exp claim but
     // does NOT refresh the session when the access token is still valid
     // but stale (i.e. the user's app_metadata.role was changed server-side
@@ -202,34 +323,21 @@ export async function proxy(request: NextRequest) {
     const forceRefreshCookie = request.cookies.get("internhub_force_refresh");
     const forceRefresh = forceRefreshCookie?.value === "1";
     if (forceRefresh) {
-      // Clear the trigger cookie on the outgoing response so it doesn't
-      // fire again on subsequent navigations.
       response.cookies.delete("internhub_force_refresh");
     }
 
     let { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
     if (forceRefresh && session?.refresh_token) {
-      // Explicit refresh — picks up new app_metadata.role /
-      // app_metadata.university_id / etc. that an admin just wrote.
-      // refreshSession() only needs the refresh_token; it returns a
-      // brand-new access_token + refresh_token pair.
       const { data: refreshData, error: refreshError } =
         await supabase.auth.refreshSession({
           refresh_token: session.refresh_token,
         });
       if (!refreshError && refreshData.session) {
         session = refreshData.session;
-        // refreshSession() inside createServerClient already persists the
-        // new tokens to cookies via the setAll callback above. The user
-        // object on the next request will reflect the new role.
       }
-      // If refresh failed, fall through with the original session —
-      // the user will see stale role until natural expiry, but they
-      // still get access to the page they requested.
     }
 
-    // The user object from the (possibly refreshed) session.
     const user = session?.user ?? null;
     const authError = sessionError;
 
@@ -264,14 +372,18 @@ export async function proxy(request: NextRequest) {
     }
 
     // ==========================================
-    // GET ROLE FROM JWT METADATA ONLY (NO DB!)
+    // GET ROLE + TENANT FROM JWT METADATA ONLY (NO DB!)
     // ==========================================
     let userRole = getRoleFromUser(user);
+    const userTenantSlug = getTenantSlugFromUser(user);
 
     // Set headers for client components
     if (userRole) {
       response.headers.set("x-user-role", userRole);
       response.headers.set("x-user-id", user.id);
+    }
+    if (userTenantSlug) {
+      response.headers.set("x-tenant-slug", userTenantSlug);
     }
 
     // ==========================================
@@ -284,6 +396,38 @@ export async function proxy(request: NextRequest) {
       }
       response.headers.set("x-user-role", "unknown");
       return response;
+    }
+
+    // ==========================================
+    // TENANT-SUBDOMAIN REDIRECTION (domain-agnostic)
+    // ==========================================
+    // University-scoped users (admin / coordinator / supervisor / student)
+    // are redirected to their own tenant subdomain if they're not already
+    // on it. This keeps each university's users on their own subdomain so
+    // the landing page renders their branding, RLS context matches, and
+    // bookmarked URLs don't accidentally cross tenants.
+    //
+    // Conditions for redirect:
+    //   1. Role is tenant-scoped (see TENANT_SCOPED_ROLES).
+    //   2. User has a tenant_slug in app_metadata (set by migration 0038).
+    //   3. Current hostname's subdomain != user's tenant_slug.
+    //
+    // Skipped for:
+    //   - super_admin (cross-tenant, can sign in anywhere)
+    //   - company_hr / site_supervisor / external_evaluator (company-scoped,
+    //     not university-scoped — they may legitimately use the apex domain)
+    //   - Users without a tenant_slug in their JWT (e.g. legacy JWTs issued
+    //     before migration 0038 was applied; they'll get the slug after
+    //     their next login post-migration)
+    //   - requests already on the correct subdomain (no-op)
+    //   - infrastructure domains (vercel.app previews etc.) — the redirect
+    //     would loop because the deployment name isn't a real subdomain
+    if (TENANT_SCOPED_ROLES.has(userRole) && userTenantSlug) {
+      const currentSubdomain = getCurrentSubdomain(request.nextUrl.hostname);
+      if (currentSubdomain !== userTenantSlug) {
+        const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug);
+        return NextResponse.redirect(redirectUrl);
+      }
     }
 
     // ==========================================
@@ -303,9 +447,6 @@ export async function proxy(request: NextRequest) {
   } catch (error) {
     // Log error but don't crash - continue without proxy protection
     console.error("[Proxy Error]:", error instanceof Error ? error.message : error);
-    
-    // In production, you might want to redirect to an error page
-    // For now, just continue to allow the request through
   }
 
   return response;

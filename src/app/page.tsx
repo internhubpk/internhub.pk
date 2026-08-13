@@ -62,6 +62,19 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
+// Hero headline line animation — subtle staggered fade-up
+const heroLine = {
+  hidden: { opacity: 0, y: 12 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, delay: 0.15 + i * 0.12, ease: "easeOut" as const },
+  }),
+};
+
+// Reusable size classes for hero CTA buttons — keeps the two buttons identical
+const HERO_BUTTON_SIZE = "w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 text-sm sm:text-base font-semibold";
+
 // Features data
 const features = [
   {
@@ -196,35 +209,18 @@ const testimonials = [
   },
 ];
 
-// Footer links
+// Footer links — only real routes are listed. Placeholder ("#") links are
+// intentionally omitted so the footer never advertises pages that don't exist.
+// Add new entries here only when the corresponding route actually resolves.
 const footerLinks = {
-  product: [
-    { label: "Features", href: "#features" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Integrations", href: "#" },
-    { label: "API Docs", href: "#" },
-    { label: "Changelog", href: "#" },
-  ],
-  company: [
-    { label: "About Us", href: "#" },
-    { label: "Careers", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Press Kit", href: "#" },
-    { label: "Contact", href: "/support" },
-  ],
   resources: [
-    { label: "Documentation", href: "#" },
+    { label: "Features", href: "#features" },
     { label: "Help Center", href: "/support" },
-    { label: "Community", href: "#" },
-    { label: "Webinars", href: "#" },
-    { label: "Status Page", href: "#" },
+    { label: "Contact", href: "/support" },
   ],
   legal: [
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Terms of Service", href: "/terms" },
-    { label: "Cookie Policy", href: "#" },
-    { label: "GDPR", href: "#" },
-    { label: "Security", href: "#" },
   ],
 };
 
@@ -379,7 +375,7 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
   
   return (
     <section 
-      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center"
+      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden"
       style={{
         background: `linear-gradient(135deg, ${branding.primaryColor}08 0%, white 50%, ${branding.primaryColor}05 100%)`,
         position: 'relative',
@@ -409,7 +405,7 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
-            className="max-w-xl mx-auto lg:mx-0"
+            className="max-w-xl mx-auto lg:mx-0 min-w-0"
           >
             {/* Tenant Badge */}
             <motion.div
@@ -433,30 +429,46 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
 
             {/* Headline - Responsive text sizes and centering on mobile */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] sm:leading-[1.1] mb-4 sm:mb-6 text-center lg:text-left">
-              <span className="block">Welcome to</span>
-              <span 
+              <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Welcome to</motion.span>
+              <motion.span 
                 className="block mt-1 sm:mt-2 bg-clip-text text-transparent"
+                variants={heroLine}
+                custom={1}
+                initial="hidden"
+                animate="show"
                 style={{
                   backgroundImage: `linear-gradient(to right, ${branding.primaryColor}, ${branding.secondaryColor})`
                 }}
               >
                 {branding.name}
-              </span>
-              <span className="block mt-1 sm:mt-2">Internship Portal</span>
+              </motion.span>
+              <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Internship Portal</motion.span>
             </h1>
 
             {/* Subtitle - uses tenant tagline/description - centered on mobile */}
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left">
+            <motion.p 
+              variants={heroLine} 
+              custom={3} 
+              initial="hidden" 
+              animate="show"
+              className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left"
+            >
               {branding.tagline || branding.description || 
                 "Manage your internship journey from application to completion."}
-            </p>
+            </motion.p>
 
             {/* CTA Buttons - Full width on mobile, centered */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start">
+            <motion.div 
+              variants={heroLine} 
+              custom={4} 
+              initial="hidden" 
+              animate="show"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start"
+            >
               <Button
                 size="lg"
                 asChild
-                className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 text-sm sm:text-base font-semibold text-white shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group"
+                className={`${HERO_BUTTON_SIZE} text-white shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group`}
                 style={{
                   background: `linear-gradient(to right, ${branding.primaryColor}, ${branding.secondaryColor})`,
                   boxShadow: `0 10px 25px -5px ${branding.primaryColor}40`,
@@ -468,8 +480,8 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
                 </Link>
               </Button>
               
-              <QuickTourDialog />
-            </div>
+              <QuickTourDialog buttonClassName={HERO_BUTTON_SIZE} />
+            </motion.div>
 
             {/* Trust Badges - tenant specific - centered on mobile */}
             <motion.div
@@ -490,7 +502,7 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
           </motion.div>
 
           {/* Right Side - Dashboard Preview - hidden on mobile/tablet */}
-          <div className="hidden lg:block">
+          <div className="hidden lg:block min-w-0">
             <DashboardPreview primaryColor={branding.primaryColor} />
           </div>
         </div>
@@ -503,7 +515,7 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
 function MainHero() {
   return (
     <section 
-      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
+      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
       style={{ position: 'relative', zIndex: 1 }}
     >
       {/* Background decorative elements - responsive sizes */}
@@ -520,7 +532,7 @@ function MainHero() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
-            className="max-w-xl mx-auto lg:mx-0"
+            className="max-w-xl mx-auto lg:mx-0 min-w-0"
           >
             {/* Badge */}
             <motion.div
@@ -540,25 +552,37 @@ function MainHero() {
 
             {/* Headline with gradient text - responsive and centered on mobile */}
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] sm:leading-[1.1] mb-4 sm:mb-6 text-center lg:text-left">
-              <span className="block">Enterprise Internship</span>
-              <span className="block mt-1 sm:mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+              <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Enterprise Internship</motion.span>
+              <motion.span className="block mt-1 sm:mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent" variants={heroLine} custom={1} initial="hidden" animate="show">
                 Management for Modern
-              </span>
-              <span className="block mt-1 sm:mt-2">Universities</span>
+              </motion.span>
+              <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Universities</motion.span>
             </h1>
 
             {/* Subtitle - centered on mobile */}
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left">
+            <motion.p 
+              variants={heroLine} 
+              custom={3} 
+              initial="hidden" 
+              animate="show"
+              className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left"
+            >
               Streamline your entire internship program with our multi-tenant SaaS platform.
               From student onboarding to certificate generation — all in one place.
-            </p>
+            </motion.p>
 
             {/* CTA Buttons - full width on mobile */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start">
+            <motion.div 
+              variants={heroLine} 
+              custom={4} 
+              initial="hidden" 
+              animate="show"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start"
+            >
               <Button
                 size="lg"
                 asChild
-                className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 text-sm sm:text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 cursor-pointer group"
+                className={`${HERO_BUTTON_SIZE} bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 cursor-pointer group`}
               >
                 <Link href="/register">
                   Get Started Free
@@ -566,8 +590,8 @@ function MainHero() {
                 </Link>
               </Button>
               
-              <QuickTourDialog />
-            </div>
+              <QuickTourDialog buttonClassName={HERO_BUTTON_SIZE} />
+            </motion.div>
 
             {/* Trust Badges - centered on mobile */}
             <motion.div
@@ -605,7 +629,7 @@ function MainHero() {
           </motion.div>
 
           {/* Right Side - Dashboard Preview - hidden on mobile/tablet */}
-          <div className="hidden lg:block">
+          <div className="hidden lg:block min-w-0">
             <DashboardPreview primaryColor="#2563eb" />
           </div>
         </div>
@@ -925,7 +949,7 @@ export default function LandingPage() {
       <footer className="bg-muted/30 border-t border-border/50" style={{ position: 'relative', zIndex: 1 }}>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16">
           {/* Responsive grid: stacked on mobile, multi-column on desktop */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-6 gap-6 sm:gap-8 lg:gap-12">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 lg:gap-12">
             {/* Brand column - full width on mobile */}
             <div className="col-span-2">
               <Link href="/" className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6 group">
@@ -976,45 +1000,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Link columns - responsive sizing */}
-            <div>
-              <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
-                Product
-              </h4>
-              <ul className="space-y-2 sm:space-y-3">
-                {footerLinks.product.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 group"
-                    >
-                      {link.label}
-                      <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-0 group-hover:opacity-100 transition-opacity -ml-2 sm:-ml-3" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
-                Company
-              </h4>
-              <ul className="space-y-2 sm:space-y-3">
-                {footerLinks.company.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 group"
-                    >
-                      {link.label}
-                      <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-0 group-hover:opacity-100 transition-opacity -ml-2 sm:-ml-3" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
+            {/* Resources column */}
             <div>
               <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
                 Resources
@@ -1034,6 +1020,7 @@ export default function LandingPage() {
               </ul>
             </div>
 
+            {/* Legal column */}
             <div>
               <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
                 Legal

@@ -112,54 +112,135 @@ export const DEMO_TENANTS: Record<string, TenantConfig> = {
 // ============================================================
 
 /**
- * Base domains for the platform
+ * Infrastructure / hosting domains where the leftmost label is NOT a tenant
+ * slug. For example `internhub-abc123.vercel.app` would otherwise be treated
+ * as tenant "internhub-abc123" — clearly wrong. When the apex of the hostname
+ * matches one of these, we skip subdomain extraction entirely.
+ *
+ * Add new entries here when you adopt a new hosting/preview provider. Keep
+ * this list short and stable — it's the only "hardcoded" domain knowledge
+ * left in tenant detection, and it's only used to suppress false positives.
  */
-const BASE_DOMAINS = [
-  "internhub.pk",
-  "internhub.app",
-  "localhost:3000",
-  "localhost",
+const INFRA_DOMAINS: readonly string[] = [
+  "vercel.app",
+  "vercel.dev",
+  "netlify.app",
+  "netlify.com",
+  "cloudflarepages.dev",
+  "pages.dev",
+  "onrender.com",
+  "railway.app",
+  "fly.dev",
+  "herokuapp.com",
+  "firebaseapp.com",
+  "web.app",
+  "azurewebsites.net",
+  "amazonaws.com",
 ];
 
 /**
- * Extract subdomain from hostname
+ * Subdomain labels that are reserved for infrastructure / common use and must
+ * never be treated as tenant slugs. Adding a university with one of these
+ * names would collide with these reserved prefixes.
+ */
+const RESERVED_SUBDOMAINS: readonly string[] = [
+  "www",
+  "app",
+  "admin",
+  "api",
+  "mail",
+  "cdn",
+  "static",
+  "auth",
+  "docs",
+  "blog",
+  "support",
+  "help",
+  "status",
+  "assets",
+  "media",
+  "staging",
+  "dev",
+  "test",
+  "preview",
+  "demo",
+];
+
+/**
+ * Check whether `hostname` ends with one of the infrastructure domains.
+ * Examples that return true:
+ *   internhub-abc.vercel.app  →  matches "vercel.app"
+ *   foo.netlify.app           →  matches "netlify.app"
+ * Examples that return false:
+ *   internhub.pk              →  no infra match
+ *   iiui.example.com          →  no infra match
+ */
+function isInfrastructureDomain(hostname: string): boolean {
+  return INFRA_DOMAINS.some((d) =>
+    hostname === d || hostname.endsWith(`.${d}`)
+  );
+}
+
+/**
+ * Extract tenant slug from hostname — DOMAIN-AGNOSTIC.
+ *
+ * Works on ANY apex domain (internhub.pk, internship-portal.com, myuni.edu,
+ * etc.) so the platform can be deployed anywhere without code changes.
+ *
+ * Rules:
+ *   1. localhost / 127.0.0.1 → null (main platform on dev)
+ *   2. Infrastructure / hosting domains (vercel.app, netlify.app, …) → null
+ *      (the leftmost label is a deployment name, not a tenant)
+ *   3. Hostname needs ≥ 3 dot-separated parts for a subdomain to exist
+ *      (e.g. `iiuni.example.com` has 3 parts → tenant "iiui";
+ *       `example.com` has 2 parts → null / main platform)
+ *   4. Reserved subdomain labels (www, app, admin, api, …) → null
+ *   5. Otherwise the first label is the tenant slug
+ *
  * Examples:
- *   iiui.internhub.pk -> "iiui"
- *   internhub.pk -> null (main)
- *   localhost:3000 -> null (main)
- *   iiui.localhost:3000 -> "iiui" (dev mode)
+ *   internhub.pk                  → null (main)
+ *   iiui.internhub.pk             → "iiui"
+ *   nust.internship-portal.com    → "nust"
+ *   example.com                   → null (main)
+ *   www.example.com               → null (reserved)
+ *   internhub-abc.vercel.app      → null (infra domain)
+ *   localhost:3000                → null (dev)
+ *   iiui.localhost:3000           → "iiui" (dev subdomain pattern)
  */
 export function extractSubdomain(hostname: string): string | null {
-  // Remove port if present for local development
+  // Strip port for local development (e.g. "localhost:3000" → "localhost")
   const hostWithoutPort = hostname.split(":")[0];
 
-  // Check for localhost development patterns
+  // localhost / loopback = main platform (no tenant in dev by default)
   if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
-    return null; // Main platform on localhost
-  }
-
-  // Split hostname into parts
-  const parts = hostWithoutPort.split(".");
-
-  // Need at least 3 parts for subdomain (sub.domain.tld)
-  if (parts.length < 3) {
-    return null; // No subdomain
-  }
-
-  // Get potential subdomain (first part)
-  const subdomain = parts[0];
-
-  // Check if base domain matches our known domains
-  const baseDomain = parts.slice(-2).join(".");
-
-  if (!BASE_DOMAINS.some(d => d.includes(baseDomain))) {
-    // Unknown domain - treat as main platform
     return null;
   }
 
-  // Skip common non-tenant subdomains
-  const reservedSubdomains = ["www", "app", "admin", "api", "mail", "cdn", "static"];
-  if (reservedSubdomains.includes(subdomain)) {
+  // Infrastructure / hosting domains: leftmost label is a deployment name,
+  // not a tenant slug. Treat as main platform.
+  if (isInfrastructureDomain(hostWithoutPort)) {
+    return null;
+  }
+
+  const parts = hostWithoutPort.split(".");
+
+  // Need at least 3 parts for a subdomain (sub.domain.tld). Anything shorter
+  // is an apex domain (example.com) → main platform.
+  if (parts.length < 3) {
+    return null;
+  }
+
+  const subdomain = parts[0];
+
+  // Reserved labels are not tenant slugs.
+  if (RESERVED_SUBDOMAINS.includes(subdomain)) {
+    return null;
+  }
+
+  // Sanity: reject empty labels (e.g. "..example.com") and labels that are
+  // clearly not slug-shaped (contain spaces, etc.). Slug regex mirrors what
+  // the universities.slug column accepts.
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(subdomain)) {
     return null;
   }
 
@@ -191,10 +272,33 @@ export function getTenantConfig(slug: string | null): TenantConfig {
 }
 
 /**
- * Get tenant configuration client-side
+ * Get tenant configuration client-side.
+ *
+ * Returns a TenantConfig whose `slug` reflects the detected subdomain so
+ * that `useTenant().isTenant` resolves correctly client-side. Brand colors
+ * stay at the platform default — the actual per-tenant branding is hydrated
+ * server-side via `getServerTenantConfig()` (which queries the universities
+ * table) and passed into <TenantProvider initialTenant=…>. The client only
+ * needs the slug to know whether it's on a tenant subdomain or the main
+ * platform.
  */
 export function getClientTenantConfig(): TenantConfig {
-  return PLATFORM_DEFAULT_TENANT;
+  const slug = detectClientTenantSlug();
+
+  // No subdomain → main platform
+  if (!slug) {
+    return PLATFORM_DEFAULT_TENANT;
+  }
+
+  // Tenant subdomain detected — return a config with the slug set so
+  // isTenant becomes true. Branding stays at platform default; the server
+  // has already hydrated the real branding via initialTenant.
+  return {
+    ...PLATFORM_DEFAULT_TENANT,
+    id: slug,
+    slug,
+    name: slug, // server-side hydration will overwrite this with the real name
+  };
 }
 
 /**
