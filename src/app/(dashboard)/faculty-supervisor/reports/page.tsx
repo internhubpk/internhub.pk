@@ -77,6 +77,7 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // Types
 interface StudentForReport {
@@ -128,6 +129,7 @@ const DEFAULT_MARKSHEET: MarksheetEntry[] = [];
 
 export default function FacultySupervisorReportsPage() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   // State
   const [students, setStudents] = useState<StudentForReport[]>(DEFAULT_STUDENTS);
   const [marksheet, setMarksheet] = useState<MarksheetEntry[]>(DEFAULT_MARKSHEET);
@@ -146,7 +148,10 @@ export default function FacultySupervisorReportsPage() {
   // other faculty-supervisor pages.
   const handleExportAll = () => {
     if (!students || students.length === 0) {
-      alert("No students to export.");
+      toast({
+        title: "Nothing to export",
+        description: "There are no students to export yet.",
+      });
       return;
     }
     const headers = [
@@ -203,6 +208,10 @@ export default function FacultySupervisorReportsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingCertificate, setIsSavingCertificate] = useState(false);
   const [universityName, setUniversityName] = useState<string>("University");
+  // University domain (used for the certificate verification URL —
+  // previously hardcoded as "university.edu.pk/verify"). Fallback to
+  // the platform apex domain if the university has no `domain` set.
+  const [universityDomain, setUniversityDomain] = useState<string>("internhub.pk");
   const [departmentName, setDepartmentName] = useState<string>("Department");
 
   // Persist certificate to the `certificates` table via the
@@ -236,11 +245,17 @@ export default function FacultySupervisorReportsPage() {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.error?.message || `Failed to save certificate (HTTP ${res.status})`);
       }
-      // Toast-style feedback (no toast lib here — use alert as a fallback).
-      alert("Certificate saved to student's record.");
+      toast({
+        title: "Certificate saved",
+        description: "The certificate has been saved to the student's record.",
+      });
     } catch (err) {
       console.error("Error saving certificate:", err);
-      alert(err instanceof Error ? err.message : "Failed to save certificate.");
+      toast({
+        title: "Failed to save certificate",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setIsSavingCertificate(false);
     }
@@ -344,10 +359,17 @@ export default function FacultySupervisorReportsPage() {
         if (profile?.university_id) {
           const { data: uni } = await supabase
             .from("universities")
-            .select("name")
+            .select("name, domain, slug")
             .eq("id", profile.university_id)
             .maybeSingle();
           if (uni?.name) setUniversityName(uni.name);
+          // Prefer the university's own domain; fall back to
+          // <slug>.internhub.pk so the verify URL is always valid.
+          if (uni?.domain) {
+            setUniversityDomain(uni.domain);
+          } else if (uni?.slug) {
+            setUniversityDomain(`${uni.slug}.internhub.pk`);
+          }
         }
         if (profile?.department_id) {
           const { data: dept } = await supabase
@@ -689,7 +711,7 @@ export default function FacultySupervisorReportsPage() {
         <p>Certificate ID: {data.certificateId}</p>
         <p>Issue Date: {formatDate(data.issueDate)}</p>
         <p className="mt-2 text-gray-400">
-          This certificate is issued electronically and can be verified at university.edu.pk/verify
+          This certificate is issued electronically and can be verified at {universityDomain}/verify
         </p>
       </div>
     </div>
@@ -1084,14 +1106,16 @@ export default function FacultySupervisorReportsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-4 border-t">
+                  {/* Single button that opens the browser's print dialog —
+                      the user can pick "Save as PDF" as the destination
+                      from there. Previously we had two duplicate buttons
+                      ("Print Marksheet" and "Download PDF") that both
+                      called window.print() — confusing. */}
                   <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4" /> Print Marksheet
+                    <Printer className="h-4 w-4" /> Print / Save as PDF
                   </Button>
-                  <Button className="gap-2" onClick={() => window.print()}>
-                    <Download className="h-4 w-4" /> Download PDF
-                  </Button>
-                  <Button 
-                    variant="secondary" 
+                  <Button
+                    variant="secondary"
                     className="gap-2"
                     onClick={() => openCertificateDialog(selectedStudent)}
                   >
@@ -1182,7 +1206,7 @@ export default function FacultySupervisorReportsPage() {
                       ) : (
                         <Download className="h-5 w-5" />
                       )}
-                      Download PDF
+                      Print / Save as PDF
                     </Button>
                   </div>
                 </TabsContent>

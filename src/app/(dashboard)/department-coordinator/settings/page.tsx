@@ -44,6 +44,10 @@ interface CoordinatorProfile {
   linkedin_url: string | null;
   github_url: string | null;
   website: string | null;
+  // Account-status fields (used by the Account Status card).
+  role: string | null;
+  is_active: boolean | null;
+  status: string | null;
 }
 
 interface DepartmentInfo {
@@ -132,7 +136,10 @@ export default function CoordinatorSettingsPage() {
           department_id,
           linkedin_url,
           github_url,
-          website
+          website,
+          role,
+          is_active,
+          status
         `)
         .eq("user_id", user.id)
         .maybeSingle();
@@ -160,16 +167,21 @@ export default function CoordinatorSettingsPage() {
         }
       }
 
-      // Notification prefs are stored in localStorage keyed by user.id.
-      // (No `preferences` column on `profiles` — keeping it client-side
-      // avoids a schema migration for now.)
-      const stored = localStorage.getItem(`coord_prefs_${user.id}`);
-      if (stored) {
-        try {
-          setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(stored) });
-        } catch {
-          setPrefs(DEFAULT_PREFS);
+      // Notification prefs are persisted to `profiles.notification_prefs`
+      // (migration 0043). The previous localStorage approach was
+      // per-browser only and lost prefs on browser-data clear.
+      try {
+        const { data: prefsRow } = await supabase
+          .from("profiles")
+          .select("notification_prefs")
+          .eq("user_id", profileData.user_id)
+          .maybeSingle();
+        const stored = (prefsRow?.notification_prefs as Partial<NotificationPrefs> | null) || null;
+        if (stored) {
+          setPrefs({ ...DEFAULT_PREFS, ...stored });
         }
+      } catch {
+        // fall back to defaults
       }
     } catch (err) {
       console.error("Error loading coordinator settings:", err);
@@ -235,8 +247,17 @@ export default function CoordinatorSettingsPage() {
     if (!user) return;
     setIsSavingPrefs(true);
     try {
-      localStorage.setItem(`coord_prefs_${user.id}`, JSON.stringify(prefs));
-      await new Promise((r) => setTimeout(r, 200));
+      // Persist to `profiles.notification_prefs` (migration 0043).
+      const supabase = createClient();
+      if (!supabase) throw new Error("Supabase client not initialized");
+      const { error: prefsErr } = await supabase
+        .from("profiles")
+        .update({
+          notification_prefs: prefs as Record<string, unknown>,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (prefsErr) throw prefsErr;
       toast({
         title: "Preferences saved",
         description: "Your notification preferences have been updated.",
@@ -806,13 +827,27 @@ export default function CoordinatorSettingsPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm">Account active</span>
-                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                  <CheckCircle2 className="mr-1 h-3 w-3" /> Active
-                </Badge>
+                {profile?.is_active !== false ? (
+                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                    <CheckCircle2 className="mr-1 h-3 w-3" /> Active
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-700 border-red-200">
+                    <AlertCircle className="mr-1 h-3 w-3" /> Inactive
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Role</span>
-                <Badge variant="outline">Department Coordinator</Badge>
+                <Badge variant="outline">
+                  {profile?.role
+                    ? profile.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                    : "—"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Profile status</span>
+                <Badge variant="outline">{profile?.status || "—"}</Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Multi-tenant isolation</span>

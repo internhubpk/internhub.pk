@@ -146,16 +146,33 @@ export default function UniversityAdminSettingsPage() {
     loadSettings();
   }, [loadSettings]);
 
-  // Load in-app notification prefs from localStorage keyed by user.id
-  // (matches the coordinator settings pattern — client-side only).
+  // Load in-app notification prefs from the `profiles.notification_prefs`
+  // jsonb column (migration 0043). Previously these were stored in
+  // localStorage keyed by user.id — that meant prefs didn't sync across
+  // devices/browsers and were silently lost when the user cleared
+  // browser data. The DB column is the source of truth now.
   useEffect(() => {
     if (!user) return;
-    try {
-      const stored = localStorage.getItem(`univ_admin_prefs_${user.id}`);
-      if (stored) setNotifications({ ...defaultNotifications, ...JSON.parse(stored) });
-    } catch {
-      // ignore — fall back to defaults
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        if (!supabase) return;
+        const { data } = await supabase
+          .from("profiles")
+          .select("notification_prefs")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const stored = (data?.notification_prefs as Partial<NotificationPrefs> | null) || null;
+        if (stored) {
+          setNotifications({ ...defaultNotifications, ...stored });
+        }
+      } catch {
+        // ignore — fall back to defaults
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleSaveGeneral = async () => {
@@ -224,9 +241,19 @@ export default function UniversityAdminSettingsPage() {
     if (!user) return;
     try {
       setIsSaving(true);
-      localStorage.setItem(`univ_admin_prefs_${user.id}`, JSON.stringify(notifications));
-      // Small artificial delay so the spinner is visible — purely cosmetic.
-      await new Promise((r) => setTimeout(r, 200));
+      // Persist to `profiles.notification_prefs` (migration 0043) so
+      // prefs sync across devices/browsers. The previous localStorage
+      // approach was per-browser only.
+      const supabase = createClient();
+      if (!supabase) throw new Error("Supabase client not initialized");
+      const { error: prefsErr } = await supabase
+        .from("profiles")
+        .update({
+          notification_prefs: notifications as Record<string, unknown>,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (prefsErr) throw prefsErr;
       toast({
         title: "Saved",
         description: "Notification preferences updated",
@@ -235,7 +262,7 @@ export default function UniversityAdminSettingsPage() {
       console.error("Error saving notifications:", error);
       toast({
         title: "Error",
-        description: "Failed to save notification preferences",
+        description: error instanceof Error ? error.message : "Failed to save notification preferences",
         variant: "destructive",
       });
     } finally {
@@ -533,7 +560,7 @@ export default function UniversityAdminSettingsPage() {
                 <Bell className="h-5 w-5" /> In-App Notification Preferences
               </CardTitle>
               <CardDescription>
-                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime. Preferences are saved per-admin in this browser.
+                Choose which events trigger an in-app notification (shown in the bell icon at the top of every page). Notifications are stored in your inbox and can be reviewed anytime. Preferences are saved to your account and sync across devices.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

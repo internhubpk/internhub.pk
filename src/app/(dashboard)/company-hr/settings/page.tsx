@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 interface CompanyForm {
@@ -170,14 +171,29 @@ export default function CompanyHRSettingsPage() {
     load();
   }, [load]);
 
+  // Load in-app notification prefs from `profiles.notification_prefs`
+  // (migration 0043). Previously stored in localStorage per-browser —
+  // now persisted to DB so prefs sync across devices/browsers.
   useEffect(() => {
     if (!user) return;
-    try {
-      const stored = localStorage.getItem(`company_hr_prefs_${user.id}`);
-      if (stored) setNotifs({ ...defaultNotifs, ...JSON.parse(stored) });
-    } catch {
-      // ignore
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        if (!supabase) return;
+        const { data } = await supabase
+          .from("profiles")
+          .select("notification_prefs")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const stored = (data?.notification_prefs as Partial<NotificationPrefs> | null) || null;
+        if (stored) setNotifs({ ...defaultNotifs, ...stored });
+      } catch {
+        // ignore — fall back to defaults
+      }
+    })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleSaveCompany = async () => {
@@ -233,11 +249,25 @@ export default function CompanyHRSettingsPage() {
     if (!user) return;
     setSavingNotifs(true);
     try {
-      localStorage.setItem(`company_hr_prefs_${user.id}`, JSON.stringify(notifs));
-      await new Promise((r) => setTimeout(r, 200));
+      // Persist to `profiles.notification_prefs` (migration 0043) so
+      // prefs sync across devices/browsers.
+      const supabase = createClient();
+      if (!supabase) throw new Error("Supabase client not initialized");
+      const { error: prefsErr } = await supabase
+        .from("profiles")
+        .update({
+          notification_prefs: notifs as Record<string, unknown>,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (prefsErr) throw prefsErr;
       toast({ title: "Saved", description: "Notification preferences updated" });
     } catch (e) {
-      toast({ title: "Save failed", description: "Failed to save", variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: e instanceof Error ? e.message : "Failed to save",
+        variant: "destructive",
+      });
     } finally {
       setSavingNotifs(false);
     }
