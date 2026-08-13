@@ -691,26 +691,23 @@ export default function LandingPage() {
               key={feature.title}
               className="group h-full border-border/50 hover:border-primary/20 bg-card/50 backdrop-blur-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 cursor-pointer hover:-translate-y-1"
             >
-              <CardHeader className="pb-4 px-4 sm:px-6">
-                <div
-                  className={`inline-flex p-3 sm:p-4 rounded-xl sm:rounded-2xl ${feature.bgColor} mb-3 sm:mb-4 group-hover:scale-110 transition-transform duration-300`}
-                >
-                  <feature.icon className={`h-6 w-6 sm:h-7 sm:w-7 ${feature.color}`} />
+              <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+                {/* Icon + title side-by-side */}
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div
+                    className={`inline-flex shrink-0 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl ${feature.bgColor} group-hover:scale-110 transition-transform duration-300`}
+                  >
+                    <feature.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${feature.color}`} />
+                  </div>
+                  <CardTitle className="text-base sm:text-lg lg:text-xl font-semibold group-hover:text-primary transition-colors leading-tight">
+                    {feature.title}
+                  </CardTitle>
                 </div>
-                <CardTitle className="text-lg sm:text-xl font-semibold group-hover:text-primary transition-colors">
-                  {feature.title}
-                </CardTitle>
               </CardHeader>
-              <CardContent className="px-4 sm:px-6">
+              <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
                 <CardDescription className="text-sm sm:text-base leading-relaxed">
                   {feature.description}
                 </CardDescription>
-                
-                {/* Hover link indicator */}
-                <div className="mt-4 flex items-center text-xs sm:text-sm font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                  Learn more
-                  <ChevronRight className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </div>
               </CardContent>
             </Card>
           ))}
