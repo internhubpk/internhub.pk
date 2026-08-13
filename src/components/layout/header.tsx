@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,6 +15,7 @@ import {
   Menu,
   Command,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
+import { getNavigationForRole } from "@/config/navigation";
+import type { UserRole } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -178,10 +181,60 @@ function getBreadcrumbs(
 interface SearchCommandProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialQuery?: string;
 }
 
-function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
-  const [query, setQuery] = useState("");
+// Cross-cutting quick actions available to every signed-in user
+const quickActions: { label: string; href: string; keywords: string; group: string }[] = [
+  { label: "Browse Marketplace", href: "/marketplace", keywords: "internships browse search opportunities", group: "Quick Actions" },
+  { label: "My Profile", href: "/student/profile", keywords: "account me settings", group: "Quick Actions" },
+  { label: "Notifications", href: "/student/notifications", keywords: "inbox alerts", group: "Quick Actions" },
+  { label: "Sign Out", href: "/login", keywords: "logout exit", group: "Quick Actions" },
+];
+
+function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandProps) {
+  const [query, setQuery] = useState(initialQuery);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const router = useRouter();
+  const { profile } = useAuth();
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sync incoming initialQuery when the dialog opens
+  useEffect(() => {
+    if (open) setQuery(initialQuery);
+  }, [open, initialQuery]);
+
+  // Build searchable destinations from the user's role-based nav
+  const navItems = useMemo(() => {
+    const role = (profile?.role || "student") as UserRole;
+    const roleNav = getNavigationForRole(role);
+    const items: { label: string; href: string; keywords: string; group: string; Icon?: LucideIcon }[] = [];
+    for (const item of roleNav) {
+      items.push({
+        label: item.title,
+        href: item.href,
+        keywords: `${item.title} ${item.href}`.toLowerCase(),
+        group: "Pages",
+        Icon: item.icon,
+      });
+    }
+    for (const qa of quickActions) {
+      items.push({ ...qa, keywords: `${qa.label} ${qa.keywords}`.toLowerCase() });
+    }
+    return items;
+  }, [profile?.role]);
+
+  // Filter by query
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return navItems;
+    return navItems.filter((item) => item.keywords.includes(q) || item.label.toLowerCase().includes(q));
+  }, [query, navItems]);
+
+  // Reset active index when results change
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [results]);
 
   // Keyboard shortcut handler
   const handleKeyDown = useCallback(
@@ -197,12 +250,55 @@ function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     [open, onOpenChange]
   );
 
+  // Arrow-key navigation inside the dialog
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((i) => {
+          const next = Math.min(i + 1, results.length - 1);
+          listRef.current?.querySelectorAll<HTMLElement>("[data-result-item]")[next]?.scrollIntoView({ block: "nearest" });
+          return next;
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((i) => {
+          const next = Math.max(i - 1, 0);
+          listRef.current?.querySelectorAll<HTMLElement>("[data-result-item]")[next]?.scrollIntoView({ block: "nearest" });
+          return next;
+        });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const item = results[activeIndex];
+        if (item) {
+          router.push(item.href);
+          onOpenChange(false);
+          setQuery("");
+        }
+      }
+    },
+    [results, activeIndex, router, onOpenChange]
+  );
+
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
   if (!open) return null;
+
+  const handleSelect = (href: string) => {
+    router.push(href);
+    onOpenChange(false);
+    setQuery("");
+  };
+
+  // Group results for display
+  const grouped = results.reduce<Record<string, typeof results>>((acc, item) => {
+    (acc[item.group] = acc[item.group] || []).push(item);
+    return acc;
+  }, {});
+  let flatIndex = -1;
 
   return (
     <motion.div
@@ -234,9 +330,10 @@ function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
             <Search className="h-5 w-5 text-muted-foreground shrink-0" />
             <input
               type="text"
-              placeholder="Search anything..."
+              placeholder="Search pages, actions..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleInputKeyDown}
               autoFocus
               className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
             />
@@ -246,44 +343,62 @@ function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
           </div>
 
           {/* Results */}
-          <div className="max-h-[300px] overflow-y-auto p-2">
-            {query ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                Searching for &quot;{query}&quot;...
+          <div ref={listRef} className="max-h-[300px] overflow-y-auto p-2">
+            {results.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No matches for &quot;{query}&quot;
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try a different keyword or browse the marketplace.
+                </p>
               </div>
             ) : (
-              <div className="space-y-1">
-                <p className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Quick Actions
-                </p>
-                {[
-                  { icon: LayoutIcon, label: "Go to Dashboard", shortcut: "G D" },
-                  { icon: BriefcaseIcon, label: "View Internships", shortcut: "G I" },
-                  { icon: FileTextIcon, label: "My Applications", shortcut: "G A" },
-                  { icon: SettingsIcon, label: "Open Settings", shortcut: "G S" },
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm hover:bg-accent transition-colors text-left"
-                    onClick={() => {
-                      onOpenChange(false);
-                      setQuery("");
-                    }}
-                  >
-                    <item.icon className="h-4 w-4 text-muted-foreground" />
-                    <span>{item.label}</span>
-                    <kbd className="ml-auto hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
-                      {item.shortcut}
-                    </kbd>
-                  </button>
-                ))}
-              </div>
+              Object.entries(grouped).map(([group, items]) => (
+                <div key={group} className="space-y-1 mb-2">
+                  <p className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {group}
+                  </p>
+                  {items.map((item) => {
+                    flatIndex += 1;
+                    const idx = flatIndex;
+                    const isActive = idx === activeIndex;
+                    return (
+                      <button
+                        key={`${group}-${item.label}-${item.href}`}
+                        data-result-item
+                        className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                          isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent"
+                        }`}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                        onClick={() => handleSelect(item.href)}
+                      >
+                        {item.Icon ? (
+                          <item.Icon className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full bg-primary/20" />
+                        )}
+                        <span>{item.label}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground/70 truncate max-w-[40%]">
+                          {item.href}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
             )}
           </div>
 
           {/* Footer */}
           <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30">
-            <p className="text-xs text-muted-foreground">Search by InternHub</p>
+            <p className="text-xs text-muted-foreground">
+              <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-muted px-1 font-mono text-[10px] mr-1">↑</kbd>
+              <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-muted px-1 font-mono text-[10px] mr-1">↓</kbd>
+              to navigate
+              <kbd className="inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-muted px-1 font-mono text-[10px] ml-2 mr-1">↵</kbd>
+              to select
+            </p>
             <div className="flex items-center gap-1">
               <kbd className="inline-flex h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
                 ⌘
@@ -294,92 +409,6 @@ function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
         </div>
       </motion.div>
     </motion.div>
-  );
-}
-
-// Quick action icons for search dialog
-function LayoutIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <rect width="7" height="9" x="3" y="3" rx="1" />
-      <rect width="7" height="5" x="14" y="3" rx="1" />
-      <rect width="7" height="9" x="14" y="12" rx="1" />
-      <rect width="7" height="5" x="3" y="16" rx="1" />
-    </svg>
-  );
-}
-
-function BriefcaseIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
-      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-    </svg>
-  );
-}
-
-function FileTextIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" x2="8" y1="13" y2="13" />
-      <line x1="16" x2="8" y1="17" y2="17" />
-      <line x1="10" x2="8" y1="9" y2="9" />
-    </svg>
-  );
-}
-
-function SettingsIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   );
 }
 
@@ -481,10 +510,8 @@ export function Header({ className }: HeaderProps) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      console.log("Searching for:", searchQuery);
-      // Implement global search functionality
-    }
+    // Open the command dialog with the typed query pre-filled
+    setIsSearchOpen(true);
   };
 
   return (
@@ -763,7 +790,11 @@ export function Header({ className }: HeaderProps) {
       {/* Search Command Dialog (⌘K) */}
       <AnimatePresence>
         {isSearchOpen && (
-          <SearchCommand open={isSearchOpen} onOpenChange={setIsSearchOpen} />
+          <SearchCommand
+            open={isSearchOpen}
+            onOpenChange={setIsSearchOpen}
+            initialQuery={searchQuery}
+          />
         )}
       </AnimatePresence>
     </>
