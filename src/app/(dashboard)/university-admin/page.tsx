@@ -50,7 +50,7 @@ interface DepartmentSummary {
 
 interface RecentActivity {
   id: string;
-  type: "student_registered" | "internship_started" | "application_submitted" | "evaluation_completed";
+  type: "student_registered" | "internship_started" | "application_submitted" | "evaluation_completed" | "auth" | "internship" | "application" | "evaluation" | "document" | "company" | "settings" | "other";
   message: string;
   timestamp: string;
   userName?: string;
@@ -201,39 +201,50 @@ export default function UniversityAdminDashboard() {
         setDepartments(deptSummaries);
       }
 
-      // Generate recent activity mock data based on actual data
+      // Fetch recent activity from audit_logs (real events, scoped to this
+      // university). Previously this section fabricated timestamps like
+      // "Just now" / "1h ago" / "2h ago" / "1d ago" based on counts — that
+      // was mock data, not real activity. Now we fetch the 8 most recent
+      // audit log entries for this university and render those.
+      const auditRes = await supabase
+        .from("audit_logs")
+        .select("id, action, entity_type, entity_id, university_id, details, created_at, user_id")
+        .eq("university_id", universityId)
+        .order("created_at", { ascending: false })
+        .limit(8);
+
       const activities: RecentActivity[] = [];
-      if (studentsRes.count && studentsRes.count > 0) {
-        activities.push({
-          id: "1",
-          type: "student_registered",
-          message: `${studentsRes.count} students enrolled`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-      if (activeInternRes.count && activeInternRes.count > 0) {
-        activities.push({
-          id: "2",
-          type: "internship_started",
-          message: `${activeInternRes.count} internships currently active`,
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-        });
-      }
-      if (pendingAppsRes.count && pendingAppsRes.count > 0) {
-        activities.push({
-          id: "3",
-          type: "application_submitted",
-          message: `${pendingAppsRes.count} applications awaiting review`,
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-        });
-      }
-      if (completedInternRes.count && completedInternRes.count > 0) {
-        activities.push({
-          id: "4",
-          type: "evaluation_completed",
-          message: `${completedInternRes.count} internships completed this term`,
-          timestamp: new Date(Date.now() - 86400000).toISOString(),
-        });
+      if (auditRes.data && auditRes.data.length > 0) {
+        // Resolve actor display names in one batched query (skip if no user_ids).
+        const actorIds = Array.from(
+          new Set(
+            auditRes.data
+              .map((log: any) => log.user_id)
+              .filter((id: any) => typeof id === "string" && id.length > 0)
+          )
+        );
+        let actorMap: Record<string, string> = {};
+        if (actorIds.length > 0) {
+          const { data: actorProfiles } = await supabase
+            .from("profiles")
+            .select("user_id, full_name, email")
+            .in("user_id", actorIds);
+          if (actorProfiles) {
+            for (const p of actorProfiles) {
+              actorMap[p.user_id] = p.full_name || p.email || "Unknown";
+            }
+          }
+        }
+
+        for (const log of auditRes.data) {
+          activities.push({
+            id: log.id,
+            type: auditActionToActivityType(log.action),
+            message: formatAuditMessage(log, actorMap[log.user_id as string]),
+            timestamp: log.created_at,
+            userName: log.user_id ? actorMap[log.user_id as string] : undefined,
+          });
+        }
       }
       setRecentActivity(activities);
 
@@ -316,7 +327,7 @@ export default function UniversityAdminDashboard() {
     {
       title: "Reports & Analytics",
       description: "View detailed reports",
-      href: "#",
+      href: "/university-admin/reports",
       icon: BarChart3,
       color: "text-orange-600",
       bgColor: "bg-orange-50 dark:bg-orange-950/50",
@@ -328,11 +339,22 @@ export default function UniversityAdminDashboard() {
       case "student_registered":
         return <Users className="h-4 w-4" />;
       case "internship_started":
+      case "internship":
         return <Briefcase className="h-4 w-4" />;
       case "application_submitted":
+      case "application":
         return <FileText className="h-4 w-4" />;
       case "evaluation_completed":
+      case "evaluation":
         return <UserCheck className="h-4 w-4" />;
+      case "document":
+        return <FileText className="h-4 w-4" />;
+      case "company":
+        return <Building2 className="h-4 w-4" />;
+      case "auth":
+        return <Activity className="h-4 w-4" />;
+      case "settings":
+        return <Settings className="h-4 w-4" />;
       default:
         return <Activity className="h-4 w-4" />;
     }
@@ -343,11 +365,22 @@ export default function UniversityAdminDashboard() {
       case "student_registered":
         return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400";
       case "internship_started":
+      case "internship":
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400";
       case "application_submitted":
+      case "application":
         return "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400";
       case "evaluation_completed":
+      case "evaluation":
         return "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-400";
+      case "document":
+        return "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-400";
+      case "company":
+        return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400";
+      case "auth":
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+      case "settings":
+        return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
     }
@@ -361,6 +394,69 @@ export default function UniversityAdminDashboard() {
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
   };
+
+  // Map audit_logs.action (which can be dotted like "auth.login" or
+  // snake_case like "create_supervisor") to a RecentActivity["type"]
+  // bucket so we can pick the right icon/color in the UI.
+  function auditActionToActivityType(action: string): RecentActivity["type"] {
+    if (!action) return "other";
+    const a = action.toLowerCase();
+    if (a.startsWith("auth.")) return "auth";
+    if (a.startsWith("student.")) return "student_registered";
+    if (a.startsWith("internship.")) return "internship";
+    if (a.startsWith("application.")) return "application";
+    if (a.startsWith("evaluation.") || a.includes("evaluation")) return "evaluation";
+    if (a.startsWith("document.") || a.includes("document")) return "document";
+    if (a.startsWith("company.")) return "company";
+    if (a.startsWith("settings.")) return "settings";
+    if (a.includes("certificate")) return "evaluation_completed";
+    if (a.includes("weekly_log")) return "evaluation";
+    return "other";
+  }
+
+  // Format an audit log row into a human-readable message.
+  // `actorName` is optional — if present, prefixed to the message.
+  function formatAuditMessage(log: any, actorName?: string): string {
+    const action: string = log.action || "";
+    const details = log.details || {};
+    const entityLabel = details.name || details.email || details.title || "";
+    const prefix = actorName ? `${actorName} — ` : "";
+
+    // Known audit_logs.action values come in two styles: dotted
+    // ("auth.login") and snake_case ("create_supervisor"). Map the
+    // common ones to friendly messages.
+    const actionMap: Record<string, string> = {
+      "auth.login": "Signed in",
+      "auth.logout": "Signed out",
+      "auth.register": "Registered",
+      "student.create": "Created student",
+      "student.update": "Updated student",
+      "university.create": "Created university",
+      "university.update": "Updated university",
+      "university.suspend": "Suspended university",
+      "internship.create": "Created internship",
+      "internship.approve": "Approved internship",
+      "internship.reject": "Rejected internship",
+      "application.submit": "Submitted application",
+      "application.approve": "Approved application",
+      "application.reject": "Rejected application",
+      "evaluation.submit": "Submitted evaluation",
+      "certificate.issue": "Issued certificate",
+      "certificate.revoke": "Revoked certificate",
+      "document.upload": "Uploaded document",
+      "company.create": "Created company",
+      "company.verify": "Verified company",
+      "settings.change": "Changed settings",
+      "user.role_change": "Changed user role",
+      "create_supervisor": "Created supervisor",
+      "weekly_log_approve": "Approved weekly log",
+      "weekly_log_reject": "Rejected weekly log",
+    };
+
+    const friendly = actionMap[action] || action.replace(/[._]/g, " ");
+    const suffix = entityLabel ? `: ${entityLabel}` : "";
+    return `${prefix}${friendly}${suffix}`;
+  }
 
   if (isLoading) {
     return (

@@ -108,7 +108,10 @@ const emptyStats: PlatformStats = {
 const emptyHealth: SystemHealth = {
   database_status: "healthy",
   db_latency_ms: null,
-  version: "1.0.0",
+  // Read the app version from package.json via next.config.ts env injection
+  // (NEXT_PUBLIC_APP_VERSION is inlined at build time). Falls back to
+  // "—" if the env var is somehow missing.
+  version: process.env.NEXT_PUBLIC_APP_VERSION || "—",
 };
 
 export default function SuperAdminSettingsPage() {

@@ -484,6 +484,70 @@ export async function POST(request: NextRequest) {
     }
 
     // ==========================================================
+    // 6c. For supervisor-type roles (faculty_supervisor, site_supervisor,
+    //     external_evaluator), also INSERT a row into the `supervisors`
+    //     table. Without this row, the new user has a profile with
+    //     role='faculty_supervisor' but no entry in `supervisors`, so:
+    //       - /department-coordinator/supervisors (which queries the
+    //         `supervisors` table) returns empty
+    //       - The program-creation "Allot Faculty Supervisor" dropdown
+    //         (which queries `profiles.role='faculty_supervisor'`) WOULD
+    //         see them, but the dedicated Supervisors page would not.
+    //     Inserting here keeps both views consistent.
+    //
+    //     Uses the service role client to bypass RLS.
+    //     Idempotent: if a row already exists for (user_id, type), the
+    //     unique constraint (migration 0024 ensures these columns exist;
+    //     the unique index is added below if not already present) prevents
+    //     duplicates — we use .onConflict("user_id,type").merge() so a
+    //     re-create after a delete is safe.
+    // ==========================================================
+    const roleToSupervisorType: Record<string, "faculty" | "site" | "external"> = {
+      faculty_supervisor: "faculty",
+      site_supervisor: "site",
+      external_evaluator: "external",
+    };
+
+    let supervisorRowWarning: string | undefined;
+    const supType = roleToSupervisorType[role];
+    if (supType) {
+      const supervisorInsert: Record<string, unknown> = {
+        user_id: authData.user.id,
+        type: supType,
+        is_active: true,
+        first_name: firstName,
+        last_name: lastName,
+        email: email.trim(),
+        ...(phone ? { phone: phone.trim() } : {}),
+        ...(job_title ? { department_focus: job_title.trim() } : {}),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (effectiveUniversityId) supervisorInsert.university_id = effectiveUniversityId;
+      if (effectiveDepartmentId) supervisorInsert.department_id = effectiveDepartmentId;
+      if (company_id) supervisorInsert.company_id = company_id;
+
+      try {
+        const { error: supInsertErr } = await adminClient
+          .from("supervisors")
+          .upsert(supervisorInsert, { onConflict: "user_id,type" });
+        if (supInsertErr) {
+          console.warn(
+            "[/api/admin/create-user] supervisors upsert error (non-fatal):",
+            supInsertErr
+          );
+          supervisorRowWarning = `Supervisor profile row could not be created: ${supInsertErr.message}. The user account and profile were created successfully, but the user may not appear on the Supervisors page until this is fixed.`;
+        }
+      } catch (supErr: any) {
+        console.warn(
+          "[/api/admin/create-user] supervisors upsert threw (non-fatal):",
+          supErr?.message
+        );
+        supervisorRowWarning = `Supervisor profile row could not be created: ${supErr?.message || "Unknown error"}. The user account and profile were created successfully, but the user may not appear on the Supervisors page until this is fixed.`;
+      }
+    }
+
+    // ==========================================================
     // 7. Return the new user's id. The caller's session is NOT
     //    affected — they remain signed in as super_admin /
     //    university_admin.
@@ -509,6 +573,9 @@ export async function POST(request: NextRequest) {
       warning = `Profile issue: ${verifyError}. The coordinator was created in auth but their profile may be missing university_id — they will not appear in the coordinators list until this is fixed.`;
     } else if (upsertErrMsg && !profileFixed) {
       warning = `Profile save issue: ${upsertErrMsg}`;
+    }
+    if (supervisorRowWarning) {
+      warning = warning ? `${warning} ${supervisorRowWarning}` : supervisorRowWarning;
     }
 
     return NextResponse.json<

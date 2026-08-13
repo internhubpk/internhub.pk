@@ -84,33 +84,14 @@ interface InternDocument {
   status: "pending" | "verified" | "rejected";
 }
 
-interface DocumentTemplate {
-  id: string;
-  name: string;
-  type: "offer_letter" | "certificate";
-  description: string;
-  preview_url?: string;
-}
-
 // Default empty states - data will be fetched from database
 const DEFAULT_DOCUMENTS: InternDocument[] = [];
 const DEFAULT_INTERNS: Array<{id: string; name: string; email: string; program: string; has_offer_letter: boolean; has_certificate: boolean}> = [];
-
-// Built-in templates. These are placeholder document templates — they don't
-// reference a DB table. Selecting one and uploading a file uses the file's
-// content; selecting one without a file creates a placeholder record.
-const DEFAULT_TEMPLATES: DocumentTemplate[] = [
-  { id: "tpl_001", name: "Standard Offer Letter Template", type: "offer_letter", description: "Professional offer letter template for all internship positions" },
-  { id: "tpl_002", name: "Technical Internship Offer Letter", type: "offer_letter", description: "Specialized template for technical/engineering roles" },
-  { id: "tpl_003", name: "Internship Completion Certificate", type: "certificate", description: "Official certificate template for completed internships" },
-  { id: "tpl_004", name: "Certificate of Excellence", type: "certificate", description: "Premium certificate template for outstanding performers" },
-];
 
 export default function CompanyHRDocumentsPage() {
   const { profile } = useAuth();
   const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
   const [interns, setInterns] = useState(DEFAULT_INTERNS);
-  const [templates] = useState<DocumentTemplate[]>(DEFAULT_TEMPLATES);
   const [uploading, setUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -295,19 +276,14 @@ export default function CompanyHRDocumentsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Template</Label>
-                  <Select>
-                    <SelectTrigger><SelectValue placeholder="Select template..." /></SelectTrigger>
-                    <SelectContent>
-                      {templates.filter(t => t.type === uploadDocumentType).map(tpl => (
-                        <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Recipients</Label>
+                  <p className="text-sm text-muted-foreground">
+                    This will create a placeholder {uploadDocumentType === "offer_letter" ? "offer letter" : "certificate"} record for each intern who doesn&apos;t already have one. You can upload the actual file for each intern individually from the &quot;By Intern&quot; tab afterward.
+                  </p>
                 </div>
 
                 <div className="p-3 bg-muted/30 rounded-lg space-y-2">
-                  <p className="text-sm font-medium">Preview</p>
+                  <p className="text-sm font-medium">Summary</p>
                   <div className="aspect-[8.5/11] bg-white border rounded-lg flex items-center justify-center">
                     <FileText className="h-12 w-12 text-muted-foreground/40" />
                   </div>
@@ -464,10 +440,6 @@ export default function CompanyHRDocumentsPage() {
           <TabsTrigger value="interns" className="gap-2">
             <Users className="h-4 w-4" />
             By Intern
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Templates
           </TabsTrigger>
         </TabsList>
 
@@ -670,76 +642,6 @@ export default function CompanyHRDocumentsPage() {
           </div>
         </TabsContent>
 
-        {/* Templates Tab */}
-        <TabsContent value="templates" className="mt-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            {templates.map((template) => (
-              <motion.div
-                key={template.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                      <div className={`p-3 rounded-lg ${template.type === 'offer_letter' ? 'bg-blue-100' : 'bg-purple-100'}`}>
-                        {template.type === 'offer_letter' ? (
-                          <FileSignature className="h-6 w-6 text-blue-600" />
-                        ) : (
-                          <Award className="h-6 w-6 text-purple-600" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold">{template.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
-                        
-                        <div className="mt-4 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => alert(`Template: ${template.name}\n\n${template.description}\n\n(In a future release, this will open a PDF preview.)`)}
-                          >
-                            <Eye className="h-3 w-3 mr-1" /> Preview
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setUploadDocumentType(template.type);
-                              setIsUploadOpen(true);
-                            }}
-                          >
-                            Use Template
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-
-            {/* Add New Template Card */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card
-                className="border-dashed cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => alert("Custom template designer is coming soon. For now, use the built-in templates above.")}
-              >
-                <CardContent className="p-6 flex flex-col items-center justify-center min-h-[180px]">
-                  <Plus className="h-8 w-8 text-muted-foreground mb-3" />
-                  <p className="font-semibold">Create New Template</p>
-                  <p className="text-sm text-muted-foreground text-center mt-1">
-                    Design a custom template for your organization
-                  </p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   );

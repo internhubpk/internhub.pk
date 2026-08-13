@@ -292,8 +292,33 @@ export default function SiteSupervisorNotificationsPage() {
   ];
 
   function applyTemplate(template: NotificationTemplate) {
-    setNotificationTitle(template.subject);
-    setNotificationContent(template.content);
+    // Auto-substitute the template's placeholder tokens with real values:
+    //   {student_name}  → for multi-recipient notifications, "there" (a
+    //                     safe greeting that works for any recipient); for
+    //                     single-recipient, the selected student's name.
+    //   {supervisor_name} → the site supervisor's own name (from profile).
+    //
+    // Other tokens ({week_range}, {meeting_topic}, {feedback_points}, etc.)
+    // are left as-is — the supervisor fills them in manually before sending.
+    const supervisorName =
+      (profile?.full_name?.trim()) ||
+      [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() ||
+      profile?.email ||
+      "Your Supervisor";
+
+    let studentName = "there";
+    if (selectedStudentIds.length === 1) {
+      const sel = students.find(s => s.id === selectedStudentIds[0]);
+      if (sel) studentName = sel.name.split(" ")[0] || sel.name;
+    }
+
+    const replaceTokens = (s: string) =>
+      s
+        .replaceAll("{student_name}", studentName)
+        .replaceAll("{supervisor_name}", supervisorName);
+
+    setNotificationTitle(replaceTokens(template.subject));
+    setNotificationContent(replaceTokens(template.content));
     setActiveTab("compose");
   }
 
@@ -800,14 +825,16 @@ export default function SiteSupervisorNotificationsPage() {
             ))}
           </div>
 
-          {/* Custom Template Info */}
+          {/* Custom Template Info — honest empty state instead of "coming soon" */}
           <Card className="border-dashed">
             <CardContent className="py-8 text-center">
               <Info className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h3 className="font-semibold mb-2">Create Custom Templates</h3>
+              <h3 className="font-semibold mb-2">Custom Templates</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                You can save frequently used messages as templates for quick access.
-                Custom template management coming soon!
+                Custom template management is not yet available. The five
+                starter templates above cover the most common notifications.
+                Use any of them as a starting point and edit the message
+                before sending.
               </p>
             </CardContent>
           </Card>
