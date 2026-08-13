@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,35 +14,44 @@ import {
   CheckCircle2,
   Building2,
   FileText,
+  ExternalLink,
+  ShieldCheck,
+  Linkedin,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { toast } from "sonner";
 
-// Types
 // `certificates.status` uses the `certificate_status` enum
 // (draft, issued, revoked, expired).
-// Schema: id, student_user_id, internship_id, university_id, company_id,
-// title, certificate_number, issued_at, issued_by, file_url, status, metadata,
-// created_at, updated_at. NO `duration`, NO `skills`, NO `grade`.
+// Migration 0044 added: verification_code, verification_url, linkedin_added_at.
 interface Certificate {
   id: string;
   title: string;
   company: string;
+  company_logo_url?: string | null;
   issueDate: string;
   status: "draft" | "issued" | "revoked" | "expired";
   certificateNumber: string;
   fileUrl: string | null;
+  verificationCode: string | null;
+  verificationUrl: string | null;
+  linkedinAddedAt: string | null;
+  internshipTitle?: string | null;
 }
 
-// Default empty state - certificates will be fetched from database
 const DEFAULT_CERTIFICATES: Certificate[] = [];
 
 export default function StudentCertificatesPage() {
   const { user } = useAuth();
   const [certificates, setCertificates] = useState<Certificate[]>(DEFAULT_CERTIFICATES);
   const [isLoading, setIsLoading] = useState(true);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCertificates();
@@ -53,45 +62,135 @@ export default function StudentCertificatesPage() {
 
     try {
       const supabase = createClient();
-      
-      // Fetch certificates for current student. Only real columns. Join
-      // `companies` directly via `company_id` (NOT through `internships`).
+
       const { data, error } = await supabase
         .from('certificates')
         .select(`
           id,
           title,
           certificate_number,
+          verification_code,
+          verification_url,
           issued_at,
           issued_by,
           file_url,
           status,
+          linkedin_added_at,
           metadata,
           created_at,
-          company:companies(name)
+          company:companies(name, logo_url),
+          internship:internships(title)
         `)
         .eq('student_user_id', user.id)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
-      
+
       if (data) {
         const certList: Certificate[] = data.map((cert: any) => ({
           id: cert.id,
           title: cert.title || 'Certificate',
           company: cert.company?.name || 'Issuing Organization',
+          company_logo_url: cert.company?.logo_url ?? null,
           issueDate: cert.issued_at || cert.created_at,
           status: cert.status || 'issued',
           certificateNumber: cert.certificate_number || `CERT-${(cert.id || '').slice(0, 8)}`,
           fileUrl: cert.file_url || null,
+          verificationCode: cert.verification_code || null,
+          verificationUrl: cert.verification_url || null,
+          linkedinAddedAt: cert.linkedin_added_at || null,
+          internshipTitle: cert.internship?.title ?? null,
         }));
         setCertificates(certList);
       }
     } catch (error) {
       console.error("Error fetching certificates:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  /**
+   * Build the LinkedIn "Add to Profile" URL for a certificate.
+   *
+   * LinkedIn accepts these query params (certification_name, org_name,
+   * issueYear, issueMonth, certId, certUrl). The URL opens LinkedIn's
+   * "Add certification" form pre-filled with our certificate data.
+   *
+   * After opening LinkedIn, we POST to our backend to record that the
+   * student clicked through — this gives us uptake analytics without
+   * depending on a LinkedIn callback (which LinkedIn doesn't provide).
+   */
+  function buildLinkedInUrl(cert: Certificate): string {
+    const params = new URLSearchParams();
+    params.set("startTask", "CERTIFICATION_NAME");
+    if (cert.title) params.set("name", cert.title);
+    if (cert.company) params.set("organizationName", cert.company);
+    if (cert.issueDate) {
+      const d = new Date(cert.issueDate);
+      if (!isNaN(d.getTime())) {
+        params.set("issueYear", String(d.getFullYear()));
+        params.set("issueMonth", String(d.getMonth() + 1).padStart(2, "0"));
+      }
+    }
+    if (cert.certificateNumber) params.set("certId", cert.certificateNumber);
+    if (cert.verificationUrl) params.set("certUrl", cert.verificationUrl);
+    return `https://www.linkedin.com/profile/add?${params.toString()}`;
+  }
+
+  async function handleAddToLinkedIn(cert: Certificate) {
+    // Open LinkedIn in a new tab first (so the user doesn't lose our page)
+    const linkedInUrl = buildLinkedInUrl(cert);
+    window.open(linkedInUrl, "_blank", "noopener,noreferrer");
+
+    // Record the click — best-effort, never blocks the LinkedIn redirect.
+    setMarkingId(cert.id);
+    try {
+      const res = await fetch(`/api/student/certificates/${cert.id}/linkedin`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        // Update local state so the "Added to LinkedIn" badge appears
+        // without a re-fetch.
+        setCertificates((prev) =>
+          prev.map((c) =>
+            c.id === cert.id
+              ? { ...c, linkedinAddedAt: json.data?.linkedin_added_at || new Date().toISOString() }
+              : c
+          )
+        );
+        if (!json.data?.already_marked) {
+          toast.success("Opening LinkedIn", {
+            description: "We've marked this certificate as added to LinkedIn. Complete the form on LinkedIn to finish.",
+          });
+        }
+      } else {
+        toast.error("Couldn't mark certificate", {
+          description: json.error || "Please try again.",
+        });
+      }
+    } catch (err) {
+      // Network error — LinkedIn still opened, just no tracking.
+      console.warn("LinkedIn mark failed:", err);
+    } finally {
+      setMarkingId(null);
+    }
+  }
+
+  async function handleCopyVerificationUrl(cert: Certificate) {
+    if (!cert.verificationUrl) return;
+    try {
+      await navigator.clipboard.writeText(cert.verificationUrl);
+      setCopiedId(cert.id);
+      toast.success("Verification link copied", {
+        description: "Share this link so employers can verify your certificate.",
+      });
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      toast.error("Couldn't copy link", {
+        description: "Please copy the URL manually from the address bar.",
+      });
     }
   }
 
@@ -131,7 +230,7 @@ export default function StudentCertificatesPage() {
           >
             <PageHeader
               title="My Certificates"
-              description="View and download your internship completion certificates"
+              description="View, download, verify, and add your internship completion certificates to LinkedIn"
             />
           </motion.div>
         </div>
@@ -143,10 +242,16 @@ export default function StudentCertificatesPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.3 }}
-          className="grid gap-4 sm:grid-cols-2 mb-6"
+          className="grid gap-4 sm:grid-cols-3 mb-6"
         >
           <StatCard label="Total Certificates" value={certificates.length} icon={Award} variant="warning" />
-          <StatCard label="Issued" value={certificates.filter(c => c.status === "issued").length} icon={CheckCircle2} variant="success" />
+          <StatCard label="Issued & Valid" value={certificates.filter(c => c.status === "issued").length} icon={CheckCircle2} variant="success" />
+          <StatCard
+            label="Added to LinkedIn"
+            value={certificates.filter(c => c.linkedinAddedAt).length}
+            icon={Linkedin}
+            variant="info"
+          />
         </motion.div>
 
         {/* Certificates List */}
@@ -161,13 +266,13 @@ export default function StudentCertificatesPage() {
               <Card className="overflow-hidden">
                 {/* Certificate Preview Header */}
                 <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 border-b">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-primary/10 rounded-full">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="p-3 bg-primary/10 rounded-full flex-shrink-0">
                         <Award className="h-8 w-8 text-primary" />
                       </div>
-                      <div>
-                        <Badge variant="secondary" className="mb-1">
+                      <div className="min-w-0">
+                        <Badge variant="secondary" className="mb-1 font-mono">
                           {certificate.certificateNumber}
                         </Badge>
                         <h3 className="font-semibold text-lg line-clamp-2">
@@ -175,11 +280,18 @@ export default function StudentCertificatesPage() {
                         </h3>
                       </div>
                     </div>
-                    {certificate.status === "issued" && (
-                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                        <CheckCircle2 className="mr-1 h-3 w-3" /> Issued
-                      </Badge>
-                    )}
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      {certificate.status === "issued" && (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                          <CheckCircle2 className="mr-1 h-3 w-3" /> Issued
+                        </Badge>
+                      )}
+                      {certificate.linkedinAddedAt && (
+                        <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                          <Linkedin className="mr-1 h-3 w-3" /> On LinkedIn
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -187,22 +299,61 @@ export default function StudentCertificatesPage() {
                   {/* Details */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      {certificate.company_logo_url ? (
+                        <img
+                          src={certificate.company_logo_url}
+                          alt={certificate.company}
+                          className="h-4 w-4 rounded object-cover"
+                        />
+                      ) : (
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                      )}
                       <span>{certificate.company}</span>
                     </div>
-                    
+
+                    {certificate.internshipTitle && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Award className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{certificate.internshipTitle}</span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span>Issued: {new Date(certificate.issueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span>
+                        Issued:{" "}
+                        {new Date(certificate.issueDate).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-sm">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span>{certificate.certificateNumber}</span>
-                    </div>
+                    {certificate.verificationCode && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Verification:</span>
+                        <span className="font-mono">{certificate.verificationCode}</span>
+                      </div>
+                    )}
+
+                    {certificate.linkedinAddedAt && (
+                      <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                        <Linkedin className="h-4 w-4" />
+                        <span>
+                          Added to LinkedIn on{" "}
+                          {new Date(certificate.linkedinAddedAt).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Status badge for non-issued certs (issued already shown in header) */}
+                  {/* Status badge for non-issued certs */}
                   {certificate.status !== "issued" && (
                     <div className="flex items-center gap-2 text-sm">
                       <Badge
@@ -213,17 +364,51 @@ export default function StudentCertificatesPage() {
                     </div>
                   )}
 
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-4 border-t">
+                  {/* Primary actions — Add to LinkedIn + Verify */}
+                  {certificate.status === "issued" && (
+                    <div className="grid grid-cols-2 gap-2 pt-4 border-t">
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-[#0A66C2] hover:bg-[#0A66C2]/90 text-white"
+                        onClick={() => handleAddToLinkedIn(certificate)}
+                        disabled={markingId === certificate.id}
+                      >
+                        {markingId === certificate.id ? (
+                          <Check className="h-3.5 w-3.5 animate-pulse" />
+                        ) : (
+                          <Linkedin className="h-3.5 w-3.5" />
+                        )}
+                        {certificate.linkedinAddedAt ? "Re-add to LinkedIn" : "Add to LinkedIn"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        asChild
+                      >
+                        <a
+                          href={certificate.verificationUrl || `/verify/${certificate.verificationCode}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Verify
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Secondary actions — View + Download + Copy link */}
+                  <div className="grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 flex-1"
+                      className="gap-1"
                       onClick={() => {
                         if (certificate.fileUrl) {
                           window.open(certificate.fileUrl, "_blank", "noopener,noreferrer");
                         } else {
-                          alert("Certificate file is not yet available.");
+                          toast.error("Certificate file is not yet available.");
                         }
                       }}
                       disabled={!certificate.fileUrl}
@@ -231,11 +416,12 @@ export default function StudentCertificatesPage() {
                       <Eye className="h-3 w-3" /> View
                     </Button>
                     <Button
+                      variant="outline"
                       size="sm"
-                      className="gap-1 flex-1"
+                      className="gap-1"
                       onClick={() => {
                         if (!certificate.fileUrl) {
-                          alert("Certificate not yet available for download.");
+                          toast.error("Certificate not yet available for download.");
                           return;
                         }
                         const a = document.createElement("a");
@@ -249,7 +435,20 @@ export default function StudentCertificatesPage() {
                       }}
                       disabled={!certificate.fileUrl}
                     >
-                      <Download className="h-3 w-3" /> Download PDF
+                      <Download className="h-3 w-3" /> PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => handleCopyVerificationUrl(certificate)}
+                      disabled={!certificate.verificationUrl}
+                    >
+                      {copiedId === certificate.id ? (
+                        <><Check className="h-3 w-3" /> Copied</>
+                      ) : (
+                        <><Copy className="h-3 w-3" /> Link</>
+                      )}
                     </Button>
                   </div>
                 </CardContent>
@@ -258,7 +457,7 @@ export default function StudentCertificatesPage() {
           ))}
         </div>
 
-        {/* Empty State if no certificates */}
+        {/* Empty State */}
         {certificates.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -268,7 +467,9 @@ export default function StudentCertificatesPage() {
             <Award className="mx-auto h-12 w-12 text-muted-foreground/50" />
             <h3 className="mt-4 text-lg font-semibold">No certificates yet</h3>
             <p className="mt-2 text-muted-foreground">
-              Complete an internship to receive your certificate
+              Complete an internship to receive your certificate. Your company
+              HR will upload it here, and you'll be able to add it to LinkedIn
+              and share a verification link with employers.
             </p>
           </motion.div>
         )}

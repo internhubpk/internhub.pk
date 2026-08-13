@@ -120,17 +120,20 @@ function MarketplacePageContent() {
           return;
         }
 
-        // Published internships only. We accept the legacy "published"
-        // status value plus the newer "open" / "active" values so cards
-        // don't 404 when the user clicks into the detail page (the
-        // detail page uses the same status set).
+        // Visible internships only. The `internship_status` enum has
+        // values: draft, open, active, completed, cancelled, expired
+        // (migration 0001). Only `open` and `active` are visible to
+        // students — `draft` is HR's WIP, the rest are post-close states.
+        // (Previously this filtered for "published" which is NOT a valid
+        // internship_status enum value — it's a task_status value — and
+        // caused a 400 Bad Request.)
         const { data, error } = await supabase
           .from("internships")
           .select(`
             *,
             company:companies(name, logo_url, industry)
           `)
-          .in("status", ["open", "active", "published"])
+          .in("status", ["open", "active"])
           .order("created_at", { ascending: false })
           .limit(50);
 

@@ -175,7 +175,7 @@ export default function InternshipsPage() {
             applicant_count,
             category:categories(name)
           `)
-          .eq("status", "published")
+          .in("status", ["open", "active"])
           .order("created_at", { ascending: false });
 
         if (error) {

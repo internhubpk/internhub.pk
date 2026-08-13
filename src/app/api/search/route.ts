@@ -198,8 +198,11 @@ export async function GET(request: NextRequest) {
             // RLS on company_hr_membership / companies will scope to their company
             query = query.eq("created_by", userId ?? "");
           } else {
-            // students, site_supervisor — only published internships they can see
-            query = query.eq("status", "published");
+            // students, site_supervisor — only visible internships.
+            // The `internship_status` enum has no `published` value
+            // (it has draft/open/active/completed/cancelled/expired),
+            // so we filter for `open` and `active`.
+            query = query.in("status", ["open", "active"]);
           }
 
           const { data, error } = await query;

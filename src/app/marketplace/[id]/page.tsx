@@ -90,7 +90,7 @@ const DEFAULT_INTERNSHIP: Internship & {
   start_date: "",
   end_date: "",
   vacancies: 0,
-  status: "published" as const,
+  status: "open" as const,
   created_by: "",
   created_at: "",
   updated_at: "",
@@ -147,13 +147,10 @@ export default function InternshipDetailPage() {
         const supabase = createClient();
         
         // Fetch internship with company details.
-        // IMPORTANT: the status filter here MUST match the list page's
-        // filter (["open", "active", "published"]) — otherwise an
-        // internship shown on the marketplace list would 404 when the
-        // user clicks into it. The previous code used `.eq("status",
-        // "published")` exclusively, which broke for any internship
-        // whose status was "open" or "active" (the values company HR
-        // actually sets when publishing).
+        // Status filter MUST match the list page's filter (only `open`
+        // and `active` are visible — `published` is NOT a valid
+        // internship_status enum value, it's a task_status value, and
+        // including it caused a 400 Bad Request).
         const { data: internshipData, error } = await supabase
           .from("internships")
           .select(`
@@ -161,7 +158,7 @@ export default function InternshipDetailPage() {
             company:companies(name, logo_url, description, website, size, industry)
           `)
           .eq("id", internshipId)
-          .in("status", ["open", "active", "published"])
+          .in("status", ["open", "active"])
           .maybeSingle();
 
         if (error || !internshipData) {
@@ -206,12 +203,13 @@ export default function InternshipDetailPage() {
           // them to /login when clicked.
         }
 
-        // Fetch similar internships (same category or company)
+        // Fetch similar internships (same category or company).
+        // Same status filter as the list/detail page.
         const { data: similarData } = await supabase
           .from("internships")
           .select(`id, title, company:companies(name), location, is_remote, is_paid, stipend, duration_weeks, skills, image_url, status`)
           .neq("id", internshipId)
-          .in("status", ["open", "active", "published"])
+          .in("status", ["open", "active"])
           .limit(4);
 
         setSimilarInternships((similarData || []).map((s: any) => ({

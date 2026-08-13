@@ -297,6 +297,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: ClipboardCheck,
     },
     {
+      title: "Certificates",
+      href: "/company-hr/certificates",
+      icon: Award,
+    },
+    {
       title: "Reports",
       href: "/company-hr/reports",
       icon: BarChart3,
