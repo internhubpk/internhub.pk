@@ -77,7 +77,7 @@ export async function generateMetadata(): Promise<Metadata> {
       icon: tenantConfig.favicon
         ? [{ url: tenantConfig.favicon, sizes: "32x32" }]
         : [
-            { url: "/favicon.ico", sizes: "32x32" },
+            { url: "/icon.svg", sizes: "32x32" },
             { url: "/icon.svg", type: "image/svg+xml" },
           ],
       apple: [
@@ -150,8 +150,8 @@ export default async function RootLayout({
       id: "default",
       name: "InternHub",
       slug: "main",
-      logo: "/favicon.ico",
-      favicon: "/favicon.ico",
+      logo: "/icon.svg",
+      favicon: "/icon.svg",
       primaryColor: "#2563eb",
       secondaryColor: "#1e40af",
       domain: "internhub.pk",
