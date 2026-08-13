@@ -14,6 +14,10 @@ import {
   Building2,
   Menu,
   Command,
+  GraduationCap,
+  Briefcase,
+  BookOpen,
+  FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -192,51 +196,206 @@ const quickActions: { label: string; href: string; keywords: string; group: stri
   { label: "Sign Out", href: "/login", keywords: "logout exit", group: "Quick Actions" },
 ];
 
+// One icon per record type, used for DB-backed search results
+const recordTypeIcon: Record<string, LucideIcon> = {
+  student: GraduationCap,
+  internship: Briefcase,
+  company: Building2,
+  program: BookOpen,
+  department: Building2,
+  application: FileText,
+};
+
+interface DbHit {
+  id: string;
+  label: string;
+  subtitle?: string;
+  href: string;
+  type: string;
+}
+interface DbSection {
+  group: string;
+  hits: DbHit[];
+}
+interface FlatItem {
+  group: string;
+  label: string;
+  subtitle?: string;
+  href: string;
+  Icon?: LucideIcon;
+  isRecord: boolean;
+}
+
 function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandProps) {
   const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [dbSections, setDbSections] = useState<DbSection[]>([]);
+  const [dbLoading, setDbLoading] = useState(false);
   const router = useRouter();
   const { profile } = useAuth();
   const listRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Sync incoming initialQuery when the dialog opens
   useEffect(() => {
     if (open) setQuery(initialQuery);
   }, [open, initialQuery]);
 
+  // Reset DB state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setDbSections([]);
+      setDbLoading(false);
+      abortRef.current?.abort();
+    }
+  }, [open]);
+
   // Build searchable destinations from the user's role-based nav
   const navItems = useMemo(() => {
     const role = (profile?.role || "student") as UserRole;
     const roleNav = getNavigationForRole(role);
-    const items: { label: string; href: string; keywords: string; group: string; Icon?: LucideIcon }[] = [];
+    const items: FlatItem[] = [];
     for (const item of roleNav) {
       items.push({
+        group: "Pages",
         label: item.title,
         href: item.href,
-        keywords: `${item.title} ${item.href}`.toLowerCase(),
-        group: "Pages",
         Icon: item.icon,
+        isRecord: false,
       });
     }
     for (const qa of quickActions) {
-      items.push({ ...qa, keywords: `${qa.label} ${qa.keywords}`.toLowerCase() });
+      items.push({
+        group: "Quick Actions",
+        label: qa.label,
+        href: qa.href,
+        isRecord: false,
+      });
     }
     return items;
   }, [profile?.role]);
 
-  // Filter by query
-  const results = useMemo(() => {
+  // Filter navigation items by query (keyword match)
+  const filteredNav = useMemo<FlatItem[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return navItems;
-    return navItems.filter((item) => item.keywords.includes(q) || item.label.toLowerCase().includes(q));
+    return navItems.filter((item) => {
+      const haystack = `${item.label} ${item.href} ${item.group}`.toLowerCase();
+      return haystack.includes(q);
+    });
   }, [query, navItems]);
+
+  // Debounced DB search when query is long enough
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setDbSections([]);
+      setDbLoading(false);
+      abortRef.current?.abort();
+      return;
+    }
+
+    setDbLoading(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          setDbSections([]);
+          return;
+        }
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.data?.sections)) {
+          setDbSections(json.data.sections as DbSection[]);
+        } else {
+          setDbSections([]);
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.debug("[search] fetch error:", err);
+          setDbSections([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setDbLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  // Flatten DB sections + filtered nav into a single ordered list
+  const flatResults = useMemo<FlatItem[]>(() => {
+    const out: FlatItem[] = [];
+    // DB-backed records first, grouped as returned by the API
+    for (const section of dbSections) {
+      for (const hit of section.hits) {
+        out.push({
+          group: section.group,
+          label: hit.label,
+          subtitle: hit.subtitle,
+          href: hit.href,
+          Icon: recordTypeIcon[hit.type],
+          isRecord: true,
+        });
+      }
+    }
+    // Then page/quick-action navigation matches
+    for (const nav of filteredNav) {
+      out.push(nav);
+    }
+    return out;
+  }, [dbSections, filteredNav]);
+
+  // Group for display (preserve order: DB sections in API order, then Pages, then Quick Actions)
+  const groupedForDisplay = useMemo(() => {
+    const groups: { name: string; items: FlatItem[] }[] = [];
+    const seenGroups = new Set<string>();
+
+    // Insert DB sections first (in order)
+    for (const section of dbSections) {
+      if (section.hits.length === 0) continue;
+      groups.push({
+        name: section.group,
+        items: section.hits.map((h) => ({
+          group: section.group,
+          label: h.label,
+          subtitle: h.subtitle,
+          href: h.href,
+          Icon: recordTypeIcon[h.type],
+          isRecord: true,
+        })),
+      });
+      seenGroups.add(section.group);
+    }
+
+    // Group filtered nav by its declared group
+    const navByGroup = new Map<string, FlatItem[]>();
+    for (const item of filteredNav) {
+      const arr = navByGroup.get(item.group) ?? [];
+      arr.push(item);
+      navByGroup.set(item.group, arr);
+    }
+    for (const [name, items] of navByGroup) {
+      groups.push({ name, items });
+    }
+
+    return groups;
+  }, [dbSections, filteredNav]);
 
   // Reset active index when results change
   useEffect(() => {
     setActiveIndex(0);
-  }, [results]);
+  }, [flatResults]);
 
-  // Keyboard shortcut handler
+  // Keyboard shortcut handler (⌘K + Esc)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -256,7 +415,7 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setActiveIndex((i) => {
-          const next = Math.min(i + 1, results.length - 1);
+          const next = Math.min(i + 1, flatResults.length - 1);
           listRef.current?.querySelectorAll<HTMLElement>("[data-result-item]")[next]?.scrollIntoView({ block: "nearest" });
           return next;
         });
@@ -269,7 +428,7 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
         });
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const item = results[activeIndex];
+        const item = flatResults[activeIndex];
         if (item) {
           router.push(item.href);
           onOpenChange(false);
@@ -277,7 +436,7 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
         }
       }
     },
-    [results, activeIndex, router, onOpenChange]
+    [flatResults, activeIndex, router, onOpenChange]
   );
 
   useEffect(() => {
@@ -293,12 +452,9 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
     setQuery("");
   };
 
-  // Group results for display
-  const grouped = results.reduce<Record<string, typeof results>>((acc, item) => {
-    (acc[item.group] = acc[item.group] || []).push(item);
-    return acc;
-  }, {});
   let flatIndex = -1;
+  const hasAnyResults = groupedForDisplay.some((g) => g.items.length > 0);
+  const showEmpty = !hasAnyResults && !dbLoading && query.trim().length > 0;
 
   return (
     <motion.div
@@ -330,21 +486,24 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
             <Search className="h-5 w-5 text-muted-foreground shrink-0" />
             <input
               type="text"
-              placeholder="Search pages, actions..."
+              placeholder="Search students, internships, companies, pages..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleInputKeyDown}
               autoFocus
               className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
             />
+            {dbLoading && (
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground" aria-label="Searching" />
+            )}
             <kbd className="hidden sm:inline-flex pointer-events-none h-5 select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               ESC
             </kbd>
           </div>
 
           {/* Results */}
-          <div ref={listRef} className="max-h-[300px] overflow-y-auto p-2">
-            {results.length === 0 ? (
+          <div ref={listRef} className="max-h-[400px] overflow-y-auto p-2">
+            {showEmpty ? (
               <div className="p-6 text-center">
                 <p className="text-sm text-muted-foreground">
                   No matches for &quot;{query}&quot;
@@ -353,40 +512,57 @@ function SearchCommand({ open, onOpenChange, initialQuery = "" }: SearchCommandP
                   Try a different keyword or browse the marketplace.
                 </p>
               </div>
+            ) : !hasAnyResults && query.trim().length === 0 ? (
+              <div className="space-y-1">
+                <p className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Start typing to search
+                </p>
+                <p className="px-3 py-1 text-xs text-muted-foreground">
+                  Find students, internships, companies, programs, pages, and more.
+                </p>
+              </div>
             ) : (
-              Object.entries(grouped).map(([group, items]) => (
-                <div key={group} className="space-y-1 mb-2">
-                  <p className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    {group}
-                  </p>
-                  {items.map((item) => {
-                    flatIndex += 1;
-                    const idx = flatIndex;
-                    const isActive = idx === activeIndex;
-                    return (
-                      <button
-                        key={`${group}-${item.label}-${item.href}`}
-                        data-result-item
-                        className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors text-left ${
-                          isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent"
-                        }`}
-                        onMouseEnter={() => setActiveIndex(idx)}
-                        onClick={() => handleSelect(item.href)}
-                      >
-                        {item.Icon ? (
-                          <item.Icon className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full bg-primary/20" />
-                        )}
-                        <span>{item.label}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground/70 truncate max-w-[40%]">
-                          {item.href}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))
+              groupedForDisplay.map((group) => {
+                if (group.items.length === 0) return null;
+                return (
+                  <div key={group.name} className="space-y-1 mb-2">
+                    <p className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {group.name}
+                    </p>
+                    {group.items.map((item) => {
+                      flatIndex += 1;
+                      const idx = flatIndex;
+                      const isActive = idx === activeIndex;
+                      return (
+                        <button
+                          key={`${group.name}-${item.label}-${item.href}-${idx}`}
+                          data-result-item
+                          className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                            isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent"
+                          }`}
+                          onMouseEnter={() => setActiveIndex(idx)}
+                          onClick={() => handleSelect(item.href)}
+                        >
+                          {item.Icon ? (
+                            <item.Icon className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <span className="h-4 w-4 rounded-full bg-primary/20" />
+                          )}
+                          <span className="truncate">{item.label}</span>
+                          {item.subtitle && (
+                            <span className="text-[10px] text-muted-foreground/70 truncate">
+                              · {item.subtitle}
+                            </span>
+                          )}
+                          <span className="ml-auto text-[10px] text-muted-foreground/70 truncate max-w-[35%]">
+                            {item.href}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })
             )}
           </div>
 
