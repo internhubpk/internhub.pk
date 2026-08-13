@@ -319,6 +319,31 @@ async function getProgramPerformance(
 
 /**
  * Get supervisor workload distribution
+ *
+ * `assigned_students` counts each student who is "under" this supervisor
+ * via EITHER of two paths (union — a student enrolled in the supervisor's
+ * program AND directly assigned to them via the Students page is counted
+ * only once):
+ *
+ *   1. INDIRECT (program-level): the student is enrolled in a program
+ *      where this supervisor is the `default_faculty_supervisor_id`.
+ *      This is the automatic assignment that happens when a coordinator
+ *      creates a program (the supervisor is created with the program and
+ *      every student subsequently enrolled in that program is "theirs").
+ *
+ *   2. DIRECT (internship-level): the student has a `student_internships`
+ *      row with `faculty_supervisor_id = supervisor.user_id`. This is the
+ *      manual assignment a coordinator makes from the Students page.
+ *
+ * Without the indirect path, newly-created supervisors (who have not yet
+ * had any students manually assigned to them) would always show 0 — which
+ * is misleading because every student enrolled in their program IS under
+ * their supervision.
+ *
+ * `active_supervisions` and `completed_supervisions` count
+ * `student_internships` rows by status (no program-level component — a
+ * student enrolled in a program but without an active internship row is
+ * not "actively interning" yet).
  */
 async function getSupervisorWorkload(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -347,26 +372,118 @@ async function getSupervisorWorkload(
     throw supervisorsError;
   }
 
-  // Get assignment counts for each supervisor.
-  // NOTE: student_internships.faculty_supervisor_id references
-  // profiles.user_id, NOT the supervisors.id surrogate key.
+  if (!supervisors || supervisors.length === 0) {
+    return NextResponse.json<ApiResponse<SupervisorWorkload[]>>({
+      success: true,
+      data: [],
+    });
+  }
+
+  // ---------- Batch fetch the data we need to compute per-supervisor
+  // workload without an N+1 query storm. ----------
+  const supervisorUserIds = supervisors.map((s) => s.user_id);
+
+  // (a) Programs where any of these supervisors is the default.
+  //     `default_faculty_supervisor_id` references profiles.user_id.
+  let programsQuery = supabase
+    .from("programs")
+    .select("id, default_faculty_supervisor_id")
+    .in("default_faculty_supervisor_id", supervisorUserIds)
+    .not("default_faculty_supervisor_id", "is", null);
+
+  if (filters.department_id) {
+    programsQuery = programsQuery.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    programsQuery = programsQuery.eq("university_id", filters.university_id);
+  }
+  const { data: supervisorPrograms, error: programsError } = await programsQuery;
+  if (programsError) throw programsError;
+
+  // Group program ids by their default supervisor's user_id.
+  const programIdsBySupervisor = new Map<string, Set<string>>();
+  for (const p of supervisorPrograms || []) {
+    const supUid = p.default_faculty_supervisor_id as string;
+    if (!programIdsBySupervisor.has(supUid)) {
+      programIdsBySupervisor.set(supUid, new Set());
+    }
+    programIdsBySupervisor.get(supUid)!.add(p.id);
+  }
+
+  // (b) Students enrolled in any of those programs (indirect assignments).
+  const allProgramIds = Array.from(
+    new Set((supervisorPrograms || []).map((p) => p.id))
+  );
+  let programStudents: { user_id: string; program_id: string }[] = [];
+  if (allProgramIds.length > 0) {
+    let studentsQuery = supabase
+      .from("students")
+      .select("user_id, program_id")
+      .in("program_id", allProgramIds);
+    if (filters.department_id) {
+      studentsQuery = studentsQuery.eq("department_id", filters.department_id);
+    }
+    if (filters.university_id) {
+      studentsQuery = studentsQuery.eq("university_id", filters.university_id);
+    }
+    const { data: psData, error: psError } = await studentsQuery;
+    if (psError) throw psError;
+    programStudents = psData || [];
+  }
+
+  // (c) Direct assignments: student_internships rows where
+  //     faculty_supervisor_id matches any of our supervisors.
+  let internshipsQuery = supabase
+    .from("student_internships")
+    .select("student_user_id, faculty_supervisor_id, status")
+    .in("faculty_supervisor_id", supervisorUserIds);
+  if (filters.department_id) {
+    internshipsQuery = internshipsQuery.eq("department_id", filters.department_id);
+  }
+  if (filters.university_id) {
+    internshipsQuery = internshipsQuery.eq("university_id", filters.university_id);
+  }
+  const { data: supervisorInternships, error: internshipsError } = await internshipsQuery;
+  if (internshipsError) throw internshipsError;
+
+  // ---------- Aggregate per supervisor ----------
   const workloadData: SupervisorWorkload[] = [];
 
-  for (const supervisor of supervisors || []) {
-    const [assignedResult, activeResult, completedResult] = await Promise.all([
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id).eq("status", "active"),
-      supabase.from("student_internships").select("id", { count: "exact" }).eq("faculty_supervisor_id", supervisor.user_id).eq("status", "completed"),
-    ]);
-
+  for (const supervisor of supervisors) {
     const profile = supervisor.profiles as any;
+
+    // Indirect: students in this supervisor's programs.
+    const programIdsForSup = programIdsBySupervisor.get(supervisor.user_id);
+    const indirectStudentIds = new Set<string>();
+    if (programIdsForSup) {
+      for (const ps of programStudents) {
+        if (programIdsForSup.has(ps.program_id)) {
+          indirectStudentIds.add(ps.user_id);
+        }
+      }
+    }
+
+    // Direct: student_internships where faculty_supervisor_id = this supervisor.
+    const directStudentIds = new Set<string>();
+    let activeCount = 0;
+    let completedCount = 0;
+    for (const si of supervisorInternships || []) {
+      if (si.faculty_supervisor_id !== supervisor.user_id) continue;
+      directStudentIds.add(si.student_user_id);
+      if (si.status === "active") activeCount++;
+      else if (si.status === "completed") completedCount++;
+    }
+
+    // Union of indirect + direct student ids.
+    const assignedSet = new Set<string>([...indirectStudentIds, ...directStudentIds]);
+
     workloadData.push({
       supervisor_id: supervisor.id,
       supervisor_name: `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "Unknown",
       supervisor_email: profile?.email || "",
-      assigned_students: assignedResult.count || 0,
-      active_supervisions: activeResult.count || 0,
-      completed_supervisions: completedResult.count || 0,
+      assigned_students: assignedSet.size,
+      active_supervisions: activeCount,
+      completed_supervisions: completedCount,
     });
   }
 

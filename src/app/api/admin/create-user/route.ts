@@ -150,6 +150,14 @@ export async function POST(request: NextRequest) {
       department_id,
       job_title,
       phone,
+      // `specialization` is used only for supervisor-type roles
+      // (faculty_supervisor / site_supervisor / external_evaluator).
+      // It is stored on the `supervisors` row (NOT on `profiles`) so the
+      // department-coordinator/supervisors page can display it.
+      // When the coordinator creates a program, the program-creation
+      // dialog passes the program name here so the supervisor row has a
+      // meaningful specialization without a separate input.
+      specialization,
     } = body as {
       email?: string;
       password?: string;
@@ -160,6 +168,7 @@ export async function POST(request: NextRequest) {
       department_id?: string;
       job_title?: string;
       phone?: string;
+      specialization?: string;
     };
 
     if (!email || !email.includes("@")) {
@@ -520,6 +529,15 @@ export async function POST(request: NextRequest) {
         email: email.trim(),
         ...(phone ? { phone: phone.trim() } : {}),
         ...(job_title ? { department_focus: job_title.trim() } : {}),
+        // `specialization` is displayed on the Supervisors page. If the
+        // caller did not pass one, fall back to `job_title` (which for
+        // program-creation is "Faculty Supervisor — <program name>") so
+        // the column is never empty for newly-created supervisors.
+        ...(specialization?.trim()
+          ? { specialization: specialization.trim() }
+          : job_title?.trim()
+            ? { specialization: job_title.trim() }
+            : {}),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

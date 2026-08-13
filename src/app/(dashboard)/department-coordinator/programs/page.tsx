@@ -98,6 +98,11 @@ interface ProgramFormData {
   supervisorEmail: string;
   supervisorPassword: string;
   supervisorName: string;
+  // Specialization of the supervisor (e.g., "Software Engineering",
+  // "Data Science"). Stored on the `supervisors.specialization` column
+  // and shown on the Supervisors page. Optional — falls back to the
+  // program name if left blank, so the column is never empty.
+  supervisorSpecialization: string;
 }
 
 const emptyForm: ProgramFormData = {
@@ -110,6 +115,7 @@ const emptyForm: ProgramFormData = {
   supervisorEmail: "",
   supervisorPassword: "",
   supervisorName: "",
+  supervisorSpecialization: "",
 };
 
 export default function ProgramsPage() {
@@ -212,7 +218,13 @@ export default function ProgramsPage() {
       // empty: the supervisor auth account doesn't exist yet. After
       // the program is created and the supervisor account is created,
       // we PUT /api/programs again to link them.
-      const { supervisorEmail: _se, supervisorPassword: _sp, supervisorName: _sn, ...programPayload } = formData;
+      const {
+        supervisorEmail: _se,
+        supervisorPassword: _sp,
+        supervisorName: _sn,
+        supervisorSpecialization: _ss,
+        ...programPayload
+      } = formData;
 
       if (!editingProgram) {
         // CREATE: clear default_faculty_supervisor_id — we'll set it
@@ -266,6 +278,13 @@ export default function ProgramsPage() {
               university_id: profile?.university_id,
               department_id: profile?.department_id,
               job_title: `Faculty Supervisor — ${formData.name.trim()}`,
+              // Specialization is stored on supervisors.specialization
+              // and shown on the Supervisors page. If the coordinator
+              // did not enter one, fall back to the program name so
+              // the column is never blank.
+              specialization:
+                formData.supervisorSpecialization.trim() ||
+                formData.name.trim(),
             }),
           });
 
@@ -384,6 +403,7 @@ export default function ProgramsPage() {
       supervisorEmail: "",
       supervisorPassword: "",
       supervisorName: "",
+      supervisorSpecialization: "",
     });
     setIsDialogOpen(true);
   };
@@ -554,6 +574,18 @@ export default function ProgramsPage() {
                         value={formData.supervisorName}
                         onChange={(e) => setFormData({ ...formData, supervisorName: e.target.value })}
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="supervisorSpecialization">Specialization</Label>
+                      <Input
+                        id="supervisorSpecialization"
+                        placeholder="e.g., Software Engineering, Data Science"
+                        value={formData.supervisorSpecialization}
+                        onChange={(e) => setFormData({ ...formData, supervisorSpecialization: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Shown on the Supervisors page. If left blank, the program name is used.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="supervisorEmail">Supervisor Email *</Label>
