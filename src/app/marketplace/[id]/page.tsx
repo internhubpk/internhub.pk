@@ -297,6 +297,28 @@ export default function InternshipDetailPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero banner — internship cover image. Renders full-width above the
+            two-column layout when an image was uploaded. Object-cover + a
+            fixed aspect ratio keeps the page height predictable regardless of
+            the source image's dimensions. */}
+        {internship.image_url && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative w-full aspect-[1200/400] rounded-2xl overflow-hidden mb-8 bg-muted shadow-sm"
+          >
+            <img
+              src={internship.image_url}
+              alt={`${internship.title} cover`}
+              className="w-full h-full object-cover"
+            />
+            {/* Gradient veil along the bottom for visual depth and so the
+                title (which appears below) doesn't fight a busy skyline. */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

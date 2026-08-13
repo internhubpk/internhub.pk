@@ -137,6 +137,13 @@ export interface Internship {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /**
+   * Public Supabase Storage URL of the internship's banner/cover image
+   * (the "ad" image shown on the marketplace card and detail page).
+   * NULL when no image was uploaded — UI falls back to a gradient placeholder.
+   * Stored in the `internship_images` public bucket (migration 0037).
+   */
+  image_url?: string | null;
   // Joined fields commonly attached by API routes.
   company_logo_url?: string | null;
   company_description?: string | null;

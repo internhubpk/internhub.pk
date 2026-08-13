@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
       required_skills = [],
       requirements = [],
       benefits = [],
+      image_url,
     } = body;
 
     // Validate required fields
@@ -186,7 +187,7 @@ export async function POST(request: NextRequest) {
 
     // Create internship. Only include columns that exist on `internships` per
     // migration 0001 (plus the optional location_type / target_departments
-    // added in migration 0024).
+    // added in migration 0024, and image_url added in migration 0037).
     const insertPayload: Record<string, unknown> = {
       company_id: profile.company_id,
       title: title.trim(),
@@ -205,6 +206,7 @@ export async function POST(request: NextRequest) {
       required_skills: Array.isArray(required_skills) ? required_skills : [],
       requirements: Array.isArray(requirements) ? requirements : [],
       benefits: Array.isArray(benefits) ? benefits : [],
+      image_url: typeof image_url === "string" && image_url.trim() ? image_url.trim() : null,
       status: "draft",
       created_by: user.id,
     };

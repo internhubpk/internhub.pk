@@ -74,6 +74,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { InternshipImageUpload } from "@/components/company/internship-image-upload";
+import { ImageIcon } from "lucide-react";
 
 // Types
 interface InternshipProgram {
@@ -94,6 +96,7 @@ interface InternshipProgram {
   end_date?: string | null;
   application_deadline?: string | null;
   required_skills: string[];
+  image_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +161,7 @@ export default function CompanyHRInternshipsPage() {
           end_date: prog.end_date,
           application_deadline: prog.application_deadline,
           required_skills: prog.required_skills || [],
+          image_url: prog.image_url || null,
           created_at: prog.created_at,
           updated_at: prog.updated_at || prog.created_at,
         }));
@@ -194,6 +198,7 @@ export default function CompanyHRInternshipsPage() {
     application_deadline: "",
     required_skills: "",
     status: "draft" as string,
+    image_url: "" as string,
   });
 
   const resetForm = () => {
@@ -213,6 +218,7 @@ export default function CompanyHRInternshipsPage() {
       application_deadline: "",
       required_skills: "",
       status: "draft",
+      image_url: "",
     });
   };
 
@@ -237,6 +243,7 @@ export default function CompanyHRInternshipsPage() {
           required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
           target_departments: formData.target_departments,
           university_id: formData.target_university || null,
+          image_url: formData.image_url || null,
         }),
       });
 
@@ -275,6 +282,7 @@ export default function CompanyHRInternshipsPage() {
           required_skills: formData.required_skills.split(",").map(s => s.trim()).filter(Boolean),
           target_departments: formData.target_departments,
           university_id: formData.target_university || null,
+          image_url: formData.image_url || null,
         }),
       });
 
@@ -309,6 +317,7 @@ export default function CompanyHRInternshipsPage() {
       application_deadline: toDateInputValue(internship.application_deadline),
       required_skills: internship.required_skills.join(", "),
       status: internship.status,
+      image_url: internship.image_url || "",
     });
     setIsEditOpen(true);
   };
@@ -327,6 +336,8 @@ export default function CompanyHRInternshipsPage() {
 
   const handleDuplicateInternship = (internship: InternshipProgram) => {
     // Prefill the create form with the source program's details for the user to review and save.
+    // Note: we deliberately do NOT copy image_url — the original image belongs to
+    // the source internship. HR can re-upload if they want a banner on the copy.
     setFormData({
       title: `${internship.title} (Copy)`,
       description: internship.description,
@@ -343,6 +354,7 @@ export default function CompanyHRInternshipsPage() {
       application_deadline: "",
       required_skills: internship.required_skills.join(", "),
       status: "draft",
+      image_url: "",
     });
     setIsCreateOpen(true);
   };
@@ -465,6 +477,17 @@ export default function CompanyHRInternshipsPage() {
                   />
                   <p className="text-xs text-muted-foreground">Markdown formatting supported</p>
                 </div>
+              </div>
+
+              {/* Cover Image */}
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" /> Cover Image
+                </h3>
+                <InternshipImageUpload
+                  value={formData.image_url || null}
+                  onChange={(url) => setFormData({ ...formData, image_url: url || "" })}
+                />
               </div>
 
               {/* Location & Duration */}
@@ -701,7 +724,17 @@ export default function CompanyHRInternshipsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05, duration: 0.3 }}
             >
-              <Card className={`transition-all ${expandedId === internship.id ? 'shadow-md' : 'hover:shadow-md'}`}>
+              <Card className={`transition-all overflow-hidden ${expandedId === internship.id ? 'shadow-md' : 'hover:shadow-md'}`}>
+                {internship.image_url && (
+                  <div className="relative w-full aspect-[1200/360] bg-muted overflow-hidden border-b">
+                    <img
+                      src={internship.image_url}
+                      alt={`${internship.title} cover`}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
                 <CardContent className="p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     {/* Main Content */}
@@ -917,6 +950,14 @@ export default function CompanyHRInternshipsPage() {
                 rows={5}
               />
             </div>
+
+            {/* Cover Image — internship_id known here, so upload is stored
+                under the internship's prefix. */}
+            <InternshipImageUpload
+              value={formData.image_url || null}
+              internshipId={editingInternship?.id}
+              onChange={(url) => setFormData({ ...formData, image_url: url || "" })}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2">

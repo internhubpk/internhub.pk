@@ -71,6 +71,7 @@ export function InternshipCard({
     applicant_count = 0,
     rating = null,
     review_count = 0,
+    image_url,
   } = internship;
 
   const formatDate = (dateString: string) => {
@@ -288,6 +289,24 @@ export function InternshipCard({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
+        {/* Cover banner — internship ad image. Renders at a 16:9-ish aspect
+            ratio so all cards in the grid line up regardless of the source
+            image's dimensions. Skipped when no image was uploaded (keeps the
+            card compact for unpaid/draft posts). */}
+        {image_url && (
+          <Link href={`/marketplace/${id}`} className="block relative aspect-[1200/630] bg-muted overflow-hidden">
+            <img
+              src={image_url}
+              alt={`${title} cover`}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              loading="lazy"
+            />
+            {/* Subtle gradient overlay so the badge row below stays readable
+                when the banner is a busy photo. */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+          </Link>
+        )}
+
         {/* Top gradient accent */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-primary/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 

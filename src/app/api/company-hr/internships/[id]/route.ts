@@ -127,6 +127,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       requirements,
       benefits,
       status,
+      image_url,
     } = body;
 
     const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
@@ -147,6 +148,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (requirements !== undefined) updateData.requirements = requirements;
     if (benefits !== undefined) updateData.benefits = benefits;
     if (status !== undefined) updateData.status = status;
+    // image_url: accept string (set) or null (clear). Only update when the
+    // field is explicitly present in the payload so we don't blow away an
+    // existing image when the caller only wants to change, e.g., the title.
+    if (image_url !== undefined) {
+      updateData.image_url = typeof image_url === "string" && image_url.trim() ? image_url.trim() : null;
+    }
 
     const { data: internship, error } = await supabase
       .from("internships")
