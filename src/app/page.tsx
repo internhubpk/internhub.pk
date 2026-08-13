@@ -374,16 +374,9 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
   const { tenant } = useTenant();
 
   return (
-    <section
-      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden"
-      style={{
-        // Mirror MainHero's bold gradient, but tinted with the tenant's brand
-        // colors so each university's portal has a distinctive, on-brand hero
-        // instead of the washed-out near-white gradient used previously.
-        background: `linear-gradient(135deg, ${branding.primaryColor}14 0%, white 50%, ${branding.secondaryColor}14 100%)`,
-        position: 'relative',
-        zIndex: 1
-      }}
+    <section 
+      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
+      style={{ position: 'relative', zIndex: 1 }}
     >
       {/* Background decorative elements using tenant colors - responsive sizes */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
@@ -397,7 +390,7 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
         />
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full blur-2xl sm:blur-3xl"
-          style={{ background: `linear-gradient(to right, ${branding.primaryColor}14, ${branding.secondaryColor}14)` }}
+          style={{ background: `linear-gradient(to right, ${branding.primaryColor}1a, ${branding.secondaryColor}1a)` }}
         />
       </div>
 
