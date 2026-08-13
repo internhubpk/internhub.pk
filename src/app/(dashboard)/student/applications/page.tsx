@@ -102,9 +102,13 @@ export default function StudentApplicationsPage() {
     try {
       const supabase = createClient();
       
-      // Fetch applications with internship details
+      // Fetch applications with internship details.
+      // Query the real `internship_applications` table (the `applications`
+      // view in migration 0001 is read-only and was causing silent fetch
+      // failures on some joins). Order by `applied_at` (the real column;
+      // `created_at` does NOT exist on this table).
       const { data, error } = await supabase
-        .from("applications")
+        .from("internship_applications")
         .select(`
           *,
           internships:internship_id (
@@ -255,8 +259,10 @@ export default function StudentApplicationsPage() {
     try {
       const supabase = createClient();
 
+      // Update the real `internship_applications` table (NOT the read-only
+      // `applications` view — see migration 0001).
       const { error } = await supabase
-        .from("applications")
+        .from("internship_applications")
         .update({ 
           status: "withdrawn",
           updated_at: new Date().toISOString(),

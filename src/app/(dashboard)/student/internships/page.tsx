@@ -126,7 +126,7 @@ export default function StudentInternshipsPage() {
       
       if (internshipIds.length > 0) {
         const { data: applications } = await supabase
-          .from("applications")
+          .from("internship_applications")
           .select("id, internship_id, status")
           .eq("student_user_id", user.id)
           .in("internship_id", internshipIds);
@@ -298,14 +298,20 @@ export default function StudentInternshipsPage() {
     try {
       const supabase = createClient();
 
+      // IMPORTANT: insert into the real table `internship_applications`,
+      // NOT the `applications` view (which is read-only — migration 0001
+      // defines `CREATE VIEW applications AS SELECT * FROM internship_applications`).
+      // Inserting into the view raises "cannot insert into view" errors.
       const { error } = await supabase
-        .from("applications")
+        .from("internship_applications")
         .insert({
           internship_id: selectedInternship.id,
           student_user_id: user.id,
           company_id: selectedInternship.company_id,
           cover_letter: coverLetter.trim() || null,
           status: "pending",
+          applied_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;

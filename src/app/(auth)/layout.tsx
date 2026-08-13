@@ -23,17 +23,19 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
       {/* Main content card */}
       <div className="relative z-10 w-full max-w-md mx-4">
-        {/* Logo and branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
+        {/* Logo only — no tagline / no "Enterprise Internship Management
+            Platform" subtitle (removed per user feedback to keep the
+            auth page clean and focused). */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center mb-3">
             <div className="relative group">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-xl shadow-blue-500/25">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-xl shadow-blue-500/25">
                 <div className="w-full h-full rounded-2xl bg-white dark:bg-gray-900 flex items-center justify-center">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-9 h-9"
+                    className="w-8 h-8"
                   >
                     <defs>
                       <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -67,18 +69,14 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                   </svg>
                 </div>
               </div>
-              {/* Glow effect */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 opacity-0 blur-xl transition-opacity group-hover:opacity-20" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight">
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
               InternHub
             </span>
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Enterprise Internship Management Platform
-          </p>
         </div>
 
         {/* Auth card */}
@@ -87,7 +85,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Footer text */}
-        <p className="mt-6 text-center text-xs text-muted-foreground">
+        <p className="mt-4 text-center text-xs text-muted-foreground">
           © {new Date().getFullYear()} InternHub. All rights reserved.
         </p>
       </div>

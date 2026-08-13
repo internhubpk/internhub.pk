@@ -147,6 +147,7 @@ export default function StudentsPage() {
   // Assignment dialog
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>("");
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
   const [isAssigning, setIsAssigning] = useState(false);
 
   // Student detail view
@@ -164,6 +165,7 @@ export default function StudentsPage() {
     email: "",
     student_id_number: "",
     program_id: "",
+    password: "",
   });
   const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
   const [importProgramId, setImportProgramId] = useState<string>("");
@@ -229,6 +231,17 @@ export default function StudentsPage() {
       });
       return;
     }
+    // Require a password (min 6 chars) for single student creation.
+    // Coordinator must know the password they're assigning so they can
+    // tell the student how to sign in.
+    if (!newStudent.password || newStudent.password.length < 6) {
+      toast({
+        title: "Password required",
+        description: "Please enter a password of at least 6 characters.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsCreatingStudent(true);
     try {
@@ -237,7 +250,7 @@ export default function StudentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: newStudent.email.trim(),
-          password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + "A1!",
+          password: newStudent.password,
           full_name: `${newStudent.first_name.trim()} ${newStudent.last_name.trim()}`,
           role: "student",
           // university_id and department_id are FORCED server-side from the caller's profile
@@ -300,7 +313,7 @@ export default function StudentsPage() {
 
       // Success — close dialog, reset form, refresh list
       setIsAddStudentDialogOpen(false);
-      setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_id: "" });
+      setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_id: "", password: "" });
       await fetchStudents();
       toast({
         title: "Student Created",
@@ -550,51 +563,52 @@ export default function StudentsPage() {
     setIsSelectAll(newSelected.size === displayedStudents.length);
   };
 
-  // Handle bulk assignment
+  // Handle bulk assignment — uses the new /api/department-coordinator/students/bulk-assign
+  // endpoint so all selected students are updated in a single call (no N
+  // round-trips). Both program and supervisor can be set in one shot.
   const handleBulkAssign = async () => {
-    if (!selectedSupervisorId || selectedStudents.size === 0) return;
+    if (selectedStudents.size === 0) return;
+    if (!selectedSupervisorId && !selectedProgramId) {
+      toast({
+        title: "Nothing to assign",
+        description: "Pick a supervisor, a program, or both.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsAssigning(true);
     try {
-      let successCount = 0;
-      let lastError = "";
+      const res = await fetch("/api/department-coordinator/students/bulk-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_user_ids: Array.from(selectedStudents),
+          program_id: selectedProgramId || null,
+          faculty_supervisor_id: selectedSupervisorId || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-      for (const studentId of selectedStudents) {
-        const res = await fetch("/api/department-coordinator/assignments", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            student_id: studentId,
-            faculty_supervisor_id: selectedSupervisorId,
-          }),
-        });
-
-        if (res.ok) {
-          successCount++;
-        } else {
-          const data = await res.json().catch(() => ({}));
-          lastError = data.error || `HTTP ${res.status}`;
-        }
-      }
-
-      if (successCount === selectedStudents.size) {
+      if (data.success) {
+        const { updated, skipped } = data.data || {};
         toast({
           title: "Assignment Complete",
-          description: `Successfully assigned ${successCount} of ${selectedStudents.size} students.`,
+          description: `Updated ${updated} student(s)${skipped ? `, ${skipped} skipped` : ""}.`,
         });
+        await fetchStudents();
+        setIsAssignDialogOpen(false);
+        setSelectedSupervisorId("");
+        setSelectedProgramId("");
+        setSelectedStudents(new Set());
+        setIsSelectAll(false);
       } else {
         toast({
-          title: "Partial Assignment",
-          description: `Assigned ${successCount} of ${selectedStudents.size}. Last error: ${lastError}`,
+          title: "Assignment failed",
+          description: data.error || `HTTP ${res.status}`,
           variant: "destructive",
         });
       }
-
-      await fetchStudents();
-      setIsAssignDialogOpen(false);
-      setSelectedSupervisorId("");
-      setSelectedStudents(new Set());
-      setIsSelectAll(false);
     } catch (error) {
       console.error("Error assigning students:", error);
       toast({
@@ -1155,27 +1169,58 @@ export default function StudentsPage() {
         </div>
       )}
 
-      {/* Bulk Assignment Dialog */}
+      {/* Bulk Assignment Dialog — assign Program AND/OR Supervisor in one go */}
       <Dialog open={isAssignDialogOpen} onOpenChange={(open) => {
         setIsAssignDialogOpen(open);
-        if (!open) setSelectedSupervisorId("");
+        if (!open) {
+          setSelectedSupervisorId("");
+          setSelectedProgramId("");
+        }
       }}>
-        <DialogContent className="sm:max-w-[450px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Assign Supervisor</DialogTitle>
+            <DialogTitle>Assign Program / Supervisor</DialogTitle>
             <DialogDescription>
-              Assign a supervisor to {selectedStudents.size} selected student{selectedStudents.size > 1 ? "s" : ""}
+              Update {selectedStudents.size} selected student{selectedStudents.size > 1 ? "s" : ""} in one shot.
+              Leave either field as &quot;No change&quot; to keep the current value.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label>Select Supervisor *</Label>
-              <Select value={selectedSupervisorId} onValueChange={setSelectedSupervisorId}>
+              <Label>Program</Label>
+              <Select
+                value={selectedProgramId || "__none__"}
+                onValueChange={(val) => setSelectedProgramId(val === "__none__" ? "" : val)}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a supervisor..." />
+                  <SelectValue placeholder="No change" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">No change</SelectItem>
+                  {programs.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick a program to assign to all selected students, or leave as &quot;No change&quot;.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Faculty Supervisor</Label>
+              <Select
+                value={selectedSupervisorId || "__none__"}
+                onValueChange={(val) => setSelectedSupervisorId(val === "__none__" ? "" : val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No change" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No change</SelectItem>
                   {supervisors.map((sup) => (
                     <SelectItem key={sup.id} value={sup.id}>
                       <div className="flex flex-col">
@@ -1186,6 +1231,9 @@ export default function StudentsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick a supervisor to assign to all selected students, or leave as &quot;No change&quot;.
+              </p>
             </div>
 
             {selectedStudents.size <= 5 && (
@@ -1211,7 +1259,7 @@ export default function StudentsPage() {
             </Button>
             <Button
               onClick={handleBulkAssign}
-              disabled={!selectedSupervisorId || isAssigning}
+              disabled={(!selectedSupervisorId && !selectedProgramId) || isAssigning}
             >
               {isAssigning ? (
                 <>
@@ -1383,24 +1431,41 @@ export default function StudentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="student-program">Program</Label>
-                  <Select
-                    value={newStudent.program_id || "__none__"}
-                    onValueChange={(val) => setNewStudent({ ...newStudent, program_id: val === "__none__" ? "" : val })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="No program" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">No program</SelectItem>
-                      {programs.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} ({p.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="student-password">Password *</Label>
+                  <Input
+                    id="student-password"
+                    type="password"
+                    value={newStudent.password}
+                    onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
+                    required
+                    minLength={6}
+                    placeholder="Min 6 characters"
+                    autoComplete="new-password"
+                  />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="student-program">Program (optional — assign later)</Label>
+                <Select
+                  value={newStudent.program_id || "__none__"}
+                  onValueChange={(val) => setNewStudent({ ...newStudent, program_id: val === "__none__" ? "" : val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No program (assign later)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No program (assign later)</SelectItem>
+                    {programs.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} ({p.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  You can leave this empty and assign the program (or change it) later from the student list.
+                </p>
               </div>
             </div>
 

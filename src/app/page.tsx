@@ -374,22 +374,26 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
   const { tenant } = useTenant();
 
   return (
-    <section 
+    <section
       className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
       style={{ position: 'relative', zIndex: 1 }}
     >
-      {/* Background decorative elements using tenant colors - responsive sizes */}
+      {/* Background decorative elements using tenant colors - responsive sizes.
+          NOTE: orbs are confined to the section via overflow-hidden, and we
+          explicitly position them so they never push the layout wider than
+          the viewport on mobile (which previously caused horizontal
+          overflow / a left-clipped hero on small screens). */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
         <div
-          className="absolute top-10 left-0 right-auto w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl -translate-x-1/4 sm:translate-x-0 sm:left-10"
+          className="absolute top-10 left-4 sm:left-10 w-40 h-40 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl"
           style={{ backgroundColor: `${branding.primaryColor}26` }}
         />
         <div
-          className="absolute bottom-10 right-0 left-auto w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl translate-x-1/4 sm:translate-x-0 sm:right-10"
+          className="absolute bottom-10 right-4 sm:right-10 w-44 h-44 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl"
           style={{ backgroundColor: `${branding.secondaryColor}26` }}
         />
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full blur-2xl sm:blur-3xl"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full blur-2xl sm:blur-3xl"
           style={{ background: `linear-gradient(to right, ${branding.primaryColor}1a, ${branding.secondaryColor}1a)` }}
         />
       </div>
@@ -514,11 +518,14 @@ function MainHero() {
       className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
       style={{ position: 'relative', zIndex: 1 }}
     >
-      {/* Background decorative elements - responsive sizes */}
+      {/* Background decorative elements - responsive sizes.
+          Orbs are kept inside the viewport on mobile (no negative
+          translate) so the hero doesn't horizontally overflow on
+          small screens. */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
-        <div className="absolute top-10 left-0 w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 bg-blue-400/10 rounded-full blur-2xl sm:blur-3xl -translate-x-1/4 sm:translate-x-0 sm:left-10" />
-        <div className="absolute bottom-10 right-0 w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 bg-purple-400/10 rounded-full blur-2xl sm:blur-3xl translate-x-1/4 sm:translate-x-0 sm:right-10" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-2xl sm:blur-3xl" />
+        <div className="absolute top-10 left-4 sm:left-10 w-40 h-40 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 bg-blue-400/10 rounded-full blur-2xl sm:blur-3xl" />
+        <div className="absolute bottom-10 right-4 sm:right-10 w-44 h-44 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 bg-purple-400/10 rounded-full blur-2xl sm:blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-2xl sm:blur-3xl" />
       </div>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 pb-12 sm:pb-16 relative z-10">

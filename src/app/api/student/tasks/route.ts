@@ -317,6 +317,122 @@ export async function POST(request: NextRequest) {
       console.warn("[/api/student/tasks] failed to update assignment status (non-fatal):", updAssignErr);
     }
 
+    // ============================================================
+    // AUTO-ATTENDANCE on task submission.
+    // ------------------------------------------------------------
+    // When a student submits a task, that's strong evidence they did
+    // internship work today. We upsert an attendance row for today
+    // (status = 'present') so the student's attendance dashboard
+    // reflects real engagement without requiring a manual check-in.
+    // The UNIQUE (student_user_id, internship_id, date) constraint on
+    // attendance makes this idempotent — submitting multiple tasks in
+    // a day still only marks the student present once.
+    // ============================================================
+    try {
+      const { data: taskRow } = await supabase
+        .from("tasks")
+        .select("internship_id")
+        .eq("id", task_id)
+        .maybeSingle();
+
+      const internshipId = taskRow?.internship_id ?? null;
+      if (internshipId) {
+        const today = new Date().toISOString().slice(0, 10); // yyyy-MM-dd
+
+        // Find the active student_internships row so we can also fill
+        // student_internship_id (FK on attendance).
+        const { data: siRow } = await supabase
+          .from("student_internships")
+          .select("id, faculty_supervisor_id, site_supervisor_id")
+          .eq("student_user_id", user.id)
+          .eq("internship_id", internshipId)
+          .in("status", ["assigned", "active"])
+          .maybeSingle();
+
+        await supabase
+          .from("attendance")
+          .upsert(
+            {
+              student_user_id: user.id,
+              internship_id: internshipId,
+              student_internship_id: siRow?.id || null,
+              date: today,
+              check_in: new Date().toISOString(),
+              status: "present",
+              verified: true,
+              notes: "Auto-marked present on task submission",
+            },
+            { onConflict: "student_user_id,internship_id,date" }
+          );
+      }
+    } catch (attErr) {
+      console.warn("[/api/student/tasks] auto-attendance failed (non-fatal):", attErr);
+    }
+
+    // ============================================================
+    // AUTO-CREATE PENDING EVALUATION for the faculty supervisor.
+    // ------------------------------------------------------------
+    // When a student submits a task, we create a pending `evaluations`
+    // row for the faculty supervisor so it appears in their queue.
+    // The faculty supervisor can then approve/reject it from their
+    // evaluations page. Without this auto-creation, the supervisor
+    // would never see anything to evaluate (the evaluations table
+    // would stay empty).
+    // ============================================================
+    try {
+      const { data: taskInfo2 } = await supabase
+        .from("tasks")
+        .select("internship_id, created_by")
+        .eq("id", task_id)
+        .maybeSingle();
+
+      const internshipId2 = taskInfo2?.internship_id ?? null;
+
+      if (internshipId2) {
+        const { data: siRow2 } = await supabase
+          .from("student_internships")
+          .select("id, faculty_supervisor_id, site_supervisor_id")
+          .eq("student_user_id", user.id)
+          .eq("internship_id", internshipId2)
+          .in("status", ["assigned", "active"])
+          .maybeSingle();
+
+        const facultySupervisorId = siRow2?.faculty_supervisor_id ?? null;
+
+        // Only create an evaluation if (a) there's a faculty supervisor
+        // assigned and (b) there isn't already an active evaluation
+        // for this task + student combo (avoids duplicates).
+        if (facultySupervisorId) {
+          const { data: existingEval } = await supabase
+            .from("evaluations")
+            .select("id")
+            .eq("task_id", task_id)
+            .eq("student_user_id", user.id)
+            .eq("evaluator_id", facultySupervisorId)
+            .in("status", ["pending", "in_progress"])
+            .maybeSingle();
+
+          if (!existingEval) {
+            await supabase.from("evaluations").insert({
+              type: "task", // valid evaluation_type enum value (migration 0001)
+              student_user_id: user.id,
+              internship_id: internshipId2,
+              student_internship_id: siRow2?.id || null,
+              task_id: task_id,
+              task_submission_id: submission.id,
+              evaluator_id: facultySupervisorId,
+              evaluator_role: "faculty_supervisor",
+              status: "pending",
+              scores: {},
+              comments: null,
+            });
+          }
+        }
+      }
+    } catch (evalErr) {
+      console.warn("[/api/student/tasks] auto-evaluation create failed (non-fatal):", evalErr);
+    }
+
     // Notify supervisors (faculty + site) and the task creator that the
     // student submitted. Best-effort: failures inside the helper are logged
     // but never thrown, so they can't break the submission flow.
