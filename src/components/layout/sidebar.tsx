@@ -15,17 +15,6 @@ import {
   Settings,
   GraduationCap,
   Briefcase,
-  Store,
-  FileText,
-  Send,
-  TrendingUp,
-  CalendarDays,
-  Clock,
-  FileBarChart,
-  FolderOpen,
-  File,
-  Award,
-  FileCheck,
   Building2,
   Users,
   BarChart3,
@@ -67,7 +56,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAuth } from "@/components/providers/auth-provider";
-import { getNavigationForRole, roleLabels, navigationConfig, type NavItem } from "@/config/navigation";
+import { useTenant } from "@/components/providers/tenant-provider";
+import { getNavigationForRole, roleLabels, type NavItem } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
 // Context for sidebar state management
@@ -87,24 +77,6 @@ interface SidebarProps {
   className?: string;
 }
 
-// Icon mapping for sub-items
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Store,
-  FileText,
-  Send,
-  CalendarDays,
-  Clock,
-  FileBarChart,
-  File,
-  Award,
-  FileCheck,
-};
-
-// Get icon component by name
-const getIconByName = (name: string) => {
-  return iconMap[name] || FileText;
-};
-
 interface SidebarContentProps {
   collapsed?: boolean;
   onToggle?: () => void;
@@ -112,21 +84,41 @@ interface SidebarContentProps {
   onClose?: () => void;
 }
 
-// Fallback navigation based on current pathname (for demo/no-DB mode)
-// This allows navigation to work even when profile.role is null (e.g., DB unavailable)
-function getFallbackNavigation(path: string): NavItem[] {
-  // Detect role from current path and return appropriate navigation
-  if (path.startsWith("/super-admin")) return navigationConfig.super_admin || [];
-  if (path.startsWith("/university-admin")) return navigationConfig.university_admin || [];
-  if (path.startsWith("/department-coordinator")) return navigationConfig.department_coordinator || [];
-  if (path.startsWith("/faculty-supervisor")) return navigationConfig.faculty_supervisor || [];
-  if (path.startsWith("/student")) return navigationConfig.student || [];
-  if (path.startsWith("/company-hr")) return navigationConfig.company_hr || [];
-  if (path.startsWith("/site-supervisor")) return navigationConfig.site_supervisor || [];
-  if (path.startsWith("/external-evaluator")) return navigationConfig.external_evaluator || [];
-  
-  // Default: return student navigation as fallback
-  return navigationConfig.student || [];
+// BUG 6 FIX: Loading skeleton shown while auth is still resolving.
+// Previously the sidebar guessed the role from the URL prefix and rendered
+// a full nav menu for that guessed role — which meant a slow profile fetch
+// would flash the wrong menu, and a failed profile fetch would silently
+// strand a super_admin on a student nav with no indication anything was
+// wrong. The skeleton makes "loading" visually distinct from "resolved".
+function SidebarSkeleton() {
+  return (
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
+      <div className="flex items-center h-18 px-4 border-b border-white/10">
+        <div className="h-10 w-10 rounded-xl bg-white/5 animate-pulse" />
+        <div className="ml-3 flex flex-col gap-1.5">
+          <div className="h-4 w-20 rounded bg-white/5 animate-pulse" />
+          <div className="h-3 w-16 rounded bg-white/5 animate-pulse" />
+        </div>
+      </div>
+      <div className="px-4 py-4 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-white/5 animate-pulse" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+            <div className="h-3 w-32 rounded bg-white/5 animate-pulse" />
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 px-3 py-4 space-y-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2">
+            <div className="h-5 w-5 rounded bg-white/5 animate-pulse" />
+            <div className="h-3 flex-1 rounded bg-white/5 animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Sidebar content component for reuse in both desktop and mobile
@@ -138,12 +130,26 @@ function SidebarContent({
 }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, university, logout } = useAuth();
+  const { user, profile, university, logout, isLoading } = useAuth();
+  // BUG 4 FIX: Multi-tenant branding — sidebar is the one component visible
+  // 100% of the time inside the app, so it must reflect the active tenant
+  // (university) brand rather than a hardcoded "InternHub" string.
+  // `useTenant` returns the resolved TenantConfig (subdomain-derived on
+  // client, headers-derived on server). Falls back to PLATFORM_DEFAULT_TENANT
+  // on the main internhub.pk domain.
+  const { tenant } = useTenant();
+  const tenantName = tenant?.name || "InternHub";
+  const tenantLogo = tenant?.logoUrl || tenant?.logo;
 
-  // Get navigation based on role, or fallback to path-based navigation for demo mode
+  // BUG 6 FIX: Distinguish "loading" from "resolved, no role".
+  // While auth is loading, render the skeleton (handled below after hooks).
+  // Once loaded, if profile.role is missing OR returns an empty nav list,
+  // show an explicit retry state instead of guessing the role from URL.
   const navItems: NavItem[] = profile?.role
     ? getNavigationForRole(profile.role)
-    : getFallbackNavigation(pathname);
+    : [];
+  const hasNav = navItems.length > 0;
+  const showRetry = !isLoading && !hasNav;
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
@@ -162,6 +168,16 @@ function SidebarContent({
     });
     setExpandedItems(newExpanded);
   }, [pathname, navItems]);
+
+  // BUG 6 FIX: Render skeleton while auth is still resolving. Previously
+  // the sidebar would guess the role from the URL prefix and render a
+  // full nav menu for the guessed role — flashing the wrong menu on
+  // slow loads and silently stranding users on wrong navs on failures.
+  // NOTE: This early return MUST come after all hook calls above to
+  // satisfy the Rules of Hooks (useState + useEffect).
+  if (isLoading) {
+    return <SidebarSkeleton />;
+  }
 
   const isActive = (href: string) => {
     if (href === "/dashboard" && pathname === "/") return true;
@@ -245,7 +261,7 @@ function SidebarContent({
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
       {/* Custom scrollbar styles */}
       <style>{`
         .sidebar-scroll::-webkit-scrollbar {
@@ -282,14 +298,24 @@ function SidebarContent({
             animate={{ opacity: 1, scale: 1 }}
             className="flex-shrink-0"
           >
-            <div
-              className={cn(
-                "flex items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60",
-                collapsed && !isMobile ? "h-10 w-10" : "h-10 w-10"
-              )}
-            >
-              <GraduationCap className="h-6 w-6 text-white" />
-            </div>
+            {tenantLogo ? (
+              // BUG 4 FIX: prefer the tenant's actual logo (uploaded by
+              // the university admin) over the generic GraduationCap.
+              <img
+                src={tenantLogo}
+                alt={`${tenantName} logo`}
+                className="h-10 w-10 rounded-xl object-cover"
+              />
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60",
+                  collapsed && !isMobile ? "h-10 w-10" : "h-10 w-10"
+                )}
+              >
+                <GraduationCap className="h-6 w-6 text-white" />
+              </div>
+            )}
           </motion.div>
 
           <AnimatePresence mode="wait">
@@ -302,9 +328,9 @@ function SidebarContent({
                 className="flex flex-col overflow-hidden"
               >
                 <span className="font-bold text-lg whitespace-nowrap text-white tracking-tight">
-                  InternHub
+                  {tenantName}
                 </span>
-                {university?.name && (
+                {university?.name && university.name !== tenantName && (
                   <span className="text-xs text-slate-500 truncate max-w-[160px] font-medium">
                     {university.name}
                   </span>
@@ -410,6 +436,26 @@ function SidebarContent({
       {/* ============================================ */}
       <ScrollArea className="flex-1 px-3 py-4 sidebar-scroll">
         <nav className="space-y-1">
+          {/* BUG 6 FIX: explicit retry state when auth has resolved but
+              profile.role is missing or returned an empty nav list.
+              Previously this would silently fall back to a guessed role's
+              nav menu, hiding the failure from the user. */}
+          {showRetry && (
+            <div className="px-3 py-6 text-center">
+              <p className="text-xs text-slate-400 mb-3">
+                Couldn&apos;t load your menu.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-8 border-white/10 text-slate-300 hover:bg-white/5"
+                onClick={() => router.refresh()}
+              >
+                <RefreshCw className="h-3 w-3 mr-1.5" />
+                Retry
+              </Button>
+            </div>
+          )}
           {navItems.map((item) => {
             const active = isActive(item.href);
             const hasChildren = item.children && item.children.length > 0;
@@ -503,8 +549,13 @@ function SidebarContent({
                           >
                             {item.children!.map((child) => {
                               const childIsActive = isActive(child.href);
-                              const ChildIcon =
-                                getIconByName(child.icon?.name || "");
+                              // child.icon is already a LucideIcon component
+                              // reference (per NavItem typing in
+                              // src/config/navigation.ts). Render it directly —
+                              // do NOT try to look it up by .name string,
+                              // because lucide icons are forwardRef objects
+                              // without a meaningful .name property.
+                              const ChildIcon = child.icon;
 
                               return (
                                 <Link
@@ -776,62 +827,78 @@ function SidebarContent({
 
 // Main Sidebar Component
 export function Sidebar({ className }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  // BUG 5 FIX: Persist collapse preference across refreshes / new tabs.
+  // Lazy initializer reads localStorage on first client render; SSR returns
+  // false (window undefined on server) so the server-rendered HTML matches
+  // the default-expanded state, avoiding a one-frame snap.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("sidebar:collapsed") === "1";
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-      if (window.innerWidth >= 1024) {
-        setMobileOpen(false);
-      }
-    };
+    // Persist on every change. Wrapped in try/catch because localStorage
+    // can throw in private browsing modes / quota-exceeded situations.
+    try {
+      window.localStorage.setItem("sidebar:collapsed", collapsed ? "1" : "0");
+    } catch {
+      // Non-fatal — preference just won't survive refresh in this session.
+    }
+  }, [collapsed]);
 
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
+  // BUG 2 FIX: Previous implementation used `isMobile` state + an early
+  // `if (isMobile) return <Sheet>...</Sheet>` branch that swapped the entire
+  // tree post-mount. Because `isMobile` started false on SSR and only
+  // became true after a useEffect ran window.innerWidth check, every phone
+  // visitor's first paint flashed the full 280px desktop sidebar before
+  // swapping to the hamburger+Sheet version. The CSS classes already
+  // handle responsiveness (`hidden lg:block` on the aside, `lg:hidden` on
+  // the trigger) — the JS branch was redundant with those breakpoints and
+  // only added the flash.
+  //
+  // New approach: render both trees unconditionally. CSS handles which is
+  // visible. No window.innerWidth polling, no mount-time flash, one less
+  // state variable. The loading skeleton (BUG 6) is handled inside
+  // SidebarContent via its own useAuth() call.
 
-  // Mobile sidebar using Sheet
-  if (isMobile) {
-    return (
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden h-9 w-9 text-slate-600 dark:text-slate-400"
-            aria-label="Open menu"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent
-          side="left"
-          className="w-[280px] p-0 bg-sidebar border-r border-sidebar-border"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Navigation Menu</SheetTitle>
-          </SheetHeader>
-          <SidebarContent
-            isMobile
-            onClose={() => setMobileOpen(false)}
-          />
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  // Desktop sidebar with animation
   return (
     <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+      {/* Mobile trigger + sheet — hidden on desktop via `lg:hidden` */}
+      <div className="lg:hidden">
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-slate-600 dark:text-slate-400"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent
+            side="left"
+            className="w-[280px] p-0 bg-sidebar-background border-r border-sidebar-border"
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Navigation Menu</SheetTitle>
+            </SheetHeader>
+            <SidebarContent
+              isMobile
+              onClose={() => setMobileOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* Desktop sidebar — hidden on mobile via `hidden lg:block` */}
       <motion.aside
         initial={false}
         animate={{ width: collapsed ? 72 : 280 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className={cn(
-          "hidden lg:block h-screen sticky top-0 border-r border-sidebar-border bg-sidebar z-30 overflow-hidden",
+          "hidden lg:block h-screen sticky top-0 border-r border-sidebar-border bg-sidebar-background z-30 overflow-hidden",
           className
         )}
       >
