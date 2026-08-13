@@ -90,28 +90,28 @@ interface SidebarContentProps {
 // wrong. The skeleton makes "loading" visually distinct from "resolved".
 function SidebarSkeleton() {
   return (
-    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
-      <div className="flex items-center h-18 px-4 border-b border-white/10">
-        <div className="h-10 w-10 rounded-xl bg-white/5 animate-pulse" />
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground text-sidebar">
+      <div className="flex items-center h-18 px-4 border-b border-sidebar-border">
+        <div className="h-10 w-10 rounded-xl bg-sidebar-accent animate-pulse" />
         <div className="ml-3 flex flex-col gap-1.5">
-          <div className="h-4 w-20 rounded bg-white/5 animate-pulse" />
-          <div className="h-3 w-16 rounded bg-white/5 animate-pulse" />
+          <div className="h-4 w-20 rounded bg-sidebar-accent animate-pulse" />
+          <div className="h-3 w-16 rounded bg-sidebar-accent animate-pulse" />
         </div>
       </div>
-      <div className="px-4 py-4 border-b border-white/10">
+      <div className="px-4 py-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-white/5 animate-pulse" />
+          <div className="h-10 w-10 rounded-full bg-sidebar-accent animate-pulse" />
           <div className="flex flex-col gap-1.5 flex-1">
-            <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
-            <div className="h-3 w-32 rounded bg-white/5 animate-pulse" />
+            <div className="h-3 w-24 rounded bg-sidebar-accent animate-pulse" />
+            <div className="h-3 w-32 rounded bg-sidebar-accent animate-pulse" />
           </div>
         </div>
       </div>
       <div className="flex-1 px-3 py-4 space-y-2">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-3 py-2">
-            <div className="h-5 w-5 rounded bg-white/5 animate-pulse" />
-            <div className="h-3 flex-1 rounded bg-white/5 animate-pulse" />
+            <div className="h-5 w-5 rounded bg-sidebar-accent animate-pulse" />
+            <div className="h-3 flex-1 rounded bg-sidebar-accent animate-pulse" />
           </div>
         ))}
       </div>
@@ -285,8 +285,12 @@ function SidebarContent({
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground text-sidebar">
       {/* Custom scrollbar styles */}
+      {/* Custom scrollbar styles. Uses currentColor so the thumb
+          automatically adapts to the sidebar's foreground color in
+          light/dark mode (previously hardcoded rgba(255,255,255,...)
+          which was invisible on a white sidebar). */}
       <style>{`
         .sidebar-scroll::-webkit-scrollbar {
           width: 4px;
@@ -295,11 +299,11 @@ function SidebarContent({
           background: transparent;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
+          background: color-mix(in srgb, currentColor 12%, transparent);
           border-radius: 2px;
         }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: color-mix(in srgb, currentColor 22%, transparent);
         }
       `}</style>
 
@@ -308,7 +312,7 @@ function SidebarContent({
       {/* ============================================ */}
       <div
         className={cn(
-          "flex items-center h-18 px-4 border-b border-white/10",
+          "flex items-center h-18 px-4 border-b border-sidebar-border",
           collapsed && !isMobile ? "justify-center" : "justify-between"
         )}
       >
@@ -351,11 +355,11 @@ function SidebarContent({
                 transition={{ duration: 0.2 }}
                 className="flex flex-col overflow-hidden"
               >
-                <span className="font-bold text-lg whitespace-nowrap text-white tracking-tight">
+                <span className="font-bold text-lg whitespace-nowrap text-sidebar-foreground tracking-tight">
                   {tenantName}
                 </span>
                 {university?.name && university.name !== tenantName && (
-                  <span className="text-xs text-slate-500 truncate max-w-[160px] font-medium">
+                  <span className="text-xs text-sidebar-foreground/60 truncate max-w-[160px] font-medium">
                     {university.name}
                   </span>
                 )}
@@ -369,7 +373,7 @@ function SidebarContent({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 hidden lg:flex text-slate-400 hover:text-white hover:bg-white/5"
+            className="h-8 w-8 shrink-0 hidden lg:flex text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
             onClick={onToggle}
           >
             <motion.div
@@ -390,7 +394,7 @@ function SidebarContent({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 lg:hidden text-slate-400 hover:text-white hover:bg-white/5"
+            className="h-8 w-8 shrink-0 lg:hidden text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -403,7 +407,7 @@ function SidebarContent({
       {/* ============================================ */}
       <div
         className={cn(
-          "px-4 py-4 border-b border-white/10",
+          "px-4 py-4 border-b border-sidebar-border",
           collapsed && !isMobile ? "flex justify-center" : ""
         )}
       >
@@ -437,10 +441,10 @@ function SidebarContent({
                 transition={{ duration: 0.2 }}
                 className="flex flex-col min-w-0 flex-1"
               >
-                <span className="text-sm font-medium truncate text-white">
+                <span className="text-sm font-medium truncate text-sidebar-foreground">
                   {getDisplayName()}
                 </span>
-                <span className="text-xs text-slate-400 truncate">
+                <span className="text-xs text-sidebar-foreground/70 truncate">
                   {getUserEmail()}
                 </span>
                 <Badge
@@ -481,13 +485,13 @@ function SidebarContent({
               nav menu, hiding the failure from the user. */}
           {showRetry && (
             <div className="px-3 py-6 text-center">
-              <p className="text-xs text-slate-400 mb-3">
+              <p className="text-xs text-sidebar-foreground/70 mb-3">
                 Couldn&apos;t load your menu.
               </p>
               <Button
                 variant="outline"
                 size="sm"
-                className="text-xs h-8 border-white/10 text-slate-300 hover:bg-white/5"
+                className="text-xs h-8 border-sidebar-border text-sidebar-foreground/80 hover:bg-sidebar-accent"
                 onClick={() => router.refresh()}
               >
                 <RefreshCw className="h-3 w-3 mr-1.5" />
@@ -518,8 +522,8 @@ function SidebarContent({
                         className={cn(
                           "flex items-center w-full gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group border",
                           childActive && !collapsed
-                            ? "bg-blue-500/15 text-blue-300 border-blue-400/30"
-                            : "text-slate-400 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
+                            ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-400/30"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
                           collapsed &&
                             !isMobile &&
                             "justify-center px-2"
@@ -545,8 +549,8 @@ function SidebarContent({
                           className={cn(
                             "h-5 w-5 shrink-0 relative z-10 transition-colors",
                             childActive && !collapsed
-                              ? "text-blue-300"
-                              : "text-slate-500 group-hover:text-blue-300"
+                              ? "text-blue-700 dark:text-blue-300"
+                              : "text-sidebar-foreground/60 group-hover:text-blue-700 dark:group-hover:text-blue-300"
                           )}
                         />
 
@@ -570,7 +574,7 @@ function SidebarContent({
                             transition={{ duration: 0.2 }}
                             className="relative z-10"
                           >
-                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                            <ChevronDown className="h-4 w-4 text-sidebar-foreground/60" />
                           </motion.div>
                         )}
                       </button>
@@ -584,7 +588,7 @@ function SidebarContent({
                             animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="overflow-hidden ml-4 pl-3 border-l border-white/10 space-y-0.5"
+                            className="overflow-hidden ml-4 pl-3 border-l border-sidebar-border space-y-0.5"
                           >
                             {item.children!.map((child) => {
                               const childIsActive = isActive(child.href);
@@ -605,7 +609,7 @@ function SidebarContent({
                                     "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 relative group border",
                                     childIsActive
                                       ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-blue-400/50"
-                                      : "text-slate-500 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent"
+                                      : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent"
                                   )}
                                 >
                                   {childIsActive && (
@@ -624,7 +628,7 @@ function SidebarContent({
                                       "h-4 w-4 shrink-0 relative z-10 transition-colors",
                                       childIsActive
                                         ? "text-blue-100"
-                                        : "text-slate-500 group-hover:text-blue-300"
+                                        : "text-sidebar-foreground/60 group-hover:text-blue-700 dark:group-hover:text-blue-300"
                                     )}
                                   />
                                   <span className="relative z-10 truncate">
@@ -694,7 +698,7 @@ function SidebarContent({
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group border",
                     active
                       ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-blue-400/50"
-                      : "text-slate-400 hover:text-white hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
                     collapsed && !isMobile && "justify-center px-2"
                   )}
                 >
@@ -729,7 +733,7 @@ function SidebarContent({
                       "h-5 w-5 shrink-0 relative z-10 transition-colors",
                       active
                         ? "text-blue-100"
-                        : "text-slate-500 group-hover:text-blue-300"
+                        : "text-sidebar-foreground/60 group-hover:text-blue-700 dark:group-hover:text-blue-300"
                     )}
                   />
 
@@ -798,8 +802,8 @@ function SidebarContent({
       {/* ============================================ */}
       {/* FOOTER SECTION                              */}
       {/* ============================================ */}
-      <div className="p-4 border-t border-white/10">
-        <Separator className="mb-4 bg-white/10" />
+      <div className="p-4 border-t border-sidebar-border">
+        <Separator className="mb-4 bg-sidebar-border" />
 
         {/* University info when collapsed */}
         {collapsed && !isMobile && university && (
@@ -807,7 +811,7 @@ function SidebarContent({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex justify-center mb-3">
-                  <Building2 className="h-5 w-5 text-slate-500" />
+                  <Building2 className="h-5 w-5 text-sidebar-foreground/60" />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right">
@@ -827,7 +831,7 @@ function SidebarContent({
               : "#"
           }
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 mb-1 text-slate-400 hover:text-white hover:bg-white/5",
+            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 mb-1 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
             collapsed && !isMobile && "justify-center px-2"
           )}
         >
@@ -850,7 +854,7 @@ function SidebarContent({
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200",
+            "w-full justify-start text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-500/10 transition-all duration-200",
             collapsed && !isMobile && "justify-center px-2"
           )}
           onClick={handleLogout}
@@ -878,7 +882,7 @@ function SidebarContent({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-xs text-slate-600 mt-4 text-center font-mono"
+              className="text-xs text-sidebar-foreground/50 mt-4 text-center font-mono"
             >
               v2.1.0
             </motion.p>

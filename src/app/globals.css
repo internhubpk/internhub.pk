@@ -44,7 +44,10 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   
-  /* Sidebar Colors - Enterprise Dark Sidebar */
+  /* Sidebar Colors - theme-aware (light in light mode, dark in dark mode).
+     `--color-sidebar` aliases `--sidebar-background` so Tailwind utilities
+     like `ring-offset-sidebar` and `bg-sidebar` resolve correctly. */
+  --color-sidebar: var(--sidebar-background);
   --color-sidebar-background: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -148,17 +151,21 @@
   --chart-5: #dc2626;  /* Red - Critical/Error data */
   
   /* 
-   * SIDEBAR - Enterprise Dark Navigation
-   * Deep slate for professional appearance
+   * SIDEBAR - Theme-Aware Navigation
+   * Light mode: white surface, dark text — matches the page background
+   * Dark mode (see .dark below): deep slate for visual hierarchy.
+   * The sidebar used to be hardcoded dark in both modes; the tokens
+   * below now flip with the theme so the sidebar adapts to light/dark
+   * mode like the rest of the UI.
    */
-  --sidebar-background: #0f172a;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-border: #1e293b;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #e2e8f0;
-  --sidebar-primary: #3b82f6;
+  --sidebar-background: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-ring: #3b82f6;
+  --sidebar-ring: #2563eb;
   
   /* Spacing Scale - 4px Base Unit */
   --space-1: 4px;
