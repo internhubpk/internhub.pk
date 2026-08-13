@@ -64,6 +64,16 @@ interface DepartmentFormData {
   code: string;
   head_id: string;
   is_active: boolean;
+  // Cascading account creation: when a University Admin creates a new
+  // department, they simultaneously create the department_coordinator
+  // account that will own it. This mirrors the existing
+  // "create university + admin account" and "create company + hr account"
+  // flows, eliminating the previous chicken-and-egg problem where
+  // coordinators had to be created separately and then assigned via the
+  // Department Head dropdown (which only listed existing coordinators).
+  coordinatorEmail: string;
+  coordinatorPassword: string;
+  coordinatorName: string;
 }
 
 const emptyForm: DepartmentFormData = {
@@ -71,6 +81,9 @@ const emptyForm: DepartmentFormData = {
   code: "",
   head_id: "",
   is_active: true,
+  coordinatorEmail: "",
+  coordinatorPassword: "",
+  coordinatorName: "",
 };
 
 export default function DepartmentsPage() {
@@ -227,6 +240,36 @@ export default function DepartmentsPage() {
       return;
     }
 
+    // When CREATING a new department, the coordinator account fields are
+    // required (cascading creation flow). When editing, they're hidden
+    // and the existing Department Head dropdown is used instead.
+    if (!editingDepartment) {
+      if (!formData.coordinatorEmail.trim() || !formData.coordinatorEmail.includes("@")) {
+        toast({
+          title: "Validation Error",
+          description: "A valid coordinator email is required",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!formData.coordinatorPassword || formData.coordinatorPassword.length < 8) {
+        toast({
+          title: "Validation Error",
+          description: "Coordinator password must be at least 8 characters",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!formData.coordinatorName.trim()) {
+        toast({
+          title: "Validation Error",
+          description: "Coordinator name is required",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     try {
       setIsSubmitting(true);
       const supabase = createClient();
@@ -252,14 +295,16 @@ export default function DepartmentsPage() {
           description: `Department "${formData.name}" updated successfully`,
         });
       } else {
-        // Create new department
+        // Create new department — initially without head_id (the
+        // coordinator account doesn't exist yet). We'll set head_id
+        // after the coordinator auth account is created.
         const { data, error } = await supabase
           .from("departments")
           .insert({
             university_id: universityId,
             name: formData.name.trim(),
             code: formData.code.trim().toUpperCase(),
-            head_id: formData.head_id || null,
+            head_id: null,
             is_active: formData.is_active,
             created_at: new Date().toISOString(),
           })
@@ -278,10 +323,80 @@ export default function DepartmentsPage() {
           throw error;
         }
 
-        toast({
-          title: "Success",
-          description: `Department "${formData.name}" created successfully`,
-        });
+        // Now create the department_coordinator auth account via the
+        // server-side admin route. This uses the service role key
+        // (server-only) to call supabase.auth.admin.createUser(),
+        // which does NOT establish a session for the new user — the
+        // calling University Admin stays signed in. The route also
+        // force-sets university_id and department_id from the caller's
+        // own profile (defense-in-depth against tampering).
+        let coordinatorUserId: string | null = null;
+        let coordinatorWarning: string | null = null;
+
+        try {
+          const res = await fetch("/api/admin/create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: formData.coordinatorEmail.trim(),
+              password: formData.coordinatorPassword,
+              full_name: formData.coordinatorName.trim(),
+              role: "department_coordinator",
+              university_id: universityId,
+              department_id: data.id,
+              job_title: `Department Coordinator — ${formData.name.trim()}`,
+            }),
+          });
+
+          const json = await res.json();
+
+          if (!res.ok || !json?.success) {
+            console.error("Coordinator creation error:", json?.error);
+            coordinatorWarning =
+              json?.error || `Request failed (${res.status})`;
+          } else {
+            coordinatorUserId = json?.data?.id ?? null;
+            if (json?.warning) {
+              coordinatorWarning = json.warning;
+            }
+          }
+        } catch (adminError: any) {
+          console.error("Coordinator creation error:", adminError);
+          coordinatorWarning = adminError?.message || "Unknown error";
+        }
+
+        // If the coordinator account was created successfully, link it
+        // to the department as its head_id. This is what makes the
+        // coordinator visible in the department's "Coordinators" count
+        // and what shows their name as "Head: ..." in the card list.
+        if (coordinatorUserId) {
+          const { error: linkError } = await supabase
+            .from("departments")
+            .update({ head_id: coordinatorUserId, updated_at: new Date().toISOString() })
+            .eq("id", data.id);
+
+          if (linkError) {
+            console.error("Failed to link coordinator as head:", linkError);
+            // Non-fatal — the coordinator exists, just isn't linked as
+            // head. Surface it as a warning instead of failing.
+            coordinatorWarning =
+              (coordinatorWarning ? coordinatorWarning + " " : "") +
+              `Coordinator account created but failed to link as department head: ${linkError.message}. You can link them manually via Edit.`;
+          }
+        }
+
+        if (coordinatorWarning) {
+          toast({
+            title: "Department created (with warnings)",
+            description: `Department "${formData.name}" was created, but: ${coordinatorWarning}`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Success",
+            description: `Department "${formData.name}" created with coordinator account for ${formData.coordinatorEmail}. Default password: ${formData.coordinatorPassword}`,
+          });
+        }
       }
 
       setIsDialogOpen(false);
@@ -351,6 +466,12 @@ export default function DepartmentsPage() {
       code: department.code || "",
       head_id: department.head_id || "",
       is_active: department.is_active,
+      // Cascading-account-creation fields are CREATE-mode only. They're
+      // initialized to empty so the form state is well-typed; the
+      // dialog hides them when editing.
+      coordinatorEmail: "",
+      coordinatorPassword: "",
+      coordinatorName: "",
     });
     setIsDialogOpen(true);
   };
@@ -586,27 +707,80 @@ export default function DepartmentsPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="head">Department Head</Label>
-              <Select
-                value={formData.head_id || "__none__"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, head_id: value === "__none__" ? "" : value })
-                }
-              >
-                <SelectTrigger id="head">
-                  <SelectValue placeholder="Select a department head" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None assigned</SelectItem>
-                  {potentialHeads.map((head) => (
-                    <SelectItem key={head.user_id} value={head.user_id}>
-                      {head.full_name || head.email} ({head.role.replace('_', ' ')})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {editingDepartment ? (
+              // EDIT mode: show the Department Head dropdown so the
+              // admin can reassign the head to any existing
+              // coordinator / faculty supervisor in the university.
+              <div className="space-y-2">
+                <Label htmlFor="head">Department Head</Label>
+                <Select
+                  value={formData.head_id || "__none__"}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, head_id: value === "__none__" ? "" : value })
+                  }
+                >
+                  <SelectTrigger id="head">
+                    <SelectValue placeholder="Select a department head" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None assigned</SelectItem>
+                    {potentialHeads.map((head) => (
+                      <SelectItem key={head.user_id} value={head.user_id}>
+                        {head.full_name || head.email} ({head.role.replace('_', ' ')})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              // CREATE mode: cascading account creation. Instead of
+              // picking an existing coordinator (which requires a
+              // separate create-account step), the admin fills in the
+              // new department_coordinator's credentials here. On
+              // submit, the department is created AND the coordinator
+              // auth account is created and auto-linked as the head.
+              <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-primary" />
+                  <h4 className="text-sm font-semibold">Department Coordinator Account</h4>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  This coordinator will be created automatically and assigned as the head of this department. They can sign in immediately with the email and password below.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="coordinatorName">Coordinator Name *</Label>
+                  <Input
+                    id="coordinatorName"
+                    placeholder="e.g., Dr. Sarah Khan"
+                    value={formData.coordinatorName}
+                    onChange={(e) => setFormData({ ...formData, coordinatorName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="coordinatorEmail">Coordinator Email *</Label>
+                  <Input
+                    id="coordinatorEmail"
+                    type="email"
+                    placeholder="coordinator@university.edu"
+                    value={formData.coordinatorEmail}
+                    onChange={(e) => setFormData({ ...formData, coordinatorEmail: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="coordinatorPassword">Coordinator Password *</Label>
+                  <Input
+                    id="coordinatorPassword"
+                    type="text"
+                    placeholder="At least 8 characters"
+                    value={formData.coordinatorPassword}
+                    onChange={(e) => setFormData({ ...formData, coordinatorPassword: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Share this password with the coordinator. They can change it after first sign-in.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {editingDepartment && (
               <div className="flex items-center space-x-2 pt-2">

@@ -87,6 +87,16 @@ interface ProgramFormData {
   duration_weeks: number;
   default_faculty_supervisor_id: string;
   is_active: boolean;
+  // Cascading account creation: when a Department Coordinator creates
+  // a new program, they simultaneously create the faculty_supervisor
+  // account that will own it. Mirrors the university+admin and
+  // department+coordinator cascading flows. Eliminates the previous
+  // "no faculty supervisors found, ask your admin to create one"
+  // chicken-and-egg dead-end that stranded coordinators on an empty
+  // supervisor dropdown.
+  supervisorEmail: string;
+  supervisorPassword: string;
+  supervisorName: string;
 }
 
 const emptyForm: ProgramFormData = {
@@ -96,6 +106,9 @@ const emptyForm: ProgramFormData = {
   duration_weeks: 8,
   default_faculty_supervisor_id: "",
   is_active: true,
+  supervisorEmail: "",
+  supervisorPassword: "",
+  supervisorName: "",
 };
 
 export default function ProgramsPage() {
@@ -169,13 +182,48 @@ export default function ProgramsPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
+    // When CREATING a new program, the supervisor account fields are
+    // required (cascading creation flow). When editing, they're hidden
+    // and the existing supervisor dropdown is used instead.
+    if (!editingProgram) {
+      if (!formData.supervisorEmail.trim() || !formData.supervisorEmail.includes("@")) {
+        alert("A valid supervisor email is required");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!formData.supervisorPassword || formData.supervisorPassword.length < 8) {
+        alert("Supervisor password must be at least 8 characters");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!formData.supervisorName.trim()) {
+        alert("Supervisor name is required");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
+      // Strip the cascading-account-creation fields from the payload
+      // sent to /api/programs — that route only knows about program
+      // columns. When creating, we also leave default_faculty_supervisor_id
+      // empty: the supervisor auth account doesn't exist yet. After
+      // the program is created and the supervisor account is created,
+      // we PUT /api/programs again to link them.
+      const { supervisorEmail: _se, supervisorPassword: _sp, supervisorName: _sn, ...programPayload } = formData;
+
+      if (!editingProgram) {
+        // CREATE: clear default_faculty_supervisor_id — we'll set it
+        // after the supervisor account exists.
+        programPayload.default_faculty_supervisor_id = "";
+      }
+
       const url = editingProgram ? "/api/programs" : "/api/programs";
       const method = editingProgram ? "PUT" : "POST";
-      
+
       const body = editingProgram
-        ? { ...formData, id: editingProgram.id }
-        : formData;
+        ? { ...programPayload, id: editingProgram.id }
+        : programPayload;
 
       const res = await fetch(url, {
         method,
@@ -185,13 +233,99 @@ export default function ProgramsPage() {
 
       const data = await res.json();
 
-      if (data.success) {
-        await fetchPrograms();
-        setIsDialogOpen(false);
-        resetForm();
-      } else {
+      if (!data.success) {
         alert(data.error || "Failed to save program");
+        setIsSubmitting(false);
+        return;
       }
+
+      // CREATING: now create the faculty_supervisor auth account via
+      // /api/admin/create-user. The route's COORD_TARGET_ROLES list
+      // allows department_coordinator callers to create faculty_supervisor
+      // accounts, and force-sets university_id and department_id from
+      // the caller's own profile (defense-in-depth — the body values
+      // are ignored). The new supervisor can sign in immediately.
+      if (!editingProgram && data.data?.id) {
+        const programId = data.data.id;
+        let supervisorUserId: string | null = null;
+        let supervisorWarning: string | null = null;
+
+        try {
+          const createRes = await fetch("/api/admin/create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: formData.supervisorEmail.trim(),
+              password: formData.supervisorPassword,
+              full_name: formData.supervisorName.trim(),
+              role: "faculty_supervisor",
+              // These are force-set by the route from the caller's
+              // profile, but we pass them anyway for clarity.
+              university_id: profile?.university_id,
+              department_id: profile?.department_id,
+              job_title: `Faculty Supervisor — ${formData.name.trim()}`,
+            }),
+          });
+
+          const createJson = await createRes.json();
+
+          if (!createRes.ok || !createJson?.success) {
+            console.error("Supervisor creation error:", createJson?.error);
+            supervisorWarning =
+              createJson?.error || `Request failed (${createRes.status})`;
+          } else {
+            supervisorUserId = createJson?.data?.id ?? null;
+            if (createJson?.warning) {
+              supervisorWarning = createJson.warning;
+            }
+          }
+        } catch (adminError: any) {
+          console.error("Supervisor creation error:", adminError);
+          supervisorWarning = adminError?.message || "Unknown error";
+        }
+
+        // If the supervisor account was created successfully, link it
+        // to the program via PUT /api/programs. This sets
+        // default_faculty_supervisor_id, which is what the program
+        // card and detail pages display.
+        if (supervisorUserId) {
+          const linkRes = await fetch("/api/programs", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: programId,
+              name: programPayload.name,
+              code: programPayload.code,
+              description: programPayload.description,
+              duration_weeks: programPayload.duration_weeks,
+              default_faculty_supervisor_id: supervisorUserId,
+              is_active: programPayload.is_active,
+            }),
+          });
+
+          const linkJson = await linkRes.json();
+          if (!linkRes.ok || !linkJson?.success) {
+            console.error("Failed to link supervisor to program:", linkJson?.error);
+            supervisorWarning =
+              (supervisorWarning ? supervisorWarning + " " : "") +
+              `Supervisor account created but failed to link to program: ${linkJson?.error || linkRes.status}. You can link them manually via Edit.`;
+          }
+        }
+
+        if (supervisorWarning) {
+          alert(
+            `Program created, but there was an issue: ${supervisorWarning}`
+          );
+        }
+      }
+
+      await fetchPrograms();
+      // Refresh the supervisors list so the newly-created supervisor
+      // appears in the edit-mode dropdown if the coordinator edits
+      // the program later.
+      await fetchSupervisors();
+      setIsDialogOpen(false);
+      resetForm();
     } catch (error) {
       console.error("Error saving program:", error);
       alert("Failed to save program");
@@ -234,6 +368,12 @@ export default function ProgramsPage() {
       duration_weeks: program.duration_weeks,
       default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
       is_active: program.is_active,
+      // Cascading-account-creation fields are CREATE-mode only. They're
+      // initialized to empty so the form state is well-typed; the
+      // dialog hides them when editing.
+      supervisorEmail: "",
+      supervisorPassword: "",
+      supervisorName: "",
     });
     setIsDialogOpen(true);
   };
@@ -349,41 +489,87 @@ export default function ProgramsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
-                  <Select
-                    value={formData.default_faculty_supervisor_id || "__none__"}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        default_faculty_supervisor_id:
-                          value === "__none__" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger id="supervisor">
-                      <SelectValue placeholder="Select a faculty supervisor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">None allotted</SelectItem>
-                      {supervisors.map((sup) => (
-                        <SelectItem key={sup.user_id} value={sup.user_id}>
-                          {sup.full_name || sup.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    The allotted supervisor will be the default faculty supervisor
-                    for students enrolling in this program. You can change this later.
-                    {supervisors.length === 0 && (
-                      <span className="text-amber-600 block mt-1">
-                        No faculty supervisors found in your university. Ask the
-                        University Admin to create a faculty supervisor account first.
-                      </span>
-                    )}
-                  </p>
-                </div>
+                {editingProgram ? (
+                  // EDIT mode: show the existing supervisor dropdown
+                  // so the coordinator can reassign to any existing
+                  // faculty supervisor in the department.
+                  <div className="space-y-2">
+                    <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
+                    <Select
+                      value={formData.default_faculty_supervisor_id || "__none__"}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          default_faculty_supervisor_id:
+                            value === "__none__" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="supervisor">
+                        <SelectValue placeholder="Select a faculty supervisor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None allotted</SelectItem>
+                        {supervisors.map((sup) => (
+                          <SelectItem key={sup.user_id} value={sup.user_id}>
+                            {sup.full_name || sup.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      The allotted supervisor will be the default faculty supervisor
+                      for students enrolling in this program. You can change this later.
+                    </p>
+                  </div>
+                ) : (
+                  // CREATE mode: cascading account creation. The
+                  // coordinator fills in the new faculty_supervisor's
+                  // credentials here. On submit, the program is created
+                  // AND the supervisor auth account is created and
+                  // auto-linked as the default supervisor.
+                  <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Faculty Supervisor Account</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground -mt-2">
+                      This supervisor will be created automatically and assigned as the default supervisor for this program. They can sign in immediately with the email and password below, and can then assign students to the program.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="supervisorName">Supervisor Name *</Label>
+                      <Input
+                        id="supervisorName"
+                        placeholder="e.g., Prof. Ahmed Raza"
+                        value={formData.supervisorName}
+                        onChange={(e) => setFormData({ ...formData, supervisorName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="supervisorEmail">Supervisor Email *</Label>
+                      <Input
+                        id="supervisorEmail"
+                        type="email"
+                        placeholder="supervisor@university.edu"
+                        value={formData.supervisorEmail}
+                        onChange={(e) => setFormData({ ...formData, supervisorEmail: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="supervisorPassword">Supervisor Password *</Label>
+                      <Input
+                        id="supervisorPassword"
+                        type="text"
+                        placeholder="At least 8 characters"
+                        value={formData.supervisorPassword}
+                        onChange={(e) => setFormData({ ...formData, supervisorPassword: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Share this password with the supervisor. They can change it after first sign-in.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">

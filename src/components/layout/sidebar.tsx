@@ -13,7 +13,6 @@ import {
   Menu,
   X,
   Settings,
-  GraduationCap,
   Briefcase,
   Building2,
   Users,
@@ -138,8 +137,29 @@ function SidebarContent({
   // client, headers-derived on server). Falls back to PLATFORM_DEFAULT_TENANT
   // on the main internhub.pk domain.
   const { tenant } = useTenant();
-  const tenantName = tenant?.name || "InternHub";
-  const tenantLogo = tenant?.logoUrl || tenant?.logo;
+  // Branding resolution priority:
+  //   1. university.logo_url  — the per-university uploaded logo (DB).
+  //      This is the ONLY source of truth for an actual branded logo.
+  //   2. tenant.logoUrl/logo  — but ONLY if it differs from the platform
+  //      default `/logo.svg`. The platform default is the InternHub "Z"
+  //      mark — it should NOT be shown on a university's sidebar.
+  //   3. No logo at all  →  render the <Building2/> Lucide icon as a
+  //      neutral university-themed fallback (replaces the Z).
+  //
+  // Why Building2 instead of GraduationCap: GraduationCap reads as
+  // "student/learning"; Building2 reads as "institution/university",
+  // which matches what a multi-tenant university sidebar should
+  // communicate when no logo has been uploaded.
+  const tenantName =
+    university?.name || tenant?.name || "InternHub";
+  const PLATFORM_DEFAULT_LOGO = "/logo.svg";
+  const tenantLogoOverride =
+    tenant?.logoUrl && tenant.logoUrl !== PLATFORM_DEFAULT_LOGO
+      ? tenant.logoUrl
+      : tenant?.logo && tenant.logo !== PLATFORM_DEFAULT_LOGO
+        ? tenant.logo
+        : null;
+  const brandLogo = university?.logo_url || tenantLogoOverride || null;
 
   // BUG 6 FIX: Distinguish "loading" from "resolved, no role".
   // While auth is loading, render the skeleton (handled below after hooks).
@@ -237,11 +257,16 @@ function SidebarContent({
     return "User";
   };
 
-  // Get avatar URL with fallbacks
-  const getAvatarUrl = (): string | null | undefined => {
-    return profile?.avatar_url ||
-           (user?.user_metadata as Record<string, string> | undefined)?.avatar_url ||
-           null;
+  // Get avatar URL with fallbacks.
+  // Returns `string | undefined` (NOT `string | null`) because the
+  // <AvatarImage src=...> prop is typed as `string | undefined` —
+  // passing `null` here would cause a TS error.
+  const getAvatarUrl = (): string | undefined => {
+    return (
+      profile?.avatar_url ||
+      (user?.user_metadata as Record<string, string> | undefined)?.avatar_url ||
+      undefined
+    );
   };
 
   // Get user email for display
@@ -298,11 +323,11 @@ function SidebarContent({
             animate={{ opacity: 1, scale: 1 }}
             className="flex-shrink-0"
           >
-            {tenantLogo ? (
-              // BUG 4 FIX: prefer the tenant's actual logo (uploaded by
-              // the university admin) over the generic GraduationCap.
+            {brandLogo ? (
+              // Real uploaded logo (university.logo_url or tenant
+              // override). NOT the platform default /logo.svg (Z).
               <img
-                src={tenantLogo}
+                src={brandLogo}
                 alt={`${tenantName} logo`}
                 className="h-10 w-10 rounded-xl object-cover"
               />
@@ -313,7 +338,7 @@ function SidebarContent({
                   collapsed && !isMobile ? "h-10 w-10" : "h-10 w-10"
                 )}
               >
-                <GraduationCap className="h-6 w-6 text-white" />
+                <Building2 className="h-6 w-6 text-white" />
               </div>
             )}
           </motion.div>
@@ -400,7 +425,7 @@ function SidebarContent({
               alt={getDisplayName()}
             />
             <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
-              {getInitials(profile?.first_name, profile?.last_name)}
+              {getInitials(profile?.first_name ?? undefined, profile?.last_name ?? undefined)}
             </AvatarFallback>
           </Avatar>
 
@@ -609,6 +634,19 @@ function SidebarContent({
               );
 
               if (collapsed && !isMobile) {
+                // BUG FIX (doubled icons): the previous code rendered
+                // <CollapsibleNavContent /> TWICE — once inside
+                // <TooltipTrigger asChild> and once as
+                // <CollapsibleNavContent showTooltip />. Both calls
+                // produced the trigger button (with the icon), so the
+                // sidebar showed two stacked icons per nav item when
+                // collapsed. The `showTooltip` prop only ADDED the
+                // <TooltipContent> — it didn't suppress the button.
+                //
+                // Fix: render the trigger content ONCE inside
+                // <TooltipTrigger asChild>, then render <TooltipContent>
+                // directly (just the text label). No second call to
+                // CollapsibleNavContent.
                 return (
                   <TooltipProvider key={item.title} delayDuration={0}>
                     <Tooltip>
@@ -617,7 +655,9 @@ function SidebarContent({
                           <CollapsibleNavContent />
                         </div>
                       </TooltipTrigger>
-                      <CollapsibleNavContent showTooltip />
+                      <TooltipContent side="right" className="font-medium">
+                        {item.title}
+                      </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 );
@@ -712,6 +752,14 @@ function SidebarContent({
             );
 
             if (collapsed && !isMobile) {
+              // BUG FIX (doubled icons): same root cause as the
+              // collapsible-with-children case above. Previously
+              // <NavItemContent /> was rendered twice inside the
+              // Tooltip wrapper — once as the trigger, once as the
+              // tooltip-body call. Both produced the visible Link+
+              // icon, so simple items also showed doubled icons when
+              // collapsed. Render the trigger once, then a standalone
+              // <TooltipContent> for the label.
               return (
                 <TooltipProvider key={item.href} delayDuration={0}>
                   <Tooltip>
@@ -720,7 +768,9 @@ function SidebarContent({
                         <NavItemContent />
                       </div>
                     </TooltipTrigger>
-                    <NavItemContent showTooltip />
+                    <TooltipContent side="right" className="font-medium">
+                      {item.title}
+                    </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               );
