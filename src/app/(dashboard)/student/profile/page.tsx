@@ -192,7 +192,17 @@ export default function StudentProfilePage() {
             ...prev,
             cgpa: data.cgpa != null ? String(data.cgpa) : "",
             enrollmentYear: data.enrollment_year != null ? String(data.enrollment_year) : "",
-            expectedGraduation: data.expected_graduation != null ? String(data.expected_graduation) : "",
+            // `expected_graduation` is a Postgres `date` column. We write
+            // it as `${year}-01-01` (see handleSave), so on read we extract
+            // just the year portion to keep the form field consistent.
+            // Using `String(x).slice(0, 4)` is safe for ISO date strings
+            // ("2027-01-01" → "2027") and avoids timezone-related off-by-one
+            // issues that `new Date(...).getFullYear()` can introduce when
+            // the date string is interpreted as UTC.
+            expectedGraduation:
+              data.expected_graduation != null
+                ? String(data.expected_graduation).slice(0, 4)
+                : "",
           }));
         }
       } catch (error) {
@@ -402,16 +412,25 @@ export default function StudentProfilePage() {
         updated_at: nowIso,
       };
 
-      const { error: studentError } = await supabase
+      // `.select("user_id").maybeSingle()` lets us detect a 0-row match
+      // (no `students` row exists yet for this user). Without it, Supabase
+      // returns no error and no data, making the "row missing" case
+      // indistinguishable from "row updated successfully".
+      const { data: updatedStudent, error: studentError } = await supabase
         .from("students")
         .update(studentPayload)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .select("user_id")
+        .maybeSingle();
 
       if (studentError) {
-        // Log + show a warning, but DON'T fail the whole profile save —
-        // the `profiles` row already updated successfully above. The
-        // academic fields are secondary; a failure here shouldn't roll
-        // back the user's name/phone/bio changes.
+        // Real DB error — the students row exists but the update failed
+        // (constraint violation, RLS, etc.). The profile (name/phone/bio)
+        // WAS saved successfully above, but the academic info wasn't.
+        // Show a warning and DON'T show the success toast or the green
+        // "Saved successfully!" chip — the save was partial, so both
+        // would be misleading. Keep the user in edit mode so they can
+        // retry without re-entering their changes.
         console.error("[profile.update] students update failed", {
           code: studentError.code,
           message: studentError.message,
@@ -419,18 +438,34 @@ export default function StudentProfilePage() {
           hint: studentError.hint,
         });
         sharedToast.warning("Profile saved, but academic info couldn't be updated", {
+          id: toastId,
           description:
-            "Your name and contact details were saved. Academic info (CGPA, enrollment year) may require you to be enrolled in a program first.",
+            "Your name and contact details were saved. Academic info (CGPA, enrollment year) failed to save — please try again or contact support.",
         });
+        // Don't setSaveSuccess(true) — the green chip would be misleading.
+        // Don't setIsEditing(false) — let the user retry the academic fields.
+      } else {
+        // Either the students row was updated, or it doesn't exist yet
+        // (non-fatal — see the !updatedStudent branch above). In both
+        // cases the profile was saved and the user can leave edit mode.
+        if (!updatedStudent) {
+          console.warn("[profile.update] no students row found for user_id", {
+            user_id: user.id,
+          });
+          sharedToast.success("Profile updated successfully.", {
+            id: toastId,
+            description:
+              "Academic info (CGPA, enrollment year) will be available once you're enrolled in a program.",
+          });
+        } else {
+          sharedToast.success("Profile updated successfully.", { id: toastId });
+        }
+
+        await refreshProfile();
+        setIsEditing(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
       }
-
-      await refreshProfile();
-      setIsEditing(false);
-      setSaveSuccess(true);
-
-      sharedToast.success("Profile updated successfully.", { id: toastId });
-
-      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("[profile.update] save failed", { error });
       // sharedToast.error passes the error through `sanitizeError` so
