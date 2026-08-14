@@ -70,6 +70,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -130,6 +131,7 @@ function shiftDate(iso: string, days: number): string {
 
 export default function CompanyHRAttendancePage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [records, setRecords] = useState<AttendanceRecord[]>(DEFAULT_RECORDS);
   const [summaries, setSummaries] = useState<AttendanceSummary[]>(DEFAULT_SUMMARIES);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
@@ -289,7 +291,7 @@ export default function CompanyHRAttendancePage() {
       setCorrectionReason("");
       setSelectedRecord(null);
     } catch (e: any) {
-      alert(e.message || "Failed to save correction");
+      toast({ title: "Error", description: e.message || "Failed to save correction", variant: "destructive" });
     } finally {
       setSavingCorrection(false);
     }
@@ -554,9 +556,7 @@ export default function CompanyHRAttendancePage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
-                                alert(
-                                  `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}`
-                                );
+                                toast({ title: "Notice", description: `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}` });
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" /> View Details

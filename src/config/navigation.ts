@@ -202,6 +202,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       href: "/faculty-supervisor/reports",
       icon: BarChart3,
     },
+    {
+      title: "Settings",
+      href: "/faculty-supervisor/settings",
+      icon: Settings,
+    },
   ],
   student: [
     {
@@ -347,6 +352,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       title: "Notifications",
       href: "/site-supervisor/notifications",
       icon: Send,
+    },
+    {
+      title: "Settings",
+      href: "/site-supervisor/settings",
+      icon: Settings,
     },
   ],
   external_evaluator: [

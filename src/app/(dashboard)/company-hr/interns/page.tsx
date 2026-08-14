@@ -71,6 +71,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -105,6 +106,7 @@ const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHRInternsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
   const [supervisors, setSupervisors] = useState<Array<{ user_id: string; name: string; email: string }>>([]);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
@@ -214,7 +216,7 @@ export default function CompanyHRInternsPage() {
       setAssigningInternId(null);
       setSelectedSupervisorForAssignment("");
     } catch (e: any) {
-      alert(e.message || "Failed to assign supervisor");
+      toast({ title: "Error", description: e.message || "Failed to assign supervisor", variant: "destructive" });
     } finally {
       setAssigning(false);
     }

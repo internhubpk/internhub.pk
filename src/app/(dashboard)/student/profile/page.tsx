@@ -323,7 +323,7 @@ export default function StudentProfilePage() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error("Error saving profile:", error);
-      alert("Failed to save profile. Please try again.");
+      toast({ title: "Failed", description: "Failed to save profile. Please try again.", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -409,7 +409,7 @@ export default function StudentProfilePage() {
 
     } catch (error) {
       console.error("Error uploading CV:", error);
-      alert("Failed to upload CV. Please try again.");
+      toast({ title: "Failed", description: "Failed to upload CV. Please try again.", variant: "destructive" });
       setCvUploading(false);
       setCvUploadProgress(0);
     }
@@ -452,7 +452,7 @@ export default function StudentProfilePage() {
       setCvInfo(null);
     } catch (error) {
       console.error("Error deleting CV:", error);
-      alert("Failed to delete CV.");
+      toast({ title: "Failed", description: "Failed to delete CV.", variant: "destructive" });
     }
   };
 
@@ -462,13 +462,13 @@ export default function StudentProfilePage() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert("Please select an image file");
+      toast({ title: "Action required", description: "Please select an image file", variant: "destructive" });
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be less than 5MB");
+      toast({ title: "Failed", description: "Image must be less than 5MB", variant: "destructive" });
       return;
     }
 
@@ -505,7 +505,7 @@ export default function StudentProfilePage() {
       await refreshProfile();
     } catch (error) {
       console.error("Error uploading avatar:", error);
-      alert("Failed to upload avatar. Please try again.");
+      toast({ title: "Failed", description: "Failed to upload avatar. Please try again.", variant: "destructive" });
     } finally {
       setAvatarUploading(false);
     }
@@ -732,11 +732,11 @@ export default function StudentProfilePage() {
                               const file = e.target.files?.[0];
                               if (file) {
                                 if (file.type !== 'application/pdf') {
-                                  alert("Please upload a PDF file");
+                                  toast({ title: "Action required", description: "Please upload a PDF file", variant: "destructive" });
                                   return;
                                 }
                                 if (file.size > 10 * 1024 * 1024) {
-                                  alert("File must be less than 10MB");
+                                  toast({ title: "Failed", description: "File must be less than 10MB", variant: "destructive" });
                                   return;
                                 }
                                 setCvFile(file);

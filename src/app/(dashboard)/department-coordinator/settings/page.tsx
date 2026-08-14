@@ -275,10 +275,10 @@ export default function CoordinatorSettingsPage() {
 
   const handleChangePassword = async () => {
     if (!user) return;
-    if (passwordForm.newPassword.length < 6) {
+    if (passwordForm.newPassword.length < 8) {
       toast({
         title: "Password too short",
-        description: "New password must be at least 6 characters.",
+        description: "New password must be at least 8 characters.",
         variant: "destructive",
       });
       return;
@@ -291,14 +291,29 @@ export default function CoordinatorSettingsPage() {
       });
       return;
     }
+    if (!passwordForm.currentPassword) {
+      toast({
+        title: "Current password required",
+        description: "Please enter your current password to confirm the change.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsChangingPassword(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.updateUser({
-        password: passwordForm.newPassword,
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: passwordForm.currentPassword,
+          new_password: passwordForm.newPassword,
+        }),
       });
-      if (error) throw error;
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || `Failed (${res.status})`);
+      }
 
       setPasswordForm({
         currentPassword: "",

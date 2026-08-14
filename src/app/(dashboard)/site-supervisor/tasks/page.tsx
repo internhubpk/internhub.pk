@@ -23,10 +23,19 @@ import {
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -336,22 +345,28 @@ export default function SiteSupervisorTasksPage() {
     }
   }
 
-  async function handleDelete(task: Task) {
-    if (!confirm(`Delete task "${task.title}"? This will also remove all student submissions.`)) {
-      return;
-    }
+  // Delete-confirmation state (driven by AlertDialog — no native confirm())
+  const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/site-supervisor/tasks?task_id=${task.id}`, {
+      const res = await fetch(`/api/site-supervisor/tasks?task_id=${deleteTarget.id}`, {
         method: "DELETE",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || `Delete failed (${res.status})`);
       }
-      toast({ title: "Task deleted" });
+      toast({ title: "Task deleted", description: `"${deleteTarget.title}" was removed.` });
+      setDeleteTarget(null);
       await fetchTasks();
     } catch (err: any) {
       toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -595,7 +610,7 @@ export default function SiteSupervisorTasksPage() {
                           key={task.id}
                           task={task}
                           onEdit={() => openEdit(task)}
-                          onDelete={() => handleDelete(task)}
+                          onDelete={() => setDeleteTarget(task)}
                           onReview={(sub) => openReview(task, sub)}
                         />
                       ))}
@@ -607,10 +622,12 @@ export default function SiteSupervisorTasksPage() {
         </div>
       )}
 
-      {/* Create / Edit dialog */}
+      {/* Create / Edit dialog — pinned header/footer, scrollable content */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0"
+        >
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
             <DialogTitle>{editingTask ? "Edit Task" : "Create New Task"}</DialogTitle>
             <DialogDescription>
               {editingTask
@@ -618,8 +635,8 @@ export default function SiteSupervisorTasksPage() {
                 : "Fill in the task details. Fields marked optional can be left blank."}
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            <div className="space-y-4 pb-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4">
+            <div className="space-y-4">
               {/* Title */}
               <div className="space-y-1.5">
                 <Label htmlFor="title">Task Title <span className="text-destructive">*</span></Label>
@@ -836,8 +853,8 @@ export default function SiteSupervisorTasksPage() {
                 )}
               </div>
             </div>
-          </ScrollArea>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 px-6 py-4 border-t bg-background">
             <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={saving}>
               Cancel
             </Button>
@@ -858,16 +875,47 @@ export default function SiteSupervisorTasksPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Review dialog */}
+      {/* Delete confirmation dialog (replaces native confirm()) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  This will permanently delete <strong>“{deleteTarget.title}”</strong> and
+                  remove all student submissions for this task. This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</>
+              ) : (
+                <><Trash2 className="h-4 w-4 mr-2" /> Delete Task</>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Review dialog — pinned header/footer, scrollable content */}
       <Dialog open={!!reviewTask} onOpenChange={(v) => !v && setReviewTask(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
             <DialogTitle>Review Submission</DialogTitle>
             <DialogDescription>
               {reviewTask?.title} — {reviewSubmission?.student?.full_name || reviewSubmission?.student?.email}
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4">
             {reviewSubmission && (
               <div className="space-y-4 pb-2">
                 {/* Task details */}
@@ -1012,8 +1060,8 @@ export default function SiteSupervisorTasksPage() {
                 </div>
               </div>
             )}
-          </ScrollArea>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 px-6 py-4 border-t bg-background">
             <Button variant="outline" onClick={() => setReviewTask(null)} disabled={reviewing}>
               Cancel
             </Button>

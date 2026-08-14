@@ -73,6 +73,7 @@ import {
   Award,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -180,6 +181,7 @@ function StarRating({ rating, onRate, readonly = false }: {
 
 export default function FacultySupervisorEvaluationsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   // State
   const [pendingEvaluations, setPendingEvaluations] = useState<PendingEvaluation[]>(DEFAULT_PENDING_EVALUATIONS);
   const [evaluationHistory, setEvaluationHistory] = useState<EvaluationRecord[]>(DEFAULT_EVALUATION_HISTORY);
@@ -194,49 +196,45 @@ export default function FacultySupervisorEvaluationsPage() {
   // Dialog states
   const [isEvaluateDialogOpen, setIsEvaluateDialogOpen] = useState(false);
 
-  // CSV export of the evaluation history. Mirrors the pattern at
-  // external-evaluator/evaluations/page.tsx.
-  const handleExport = useCallback(() => {
-    if (!evaluationHistory || evaluationHistory.length === 0) {
-      alert("No evaluations to export.");
-      return;
+  // CSV download of ALL evaluations for the faculty supervisor's assigned
+  // students — including BOTH site-supervisor and faculty-supervisor
+  // evaluations. The server-side endpoint enforces authorization, so a
+  // faculty supervisor can only download evaluations for students actually
+  // assigned to them.
+  const [isDownloading, setIsDownloading] = useState(false);
+  const handleExport = useCallback(async () => {
+    setIsDownloading(true);
+    try {
+      const res = await fetch("/api/faculty-supervisor/evaluations/download", {
+        method: "GET",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `faculty-supervisor-evaluations-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Download started",
+        description: "Evaluations CSV is being downloaded. Includes both Site Supervisor and Faculty Supervisor evaluations.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Download failed",
+        description: err?.message || "Could not download evaluations.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
     }
-    const headers = [
-      "Student",
-      "Type",
-      "Title",
-      "Submitted At",
-      "Evaluated At",
-      "Status",
-      "Score",
-      "Max Score",
-      "Comments",
-    ];
-    const escape = (v: string) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
-    const rows = evaluationHistory.map((e) =>
-      [
-        escape(e.studentName),
-        escape(e.type),
-        escape(e.title),
-        escape(e.submittedAt || ""),
-        escape(e.evaluatedAt || ""),
-        escape(e.status),
-        escape(String(e.score ?? 0)),
-        escape(String(e.maxScore ?? 0)),
-        escape(e.evaluatorComments || ""),
-      ].join(",")
-    );
-    const csv = [headers.map(escape).join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `faculty-supervisor-evaluations-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [evaluationHistory]);
+  }, []);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<PendingEvaluation | null>(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<EvaluationRecord | null>(null);
@@ -630,7 +628,7 @@ export default function FacultySupervisorEvaluationsPage() {
       setSelectedEvaluation(null);
     } catch (error) {
       console.error("Error submitting evaluation:", error);
-      alert("Failed to submit evaluation. Please try again.");
+      toast({ title: "Failed", description: "Failed to submit evaluation. Please try again.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -652,7 +650,7 @@ export default function FacultySupervisorEvaluationsPage() {
       setWeeklyReports((prev) => prev.filter((r) => r.id !== reportId));
     } catch (error) {
       console.error("Error approving weekly report:", error);
-      alert("Failed to approve weekly report.");
+      toast({ title: "Failed", description: "Failed to approve weekly report.", variant: "destructive" });
     }
   };
 
@@ -699,9 +697,10 @@ export default function FacultySupervisorEvaluationsPage() {
             variant="outline"
             className="gap-2"
             onClick={handleExport}
-            disabled={evaluationHistory.length === 0}
+            disabled={isDownloading}
           >
-            <Download className="h-4 w-4" /> Export Data
+            <Download className="h-4 w-4" />
+            {isDownloading ? "Preparing..." : "Download Evaluations"}
           </Button>
         }
       />

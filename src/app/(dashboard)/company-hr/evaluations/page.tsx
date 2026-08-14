@@ -73,6 +73,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -109,6 +110,7 @@ const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHREvaluationsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [internsForEvaluation, setInternsForEvaluation] = useState<Array<{
@@ -199,7 +201,7 @@ export default function CompanyHREvaluationsPage() {
 
   const handleSubmitEvaluation = async (status: "submitted" | "in_progress") => {
     if (!evaluateTarget) {
-      alert("Please select an intern to evaluate.");
+      toast({ title: "Action required", description: "Please select an intern to evaluate.", variant: "destructive" });
       return;
     }
     setSubmitting(true);
@@ -240,7 +242,7 @@ export default function CompanyHREvaluationsPage() {
       setEvaluateTarget(null);
       await fetchEvaluations();
     } catch (e: any) {
-      alert(e.message || "Failed to save evaluation");
+      toast({ title: "Error", description: e.message || "Failed to save evaluation", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -256,7 +258,7 @@ export default function CompanyHREvaluationsPage() {
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
       await fetchEvaluations();
     } catch (e: any) {
-      alert(e.message || "Failed to issue certificate");
+      toast({ title: "Error", description: e.message || "Failed to issue certificate", variant: "destructive" });
     } finally {
       setIssuingCert(false);
     }
@@ -609,7 +611,7 @@ export default function CompanyHREvaluationsPage() {
                                   const res = await fetch(`/api/company-hr/evaluations/${evaluation.id}/certificate`);
                                   if (!res.ok) {
                                     const err = await res.json().catch(() => ({}));
-                                    alert(err.error || "Failed to generate certificate. The evaluation may not be approved yet.");
+                                    toast({ title: "Error", description: err.error || "Failed to generate certificate. The evaluation may not be approved yet.", variant: "destructive" });
                                     return;
                                   }
                                   const blob = await res.blob();
@@ -622,7 +624,7 @@ export default function CompanyHREvaluationsPage() {
                                   document.body.removeChild(a);
                                   URL.revokeObjectURL(url);
                                 } catch (e) {
-                                  alert("Network error while generating certificate.");
+                                  toast({ title: "Failed", description: "Network error while generating certificate.", variant: "destructive" });
                                 }
                               }}
                             >

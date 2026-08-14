@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -66,6 +67,7 @@ interface WeeklyLog {
 
 export default function FacultySupervisorWeeklyLogsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [logs, setLogs] = useState<WeeklyLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -206,7 +208,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       setReviewFeedback("");
     } catch (error) {
       console.error("Error reviewing weekly log:", error);
-      alert("Failed to update weekly log. Please try again.");
+      toast({ title: "Failed", description: "Failed to update weekly log. Please try again.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }

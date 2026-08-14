@@ -81,6 +81,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -137,6 +138,7 @@ const ADDITIONAL_ANSWER_LABELS: Record<
 
 export default function CompanyHRApplicationsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [applications, setApplications] = useState<Application[]>(DEFAULT_APPLICATIONS);
   const [availablePrograms, setAvailablePrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [isLoading, setIsLoading] = useState(true);
@@ -252,7 +254,7 @@ export default function CompanyHRApplicationsPage() {
       return true;
     } catch (e: any) {
       console.error("Error updating application status:", e);
-      alert(e.message || "Failed to update application. Please try again.");
+      toast({ title: "Error", description: e.message || "Failed to update application. Please try again.", variant: "destructive" });
       return false;
     } finally {
       setUpdating(false);

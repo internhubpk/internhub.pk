@@ -51,6 +51,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -103,6 +104,7 @@ const STUDENT_ANSWER_LABELS: Record<string, Record<string, string>> = {
 
 export default function StudentApplicationsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -306,7 +308,7 @@ export default function StudentApplicationsPage() {
       setSelectedApplication(null);
     } catch (error) {
       console.error("Error withdrawing application:", error);
-      alert("Failed to withdraw application. Please try again.");
+      toast({ title: "Failed", description: "Failed to withdraw application. Please try again.", variant: "destructive" });
     } finally {
       setIsWithdrawing(false);
     }

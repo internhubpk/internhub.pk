@@ -52,6 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -87,6 +88,7 @@ interface NotificationTemplate {
 
 export default function SiteSupervisorNotificationsPage() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"compose" | "sent" | "templates">("compose");
   
   // Compose state
@@ -188,12 +190,20 @@ export default function SiteSupervisorNotificationsPage() {
 
   async function handleSendNotification() {
     if (!notificationTitle.trim() || !notificationContent.trim()) {
-      alert("Please fill in both the subject and message.");
+      toast({
+        title: "Missing fields",
+        description: "Please fill in both the subject and message.",
+        variant: "destructive",
+      });
       return;
     }
 
     if (recipientType === "individual" && selectedStudentIds.length === 0) {
-      alert("Please select at least one recipient.");
+      toast({
+        title: "No recipients selected",
+        description: "Please select at least one recipient.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -214,23 +224,35 @@ export default function SiteSupervisorNotificationsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        alert(`Notification sent successfully to ${data.data.recipientCount} student(s)!`);
-        
+        const count = data?.data?.recipientCount ?? 0;
+        toast({
+          title: "Notification sent",
+          description: `Successfully delivered to ${count} student${count === 1 ? "" : "s"}.`,
+        });
+
         // Reset form
         setNotificationTitle("");
         setNotificationContent("");
         setSelectedStudentIds([]);
-        
+
         // Refresh sent list
         fetchSentNotifications();
         setActiveTab("sent");
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error?.message || "Failed to send notification"}`);
+        toast({
+          title: "Failed to send",
+          description: error?.error?.message || "Failed to send notification.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error sending notification:", error);
-      alert("An error occurred while sending the notification.");
+      toast({
+        title: "Network error",
+        description: "An error occurred while sending the notification.",
+        variant: "destructive",
+      });
     } finally {
       setIsSending(false);
     }

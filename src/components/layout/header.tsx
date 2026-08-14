@@ -1063,7 +1063,17 @@ export function Header({ className }: HeaderProps) {
                     href={
                       profile?.role === "super_admin"
                         ? "/super-admin/settings"
-                        : "#"
+                        : profile?.role === "university_admin"
+                          ? "/university-admin/settings"
+                          : profile?.role === "department_coordinator"
+                            ? "/department-coordinator/settings"
+                            : profile?.role === "company_hr"
+                              ? "/company-hr/settings"
+                              : profile?.role === "site_supervisor"
+                                ? "/site-supervisor/settings"
+                                : profile?.role === "faculty_supervisor"
+                                  ? "/faculty-supervisor/settings"
+                                  : "/student/profile"
                     }
                   >
                     <Settings className="h-4 w-4" />

@@ -47,6 +47,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -83,6 +84,7 @@ interface Internship {
 
 export default function StudentInternshipsPage() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   const [internships, setInternships] = useState<Internship[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -328,10 +330,10 @@ export default function StudentInternshipsPage() {
       setSelectedInternship(null);
       setCoverLetter("");
       
-      alert("Application submitted successfully!");
+      toast({ title: "Success", description: "Application submitted successfully!" });
     } catch (error) {
       console.error("Error applying:", error);
-      alert("Failed to submit application. Please try again.");
+      toast({ title: "Failed", description: "Failed to submit application. Please try again.", variant: "destructive" });
     } finally {
       setIsApplying(false);
     }

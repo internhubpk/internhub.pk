@@ -54,6 +54,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -92,6 +93,7 @@ interface LogStats {
 
 export default function SiteSupervisorWeeklyLogsPage() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   const [logs, setLogs] = useState<WeeklyLogEntry[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -265,7 +267,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
   async function handleReview(action: "approve" | "reject" | "request_revision") {
     if (!selectedLog || !reviewFeedback.trim()) {
       if (action !== "approve") {
-        alert("Please provide feedback before rejecting or requesting revision.");
+        toast({ title: "Action required", description: "Please provide feedback before rejecting or requesting revision.", variant: "destructive" });
         return;
       }
     }
@@ -285,7 +287,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
       });
 
       if (response.ok) {
-        alert(`Log ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision"} successfully!`);
+        toast({ title: "Success", description: `Log ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision"} successfully!` });
         
         // Update local state
         setLogs(prev => prev.map(log =>
@@ -298,11 +300,11 @@ export default function SiteSupervisorWeeklyLogsPage() {
         setReviewFeedback("");
         fetchWeeklyLogs();
       } else {
-        alert("Error processing review. Please try again.");
+        toast({ title: "Failed", description: "Error processing review. Please try again.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error submitting review:", error);
-      alert("An error occurred. Please try again.");
+      toast({ title: "Failed", description: "An error occurred. Please try again.", variant: "destructive" });
     } finally {
       setIsSubmittingReview(false);
     }

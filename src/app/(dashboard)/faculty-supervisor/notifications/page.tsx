@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -114,6 +115,7 @@ const DEFAULT_NOTIFICATIONS: Notification[] = [];
 
 export default function FacultySupervisorNotificationsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   // State
   const [notifications, setNotifications] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
   const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
@@ -426,7 +428,7 @@ export default function FacultySupervisorNotificationsPage() {
       }
 
       if (recipientIds.length === 0) {
-        alert("Please select at least one recipient.");
+        toast({ title: "Action required", description: "Please select at least one recipient.", variant: "destructive" });
         setIsSending(false);
         return;
       }
@@ -481,7 +483,7 @@ export default function FacultySupervisorNotificationsPage() {
       resetComposeForm();
     } catch (error) {
       console.error("Error sending notification:", error);
-      alert("Failed to send notification. Please try again.");
+      toast({ title: "Failed", description: "Failed to send notification. Please try again.", variant: "destructive" });
     } finally {
       setIsSending(false);
     }

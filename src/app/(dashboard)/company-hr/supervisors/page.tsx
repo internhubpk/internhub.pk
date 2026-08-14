@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 import {
   Table,
   TableBody,
@@ -114,6 +115,7 @@ interface CompanyIntern {
 
 export default function CompanyHRSupervisorsPage() {
   const [supervisors, setSupervisors] = useState<SiteSupervisor[]>([]);
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -212,7 +214,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (error) {
       console.error("Error creating supervisor:", error);
-      alert(error instanceof Error ? error.message : "Failed to create supervisor. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create supervisor. Please try again.", variant: "destructive" });
     }
   };
 
@@ -256,7 +258,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (error) {
       console.error("Error updating supervisor:", error);
-      alert(error instanceof Error ? error.message : "Failed to update supervisor. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update supervisor. Please try again.", variant: "destructive" });
     }
   };
 
@@ -272,7 +274,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (error) {
       console.error("Error updating supervisor status:", error);
-      alert(error instanceof Error ? error.message : "Failed to update status. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update status. Please try again.", variant: "destructive" });
     }
   };
 
@@ -284,7 +286,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (error) {
       console.error("Error removing supervisor:", error);
-      alert(error instanceof Error ? error.message : "Failed to remove supervisor. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to remove supervisor. Please try again.", variant: "destructive" });
     }
   };
 
@@ -382,7 +384,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (e) {
       console.error("Error saving assignments:", e);
-      alert(e instanceof Error ? e.message : "Failed to save assignments");
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to save assignments", variant: "destructive" });
     } finally {
       setIsSavingAssignments(false);
     }
@@ -412,7 +414,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (e) {
       console.error("Error unassigning intern:", e);
-      alert(e instanceof Error ? e.message : "Failed to unassign intern");
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to unassign intern", variant: "destructive" });
     }
   };
 

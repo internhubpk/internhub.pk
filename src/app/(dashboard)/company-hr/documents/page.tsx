@@ -66,6 +66,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -90,6 +91,7 @@ const DEFAULT_INTERNS: Array<{id: string; name: string; email: string; program: 
 
 export default function CompanyHRDocumentsPage() {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
   const [interns, setInterns] = useState(DEFAULT_INTERNS);
   const [uploading, setUploading] = useState(false);
@@ -186,7 +188,7 @@ export default function CompanyHRDocumentsPage() {
       setSelectedFile(null);
       setSelectedInternForUpload("");
     } catch (e: any) {
-      alert(e.message || "Failed to upload document");
+      toast({ title: "Error", description: e.message || "Failed to upload document", variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -299,7 +301,7 @@ export default function CompanyHRDocumentsPage() {
                           (uploadDocumentType === "certificate" && !i.has_certificate)
                       );
                       if (targets.length === 0) {
-                        alert("All interns already have this document type. Nothing to generate.");
+                        toast({ title: "Notice", description: "All interns already have this document type. Nothing to generate." });
                         return;
                       }
                       setUploading(true);
@@ -324,7 +326,7 @@ export default function CompanyHRDocumentsPage() {
                       setIsBulkOpen(false);
                       await fetchDocuments();
                       await fetchInterns();
-                      alert(`Generated ${success} of ${targets.length} document(s).`);
+                      toast({ title: "Success", description: `Generated ${success} of ${targets.length} document(s).` });
                     }}
                     disabled={uploading || interns.length === 0}
                   >
@@ -563,10 +565,10 @@ export default function CompanyHRDocumentsPage() {
                                     window.location.reload();
                                   } else {
                                     const err = await res.json().catch(() => ({}));
-                                    alert(err.error || "Failed to delete document.");
+                                    toast({ title: "Error", description: err.error || "Failed to delete document.", variant: "destructive" });
                                   }
                                 } catch (e) {
-                                  alert("Network error while deleting document.");
+                                  toast({ title: "Failed", description: "Network error while deleting document.", variant: "destructive" });
                                 }
                               }}
                             >

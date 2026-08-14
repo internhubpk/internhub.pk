@@ -62,6 +62,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -140,6 +141,7 @@ const getDocumentCategory = (type: string): string => {
 
 export default function StudentDocumentsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -311,7 +313,7 @@ export default function StudentDocumentsPage() {
 
     } catch (error) {
       console.error("Error uploading document:", error);
-      alert("Failed to upload document. Please try again.");
+      toast({ title: "Failed", description: "Failed to upload document. Please try again.", variant: "destructive" });
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -353,7 +355,7 @@ export default function StudentDocumentsPage() {
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (error) {
       console.error("Error deleting document:", error);
-      alert("Failed to delete document.");
+      toast({ title: "Failed", description: "Failed to delete document.", variant: "destructive" });
     }
   };
 
@@ -455,7 +457,7 @@ export default function StudentDocumentsPage() {
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 25 * 1024 * 1024) {
-                            alert("File must be less than 25MB");
+                            toast({ title: "Failed", description: "File must be less than 25MB", variant: "destructive" });
                             return;
                           }
                           setSelectedFile(file);

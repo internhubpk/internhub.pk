@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -127,6 +128,7 @@ function toDateInputValue(value?: string | null): string {
 
 export default function CompanyHRInternshipsPage() {
   const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -255,7 +257,7 @@ export default function CompanyHRInternshipsPage() {
       fetchInternships();
     } catch (error) {
       console.error("Error creating internship:", error);
-      alert(error instanceof Error ? error.message : "Failed to create internship. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create internship. Please try again.", variant: "destructive" });
     }
   };
 
@@ -295,7 +297,7 @@ export default function CompanyHRInternshipsPage() {
       fetchInternships();
     } catch (error) {
       console.error("Error updating internship:", error);
-      alert(error instanceof Error ? error.message : "Failed to update internship. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update internship. Please try again.", variant: "destructive" });
     }
   };
 
@@ -330,7 +332,7 @@ export default function CompanyHRInternshipsPage() {
       fetchInternships();
     } catch (error) {
       console.error("Error deleting internship:", error);
-      alert(error instanceof Error ? error.message : "Failed to delete internship. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete internship. Please try again.", variant: "destructive" });
     }
   };
 
@@ -379,7 +381,7 @@ export default function CompanyHRInternshipsPage() {
       fetchInternships();
     } catch (error) {
       console.error("Error updating status:", error);
-      alert(error instanceof Error ? error.message : "Failed to update status. Please try again.");
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update status. Please try again.", variant: "destructive" });
     }
   };
 

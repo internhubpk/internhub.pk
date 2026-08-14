@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -314,6 +315,7 @@ function TaskForm({
 
 export default function FacultySupervisorTasksPage() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
   const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
   const [isLoading, setIsLoading] = useState(true);
@@ -487,7 +489,7 @@ export default function FacultySupervisorTasksPage() {
       });
       const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
       if (!res.ok || !json?.success) {
-        alert(json?.error || `Failed to create task (HTTP ${res.status})`);
+        toast({ title: "Error", description: json?.error || `Failed to create task (HTTP ${res.status})`, variant: "destructive" });
         return;
       }
       setIsCreateDialogOpen(false);
@@ -495,7 +497,7 @@ export default function FacultySupervisorTasksPage() {
       await fetchData();
     } catch (err) {
       console.error("Error creating task:", err);
-      alert(err instanceof Error ? err.message : "Failed to create task");
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to create task", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -520,7 +522,7 @@ export default function FacultySupervisorTasksPage() {
       });
       const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
       if (!res.ok || !json?.success) {
-        alert(json?.error || `Failed to update task (HTTP ${res.status})`);
+        toast({ title: "Error", description: json?.error || `Failed to update task (HTTP ${res.status})`, variant: "destructive" });
         return;
       }
       setIsEditDialogOpen(false);
@@ -529,7 +531,7 @@ export default function FacultySupervisorTasksPage() {
       await fetchData();
     } catch (err) {
       console.error("Error updating task:", err);
-      alert(err instanceof Error ? err.message : "Failed to update task");
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to update task", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -543,13 +545,13 @@ export default function FacultySupervisorTasksPage() {
       );
       const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
       if (!res.ok || !json?.success) {
-        alert(json?.error || `Failed to delete task (HTTP ${res.status})`);
+        toast({ title: "Error", description: json?.error || `Failed to delete task (HTTP ${res.status})`, variant: "destructive" });
         return;
       }
       await fetchData();
     } catch (err) {
       console.error("Error deleting task:", err);
-      alert(err instanceof Error ? err.message : "Failed to delete task");
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to delete task", variant: "destructive" });
     }
   };
 

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -151,6 +152,7 @@ const DEFAULT_ATTENDANCE: Record<string, AttendanceSummary> = {};
 
 export default function FacultySupervisorStudentsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>(DEFAULT_STUDENTS);
@@ -172,7 +174,7 @@ export default function FacultySupervisorStudentsPage() {
   // company-hr/attendance/page.tsx.
   const handleExport = useCallback(() => {
     if (!students || students.length === 0) {
-      alert("No students to export.");
+      toast({ title: "Notice", description: "No students to export." });
       return;
     }
     const headers = [
