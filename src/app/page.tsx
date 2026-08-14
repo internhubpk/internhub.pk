@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SiteNav } from "@/components/layout/site-nav";
+import { PublicFooter } from "@/components/layout/public-footer";
 import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
+import { ShaderBackgroundClient as ShaderBackground } from "@/components/shared/shader-background-client";
 import { 
   useTenant, 
   useTenantBranding,
@@ -38,14 +40,8 @@ import {
   Zap,
   Lock,
   Globe,
-  ChevronRight,
   Users,
   TrendingUp,
-  Heart,
-  Twitter,
-  Linkedin,
-  Github,
-  Mail,
 } from "lucide-react";
 
 // Animation variants
@@ -173,56 +169,49 @@ const howItWorks = [
   },
 ];
 
-// Stats data
-const stats = [
-  { value: "10K+", label: "Active Students", icon: GraduationCap },
-  { value: "500+", label: "Partner Companies", icon: Briefcase },
-  { value: "200+", label: "Universities", icon: Building2 },
-  { value: "95%", label: "Satisfaction Rate", icon: Heart },
+// Audience data — describes real, shipped capability per role. Replaces
+// the prior fabricated stats/testimonials arrays (see removal note above).
+const audiences = [
+  {
+    title: "For Students",
+    description: "Everything needed to find, complete, and get certified for an internship.",
+    icon: GraduationCap,
+    color: "text-emerald-600 dark:text-emerald-400",
+    bgColor: "bg-emerald-50 dark:bg-emerald-950/40",
+    points: [
+      "Browse and apply to listings in the marketplace",
+      "Submit weekly logs for supervisor approval",
+      "Track evaluations, attendance, and documents in one place",
+      "Receive auto-generated certificates on completion",
+    ],
+  },
+  {
+    title: "For Universities",
+    description: "Full oversight of every department's internship program, in one portal.",
+    icon: Building2,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-950/40",
+    points: [
+      "Branded, isolated portal per university (multi-tenant)",
+      "Department coordinators and faculty supervisors manage their own students",
+      "HEC-aligned evaluation workflows with digital sign-off",
+      "Program-wide reporting for administrators",
+    ],
+  },
+  {
+    title: "For Companies",
+    description: "Post roles, manage applicants, and evaluate interns without the paperwork.",
+    icon: Briefcase,
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "bg-purple-50 dark:bg-purple-950/40",
+    points: [
+      "Post internships and review applications from one dashboard",
+      "Assign site supervisors and track intern attendance",
+      "Digital evaluation forms replace paper sign-offs",
+      "Direct messaging with students and university coordinators",
+    ],
+  },
 ];
-
-// Testimonials data
-const testimonials = [
-  {
-    name: "Dr. Sarah Johnson",
-    role: "Dean of Engineering, MIT",
-    content:
-      "InternHub transformed how we manage our internship program. The multi-tenant architecture gives us complete control while the analytics help us make data-driven decisions.",
-    avatar: "SJ",
-    rating: 5,
-  },
-  {
-    name: "Michael Chen",
-    role: "VP of Talent, TechCorp Global",
-    content:
-      "We've reduced our hiring timeline by 60% using InternHub. The company portal is intuitive and the quality of applicants has significantly improved.",
-    avatar: "MC",
-    rating: 5,
-  },
-  {
-    name: "Emily Rodriguez",
-    role: "CIO, State University System",
-    content:
-      "Finally, an enterprise-grade solution that understands higher education. The HEC compliance features alone saved us months of development time.",
-    avatar: "ER",
-    rating: 5,
-  },
-];
-
-// Footer links — only real routes are listed. Placeholder ("#") links are
-// intentionally omitted so the footer never advertises pages that don't exist.
-// Add new entries here only when the corresponding route actually resolves.
-const footerLinks = {
-  resources: [
-    { label: "Features", href: "#features" },
-    { label: "Help Center", href: "/support" },
-    { label: "Contact", href: "/support" },
-  ],
-  legal: [
-    { label: "Privacy Policy", href: "/privacy" },
-    { label: "Terms of Service", href: "/terms" },
-  ],
-};
 
 // Custom Rocket Icon component
 function RocketIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -378,6 +367,10 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
       className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
       style={{ position: 'relative', zIndex: 1 }}
     >
+      {/* Ambient shader layer — kept subtle here so it never competes with
+          the tenant's own brand-colored orbs below. */}
+      <ShaderBackground intensity="low" />
+
       {/* Background decorative elements using tenant colors - responsive sizes.
           NOTE: orbs are confined to the section via overflow-hidden, and we
           explicitly position them so they never push the layout wider than
@@ -518,6 +511,12 @@ function MainHero() {
       className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
       style={{ position: 'relative', zIndex: 1 }}
     >
+      {/* Ambient shader layer — subtle, theme-aware, sits behind the
+          existing decorative orbs. Never intercepts pointer events and
+          never grows past the section bounds (overflow-hidden on the
+          section + inset-0 on the shader wrapper). */}
+      <ShaderBackground intensity="high" />
+
       {/* Background decorative elements - responsive sizes.
           Orbs are kept inside the viewport on mobile (no negative
           translate) so the hero doesn't horizontally overflow on
@@ -596,7 +595,13 @@ function MainHero() {
               <QuickTourDialog buttonClassName={HERO_BUTTON_SIZE} />
             </motion.div>
 
-            {/* Trust Badges - centered on mobile */}
+            {/* Capability highlights - centered on mobile.
+                Replaces prior fabricated "200+ Universities / 10,000+
+                Internships" trust badges and a fake MIT/Stanford/Harvard
+                logo row (see design-pass notes) — those overstated real
+                adoption and are not used anywhere else in the app. These
+                describe actual platform capability instead, which the
+                app does deliver. */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -605,30 +610,13 @@ function MainHero() {
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <Shield className="h-4 w-4 text-emerald-500" />
-                <span>Trusted by <strong className="text-foreground">200+ Universities</strong></span>
+                <span>Role-based access for <strong className="text-foreground">every stakeholder</strong></span>
               </div>
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <TrendingUp className="h-4 w-4 text-blue-500" />
-                <span><strong className="text-foreground">10,000+</strong> Active Internships</span>
+                <span><strong className="text-foreground">One platform</strong>, unlimited universities</span>
               </div>
             </motion.div>
-
-            {/* Logos row - scrollable on mobile */}
-            <div className="mt-6 sm:mt-8">
-              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider mb-3 sm:mb-4 font-medium text-center lg:text-left">
-                Trusted by leading institutions worldwide
-              </p>
-              <div className="flex items-center justify-center lg:justify-start gap-6 sm:gap-8 opacity-50 grayscale overflow-x-auto pb-2 scrollbar-hide">
-                {["MIT", "Stanford", "Harvard", "Oxford", "Cambridge"].map((uni) => (
-                  <div
-                    key={uni}
-                    className="text-base sm:text-lg font-bold text-foreground/80 whitespace-nowrap"
-                  >
-                    {uni}
-                  </div>
-                ))}
-              </div>
-            </div>
           </motion.div>
 
           {/* Right Side - Dashboard Preview - hidden on mobile/tablet */}
@@ -788,78 +776,54 @@ export default function LandingPage() {
       </AnimatedSection>
 
       {/* ========================================== */}
-      {/* SOCIAL PROOF SECTION - Fully Responsive */}
-      {/* ========================================== */}
-      <AnimatedSection className="bg-background">
-        {/* Stats Row - 2 cols on mobile, 4 on desktop */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 mb-12 sm:mb-16 md:mb-20">
-          {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="text-center p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-muted/50 hover:bg-muted transition-colors"
-            >
-              <stat.icon className="mx-auto h-7 w-7 sm:h-8 sm:w-8 text-primary mb-2 sm:mb-3" />
-              <div className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-1">
-                {stat.value}
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground font-medium">
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Testimonials Header - Responsive text sizes */}
-        <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-12">
+      {/* AUDIENCE SECTION - For Students / Universities / Companies
+          Replaces a prior "Social Proof" section that showed fabricated
+          adoption stats (10K+ students, 500+ companies, 200+ universities,
+          95% satisfaction) and entirely fictional named testimonials
+          (including one falsely attributed to "Dean of Engineering, MIT").
+          Neither reflected real InternHub.pk customers, so both were
+          removed rather than restyled. This section describes real,
+          shipped platform capability per audience instead. */}
+      <AnimatedSection className="bg-background" id="audiences">
+        <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-12 md:mb-16">
           <Badge variant="outline" className="mb-3 sm:mb-4 px-2.5 sm:px-3 py-1 text-xs sm:text-sm">
-            <Star className="mr-1 h-3 w-3 text-yellow-500" />
-            Loved by Users
+            One Platform, Three Roles
           </Badge>
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3 sm:mb-4">
-            What Our Customers Say
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 sm:mb-6">
+            Built for Everyone in the Internship Lifecycle
           </h2>
-          <p className="text-base sm:text-lg text-muted-foreground">
-            Join thousands of satisfied universities and companies worldwide.
+          <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
+            Students, universities, and companies each get a purpose-built experience —
+            all connected through the same underlying program.
           </p>
         </div>
 
-        {/* Testimonials Grid - 1 col mobile, 3 on desktop */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-          {testimonials.map((testimonial) => (
-            <Card key={testimonial.name} className="h-full border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-300 bg-card/50">
-              <CardContent className="pt-5 sm:pt-6 pb-5 sm:pb-6 px-4 sm:px-6">
-                {/* Stars */}
-                <div className="flex items-center gap-1 mb-3 sm:mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star
-                      key={i}
-                      className="h-3.5 w-3.5 sm:h-4 sm:w-4 fill-yellow-400 text-yellow-400"
-                    />
+          {audiences.map((audience) => (
+            <Card
+              key={audience.title}
+              className="h-full border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-300 bg-card/50"
+            >
+              <CardHeader>
+                <div
+                  className={`inline-flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl mb-3 sm:mb-4 ${audience.bgColor}`}
+                >
+                  <audience.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${audience.color}`} />
+                </div>
+                <CardTitle className="text-lg sm:text-xl">{audience.title}</CardTitle>
+                <CardDescription className="text-sm sm:text-base">
+                  {audience.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 sm:space-y-2.5">
+                  {audience.points.map((point) => (
+                    <li key={point} className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 mt-0.5 shrink-0" />
+                      <span>{point}</span>
+                    </li>
                   ))}
-                </div>
-
-                {/* Quote - Responsive text size */}
-                <blockquote className="text-sm sm:text-base text-muted-foreground leading-relaxed mb-4 sm:mb-6 italic">
-                  &ldquo;{testimonial.content}&rdquo;
-                </blockquote>
-
-                {/* Author - Responsive sizing */}
-                <div className="flex items-center gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-border/50">
-                  <div 
-                    className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full text-primary font-semibold text-xs sm:text-sm ring-2 ring-primary/10 shrink-0"
-                    style={{
-                      background: `linear-gradient(to bottom right, ${branding.primaryColor}10, ${branding.primaryColor}05)`
-                    }}
-                  >
-                    {testimonial.avatar}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-xs sm:text-sm truncate">{testimonial.name}</p>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
-                      {testimonial.role}
-                    </p>
-                  </div>
-                </div>
+                </ul>
               </CardContent>
             </Card>
           ))}
@@ -915,8 +879,9 @@ export default function LandingPage() {
                 </>
               ) : (
                 <>
-                  Join 200+ universities already using InternHub to streamline their 
-                  internship management. Start your free trial today.
+                  Streamline your university&apos;s internship management from
+                  student onboarding to certificate generation. Start your
+                  free trial today.
                 </>
               )}
             </p>
@@ -944,122 +909,9 @@ export default function LandingPage() {
       </section>
 
       {/* ========================================== */}
-      {/* FOOTER - Tenant-aware branding - Fully Responsive */}
+      {/* FOOTER - extracted to PublicFooter (shared across public pages) */}
       {/* ========================================== */}
-      <footer className="bg-muted/30 border-t border-border/50" style={{ position: 'relative', zIndex: 1 }}>
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16">
-          {/* Responsive grid: stacked on mobile, multi-column on desktop */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 lg:gap-12">
-            {/* Brand column - full width on mobile */}
-            <div className="col-span-2">
-              <Link href="/" className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6 group">
-                <div 
-                  className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl text-primary-foreground shadow-lg group-hover:shadow-xl transition-shadow cursor-pointer"
-                  style={{
-                    background: `linear-gradient(to bottom right, ${branding.primaryColor}, ${branding.secondaryColor || branding.primaryColor})`,
-                    boxShadow: `0 4px 15px -3px ${branding.primaryColor}40`
-                  }}
-                >
-                  <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5" />
-                </div>
-                <span className="text-lg sm:text-xl font-bold tracking-tight">
-                  {isTenant ? branding.name : "InternHub"}
-                </span>
-              </Link>
-              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4 sm:mb-6 max-w-[200px] sm:max-w-xs">
-                {isTenant ? (
-                  <>
-                    {branding.name}&apos;s official internship management portal, powered by 
-                    InternHub&rsquo;s enterprise platform.
-                  </>
-                ) : (
-                  <>
-                    The enterprise-grade internship management platform trusted by leading 
-                    universities worldwide. Streamline, automate, and elevate your programs.
-                  </>
-                )}
-              </p>
-              
-              {/* Social icons */}
-              <div className="flex items-center gap-2.5 sm:gap-3">
-                {[
-                  { icon: Twitter, href: "#", label: "Twitter" },
-                  { icon: Linkedin, href: "#", label: "LinkedIn" },
-                  { icon: Github, href: "#", label: "GitHub" },
-                  { icon: Mail, href: "#", label: "Email" },
-                ].map((social) => (
-                  <a
-                    key={social.label}
-                    href={social.href}
-                    aria-label={social.label}
-                    className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md sm:rounded-lg bg-background border border-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 cursor-pointer"
-                  >
-                    <social.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* Resources column */}
-            <div>
-              <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
-                Resources
-              </h4>
-              <ul className="space-y-2 sm:space-y-3">
-                {footerLinks.resources.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 group"
-                    >
-                      {link.label}
-                      <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-0 group-hover:opacity-100 transition-opacity -ml-2 sm:-ml-3" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Legal column */}
-            <div>
-              <h4 className="font-semibold text-xs sm:text-sm uppercase tracking-wider mb-3 sm:mb-4 text-foreground">
-                Legal
-              </h4>
-              <ul className="space-y-2 sm:space-y-3">
-                {footerLinks.legal.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 group"
-                    >
-                      {link.label}
-                      <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3 opacity-0 group-hover:opacity-100 transition-opacity -ml-2 sm:-ml-3" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Bottom bar - responsive layout */}
-          <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
-            <p className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
-              © {new Date().getFullYear()} {isTenant ? branding.name : "InternHub"}. All rights reserved.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 sm:gap-6 text-[10px] sm:text-xs sm:text-sm text-muted-foreground">
-              <span className="flex items-center gap-1 sm:gap-1.5">
-                <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                SOC 2 Compliant
-              </span>
-              <span className="flex items-center gap-1 sm:gap-1.5">
-                <Shield className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                GDPR Ready
-              </span>
-              <span>Available Worldwide</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter isTenant={isTenant} branding={branding} />
     </div>
   );
 }

@@ -115,28 +115,35 @@ export function sanitizeError(err: unknown): string {
  * messages through `sanitizeError`.
  *
  * For the loading→success/error pattern, use `toast.promise` or
- * `toast.loading` + `toast.success` / `toast.error`.
+ * `toast.loading` + `toast.success` / `toast.error` (passing the `id`
+ * returned by `toast.loading` so the loading toast is replaced in-place
+ * rather than stacking a new toast on top).
  */
 export const toast = {
   /**
    * Show a success toast.
    * @example toast.success("Task created", { description: "Assigned to 3 students" })
+   * @example const id = toast.loading("Saving..."); toast.success("Saved", { id });
    */
-  success(message: string, opts?: { description?: string }) {
-    return sonnerToast.success(message, opts);
+  success(message: string, opts?: { description?: string; id?: string | number }) {
+    const { id, ...rest } = opts ?? {};
+    return sonnerToast.success(message, id !== undefined ? { ...rest, id } : rest);
   },
 
   /**
    * Show an error toast. The error value is sanitized via
    * `sanitizeError` so RLS / SQL / network errors don't leak.
    * @example toast.error("Failed to save", { description: err.message })
+   * @example const id = toast.loading("Saving..."); toast.error("Save failed", { id, err });
    */
-  error(message: string, opts?: { description?: string; err?: unknown }) {
-    const description =
-      opts?.description ??
-      (opts?.err ? sanitizeError(opts.err) : undefined);
-    console.error("[toast.error]", message, opts?.err ?? "");
-    return sonnerToast.error(message, description ? { description } : undefined);
+  error(message: string, opts?: { description?: string; err?: unknown; id?: string | number }) {
+    const { id, err, ...rest } = opts ?? {};
+    const description = rest.description ?? (err ? sanitizeError(err) : undefined);
+    console.error("[toast.error]", message, err ?? "");
+    return sonnerToast.error(
+      message,
+      id !== undefined ? { description, id } : description ? { description } : undefined
+    );
   },
 
   /**
@@ -152,15 +159,17 @@ export const toast = {
   /**
    * Show a warning toast.
    */
-  warning(message: string, opts?: { description?: string }) {
-    return sonnerToast.warning(message, opts);
+  warning(message: string, opts?: { description?: string; id?: string | number }) {
+    const { id, ...rest } = opts ?? {};
+    return sonnerToast.warning(message, id !== undefined ? { ...rest, id } : rest);
   },
 
   /**
    * Show an info toast.
    */
-  info(message: string, opts?: { description?: string }) {
-    return sonnerToast.info(message, opts);
+  info(message: string, opts?: { description?: string; id?: string | number }) {
+    const { id, ...rest } = opts ?? {};
+    return sonnerToast.info(message, id !== undefined ? { ...rest, id } : rest);
   },
 
   /**

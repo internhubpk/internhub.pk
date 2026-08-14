@@ -1,0 +1,32 @@
+# Netlify build configuration for InternHub (Next.js 16 + App Router)
+#
+# Why this file exists
+# --------------------
+# Without an explicit netlify.toml, Netlify's auto-detection was choosing
+# the wrong publish directory (likely "out" or "build" — the static-export
+# defaults) instead of ".next" (the App Router output dir that
+# @netlify/plugin-nextjs expects). The result was a "failed_build" plugin
+# state on every PR preview deploy.
+#
+# A manual agent deploy with publish=".next" succeeded (Netlify deploy
+# 6a7f7c43b3a83952bbfe8060, state=ready). This file commits that fix to
+# the repo so it applies to every future deploy without anyone having to
+# touch the Netlify dashboard.
+#
+# Notes
+#   - Vercel deployment is unaffected (Vercel reads next.config.ts, not
+#     netlify.toml).
+#   - The @netlify/plugin-nextjs plugin (v5.x) supports Next.js 16 —
+#     verified locally that the installed plugin explicitly references
+#     "Next.js 16" behavior in its cache handler.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"

@@ -1,8 +1,20 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
+import { ShaderBackgroundClient } from "@/components/shared/shader-background-client";
+
+// This layout stays a Server Component. The browser-only shader is loaded
+// via <ShaderBackgroundClient /> (a tiny "use client" wrapper that owns
+// the dynamic(..., { ssr: false }) call). See the wrapper file for the
+// architectural rationale — short version: keeping this layout server-side
+// avoids shipping the static SVG logo / decorative orbs / grid pattern as
+// client JS, and keeps the door open for `generateMetadata` here later.
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 dark:from-gray-950 dark:via-blue-950/30 dark:to-purple-950/30">
+      {/* Ambient shader — subtle by design, sits behind the existing
+          decorative orbs and grid so it never reduces form readability. */}
+      <ShaderBackgroundClient intensity="low" />
+
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* Gradient orbs */}
