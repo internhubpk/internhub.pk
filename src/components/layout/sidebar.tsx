@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, createContext, useContext, useCallback } from "react";
+import React, { useState, useEffect, createContext, useContext, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -164,9 +164,30 @@ function SidebarContent({
   // While auth is loading, render the skeleton (handled below after hooks).
   // Once loaded, if profile.role is missing OR returns an empty nav list,
   // show an explicit retry state instead of guessing the role from URL.
-  const navItems: NavItem[] = profile?.role
-    ? getNavigationForRole(profile.role)
-    : [];
+  //
+  // CRITICAL: navItems MUST be memoized. The previous version created a
+  // new array literal `[]` on every render when profile?.role was null.
+  // That new reference was used as a dependency of the useEffect below
+  // (auto-expand items), which caused the effect to fire on EVERY render,
+  // which called setExpandedItems(new Set()), which caused ANOTHER
+  // render, which created ANOTHER new `[]` reference — an infinite loop.
+  //
+  // During the auth state transition (isLoading flipping from true to
+  // false, profile changing from null to an object), this loop produced
+  // rapid-fire re-renders that could destabilize React's hook dispatcher
+  // and manifest as React error #310 ("Rendered more hooks than during
+  // the previous render") in downstream consumers — even though the
+  // SidebarContent component itself always called the same number of
+  // hooks. The root cause was the unstable `navItems` reference driving
+  // a render storm.
+  //
+  // Memoizing on `profile?.role` (a primitive string | undefined) gives
+  // navItems a stable reference across renders that don't change the
+  // role, breaking the loop.
+  const navItems: NavItem[] = useMemo<NavItem[]>(
+    () => (profile?.role ? getNavigationForRole(profile.role) : []),
+    [profile?.role]
+  );
   const hasNav = navItems.length > 0;
   const showRetry = !isLoading && !hasNav;
 
