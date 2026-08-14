@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -15,7 +15,6 @@ import {
   GraduationCap,
   AlertCircle,
   CheckCircle2,
-  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,9 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — match the response shape of /api/site-supervisor/tasks and
+// /api/site-supervisor/students. Keeping these in sync prevents UI regressions
+// if the API adds fields later.
 // ---------------------------------------------------------------------------
 interface AssignedStudent {
   student_user_id: string;
@@ -43,7 +44,7 @@ interface AssignedStudent {
   start_date: string;
   end_date: string | null;
   status: string;
-  // Aggregated progress
+  // Aggregated progress (computed client-side from the tasks API response)
   tasks_assigned: number;
   tasks_approved: number;
   tasks_pending_review: number;
@@ -67,13 +68,19 @@ interface TaskWithAssignment {
   due_date: string | null;
   week_number: number | null;
   day_number: number | null;
+  status: string;
   assignments: Array<{
     id: string;
     status: string;
     student_user_id: string;
     student: { full_name: string | null; email: string | null } | null;
   }>;
-  submissions: Array<{ id: string; status: string; submitted_at: string; student_user_id: string }>;
+  submissions: Array<{
+    id: string;
+    status: string;
+    submitted_at: string;
+    student_user_id: string;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,9 +113,8 @@ function formatRelative(iso: string | null): string {
 function computeWeek(start: string, end: string | null): number | null {
   const startD = new Date(start);
   const today = new Date();
-  const weeks = Math.floor(
-    (today.getTime() - startD.getTime()) / (7 * 24 * 60 * 60 * 1000)
-  ) + 1;
+  const weeks =
+    Math.floor((today.getTime() - startD.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
   if (weeks < 1) return 1;
   if (end) {
     const endD = new Date(end);
@@ -124,7 +130,7 @@ function computeWeek(start: string, end: string | null): number | null {
 // Page
 // ---------------------------------------------------------------------------
 export default function SiteSupervisorDashboard() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<AssignedStudent[]>([]);
@@ -140,7 +146,6 @@ export default function SiteSupervisorDashboard() {
 
   useEffect(() => {
     if (user) fetchDashboardData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function fetchDashboardData() {
@@ -148,68 +153,94 @@ export default function SiteSupervisorDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const supabase = createClient();
+      // ---------------------------------------------------------------------
+      // Fetch tasks + assigned students IN PARALLEL via the dedicated API
+      // routes. These routes do separate Supabase queries and join the rows
+      // in JS — which avoids the PostgREST 500 we hit when nesting
+      // task_assignments + profiles + task_submissions inside one query.
+      // ---------------------------------------------------------------------
+      const [tasksRes, studentsRes] = await Promise.all([
+        fetch("/api/site-supervisor/tasks", { cache: "no-store" }),
+        fetch("/api/site-supervisor/students?pageSize=100", { cache: "no-store" }),
+      ]);
 
-      // 1) Fetch all students actively assigned to this site supervisor
-      const { data: assignments, error: assignErr } = await supabase
-        .from("student_internships")
-        .select(
-          `id, student_user_id, internship_id, start_date, end_date, status,
-           student:profiles!student_internships_student_user_id_fkey(
-             user_id, full_name, email, avatar_url
-           ),
-           internship:internships(id, title, company:companies(name))`
-        )
-        .eq("site_supervisor_id", user.id)
-        .in("status", ["assigned", "active"]);
+      if (!tasksRes.ok) {
+        const err = await tasksRes.json().catch(() => ({}));
+        throw new Error(err?.error || `Failed to load tasks (${tasksRes.status})`);
+      }
+      if (!studentsRes.ok) {
+        const err = await studentsRes.json().catch(() => ({}));
+        throw new Error(
+          (err?.error && (err.error.message || err.error)) ||
+            `Failed to load students (${studentsRes.status})`
+        );
+      }
 
-      if (assignErr) throw assignErr;
+      const tasksJson = await tasksRes.json();
+      const studentsJson = await studentsRes.json();
 
-      const studentRows: AssignedStudent[] = (assignments || []).map((a: any) => ({
-        student_user_id: a.student_user_id,
-        student_internship_id: a.id,
-        internship_id: a.internship_id,
-        full_name: a.student?.full_name ?? null,
-        email: a.student?.email ?? null,
-        avatar_url: a.student?.avatar_url ?? null,
-        internship_title: a.internship?.title ?? null,
-        company_name: a.internship?.company?.name ?? null,
-        start_date: a.start_date,
-        end_date: a.end_date,
-        status: a.status,
+      // ----- Tasks -----
+      // The API returns EnrichedTask[] — pick only the fields we use here so
+      // accidental shape drift elsewhere can't break the dashboard.
+      const taskList: TaskWithAssignment[] = (tasksJson.data || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        due_date: t.due_date,
+        week_number: t.week_number,
+        day_number: t.day_number,
+        status: t.status,
+        assignments: (t.assignments || []).map((a: any) => ({
+          id: a.id,
+          status: a.status,
+          student_user_id: a.student_user_id,
+          student: a.student
+            ? { full_name: a.student.full_name, email: a.student.email }
+            : null,
+        })),
+        submissions: (t.submissions || []).map((s: any) => ({
+          id: s.id,
+          status: s.status,
+          submitted_at: s.submitted_at,
+          student_user_id: s.student_user_id,
+        })),
+      }));
+      setTasks(taskList);
+
+      // ----- Students -----
+      // /api/site-supervisor/students returns PaginatedResponse — `items`
+      // is the array we care about. Map each row into the AssignedStudent
+      // shape the UI expects, then zero-out the progress counters (filled
+      // in the next pass by walking the task list).
+      const studentItems: any[] = studentsJson.data?.items || [];
+      const studentRows: AssignedStudent[] = studentItems.map((s) => ({
+        student_user_id: s.studentId,
+        student_internship_id: s.id,
+        internship_id: s.internshipId,
+        full_name: s.studentName,
+        email: s.studentEmail,
+        avatar_url: s.avatarUrl,
+        internship_title: s.internshipTitle,
+        company_name: null, // not returned by the API; can be added later
+        start_date: s.startDate,
+        end_date: s.endDate,
+        status: s.status,
         tasks_assigned: 0,
         tasks_approved: 0,
         tasks_pending_review: 0,
         tasks_in_progress: 0,
-        current_week: computeWeek(a.start_date, a.end_date),
+        current_week: computeWeek(s.startDate, s.endDate),
         last_submission_at: null,
       }));
 
       const studentUserIds = studentRows.map((s) => s.student_user_id);
 
-      // 2) Fetch all tasks created by this supervisor
-      const { data: taskRows, error: taskErr } = await supabase
-        .from("tasks")
-        .select(
-          `id, title, due_date, week_number, day_number, status,
-           assignments:task_assignments(
-             id, status, student_user_id,
-             student:profiles!task_assignments_student_user_id_fkey(full_name, email)
-           ),
-           submissions:task_submissions(id, status, submitted_at, student_user_id)`
-        )
-        .eq("created_by", user.id)
-        .order("created_at", { ascending: false });
-
-      if (taskErr) throw taskErr;
-
-      const taskList = (taskRows || []) as unknown as TaskWithAssignment[];
-      setTasks(taskList);
-
-      // 3) Aggregate per-student progress from tasks
+      // Aggregate per-student progress by walking the tasks list once.
+      // `assignments` on each task carries the student_user_id + status.
       for (const student of studentRows) {
-        let assigned = 0, approved = 0, pendingReview = 0, inProgress = 0;
-        let latestSubmission: string | null = null;
+        let assigned = 0,
+          approved = 0,
+          pendingReview = 0,
+          inProgress = 0;
 
         for (const task of taskList) {
           const assignment = task.assignments?.find(
@@ -220,16 +251,8 @@ export default function SiteSupervisorDashboard() {
 
           if (assignment.status === "approved") approved++;
           else if (assignment.status === "submitted") pendingReview++;
-          else if (assignment.status === "pending" || assignment.status === "resubmitted") inProgress++;
-
-          // Track latest submission
-          const studentSubs = task.submissions?.filter(
-            (s) => s.student_user_id === student.student_user_id
-          ) || [];
-          for (const s of studentSubs) {
-            // submission.submitted_at isn't in the select above; we'll add it.
-            // For now, skip if undefined
-          }
+          else if (assignment.status === "pending" || assignment.status === "resubmitted")
+            inProgress++;
         }
 
         student.tasks_assigned = assigned;
@@ -238,29 +261,24 @@ export default function SiteSupervisorDashboard() {
         student.tasks_in_progress = inProgress;
       }
 
-      // 4) Re-query submissions for last_submission_at (separate fetch since
-      //    the joined submissions don't include submitted_at in our select)
-      if (studentUserIds.length > 0) {
-        const { data: subs } = await supabase
-          .from("task_submissions")
-          .select("student_user_id, submitted_at, task_id")
-          .in("student_user_id", studentUserIds)
-          .order("submitted_at", { ascending: false });
-
-        const latestByStudent = new Map<string, string>();
-        for (const s of (subs || []) as any[]) {
-          if (!latestByStudent.has(s.student_user_id)) {
-            latestByStudent.set(s.student_user_id, s.submitted_at);
+      // Last submission timestamp per student — derived from the submissions
+      // already joined into each task row.
+      const latestByStudent = new Map<string, string>();
+      for (const task of taskList) {
+        for (const sub of task.submissions || []) {
+          const existing = latestByStudent.get(sub.student_user_id);
+          if (!existing || new Date(sub.submitted_at) > new Date(existing)) {
+            latestByStudent.set(sub.student_user_id, sub.submitted_at);
           }
         }
-        for (const student of studentRows) {
-          student.last_submission_at = latestByStudent.get(student.student_user_id) ?? null;
-        }
+      }
+      for (const student of studentRows) {
+        student.last_submission_at = latestByStudent.get(student.student_user_id) ?? null;
       }
 
       setStudents(studentRows);
 
-      // 5) Compute overview stats
+      // ----- Overview stats -----
       const today = new Date();
       const tasksDueToday = taskList.filter(
         (t) => t.due_date && isSameDay(t.due_date, today)
@@ -279,11 +297,13 @@ export default function SiteSupervisorDashboard() {
         t.assignments?.some((a) => a.status === "submitted")
       ).length;
 
-      // Weekly evaluations due = students with active assignments who don't
-      // have a weekly evaluation for the current week
-      const currentWeek = studentRows[0]?.current_week ?? null;
+      // Weekly evaluations due — count students who don't yet have a weekly
+      // evaluation for the current week. This is a simple SELECT (no joins),
+      // so a direct Supabase query is safe here.
       let weeklyEvalsDue = 0;
+      const currentWeek = studentRows[0]?.current_week ?? null;
       if (currentWeek && studentUserIds.length > 0) {
+        const supabase = createClient();
         const { data: existingEvals } = await supabase
           .from("evaluations")
           .select("student_user_id")
@@ -295,9 +315,7 @@ export default function SiteSupervisorDashboard() {
         const evaldStudents = new Set(
           (existingEvals || []).map((e: any) => e.student_user_id)
         );
-        weeklyEvalsDue = studentUserIds.filter(
-          (id) => !evaldStudents.has(id)
-        ).length;
+        weeklyEvalsDue = studentUserIds.filter((id) => !evaldStudents.has(id)).length;
       }
 
       setStats({
@@ -460,9 +478,7 @@ export default function SiteSupervisorDashboard() {
                             >
                               {s.full_name || "Unnamed student"}
                             </Link>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {s.email}
-                            </p>
+                            <p className="text-xs text-muted-foreground truncate">{s.email}</p>
                           </div>
                         </div>
 
@@ -548,9 +564,8 @@ export default function SiteSupervisorDashboard() {
                 .filter((t) => t.assignments?.some((a) => a.status === "submitted"))
                 .slice(0, 5)
                 .map((task) => {
-                  const submitted = task.assignments?.filter(
-                    (a) => a.status === "submitted"
-                  ) || [];
+                  const submitted =
+                    task.assignments?.filter((a) => a.status === "submitted") || [];
                   return (
                     <li key={task.id} className="py-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">

@@ -22,6 +22,12 @@ import {
   Flame,
   User,
   ChevronRight,
+  Lock,
+  Send,
+  MessageSquare,
+  ListTodo,
+  Youtube,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,6 +51,11 @@ interface StudentStats {
   attendanceStreak: number;
   recentSubmissions: RecentSubmission[];
   upcomingDeadlines: UpcomingDeadline[];
+  // First task marked is_current by the API (or null if none). Drives the
+  // "Current Task" card on the dashboard.
+  currentTask: TaskRow | null;
+  // All assigned tasks — used to render the week/day task strip.
+  tasks: TaskRow[];
 }
 
 interface InternshipInfo {
@@ -75,6 +86,29 @@ interface UpcomingDeadline {
   course_name?: string;
 }
 
+// Matches the EnrichedTaskRow shape returned by /api/student/tasks. We only
+// pick the fields the dashboard actually uses — keeping the surface small so
+// future API changes don't break this page.
+interface TaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  expected_deliverable: string | null;
+  youtube_url: string | null;
+  due_date: string | null;
+  week_number: number | null;
+  day_number: number | null;
+  sort_order: number;
+  requires_previous_completion: boolean;
+  assignment_id: string;
+  assignment_status: string; // pending | submitted | resubmitted | approved | rejected
+  submission_status: string | null;
+  submission_feedback: string | null;
+  submission_reviewed_at: string | null;
+  is_unlocked: boolean;
+  is_current: boolean;
+}
+
 // Default stats to show when DB is not available
 const DEFAULT_STATS: StudentStats = {
   activeInternship: false,
@@ -88,6 +122,8 @@ const DEFAULT_STATS: StudentStats = {
   attendanceStreak: 0,
   recentSubmissions: [],
   upcomingDeadlines: [],
+  currentTask: null,
+  tasks: [],
 };
 
 export default function StudentDashboard() {
@@ -113,7 +149,12 @@ export default function StudentDashboard() {
         return;
       }
 
-      // Use Promise.allSettled to handle partial failures gracefully
+      // Use Promise.allSettled to handle partial failures gracefully.
+      //
+      // NOTE: tasks are fetched via /api/student/tasks (NOT direct Supabase)
+      // because that route computes the is_unlocked / is_current flags the
+      // dashboard's "Current Task" card depends on. Direct Supabase queries
+      // can't compute those flags server-side without an RPC.
       const results = await Promise.allSettled([
         // Fetch active student_internship (link table), then we'll hydrate the
         // internship row separately. `internships` has NO `student_id` column —
@@ -142,12 +183,18 @@ export default function StudentDashboard() {
           .select("id", { count: "exact" })
           .eq("student_user_id", user.id),
 
-        // Fetch task assignments with embedded task — tasks has NO `student_id`,
-        // the link is via `task_assignments.student_user_id`.
-        supabase
-          .from("task_assignments")
-          .select("id, status, due_date, tasks:task_id(id, title, due_date, status)")
-          .eq("student_user_id", user.id),
+        // Fetch tasks via the dedicated API route. The route returns
+        // EnrichedTaskRow[] with is_unlocked / is_current flags already
+        // computed (it walks the sorted task list to determine unlock state
+        // based on requires_previous_completion).
+        fetch("/api/student/tasks", { cache: "no-store" }).then(
+          async (r) => {
+            if (!r.ok) return { data: [], error: new Error(`HTTP ${r.status}`) };
+            const json = await r.json();
+            return { data: json.data || [], error: null };
+          },
+          (err) => ({ data: [], error: err })
+        ),
 
         // Fetch documents count
         supabase
@@ -174,7 +221,7 @@ export default function StudentDashboard() {
           .order("submitted_at", { ascending: false })
           .limit(5),
 
-        // Upcoming deadlines are derived from the task_assignments fetch above
+        // Upcoming deadlines are derived from the tasks fetch above
         // (results[2]). This placeholder keeps the array shape stable.
         Promise.resolve({ data: null, error: null }),
       ]);
@@ -195,7 +242,8 @@ export default function StudentDashboard() {
 
       // Extract results safely - each may have failed.
       // (results[0] is consumed as `studentInternship` above; results[6] is the
-      // upcoming-deadlines placeholder — deadlines are derived from results[2].)
+      // upcoming-deadlines placeholder — deadlines are derived from results[2],
+      // which is now the /api/student/tasks fetch.)
       const applicationsResult = results[1];
       const tasksResult = results[2];
       const documentsResult = results[3];
@@ -248,28 +296,25 @@ export default function StudentDashboard() {
         applicationsCount = applicationsResult.value.count || 0;
       }
 
-      // Process task assignments — each row has an embedded `tasks` object
-      // (singular because of the FK relationship).
+      // Process tasks returned by /api/student/tasks. Each row already has
+      // is_unlocked / is_current computed by the API.
       let pendingTasks = 0, completedTasks = 0, totalTasks = 0;
-      let assignmentRows: any[] = [];
+      let taskRows: TaskRow[] = [];
+      let currentTask: TaskRow | null = null;
       if (tasksResult.status === 'fulfilled' && tasksResult.value.data) {
-        assignmentRows = tasksResult.value.data as any[];
-        totalTasks = assignmentRows.length;
-        pendingTasks = assignmentRows.filter((row) => {
-          const taskStatus = row.tasks?.status;
-          return (
-            row.status === "pending" ||
-            taskStatus === "assigned" ||
-            taskStatus === "in_progress" ||
-            taskStatus === "published"
-          );
-        }).length;
-        // `completed` IS a valid task_status enum value (migration 0023), so
-        // count rows where the embedded task is completed. `approved` is the
-        // matching task_submission_status on the assignment itself.
-        completedTasks = assignmentRows.filter((row) =>
-          row.tasks?.status === "completed" || row.status === "approved"
+        taskRows = tasksResult.value.data as TaskRow[];
+        totalTasks = taskRows.length;
+        // "Pending" = unlocked but not yet submitted/approved
+        pendingTasks = taskRows.filter((t) =>
+          t.assignment_status === "pending" ||
+          t.assignment_status === "resubmitted"
         ).length;
+        // "Completed" = approved by supervisor
+        completedTasks = taskRows.filter((t) => t.assignment_status === "approved").length;
+        // The API marks exactly one task as is_current (first unlocked,
+        // non-approved task in sort order). If there's no current task (e.g.,
+        // all tasks approved or no tasks assigned), this is null.
+        currentTask = taskRows.find((t) => t.is_current) || null;
       }
 
       // Process documents count
@@ -312,25 +357,22 @@ export default function StudentDashboard() {
         }));
       }
 
-      // Process deadlines — derive from the task_assignments fetch above.
-      // Filter rows with a future due_date and sort ascending.
+      // Process deadlines — derive from the tasks fetch above. Filter rows
+      // with a future due_date and sort ascending.
       let upcomingDeadlines: UpcomingDeadline[] = [];
       const nowIso = new Date().toISOString();
-      upcomingDeadlines = assignmentRows
-        .filter((row) => {
-          const due = row.due_date || row.tasks?.due_date;
-          return due && new Date(due).getTime() >= new Date(nowIso).getTime();
-        })
-        .sort((a, b) => {
-          const aDue = new Date(a.due_date || a.tasks?.due_date).getTime();
-          const bDue = new Date(b.due_date || b.tasks?.due_date).getTime();
-          return aDue - bDue;
-        })
+      upcomingDeadlines = taskRows
+        .filter((t) =>
+          t.due_date && new Date(t.due_date).getTime() >= new Date(nowIso).getTime()
+        )
+        .sort((a, b) =>
+          new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime()
+        )
         .slice(0, 5)
-        .map((row) => ({
-          id: row.tasks?.id || row.id,
-          title: row.tasks?.title || "Untitled task",
-          due_date: row.due_date || row.tasks?.due_date,
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          due_date: t.due_date!,
         }));
 
       setStats({
@@ -345,6 +387,8 @@ export default function StudentDashboard() {
         attendanceStreak: streak,
         recentSubmissions,
         upcomingDeadlines,
+        currentTask,
+        tasks: taskRows,
       });
       
       // Clear error state if we got here successfully
@@ -586,6 +630,63 @@ export default function StudentDashboard() {
           </Link>
         </motion.div>
       </div>
+
+      {/* Current Task — full-width card. Shows the task the student should
+          be working on right now, with a clear CTA. If no tasks are assigned,
+          the empty state nudges them to wait for their supervisor. */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.32 }}
+      >
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ListTodo className="h-5 w-5 text-primary" />
+                Current Task
+              </CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/student/tasks">
+                  View All Tasks <ArrowRight className="h-3 w-3 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {stats.currentTask ? (
+              <CurrentTaskCard task={stats.currentTask} />
+            ) : stats.tasks.length === 0 ? (
+              <div className="text-center py-6">
+                <ListTodo className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-sm font-medium">No tasks assigned yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your supervisor will assign tasks as your internship progresses.
+                </p>
+              </div>
+            ) : (
+              // All tasks completed — show a celebratory state
+              <div className="text-center py-6">
+                <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500 mb-3" />
+                <p className="text-sm font-medium">All tasks complete!</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  You've completed all {stats.tasks.length} assigned task{stats.tasks.length === 1 ? "" : "s"}. Great work!
+                </p>
+              </div>
+            )}
+
+            {/* Week / Day task strip — quick visual scan of all tasks */}
+            {stats.tasks.length > 0 && (
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Task Progress
+                </p>
+                <TaskStrip tasks={stats.tasks} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -887,6 +988,235 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
       </motion.div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CurrentTaskCard — the main "what should I work on now?" card on the
+// student dashboard. Renders different CTAs depending on the task's state:
+//   - locked           → disabled "Locked" badge + tooltip-style hint
+//   - pending          → "Submit Work" button (links to /student/tasks)
+//   - submitted        → "View Feedback" button (waiting for supervisor)
+//   - resubmitted      → "Re-submit Work" button (supervisor requested changes)
+//   - approved         → "Go to Next Task" button or "All done!" badge
+// ---------------------------------------------------------------------------
+function CurrentTaskCard({ task }: { task: TaskRow }) {
+  const isLocked = !task.is_unlocked;
+  const isApproved = task.assignment_status === "approved";
+  const isSubmitted = task.assignment_status === "submitted";
+  const isResubmitted = task.assignment_status === "resubmitted";
+
+  // Status pill config
+  let statusPill: React.ReactNode;
+  if (isLocked) {
+    statusPill = (
+      <Badge variant="outline" className="bg-muted/50 text-muted-foreground">
+        <Lock className="h-3 w-3 mr-1" /> Locked
+      </Badge>
+    );
+  } else if (isApproved) {
+    statusPill = (
+      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+        <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
+      </Badge>
+    );
+  } else if (isSubmitted) {
+    statusPill = (
+      <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+        <Clock className="h-3 w-3 mr-1" /> Awaiting Review
+      </Badge>
+    );
+  } else if (isResubmitted) {
+    statusPill = (
+      <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+        <AlertTriangle className="h-3 w-3 mr-1" /> Changes Requested
+      </Badge>
+    );
+  } else {
+    statusPill = (
+      <Badge className="bg-primary/10 text-primary border-primary/20">
+        <Send className="h-3 w-3 mr-1" /> In Progress
+      </Badge>
+    );
+  }
+
+  // CTA button config
+  let cta: React.ReactNode;
+  if (isLocked) {
+    cta = (
+      <Button variant="outline" disabled size="sm">
+        <Lock className="h-4 w-4 mr-2" /> Complete previous task first
+      </Button>
+    );
+  } else if (isApproved) {
+    cta = (
+      <Button asChild size="sm">
+        <Link href="/student/tasks">
+          Go to Next Task <ArrowRight className="h-4 w-4 ml-2" />
+        </Link>
+      </Button>
+    );
+  } else if (isSubmitted) {
+    cta = (
+      <Button asChild variant="outline" size="sm">
+        <Link href="/student/tasks">
+          <MessageSquare className="h-4 w-4 mr-2" /> View Feedback
+        </Link>
+      </Button>
+    );
+  } else if (isResubmitted) {
+    cta = (
+      <Button asChild size="sm">
+        <Link href="/student/tasks">
+          <Send className="h-4 w-4 mr-2" /> Re-submit Work
+        </Link>
+      </Button>
+    );
+  } else {
+    cta = (
+      <Button asChild size="sm">
+        <Link href="/student/tasks">
+          <Send className="h-4 w-4 mr-2" /> Submit Work
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            {statusPill}
+            {task.week_number && (
+              <span className="text-xs text-muted-foreground">
+                Week {task.week_number}
+                {task.day_number ? ` · Day ${task.day_number}` : ""}
+              </span>
+            )}
+          </div>
+          <h3 className="font-semibold text-base">{task.title}</h3>
+          {task.description && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {task.description}
+            </p>
+          )}
+        </div>
+        <div className="shrink-0">{cta}</div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        {task.due_date && (
+          <span className="flex items-center gap-1">
+            <CalendarDays className="h-3 w-3" />
+            Due {new Date(task.due_date).toLocaleDateString()}
+          </span>
+        )}
+        {task.expected_deliverable && (
+          <span className="flex items-center gap-1">
+            <Target className="h-3 w-3" />
+            <span className="truncate max-w-[280px]">
+              Deliverable: {task.expected_deliverable}
+            </span>
+          </span>
+        )}
+        {task.youtube_url && (
+          <span className="flex items-center gap-1 text-red-600">
+            <Youtube className="h-3 w-3" />
+            <a
+              href={task.youtube_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+            >
+              Watch video
+            </a>
+          </span>
+        )}
+      </div>
+
+      {/* If supervisor has reviewed and left feedback, show a small preview */}
+      {task.submission_feedback && (isApproved || isResubmitted) && (
+        <div className="rounded-md bg-muted/40 p-3 text-xs">
+          <p className="font-medium text-muted-foreground flex items-center gap-1 mb-1">
+            <MessageSquare className="h-3 w-3" /> Supervisor feedback
+          </p>
+          <p className="text-foreground line-clamp-2">{task.submission_feedback}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TaskStrip — a compact horizontal list of all tasks, each shown as a small
+// badge with a status icon. Used under the Current Task card so the student
+// can see their overall progress at a glance.
+//
+// Visual states:
+//   ✅ Approved        — green
+//   🟢 Current         — primary blue (pulse)
+//   ⏳ Awaiting Review — amber
+//   🔁 Resubmit        — orange
+//   🔒 Locked          — muted gray
+//   ⚪ Pending         — outlined
+// ---------------------------------------------------------------------------
+function TaskStrip({ tasks }: { tasks: TaskRow[] }) {
+  // Sort by week → day → sort_order so the strip reads left-to-right
+  // in the order the student should work through them.
+  const sorted = [...tasks].sort(
+    (a, b) =>
+      (a.week_number ?? 99) - (b.week_number ?? 99) ||
+      (a.day_number ?? 99) - (b.day_number ?? 99) ||
+      a.sort_order - b.sort_order
+  );
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {sorted.map((t) => {
+        const isApproved = t.assignment_status === "approved";
+        const isSubmitted = t.assignment_status === "submitted";
+        const isResubmitted = t.assignment_status === "resubmitted";
+        const isLocked = !t.is_unlocked;
+        const isCurrent = t.is_current;
+
+        let icon: React.ReactNode;
+        let cls: string;
+        if (isApproved) {
+          icon = <CheckCircle2 className="h-3 w-3" />;
+          cls = "bg-emerald-100 text-emerald-700 border-emerald-200";
+        } else if (isCurrent) {
+          icon = <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />;
+          cls = "bg-primary/10 text-primary border-primary/30";
+        } else if (isSubmitted) {
+          icon = <Clock className="h-3 w-3" />;
+          cls = "bg-amber-100 text-amber-800 border-amber-200";
+        } else if (isResubmitted) {
+          icon = <AlertTriangle className="h-3 w-3" />;
+          cls = "bg-orange-100 text-orange-800 border-orange-200";
+        } else if (isLocked) {
+          icon = <Lock className="h-3 w-3" />;
+          cls = "bg-muted/40 text-muted-foreground border-muted";
+        } else {
+          icon = <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />;
+          cls = "bg-background text-muted-foreground border-border";
+        }
+
+        const label = `W${t.week_number ?? "-"}D${t.day_number ?? "-"}`;
+
+        return (
+          <Link
+            key={t.id}
+            href="/student/tasks"
+            title={`${t.title} — ${label}`}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border hover:scale-105 transition-transform ${cls}`}
+          >
+            {icon}
+            <span>{label}</span>
+          </Link>
+        );
+      })}
     </div>
   );
 }
