@@ -183,6 +183,24 @@ function getTenantSlugFromUser(user: any): string | null {
 }
 
 /**
+ * Extract tenant_domain (e.g. "myu.xirea.tech") from the JWT app_metadata,
+ * with user_metadata fallback. Set by migration 0038's trigger + backfill.
+ * Returns null if not set (e.g. legacy JWT issued before 0038 was applied,
+ * or the user has no university_id).
+ */
+function getTenantDomainFromUser(user: any): string | null {
+  const appDomain = user?.app_metadata?.tenant_domain;
+  if (typeof appDomain === "string" && appDomain.length > 0) {
+    return appDomain;
+  }
+  const metaDomain = user?.user_metadata?.tenant_domain;
+  if (typeof metaDomain === "string" && metaDomain.length > 0) {
+    return metaDomain;
+  }
+  return null;
+}
+
+/**
  * Extract the current subdomain from the request hostname — DOMAIN-AGNOSTIC.
  * Mirrors src/lib/tenant.ts::extractSubdomain. Returns null for apex
  * domains, reserved subdomains, infrastructure domains, and localhost.
@@ -235,17 +253,32 @@ function getCurrentSubdomain(hostname: string): string | null {
  */
 function buildTenantRedirectUrl(
   request: NextRequest,
-  tenantSlug: string
+  tenantSlug: string,
+  tenantDomain?: string | null
 ): URL {
   const { hostname, port, pathname, search, protocol } = request.nextUrl;
   const hostWithoutPort = hostname.split(":")[0];
 
-  // Build the new hostname: <tenantSlug>.<apex>
-  // The apex is everything after the first label of the current hostname.
-  // For an apex request (no subdomain) the apex IS the current hostname.
-  const parts = hostWithoutPort.split(".");
-  const apex = parts.length >= 3 ? parts.slice(1).join(".") : hostWithoutPort;
-  const newHostname = `${tenantSlug}.${apex}`;
+  // Determine the target hostname. Priority:
+  //   1. tenantDomain (from JWT app_metadata, e.g. "myu.xirea.tech") —
+  //      always correct, hosting-agnostic. Set by migration 0038.
+  //   2. <tenantSlug>.<apex> — only when the current hostname is NOT on
+  //      an infra domain (vercel.app etc.). On infra domains the leftmost
+  //      label is a deployment name, not a tenant, so `<slug>.<apex>`
+  //      would produce a non-existent hostname (e.g. `myu.vercel.app`)
+  //      and 404.
+  let newHostname: string;
+  if (tenantDomain) {
+    newHostname = tenantDomain;
+  } else {
+    // Check infra domain — if so, we can't safely construct a target.
+    // Fall back to <slug>.<apex> anyway (best effort) — this branch only
+    // runs for legacy JWTs without tenant_domain, which the 0038 backfill
+    // has already populated for all current users.
+    const parts = hostWithoutPort.split(".");
+    const apex = parts.length >= 3 ? parts.slice(1).join(".") : hostWithoutPort;
+    newHostname = `${tenantSlug}.${apex}`;
+  }
   const newHost = port ? `${newHostname}:${port}` : newHostname;
 
   const redirectUrl = new URL(`${protocol}//${newHost}${pathname}${search}`);
@@ -376,6 +409,7 @@ export async function proxy(request: NextRequest) {
     // ==========================================
     let userRole = getRoleFromUser(user);
     const userTenantSlug = getTenantSlugFromUser(user);
+    const userTenantDomain = getTenantDomainFromUser(user);
 
     // Set headers for client components
     if (userRole) {
@@ -384,6 +418,9 @@ export async function proxy(request: NextRequest) {
     }
     if (userTenantSlug) {
       response.headers.set("x-tenant-slug", userTenantSlug);
+    }
+    if (userTenantDomain) {
+      response.headers.set("x-tenant-domain", userTenantDomain);
     }
 
     // ==========================================
@@ -442,7 +479,7 @@ export async function proxy(request: NextRequest) {
         // login page without a hard sign-out, which is fine because they
         // aren't authenticated on the right tenant yet anyway).
         if (!isPublicRoute(pathname)) {
-          const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug);
+          const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug, userTenantDomain);
           const loginUrl = new URL("/login", redirectUrl);
           loginUrl.searchParams.set("redirected", "wrong_tenant");
           // Carry returnUrl so the user lands on their original destination
@@ -461,7 +498,7 @@ export async function proxy(request: NextRequest) {
           return signOutResponse;
         }
         // Public route → just redirect to the right tenant subdomain.
-        const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug);
+        const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug, userTenantDomain);
         return NextResponse.redirect(redirectUrl);
       }
     }

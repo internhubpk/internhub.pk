@@ -175,11 +175,15 @@ const RESERVED_SUBDOMAINS: readonly string[] = [
  *   internhub.pk              →  no infra match
  *   iiui.example.com          →  no infra match
  */
-function isInfrastructureDomain(hostname: string): boolean {
+export function isInfrastructureDomain(hostname: string): boolean {
   return INFRA_DOMAINS.some((d) =>
     hostname === d || hostname.endsWith(`.${d}`)
   );
 }
+
+// Short alias used by callers (proxy.ts, login page) that just need a
+// boolean "is this an infra / preview hostname?" check.
+export const isInfraDomain = isInfrastructureDomain;
 
 /**
  * Extract tenant slug from hostname — DOMAIN-AGNOSTIC.

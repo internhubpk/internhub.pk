@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
-import { extractSubdomain } from "@/lib/tenant";
+import { extractSubdomain, isInfraDomain } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -58,7 +58,15 @@ const TENANT_SCOPED_ROLES = new Set([
   "student",
 ]);
 
-function getApexDomain(hostname: string): string {
+// Compute the apex domain for tenant-subdomain redirect construction.
+// Returns null when the current hostname is on an infrastructure domain
+// (vercel.app, netlify.app, …) — those hostnames have a deployment name
+// as the leftmost label, NOT a tenant slug, so we cannot construct
+// `<tenant>.<apex>` from them (the result would be e.g. `myu.vercel.app`
+// which is not a real deployment and 404s). The caller must fall back
+// to the JWT's `tenant_domain` (set by migration 0038) or a DB lookup.
+function getApexDomain(hostname: string): string | null {
+  if (isInfraDomain(hostname)) return null;
   const parts = hostname.split(".");
   return parts.length >= 3 ? parts.slice(1).join(".") : hostname;
 }
@@ -276,6 +284,23 @@ function LoginForm() {
       }
 
       // CROSS-TENANT LOGIN GUARD + MAIN-SITE → TENANT REDIRECT
+      //
+      // When a tenant-scoped user (student / faculty / coordinator / uni
+      // admin) signs in on the WRONG subdomain (or on the apex / a Vercel
+      // preview URL), we redirect them to their own tenant's subdomain.
+      //
+      // URL construction priority:
+      //   1. JWT app_metadata.tenant_domain  (e.g. "myu.xirea.tech")
+      //      — set by migration 0038, always correct, hosting-agnostic.
+      //   2. DB lookup of universities.domain for the user's university_id
+      //      — fallback when the JWT is stale (pre-0038 backfill).
+      //   3. <tenant_slug>.<current_apex>  (only when current hostname is
+      //      NOT on an infra domain — vercel.app, netlify.app, … — because
+      //      `<slug>.vercel.app` is a non-existent deployment and 404s).
+      //   4. If none of the above yield a target host, SKIP the redirect
+      //      and let the user continue on the current host. The proxy's
+      //      per-request guard will still keep them out of cross-tenant
+      //      dashboards, but at least they won't be sent to a 404.
       const userRole =
         (data.user?.app_metadata?.role as string | undefined) ||
         (data.user?.user_metadata?.role as string | undefined) ||
@@ -284,21 +309,27 @@ function LoginForm() {
         (data.user?.app_metadata?.tenant_slug as string | undefined) ||
         (data.user?.user_metadata?.tenant_slug as string | undefined) ||
         null;
+      let userTenantDomain =
+        (data.user?.app_metadata?.tenant_domain as string | undefined) ||
+        (data.user?.user_metadata?.tenant_domain as string | undefined) ||
+        null;
       const currentHostname = window.location.hostname;
       const currentSubdomain = extractSubdomain(currentHostname);
 
-      if (!userTenantSlug && userRole && TENANT_SCOPED_ROLES.has(userRole)) {
+      if ((!userTenantSlug || !userTenantDomain) && userRole && TENANT_SCOPED_ROLES.has(userRole)) {
         try {
           const { data: profileRow } = await supabase
             .from("profiles")
-            .select("university_id, universities:university_id(slug)")
+            .select("university_id, universities:university_id(slug, domain)")
             .eq("user_id", data.user.id)
             .maybeSingle();
+          const uni = (profileRow as any)?.universities;
           const slug =
-            (profileRow as any)?.universities?.slug ||
-            (profileRow as any)?.universities?.[0]?.slug ||
-            null;
+            uni?.slug || (Array.isArray(uni) ? uni?.[0]?.slug : null) || null;
+          const domain =
+            uni?.domain || (Array.isArray(uni) ? uni?.[0]?.domain : null) || null;
           if (slug) userTenantSlug = slug;
+          if (domain) userTenantDomain = domain;
         } catch {
           // lookup failed — fall through to the block below
         }
@@ -312,15 +343,27 @@ function LoginForm() {
       ) {
         const apex = getApexDomain(currentHostname);
         const port = window.location.port ? `:${window.location.port}` : "";
-        const correctUrl = `${window.location.protocol}//${userTenantSlug}.${apex}${port}/login?redirected=wrong_tenant`;
-        if (currentSubdomain) {
-          await supabase.auth.signOut();
+        // Prefer the explicit tenant_domain (always correct, even on
+        // infra / preview hostnames). Fall back to <slug>.<apex> only
+        // when apex is a real apex (not infra) — otherwise the redirect
+        // would target a non-existent deployment and 404.
+        const targetHost = userTenantDomain
+          || (apex ? `${userTenantSlug}.${apex}` : null);
+        if (targetHost) {
+          const correctUrl = `${window.location.protocol}//${targetHost}${port}/login?redirected=wrong_tenant`;
+          if (currentSubdomain) {
+            await supabase.auth.signOut();
+          }
+          toast.info("Redirecting to your portal", {
+            description: `This account belongs to the "${userTenantSlug}" portal. Taking you there…`,
+          });
+          setTimeout(() => { window.location.href = correctUrl; }, 1200);
+          return;
         }
-        toast.info("Redirecting to your portal", {
-          description: `This account belongs to the "${userTenantSlug}" portal. Taking you there…`,
-        });
-        setTimeout(() => { window.location.href = correctUrl; }, 1200);
-        return;
+        // No way to construct a safe target URL (no tenant_domain, on
+        // an infra hostname). Fall through to normal login completion —
+        // the per-request proxy guard will handle tenant scoping on
+        // subsequent navigation.
       }
 
       if (
