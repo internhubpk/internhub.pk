@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TenantProvider } from "@/components/providers/tenant-provider";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { getServerTenantConfig } from "@/lib/tenant-server";
 import type { TenantConfig } from "@/lib/tenant";
@@ -214,27 +215,36 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <TenantProvider initialTenant={tenantConfig}>
-            {/* Skip to main content for accessibility */}
-            <a
-              href="#main-content"
-              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
-              style={{ backgroundColor: `var(--tenant-primary)` }}
-            >
-              Skip to main content
-            </a>
-            
-            <main id="main-content">
-              {children}
-            </main>
-            
-            <Toaster 
-              position="top-right"
-              richColors
-              closeButton
-              toastOptions={{
-                duration: 5000,
-              }}
-            />
+            {/* AuthProvider is hoisted to the root layout so that ANY page
+                (including public pages like /marketplace/[id] that may
+                transitively render components calling useAuth) has access
+                to the auth context. Without this, navigating from the
+                dashboard to a public page that uses useAuth throws
+                "useAuth must be used within an AuthProvider". The
+                dashboard layout no longer needs its own AuthProvider. */}
+            <AuthProvider>
+              {/* Skip to main content for accessibility */}
+              <a
+                href="#main-content"
+                className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                style={{ backgroundColor: `var(--tenant-primary)` }}
+              >
+                Skip to main content
+              </a>
+              
+              <main id="main-content">
+                {children}
+              </main>
+              
+              <Toaster 
+                position="top-right"
+                richColors
+                closeButton
+                toastOptions={{
+                  duration: 5000,
+                }}
+              />
+            </AuthProvider>
           </TenantProvider>
         </ThemeProvider>
       </body>

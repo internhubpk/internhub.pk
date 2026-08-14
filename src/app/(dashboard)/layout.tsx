@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header, HeaderSkeleton } from "@/components/layout/header";
-import { AuthProvider, useAuth } from "@/components/providers/auth-provider";
+import { useAuth } from "@/components/providers/auth-provider";
+// AuthProvider is now hoisted to src/app/layout.tsx so that ALL
+// pages (public + dashboard) share the same auth context. The
+// dashboard layout no longer wraps children in its own AuthProvider;
+// doing so would create a duplicate provider that fetches the session
+// twice and creates two independent auth states.
 import { PageLoader, ContentLoader } from "@/components/layout/loading-state";
 import { RouteGuard } from "@/components/auth/route-guard";
 import { cn } from "@/lib/utils";
@@ -174,13 +179,14 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // AuthProvider is provided by the root layout (src/app/layout.tsx) so
+  // that public pages and dashboard pages share the same auth context.
+  // We only need Suspense + RouteGuard + DashboardShell here.
   return (
-    <AuthProvider>
-      <Suspense fallback={<PageLoader />}>
-        <RouteGuard>
-          <DashboardShell>{children}</DashboardShell>
-        </RouteGuard>
-      </Suspense>
-    </AuthProvider>
+    <Suspense fallback={<PageLoader />}>
+      <RouteGuard>
+        <DashboardShell>{children}</DashboardShell>
+      </RouteGuard>
+    </Suspense>
   );
 }
