@@ -273,17 +273,58 @@ export default function StudentProfilePage() {
   }
 
   const handleSave = async () => {
+    if (!user) {
+      sharedToast.error("Not signed in", {
+        description: "Your session may have expired. Please log in again.",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setSaveSuccess(false);
-    
+
+    // Loading toast — replaced with success/error when the DB call resolves.
+    // `sharedToast` (sonner-based) is the project's standard toast system;
+    // see src/components/shared/toast.ts. It auto-sanitizes Supabase/RLS
+    // errors so we never leak SQL internals into the user-facing message.
+    const toastId = sharedToast.loading("Saving profile...");
+
     try {
-      if (!user) throw new Error("Not authenticated");
       const supabase = createClient();
       const nowIso = new Date().toISOString();
 
-      // 1. Upsert the `profiles` row — only real columns.
+      // ---------------------------------------------------------------------
+      // 1) UPDATE the `profiles` row.
+      //
+      // Why UPDATE and not UPSERT:
+      //   - The `profiles` row is created by the `internhub_handle_new_user`
+      //     trigger on auth.users INSERT (migration 0025). By the time the
+      //     user can open this page, the row MUST exist. If it doesn't,
+      //     that's a lifecycle bug worth surfacing — NOT something to
+      //     silently paper over with an INSERT.
+      //   - The previous `.upsert(profilePayload)` was sending a POST to
+      //     /rest/v1/profiles WITHOUT `email` in the payload. `email` is
+      //     NOT NULL with no default, so when the upsert fell back to
+      //     INSERT (because no row matched the PK yet — e.g. trigger had
+      //     silently failed), Supabase returned 400 with
+      //     "null value in column 'email' of relation 'profiles' violates
+      //      not-null constraint".
+      //   - Switching to `.update().eq('user_id', user.id)`:
+      //       • Resolves the 400 (PATCH, not POST)
+      //       • Cannot accidentally INSERT a half-initialized profile row
+      //       • Cannot overwrite protected columns (role, tenant_id, etc.)
+      //         because they're simply not in the payload
+      //
+      // Payload allow-list — these are the ONLY fields a student may edit:
+      //   full_name, first_name, last_name, phone, bio,
+      //   linkedin_url, github_url, updated_at
+      //
+      // Protected fields NOT touched here (intentionally):
+      //   user_id (PK — set by .eq), email (auth-owned), role, status,
+      //   is_active, university_id, department_id, program_id, company_id,
+      //   avatar_url (managed by <AvatarUploader />), created_at.
+      // ---------------------------------------------------------------------
       const profilePayload = {
-        user_id: user.id,
         full_name: `${profileData.firstName} ${profileData.lastName}`.trim(),
         first_name: profileData.firstName || null,
         last_name: profileData.lastName || null,
@@ -293,12 +334,54 @@ export default function StudentProfilePage() {
         github_url: profileData.githubUrl || null,
         updated_at: nowIso,
       };
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert(profilePayload);
-      if (profileError) throw profileError;
 
-      // 2. Upsert the `students` row — only real columns.
+      // `.select("user_id").maybeSingle()` returns the updated row if the
+      // update matched exactly one profile, or null if it matched zero.
+      // (RLS guarantees we can only touch our own row, so >1 is impossible.)
+      const { data: updatedProfile, error: profileError } = await supabase
+        .from("profiles")
+        .update(profilePayload)
+        .eq("user_id", user.id)
+        .select("user_id")
+        .maybeSingle();
+
+      if (profileError) {
+        // Structured dev-side log so the actual Supabase error code,
+        // message, details, and hint are all observable without leaking
+        // them into the user-facing toast.
+        console.error("[profile.update] profiles update failed", {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint,
+        });
+        throw profileError;
+      }
+
+      if (!updatedProfile) {
+        // No row matched `user_id` — the profile doesn't exist. This is
+        // a lifecycle bug (the auth trigger should have created it). Do
+        // NOT silently INSERT — surface the issue so it can be fixed at
+        // the source (the trigger / signup flow).
+        console.error("[profile.update] no profiles row found for user_id", {
+          user_id: user.id,
+        });
+        throw new Error(
+          "Your profile could not be found. Please log out and log back in, or contact support if the problem persists."
+        );
+      }
+
+      // ---------------------------------------------------------------------
+      // 2) UPDATE the `students` row (academic fields).
+      //
+      // The `students` table has `university_id NOT NULL` (no default) —
+      // so an INSERT without university_id would 400. The students row is
+      // created by the signup/enrollment flow (NOT the auth trigger), so
+      // it may legitimately not exist yet for a brand-new account. We use
+      // UPDATE and treat "no row matched" as non-fatal: the profile save
+      // still succeeds, the academic fields just don't apply until the
+      // student is properly enrolled.
+      // ---------------------------------------------------------------------
       const cgpaValue = profileData.cgpa ? parseFloat(profileData.cgpa) : null;
       const enrollmentYearValue = profileData.enrollmentYear
         ? parseInt(profileData.enrollmentYear, 10)
@@ -307,25 +390,53 @@ export default function StudentProfilePage() {
         ? parseInt(profileData.expectedGraduation, 10)
         : null;
 
+      // `expected_graduation` is a `date` column — only send a value if
+      // the user provided one, otherwise send null to clear it.
+      // `enrollment_year` is an int; cgpa is numeric(3,2).
       const studentPayload = {
-        user_id: user.id,
         cgpa: cgpaValue,
         enrollment_year: enrollmentYearValue,
-        expected_graduation: expectedGraduationValue,
+        expected_graduation: expectedGraduationValue
+          ? `${expectedGraduationValue}-01-01`
+          : null,
+        updated_at: nowIso,
       };
+
       const { error: studentError } = await supabase
         .from("students")
-        .upsert(studentPayload, { onConflict: "user_id" });
-      if (studentError) throw studentError;
-      
+        .update(studentPayload)
+        .eq("user_id", user.id);
+
+      if (studentError) {
+        // Log + show a warning, but DON'T fail the whole profile save —
+        // the `profiles` row already updated successfully above. The
+        // academic fields are secondary; a failure here shouldn't roll
+        // back the user's name/phone/bio changes.
+        console.error("[profile.update] students update failed", {
+          code: studentError.code,
+          message: studentError.message,
+          details: studentError.details,
+          hint: studentError.hint,
+        });
+        sharedToast.warning("Profile saved, but academic info couldn't be updated", {
+          description:
+            "Your name and contact details were saved. Academic info (CGPA, enrollment year) may require you to be enrolled in a program first.",
+        });
+      }
+
       await refreshProfile();
       setIsEditing(false);
       setSaveSuccess(true);
-      
+
+      sharedToast.success("Profile updated successfully.", { id: toastId });
+
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
-      console.error("Error saving profile:", error);
-      toast({ title: "Failed", description: "Failed to save profile. Please try again.", variant: "destructive" });
+      console.error("[profile.update] save failed", { error });
+      // sharedToast.error passes the error through `sanitizeError` so
+      // PostgREST / RLS / network messages become user-friendly text
+      // while the raw values stay in the console.error above.
+      sharedToast.error("Failed to update profile", { id: toastId, err: error });
     } finally {
       setIsSaving(false);
     }

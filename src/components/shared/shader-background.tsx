@@ -95,9 +95,31 @@ export function ShaderBackground({ className, intensity = "high" }: ShaderBackgr
   React.useEffect(() => {
     if (!mounted || reducedMotion || webgpuSupported !== true) return;
     let cancelled = false;
-    import("shaders/react").then((m) => {
-      if (!cancelled) setMod(m);
-    });
+    // Dynamic import can reject (network failure, bundler resolution issue,
+    // WebGPU adapter init error inside the module, etc.). We MUST handle
+    // that — otherwise it becomes an unhandled promise rejection and the
+    // page would show a blank hero. On rejection we leave `mod` null so
+    // the CssFallback renders and the page stays visually complete.
+    import("shaders/react")
+      .then((m) => {
+        if (!cancelled) setMod(m);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          // Preserve the CSS fallback — `mod` stays null and the next
+          // render returns <CssFallback />. Log a development-safe
+          // diagnostic so the failure is observable without exposing
+          // internals to end users (this is dev-only; production builds
+          // stay silent to avoid console spam for users whose browsers
+          // can't load the shader).
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              "[shader-background] Failed to load shaders/react — falling back to CSS.",
+              error
+            );
+          }
+        }
+      });
     return () => {
       cancelled = true;
     };

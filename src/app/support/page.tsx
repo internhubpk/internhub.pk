@@ -24,7 +24,6 @@
  * always fully static.
  */
 
-import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,11 +39,7 @@ import { SiteNav } from "@/components/layout/site-nav";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { ContactSupportButton, BookACallButton } from "@/components/shared/whatsapp-cta";
 import { useTenant, useTenantBranding } from "@/components/providers/tenant-provider";
-
-const ShaderBackground = dynamic(
-  () => import("@/components/shared/shader-background").then((m) => m.ShaderBackground),
-  { ssr: false }
-);
+import { ShaderBackgroundClient as ShaderBackground } from "@/components/shared/shader-background-client";
 
 // Exact URL given in the design brief — used verbatim for all four guides
 // rather than inventing distinct routes that don't exist.

@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,13 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { SiteNav } from "@/components/layout/site-nav";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
-
-// Client-only per shaders.com's Next.js/SSR guidance — WebGPU needs a
-// browser, so this is excluded from the server bundle entirely.
-const ShaderBackground = dynamic(
-  () => import("@/components/shared/shader-background").then((m) => m.ShaderBackground),
-  { ssr: false }
-);
+import { ShaderBackgroundClient as ShaderBackground } from "@/components/shared/shader-background-client";
 import { 
   useTenant, 
   useTenantBranding,

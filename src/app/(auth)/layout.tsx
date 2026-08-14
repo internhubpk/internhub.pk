@@ -1,20 +1,19 @@
-import { ReactNode } from "react";
-import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
+import { ShaderBackgroundClient } from "@/components/shared/shader-background-client";
 
-// Client-only, per shaders.com's Next.js/SSR guidance — kept out of the
-// server bundle. Subtle here per the design brief ("Login: optional /
-// subtle"), so it never competes with the auth card's own glass effect.
-const ShaderBackground = dynamic(
-  () => import("@/components/shared/shader-background").then((m) => m.ShaderBackground),
-  { ssr: false }
-);
+// This layout stays a Server Component. The browser-only shader is loaded
+// via <ShaderBackgroundClient /> (a tiny "use client" wrapper that owns
+// the dynamic(..., { ssr: false }) call). See the wrapper file for the
+// architectural rationale — short version: keeping this layout server-side
+// avoids shipping the static SVG logo / decorative orbs / grid pattern as
+// client JS, and keeps the door open for `generateMetadata` here later.
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 dark:from-gray-950 dark:via-blue-950/30 dark:to-purple-950/30">
       {/* Ambient shader — subtle by design, sits behind the existing
           decorative orbs and grid so it never reduces form readability. */}
-      <ShaderBackground intensity="low" />
+      <ShaderBackgroundClient intensity="low" />
 
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
