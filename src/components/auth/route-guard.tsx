@@ -215,11 +215,9 @@ export function RouteGuard({
       });
 
       if (!hasRequiredRole && userRole) {
-        console.warn("[RouteGuard] Access denied - missing required role:", {
-          pathname,
-          userRole,
-          requiredRoles,
-        });
+        // Don't log to console — this fires on every legitimate redirect
+        // (e.g. student landing on /university-admin) and creates noise
+        // in production logs.
       }
       return;
     }
@@ -235,10 +233,7 @@ export function RouteGuard({
     });
 
     if (!allowed && userRole) {
-      console.warn("[RouteGuard] Access denied by route config:", {
-        pathname,
-        userRole,
-      });
+      // Silent — the auto-redirect useEffect below handles this.
     }
   }, [authLoading, isAuthenticated, user, pathname, requiredRoles, isMounted, resolveRole]);
 
@@ -263,7 +258,6 @@ export function RouteGuard({
         // Avoid infinite redirect loop: only redirect if we're not already
         // on the user's dashboard.
         if (pathname !== dashboardPath) {
-          console.log(`[RouteGuard] Auto-redirecting to ${dashboardPath} (role: ${userRole}, attempted: ${pathname})`);
           router.replace(dashboardPath);
         }
       }
@@ -283,8 +277,8 @@ export function RouteGuard({
 
     const timer = setTimeout(() => {
       if (guardState.isLoading && !guardState.checked) {
-        // Force allow after timeout to prevent infinite loading
-        console.log("[RouteGuard] Timeout - allowing content to render");
+        // Force allow after timeout to prevent infinite loading.
+        // Silent — this is a safety net, not a normal path.
         setGuardState({ isAuthorized: true, isLoading: false, checked: true });
       }
     }, 3000);

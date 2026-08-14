@@ -11,18 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
@@ -31,11 +25,14 @@ import {
   ClipboardList, Star, Calendar, Award, ArrowRight, Send,
   Plus, FileText, ListTodo,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ScrollableDialog } from "@/components/shared/scrollable-dialog";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { MarkdownEditor } from "@/components/shared/markdown-editor";
+import { toast } from "@/components/shared/toast";
 
 // ---------------------------------------------------------------------------
 // HEC-aligned evaluation criteria (stored as keys in evaluations.scores)
@@ -122,7 +119,6 @@ interface EvalFormState {
 // ---------------------------------------------------------------------------
 export default function SiteSupervisorEvaluationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<StudentOption[]>([]);
@@ -321,28 +317,34 @@ export default function SiteSupervisorEvaluationsPage() {
     if (!evalForm) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/site-supervisor/evaluations/daily", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: evalForm.type,
-          student_user_id: evalForm.student_user_id,
-          scores: evalForm.scores,
-          comments: evalForm.comments,
-          rating: evalForm.rating,
-          task_id: evalForm.task_id,
-          week_number: evalForm.week_number,
-          evaluation_id: evalForm.evaluation_id,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Save failed (${res.status})`);
-      }
-      toast({
-        title: evalForm.type === "weekly" ? "Weekly evaluation saved" : "Daily evaluation saved",
-        description: "The student will be able to see your feedback.",
-      });
+      await toast.fetch(
+        async () => {
+          const res = await fetch("/api/site-supervisor/evaluations/daily", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: evalForm.type,
+              student_user_id: evalForm.student_user_id,
+              scores: evalForm.scores,
+              comments: evalForm.comments,
+              rating: evalForm.rating,
+              task_id: evalForm.task_id,
+              week_number: evalForm.week_number,
+              evaluation_id: evalForm.evaluation_id,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || `Save failed (${res.status})`);
+          }
+          return res.json();
+        },
+        {
+          loading: "Saving evaluation...",
+          success: evalForm.type === "weekly" ? "Weekly evaluation saved" : "Daily evaluation saved",
+          error: "Failed to save evaluation",
+        }
+      );
       setShowDialog(false);
       setEvalForm(null);
       await fetchAll();
@@ -352,8 +354,8 @@ export default function SiteSupervisorEvaluationsPage() {
         setSelectedStudent(null);
         setTimeout(() => setSelectedStudent(s), 50);
       }
-    } catch (err: any) {
-      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error toast
     } finally {
       setSaving(false);
     }
@@ -696,7 +698,9 @@ export default function SiteSupervisorEvaluationsPage() {
                     </div>
                   )}
                   {ev.comments && (
-                    <p className="text-sm mt-2 italic text-muted-foreground">"{ev.comments}"</p>
+                    <div className="text-sm mt-2 italic text-muted-foreground">
+                      <MarkdownRenderer content={ev.comments} compact />
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -706,109 +710,18 @@ export default function SiteSupervisorEvaluationsPage() {
       </Tabs>
 
       {/* Evaluation dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {evalForm?.type === "weekly" ? "Weekly Evaluation" : "Daily Evaluation"}
-            </DialogTitle>
-            <DialogDescription>
-              {evalForm?.type === "weekly"
-                ? `Week ${evalForm.week_number} — rate the student's overall weekly performance.`
-                : "Rate the student's performance on this task. HEC-aligned criteria."}
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            {evalForm && (
-              <div className="space-y-3 pb-2">
-                {EVAL_CRITERIA.map((c) => {
-                  const value = evalForm.scores[c.key] ?? 0;
-                  return (
-                    <div key={c.key} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-sm font-medium">{c.label}</Label>
-                          <p className="text-xs text-muted-foreground">{c.description}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {value > 0 ? `${value}/5 · ${LIKERT_LABELS[value] || ""}` : "Not rated"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <button
-                            key={n}
-                            type="button"
-                            onClick={() => {
-                              const newScores = { ...evalForm.scores, [c.key]: n };
-                              // Auto-compute overall rating as average
-                              const vals = Object.values(newScores).filter((v) => v > 0) as number[];
-                              const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                              setEvalForm({
-                                ...evalForm,
-                                scores: newScores,
-                                rating: Math.round(avg * 10) / 10,
-                              });
-                            }}
-                            className={
-                              "flex-1 py-2 rounded text-sm border transition-colors " +
-                              (value >= n
-                                ? "bg-amber-400 hover:bg-amber-500 border-amber-500 text-white"
-                                : "bg-background hover:bg-accent border-border")
-                            }
-                          >
-                            {n}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <Separator />
-
-                {/* Overall rating */}
-                <div className="flex items-center justify-between">
-                  <Label>Overall Rating</Label>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <Star
-                        key={n}
-                        className={
-                          "h-5 w-5 cursor-pointer " +
-                          (evalForm.rating >= n
-                            ? "text-amber-500 fill-amber-500"
-                            : "text-muted-foreground/40")
-                        }
-                        onClick={() => setEvalForm({ ...evalForm, rating: n })}
-                      />
-                    ))}
-                    <span className="ml-2 text-sm font-medium">{evalForm.rating.toFixed(1)}/5</span>
-                  </div>
-                </div>
-
-                {/* Comments */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="comments">
-                    Feedback / Comments{" "}
-                    <span className="text-muted-foreground text-xs font-normal">
-                      (strengths, areas for improvement)
-                    </span>
-                  </Label>
-                  <Textarea
-                    id="comments"
-                    placeholder="The student showed strong initiative in..."
-                    rows={4}
-                    value={evalForm.comments}
-                    onChange={(e) => setEvalForm({ ...evalForm, comments: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-          </ScrollArea>
-          <DialogFooter>
+      <ScrollableDialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title={evalForm?.type === "weekly" ? "Weekly Evaluation" : "Daily Evaluation"}
+        description={
+          evalForm?.type === "weekly"
+            ? `Week ${evalForm.week_number} — rate the student's overall weekly performance.`
+            : "Rate the student's performance on this task. HEC-aligned criteria."
+        }
+        maxWidthClassName="max-w-2xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
               Cancel
             </Button>
@@ -823,9 +736,99 @@ export default function SiteSupervisorEvaluationsPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {evalForm && (
+          <div className="space-y-3 pb-2">
+            {EVAL_CRITERIA.map((c) => {
+              const value = evalForm.scores[c.key] ?? 0;
+              return (
+                <div key={c.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">{c.label}</Label>
+                      <p className="text-xs text-muted-foreground">{c.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {value > 0 ? `${value}/5 · ${LIKERT_LABELS[value] || ""}` : "Not rated"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          const newScores = { ...evalForm.scores, [c.key]: n };
+                          // Auto-compute overall rating as average
+                          const vals = Object.values(newScores).filter((v) => v > 0) as number[];
+                          const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                          setEvalForm({
+                            ...evalForm,
+                            scores: newScores,
+                            rating: Math.round(avg * 10) / 10,
+                          });
+                        }}
+                        className={
+                          "flex-1 py-2 rounded text-sm border transition-colors " +
+                          (value >= n
+                            ? "bg-amber-400 hover:bg-amber-500 border-amber-500 text-white"
+                            : "bg-background hover:bg-accent border-border")
+                        }
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            <Separator />
+
+            {/* Overall rating */}
+            <div className="flex items-center justify-between">
+              <Label>Overall Rating</Label>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Star
+                    key={n}
+                    className={
+                      "h-5 w-5 cursor-pointer " +
+                      (evalForm.rating >= n
+                        ? "text-amber-500 fill-amber-500"
+                        : "text-muted-foreground/40")
+                    }
+                    onClick={() => setEvalForm({ ...evalForm, rating: n })}
+                  />
+                ))}
+                <span className="ml-2 text-sm font-medium">{evalForm.rating.toFixed(1)}/5</span>
+              </div>
+            </div>
+
+            {/* Comments — Markdown editor */}
+            <div className="space-y-1.5">
+              <Label htmlFor="comments">
+                Feedback / Comments{" "}
+                <span className="text-muted-foreground text-xs font-normal">
+                  (Markdown supported — strengths, areas for improvement)
+                </span>
+              </Label>
+              <MarkdownEditor
+                id="comments"
+                value={evalForm.comments}
+                onChange={(v) => setEvalForm({ ...evalForm, comments: v })}
+                placeholder="The student showed strong initiative in..."
+                rows={4}
+                ariaLabel="Evaluation feedback / comments (Markdown)"
+              />
+            </div>
+          </div>
+        )}
+      </ScrollableDialog>
     </div>
   );
 }

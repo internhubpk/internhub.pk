@@ -74,15 +74,13 @@ export default async function DashboardPage() {
       if (!profileError && profile?.role && ROLE_DASHBOARD_PATHS[profile.role as UserRole]) {
         role = profile.role as UserRole;
       }
-      
-      // Log profile fetch result for debugging (harmless if it fails)
-      if (profileError) {
-        console.log(`Dashboard: Profile fetch note for ${user.email}:`, profileError.message);
-      }
+      // Profile fetch failures are non-fatal — we'll fall through to
+      // the onboarding page below. Don't log to console: this fires on
+      // every dashboard redirect and the noise looks like repeated
+      // auth verification cycles in production logs.
     } catch (e) {
       // Profiles table might not be accessible (RLS issue, etc.)
-      // This is OK - we'll use the default path below
-      console.log(`Dashboard: Profile fetch failed for ${user.email}, using default path`);
+      // This is OK - we'll use the default path below.
     }
   }
   
@@ -92,11 +90,6 @@ export default async function DashboardPage() {
   const dashboardPath = (role && ROLE_DASHBOARD_PATHS[role]) 
     ? ROLE_DASHBOARD_PATHS[role] 
     : DEFAULT_PATH;
-
-  // Log for debugging (visible in Vercel logs)
-  console.log(`Dashboard: Redirecting user ${user.email} → ${dashboardPath} (role: ${role || 'none/default'})`);
-  console.log(`Dashboard: User metadata:`, JSON.stringify(user.user_metadata));
-  console.log(`Dashboard: App metadata:`, JSON.stringify(user.app_metadata));
 
   // Redirect to the appropriate dashboard
   redirect(dashboardPath);

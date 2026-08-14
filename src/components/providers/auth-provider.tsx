@@ -127,7 +127,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Handle case where profile doesn't exist yet (new user) or table has RLS issues
       if (profileError) {
-        console.log("Profile table not accessible, using user_metadata fallback. Error:", profileError.message);
+        // Don't log the full error to console — it can be noisy and may leak
+        // RLS details in production. The fallback below is the expected
+        // path for new users whose profile row hasn't been created yet.
         
         // Use fallback profile from metadata
         if (userData && isMountedRef.current) {
@@ -144,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setProfile(null);
             }
           } catch (sessionErr) {
-            console.log("Session fetch failed:", sessionErr instanceof Error ? sessionErr.message : sessionErr);
+            // Silent — fall through to setProfile(null)
             if (isMountedRef.current) {
               setProfile(null);
             }
@@ -169,15 +171,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUniversity(uniData as University);
             }
           } catch (uniErr) {
-            // University table might not exist - that's ok
-            console.log("University fetch skipped:", uniErr instanceof Error ? uniErr.message : "Unknown error");
+            // University table might not exist - that's ok, fall through silently
           }
         }
       }
     } catch (error) {
-      // Catch any unexpected errors gracefully - use metadata fallback
-      console.log("Profile fetch error, using fallback:", error instanceof Error ? error.message : "Unknown error");
-      
+      // Catch any unexpected errors gracefully - use metadata fallback.
+      // Don't log to console — this is the expected path when the
+      // profiles table isn't reachable (RLS, network blip, etc.) and
+      // logging it on every auth state change creates noise that looks
+      // like repeated verification cycles.
       if (userData && isMountedRef.current) {
         const fallbackProfile = createFallbackProfile(userData);
         setProfile(fallbackProfile);
@@ -208,7 +211,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isMountedRef.current) return;
 
         if (error) {
-          console.error("Session error:", error.message);
           // DETERMINISTIC AUTH STATE: on session error, mark as
           // unauthenticated and stop loading. Previously we left
           // isLoading=true briefly, which caused race conditions
@@ -242,7 +244,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsLoading(false);
         }
       } catch (error) {
-        console.error("Error initializing auth:", error instanceof Error ? error.message : error);
+        // Auth initialization failed. Don't log to console — this can
+        // fire during normal SSR / hydration transitions and the noise
+        // looks like repeated verification cycles. The user will see a
+        // deterministic loading→unauthenticated transition.
         if (isMountedRef.current) {
           setUser(null);
           setProfile(null);
@@ -291,7 +296,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } catch (error) {
-          console.error("Auth state change error:", error instanceof Error ? error.message : error);
+          // Auth state change error — don't log, the finally block
+          // still flips isLoading to false so the UI doesn't hang.
         } finally {
           // ALWAYS flip isLoading to false after processing an auth
           // event. Previously, certain event paths (e.g. INITIAL_SESSION
@@ -321,7 +327,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await supabase.auth.signOut();
       } catch (error) {
-        console.error("Logout error:", error instanceof Error ? error.message : error);
+        // Silent — we still clear local state below regardless.
       }
     }
     // Defensive: clear any lingering Supabase auth cookies directly.

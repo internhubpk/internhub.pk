@@ -73,10 +73,13 @@ import {
   Award,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ScrollableDialog } from "@/components/shared/scrollable-dialog";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { MarkdownEditor } from "@/components/shared/markdown-editor";
+import { toast } from "@/components/shared/toast";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
@@ -181,7 +184,6 @@ function StarRating({ rating, onRate, readonly = false }: {
 
 export default function FacultySupervisorEvaluationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   // State
   const [pendingEvaluations, setPendingEvaluations] = useState<PendingEvaluation[]>(DEFAULT_PENDING_EVALUATIONS);
   const [evaluationHistory, setEvaluationHistory] = useState<EvaluationRecord[]>(DEFAULT_EVALUATION_HISTORY);
@@ -221,16 +223,11 @@ export default function FacultySupervisorEvaluationsPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast({
-        title: "Download started",
+      toast.success("Download started", {
         description: "Evaluations CSV is being downloaded. Includes both Site Supervisor and Faculty Supervisor evaluations.",
       });
     } catch (err: any) {
-      toast({
-        title: "Download failed",
-        description: err?.message || "Could not download evaluations.",
-        variant: "destructive",
-      });
+      toast.fromError(err, "Download failed");
     } finally {
       setIsDownloading(false);
     }
@@ -626,9 +623,10 @@ export default function FacultySupervisorEvaluationsPage() {
 
       setIsEvaluateDialogOpen(false);
       setSelectedEvaluation(null);
+      toast.success("Evaluation submitted");
     } catch (error) {
       console.error("Error submitting evaluation:", error);
-      toast({ title: "Failed", description: "Failed to submit evaluation. Please try again.", variant: "destructive" });
+      toast.fromError(error, "Failed to submit evaluation");
     } finally {
       setIsSubmitting(false);
     }
@@ -648,9 +646,10 @@ export default function FacultySupervisorEvaluationsPage() {
         .eq("id", reportId);
       if (error) throw error;
       setWeeklyReports((prev) => prev.filter((r) => r.id !== reportId));
+      toast.success("Weekly report approved");
     } catch (error) {
       console.error("Error approving weekly report:", error);
-      toast({ title: "Failed", description: "Failed to approve weekly report.", variant: "destructive" });
+      toast.fromError(error, "Failed to approve weekly report");
     }
   };
 
@@ -1076,7 +1075,7 @@ export default function FacultySupervisorEvaluationsPage() {
                   <CardContent>
                     {selectedEvaluation.contentPreview && (
                       <div className="mb-4 p-4 bg-muted/30 rounded-lg">
-                        <p className="text-sm italic">&ldquo;{selectedEvaluation.contentPreview}&rdquo;</p>
+                        <MarkdownRenderer content={selectedEvaluation.contentPreview} compact />
                       </div>
                     )}
                     
@@ -1183,11 +1182,13 @@ export default function FacultySupervisorEvaluationsPage() {
                       <CardDescription>Internal notes (not visible to student)</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Textarea
-                        placeholder="Add your internal comments..."
+                      <MarkdownEditor
                         value={evaluationForm.comments}
-                        onChange={(e) => setEvaluationForm(prev => ({ ...prev, comments: e.target.value }))}
+                        onChange={(v) => setEvaluationForm(prev => ({ ...prev, comments: v }))}
+                        placeholder="Add your internal comments... (Markdown supported)"
                         rows={4}
+                        hidePreview
+                        ariaLabel="Internal evaluator comments (Markdown)"
                       />
                     </CardContent>
                   </Card>
@@ -1198,11 +1199,12 @@ export default function FacultySupervisorEvaluationsPage() {
                       <CardDescription>This will be visible to the student</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Textarea
-                        placeholder="Provide constructive feedback..."
+                      <MarkdownEditor
                         value={evaluationForm.feedback}
-                        onChange={(e) => setEvaluationForm(prev => ({ ...prev, feedback: e.target.value }))}
+                        onChange={(v) => setEvaluationForm(prev => ({ ...prev, feedback: v }))}
+                        placeholder="Provide constructive feedback... (Markdown supported)"
                         rows={4}
+                        ariaLabel="Feedback for student (Markdown)"
                       />
                     </CardContent>
                   </Card>

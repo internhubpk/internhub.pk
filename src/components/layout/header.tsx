@@ -21,6 +21,8 @@ import {
   Clock,
   ClipboardCheck,
   CheckCheck,
+  Loader2,
+  MessageSquare,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -609,6 +611,10 @@ export function Header({ className }: HeaderProps) {
   // Fetch notification count + recent notifications from API
   const refreshNotifications = useCallback(async () => {
     if (typeof window === "undefined" || !user?.id) return;
+    // Only show the loading spinner on the very first fetch (when we have
+    // no notifications yet). Subsequent refreshes (e.g. the 60-second
+    // poll) update silently so the UI doesn't flicker.
+    if (notifications.length === 0) setNotifLoading(true);
     try {
       const [countRes, inboxRes] = await Promise.all([
         fetch("/api/notifications/count"),
@@ -626,8 +632,10 @@ export function Header({ className }: HeaderProps) {
       }
     } catch (error) {
       console.debug("Failed to fetch notifications:", error instanceof Error ? error.message : error);
+    } finally {
+      setNotifLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, notifications.length]);
 
   // Initial fetch + polling
   useEffect(() => {
@@ -673,19 +681,34 @@ export function Header({ className }: HeaderProps) {
     return date.toLocaleDateString();
   };
 
-  // Get icon + color for notification category
+  // Get icon + color for notification category. The `category` field on
+  // notifications is a free-form string set by /lib/notifications.ts —
+  // we map the known categories to a tinted icon so users can scan the
+  // list visually. Unknown categories fall back to a neutral Bell icon.
   const getNotifIcon = (category: string) => {
     switch (category) {
       case "application":
         return { icon: Briefcase, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950" };
       case "evaluation":
+      case "evaluation_completed":
+      case "evaluation_updated":
         return { icon: ClipboardCheck, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950" };
       case "task":
+      case "task_assigned":
+      case "task_submitted":
         return { icon: FileText, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950" };
+      case "message":
+      case "supervisor_message":
+        return { icon: MessageSquare, color: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950" };
+      case "internship":
+      case "internship_update":
+        return { icon: Briefcase, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950" };
       case "certificate":
         return { icon: GraduationCap, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950" };
       case "deadline":
         return { icon: Clock, color: "text-red-500", bg: "bg-red-50 dark:bg-red-950" };
+      case "system":
+        return { icon: Bell, color: "text-slate-500", bg: "bg-slate-50 dark:bg-slate-900" };
       default:
         return { icon: Bell, color: "text-gray-500", bg: "bg-gray-50 dark:bg-gray-800" };
     }
@@ -919,32 +942,77 @@ export function Header({ className }: HeaderProps) {
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80 sm:w-96 p-0">
-                <div className="flex items-center justify-between px-3 py-2.5 border-b">
-                  <span className="font-semibold text-sm">Notifications</span>
+              <DropdownMenuContent
+                align="end"
+                // Wide on desktop, viewport-bounded on mobile. The w-[calc(100vw-2rem)]
+                // fallback prevents the popup from overflowing the viewport on small screens.
+                className="w-[calc(100vw-2rem)] max-w-[420px] p-0"
+              >
+                {/* Header — title + actions */}
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-b">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-semibold text-sm">Notifications</span>
+                    {notificationCount > 0 && (
+                      <Badge variant="secondary" className="text-xs shrink-0">
+                        {notificationCount} new
+                      </Badge>
+                    )}
+                  </div>
                   {notificationCount > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {notificationCount} new
-                    </Badge>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await fetch("/api/notifications/inbox", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ mark_all_read: true }),
+                          });
+                          setNotificationCount(0);
+                          setNotifications((prev) =>
+                            prev.map((n) => ({ ...n, is_read: true }))
+                          );
+                        } catch {
+                          // Silent — the dropdown's open handler already does this
+                        }
+                      }}
+                      className="text-xs text-primary hover:underline shrink-0 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded px-1"
+                      aria-label="Mark all notifications as read"
+                    >
+                      Mark all read
+                    </button>
                   )}
                 </div>
+
+                {/* Loading state */}
+                {notifLoading && notifications.length === 0 && (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin opacity-50" />
+                    <p>Loading notifications...</p>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!notifLoading && notifications.length === 0 && (
+                  <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    <Bell className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">No notifications yet</p>
+                    <p className="text-xs mt-1 px-4">
+                      You&apos;ll see updates about applications, tasks, and evaluations here.
+                    </p>
+                  </div>
+                )}
+
                 {/* Scrollable notification list */}
-                <div className="max-h-[400px] overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-muted-foreground">
-                      <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p>No notifications yet</p>
-                      <p className="text-xs mt-1">
-                        You&apos;ll see updates about applications, tasks, and evaluations here.
-                      </p>
-                    </div>
-                  ) : (
-                    notifications.map((notif) => {
+                {notifications.length > 0 && (
+                  <div className="max-h-[60vh] min-h-[120px] overflow-y-auto">
+                    {notifications.map((notif) => {
                       const { icon: Icon, color, bg } = getNotifIcon(notif.category);
                       return (
                         <div
                           key={notif.id}
-                          className={`flex gap-3 px-3 py-2.5 border-b last:border-b-0 hover:bg-accent/50 transition-colors cursor-pointer ${
+                          className={`flex gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-accent/50 transition-colors cursor-pointer ${
                             !notif.is_read ? "bg-primary/5" : ""
                           }`}
                           onClick={() => {
@@ -953,23 +1021,37 @@ export function Header({ className }: HeaderProps) {
                               setNotifOpen(false);
                             }
                           }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              if (notif.action_url) {
+                                router.push(notif.action_url);
+                                setNotifOpen(false);
+                              }
+                            }
+                          }}
                         >
-                          <div className={`shrink-0 rounded-lg p-2 ${bg}`}>
+                          <div className={`shrink-0 rounded-lg p-2 ${bg}`} aria-hidden>
                             <Icon className={`h-4 w-4 ${color}`} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-medium leading-tight">
+                              <p className="text-sm font-medium leading-snug break-words">
                                 {notif.title}
                               </p>
                               {!notif.is_read && (
-                                <span className="shrink-0 h-2 w-2 rounded-full bg-destructive mt-1" />
+                                <span
+                                  className="shrink-0 h-2 w-2 rounded-full bg-destructive mt-1.5"
+                                  aria-label="Unread"
+                                />
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                            <p className="text-xs text-muted-foreground mt-1 break-words line-clamp-3">
                               {notif.message}
                             </p>
-                            <p className="text-[10px] text-muted-foreground/70 mt-1">
+                            <p className="text-[10px] text-muted-foreground/70 mt-1.5">
                               {formatNotifTime(notif.created_at)}
                               {notif.metadata?.sender_name &&
                                 ` · ${notif.metadata.sender_name}`}
@@ -977,11 +1059,13 @@ export function Header({ className }: HeaderProps) {
                           </div>
                         </div>
                       );
-                    })
-                  )}
-                </div>
+                    })}
+                  </div>
+                )}
+
+                {/* Footer link */}
                 <div className="border-t">
-                  <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
+                  <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer py-3">
                     <Link href={
                       profile?.role === "faculty_supervisor" ? "/faculty-supervisor/notifications" :
                       profile?.role === "site_supervisor" ? "/site-supervisor/notifications" :

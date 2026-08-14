@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -426,7 +427,9 @@ export default function StudentEvaluationsPage() {
                               </div>
                               {ratingStars(e.rating)}
                               {e.comments && (
-                                <p className="text-xs text-muted-foreground mt-1">{e.comments}</p>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  <MarkdownRenderer content={e.comments} compact />
+                                </div>
                               )}
                             </div>
                           ))}
@@ -532,9 +535,9 @@ function EvaluationPanel({
         {evaluation.comments && (
           <div>
             <p className="text-xs text-muted-foreground mb-1">Comments</p>
-            <p className="text-sm whitespace-pre-wrap bg-white/60 dark:bg-black/20 rounded p-2">
-              {evaluation.comments}
-            </p>
+            <div className="text-sm whitespace-pre-wrap bg-white/60 dark:bg-black/20 rounded p-2">
+              <MarkdownRenderer content={evaluation.comments} compact />
+            </div>
           </div>
         )}
 

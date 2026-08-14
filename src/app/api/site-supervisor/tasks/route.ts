@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
 import { notifyTaskAssigned } from "@/lib/notifications";
+import { sanitizeApiError } from "@/lib/api-error";
 
 /**
  * /api/site-supervisor/tasks
@@ -135,37 +136,13 @@ export async function GET(request: NextRequest) {
 
     const { data: tasks, error: tasksErr, count } = await query;
     if (tasksErr) {
-      // RLS recursion / policy errors produce 500 from Postgres and a
-      // message like "infinite recursion detected in policy for relation
-      // "tasks"". Surface a clear, distinct message so the frontend can
-      // show a meaningful error instead of a confusing "Failed to fetch
-      // tasks" toast.
-      console.error("[/api/site-supervisor/tasks] GET error:", tasksErr);
-
-      const isRecursion = /infinite recursion/i.test(tasksErr.message);
-      const isRls = /policy/i.test(tasksErr.message) || /row-level security/i.test(tasksErr.message);
-      if (isRecursion) {
-        return NextResponse.json<ApiResponse<never>>(
-          {
-            success: false,
-            error:
-              "Database policy recursion detected. The site supervisor RLS policies are misconfigured. Please contact support.",
-          },
-          { status: 500 }
-        );
-      }
-      if (isRls) {
-        return NextResponse.json<ApiResponse<never>>(
-          {
-            success: false,
-            error: "Your account is not authorized to view tasks. If you believe this is an error, please contact your administrator.",
-          },
-          { status: 403 }
-        );
-      }
+      // Sanitize the raw Supabase/Postgres error so the client doesn't
+      // see SQL/RLS internals. `sanitizeApiError` always logs the raw
+      // error to console.error for developer diagnostics.
+      const { message, status } = sanitizeApiError(tasksErr, "load tasks");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to fetch tasks: ${tasksErr.message}` },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -244,13 +221,10 @@ export async function GET(request: NextRequest) {
       meta: { total: count || 0 },
     });
   } catch (err) {
-    console.error("[/api/site-supervisor/tasks] GET unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "load tasks");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }
@@ -347,10 +321,10 @@ export async function POST(request: NextRequest) {
       .in("student_user_id", student_user_ids);
 
     if (assignCheckErr) {
-      console.error("[/api/site-supervisor/tasks] assignment check error:", assignCheckErr);
+      const { message, status } = sanitizeApiError(assignCheckErr, "verify student assignments");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Failed to verify student assignments" },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -408,13 +382,10 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (taskErr || !task) {
-      console.error("[/api/site-supervisor/tasks] task insert error:", taskErr);
-      const isRls =
-        taskErr?.code === "42501" ||
-        /row-level security policy/i.test(taskErr?.message || "");
+      const { message, status } = sanitizeApiError(taskErr, "create task");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to create task: ${taskErr?.message}` },
-        { status: isRls ? 403 : 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -433,15 +404,12 @@ export async function POST(request: NextRequest) {
       .select("id, student_user_id");
 
     if (assignErr) {
-      console.error("[/api/site-supervisor/tasks] assignments insert error:", assignErr);
       // Roll back the task so we don't leave an orphan
       await supabase.from("tasks").delete().eq("id", task.id);
-      const isRls =
-        assignErr.code === "42501" ||
-        /row-level security policy/i.test(assignErr.message);
+      const { message, status } = sanitizeApiError(assignErr, "assign students");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to assign students: ${assignErr.message}` },
-        { status: isRls ? 403 : 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -476,13 +444,10 @@ export async function POST(request: NextRequest) {
       message: `Task "${task.title}" created and assigned to ${student_user_ids.length} student(s)`,
     });
   } catch (err) {
-    console.error("[/api/site-supervisor/tasks] POST unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "create task");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }
@@ -579,22 +544,19 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (updateErr) {
-      console.error("[/api/site-supervisor/tasks] update error:", updateErr);
+      const { message, status } = sanitizeApiError(updateErr, "update task");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to update task: ${updateErr.message}` },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (err) {
-    console.error("[/api/site-supervisor/tasks] PUT unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "update task");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }
@@ -655,10 +617,10 @@ export async function DELETE(request: NextRequest) {
 
     const { error: delErr } = await supabase.from("tasks").delete().eq("id", taskId);
     if (delErr) {
-      console.error("[/api/site-supervisor/tasks] delete error:", delErr);
+      const { message, status } = sanitizeApiError(delErr, "delete task");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to delete task: ${delErr.message}` },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -667,13 +629,10 @@ export async function DELETE(request: NextRequest) {
       message: "Task deleted",
     });
   } catch (err) {
-    console.error("[/api/site-supervisor/tasks] DELETE unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "delete task");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }

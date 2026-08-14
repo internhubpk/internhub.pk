@@ -60,10 +60,13 @@ import {
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ScrollableDialog } from "@/components/shared/scrollable-dialog";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { MarkdownEditor } from "@/components/shared/markdown-editor";
+import { toast } from "@/components/shared/toast";
 import {
   Plus,
   Search,
@@ -205,18 +208,18 @@ function TaskForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
+        <Label htmlFor="description">
+          Description{" "}
+          <span className="text-muted-foreground text-xs font-normal">(Markdown supported)</span>
+        </Label>
+        <MarkdownEditor
           id="description"
-          placeholder="Enter task description... (Markdown supported)"
           value={formData.description}
-          onChange={(e) => onFormDataChange({ ...formData, description: e.target.value })}
+          onChange={(v) => onFormDataChange({ ...formData, description: v })}
+          placeholder="Enter task description..."
           rows={5}
-          className="font-mono text-sm"
+          ariaLabel="Task description (Markdown)"
         />
-        <p className="text-xs text-muted-foreground">
-          Markdown formatting is supported. Use **bold**, *italic*, # headings, etc.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -315,7 +318,6 @@ function TaskForm({
 
 export default function FacultySupervisorTasksPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
   const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
   const [isLoading, setIsLoading] = useState(true);
@@ -475,29 +477,37 @@ export default function FacultySupervisorTasksPage() {
   const handleCreateTask = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/faculty-supervisor/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title,
-          description: formData.description || undefined,
-          priority: formData.priority,
-          due_date: formData.dueDate,
-          student_user_ids: formData.assignedStudentIds,
-          status: "draft",
-        }),
-      });
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast({ title: "Error", description: json?.error || `Failed to create task (HTTP ${res.status})`, variant: "destructive" });
-        return;
-      }
+      await toast.fetch(
+        async () => {
+          const res = await fetch("/api/faculty-supervisor/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: formData.title,
+              description: formData.description || undefined,
+              priority: formData.priority,
+              due_date: formData.dueDate,
+              student_user_ids: formData.assignedStudentIds,
+              status: "draft",
+            }),
+          });
+          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+          if (!res.ok || !json?.success) {
+            throw new Error(json?.error || `Failed to create task (HTTP ${res.status})`);
+          }
+          return json;
+        },
+        {
+          loading: "Creating task...",
+          success: "Task created successfully",
+          error: "Failed to create task",
+        }
+      );
       setIsCreateDialogOpen(false);
       resetForm();
       await fetchData();
-    } catch (err) {
-      console.error("Error creating task:", err);
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to create task", variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error
     } finally {
       setIsSubmitting(false);
     }
@@ -508,30 +518,38 @@ export default function FacultySupervisorTasksPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/faculty-supervisor/tasks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task_id: selectedTask.id,
-          title: formData.title,
-          description: formData.description || null,
-          priority: formData.priority,
-          due_date: formData.dueDate,
-          student_user_ids: formData.assignedStudentIds,
-        }),
-      });
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast({ title: "Error", description: json?.error || `Failed to update task (HTTP ${res.status})`, variant: "destructive" });
-        return;
-      }
+      await toast.fetch(
+        async () => {
+          const res = await fetch("/api/faculty-supervisor/tasks", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              task_id: selectedTask.id,
+              title: formData.title,
+              description: formData.description || null,
+              priority: formData.priority,
+              due_date: formData.dueDate,
+              student_user_ids: formData.assignedStudentIds,
+            }),
+          });
+          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+          if (!res.ok || !json?.success) {
+            throw new Error(json?.error || `Failed to update task (HTTP ${res.status})`);
+          }
+          return json;
+        },
+        {
+          loading: "Updating task...",
+          success: "Task updated successfully",
+          error: "Failed to update task",
+        }
+      );
       setIsEditDialogOpen(false);
       setSelectedTask(null);
       resetForm();
       await fetchData();
-    } catch (err) {
-      console.error("Error updating task:", err);
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to update task", variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error
     } finally {
       setIsSubmitting(false);
     }
@@ -539,19 +557,27 @@ export default function FacultySupervisorTasksPage() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      const res = await fetch(
-        `/api/faculty-supervisor/tasks?task_id=${encodeURIComponent(taskId)}`,
-        { method: "DELETE" }
+      await toast.fetch(
+        async () => {
+          const res = await fetch(
+            `/api/faculty-supervisor/tasks?task_id=${encodeURIComponent(taskId)}`,
+            { method: "DELETE" }
+          );
+          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+          if (!res.ok || !json?.success) {
+            throw new Error(json?.error || `Failed to delete task (HTTP ${res.status})`);
+          }
+          return json;
+        },
+        {
+          loading: "Deleting task...",
+          success: "Task deleted",
+          error: "Failed to delete task",
+        }
       );
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast({ title: "Error", description: json?.error || `Failed to delete task (HTTP ${res.status})`, variant: "destructive" });
-        return;
-      }
       await fetchData();
-    } catch (err) {
-      console.error("Error deleting task:", err);
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to delete task", variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error
     }
   };
 
@@ -753,9 +779,9 @@ export default function FacultySupervisorTasksPage() {
                 </div>
 
                 {(task.description) && (
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {task.description.replace(/[#*`]/g, '')}
-                  </p>
+                  <div className="text-sm text-muted-foreground line-clamp-2">
+                    <MarkdownRenderer content={task.description} compact />
+                  </div>
                 )}
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -842,9 +868,9 @@ export default function FacultySupervisorTasksPage() {
                       <div className="max-w-[300px]">
                         <p className="font-medium truncate">{task.title}</p>
                         {task.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                            {task.description.substring(0, 60)}...
-                          </p>
+                          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                            <MarkdownRenderer content={task.description} compact />
+                          </div>
                         )}
                       </div>
                     </TableCell>

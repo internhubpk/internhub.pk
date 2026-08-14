@@ -11,17 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,10 +31,13 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ScrollableDialog } from "@/components/shared/scrollable-dialog";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
+import { MarkdownEditor } from "@/components/shared/markdown-editor";
+import { toast } from "@/components/shared/toast";
 import {
   Plus, RefreshCw, Trash2, Edit, Eye, CheckCircle2, XCircle,
   Clock, AlertCircle, ChevronDown, ChevronRight, Youtube,
@@ -141,7 +139,6 @@ const EMPTY_FORM: TaskFormData = {
 // ---------------------------------------------------------------------------
 export default function SiteSupervisorTasksPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<StudentOption[]>([]);
@@ -294,11 +291,11 @@ export default function SiteSupervisorTasksPage() {
 
   async function handleSave() {
     if (!formData.title.trim()) {
-      toast({ title: "Title required", variant: "destructive" });
+      toast.warning("Title required");
       return;
     }
     if (formData.student_user_ids.length === 0) {
-      toast({ title: "Select at least one student", variant: "destructive" });
+      toast.warning("Select at least one student");
       return;
     }
     setSaving(true);
@@ -319,27 +316,31 @@ export default function SiteSupervisorTasksPage() {
       };
       const url = "/api/site-supervisor/tasks";
       const method = editingTask ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Save failed (${res.status})`);
-      }
-      toast({
-        title: editingTask ? "Task updated" : "Task created",
-        description: `"${formData.title}" ${editingTask ? "updated" : `assigned to ${formData.student_user_ids.length} student(s)`}.`,
-      });
+      await toast.fetch(
+        async () => {
+          const res = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || `Save failed (${res.status})`);
+          }
+          return res.json();
+        },
+        {
+          loading: editingTask ? "Updating task..." : "Creating task...",
+          success: editingTask
+            ? `Task "${formData.title}" updated`
+            : `Task "${formData.title}" assigned to ${formData.student_user_ids.length} student(s)`,
+          error: editingTask ? "Failed to update task" : "Failed to create task",
+        }
+      );
       setShowCreateDialog(false);
       await fetchTasks();
-    } catch (err: any) {
-      toast({
-        title: "Save failed",
-        description: err.message,
-        variant: "destructive",
-      });
+    } catch {
+      // toast.fetch already showed the error toast
     } finally {
       setSaving(false);
     }
@@ -353,18 +354,27 @@ export default function SiteSupervisorTasksPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/site-supervisor/tasks?task_id=${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Delete failed (${res.status})`);
-      }
-      toast({ title: "Task deleted", description: `"${deleteTarget.title}" was removed.` });
+      await toast.fetch(
+        async () => {
+          const res = await fetch(`/api/site-supervisor/tasks?task_id=${deleteTarget.id}`, {
+            method: "DELETE",
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || `Delete failed (${res.status})`);
+          }
+          return res.json();
+        },
+        {
+          loading: "Deleting task...",
+          success: `Task "${deleteTarget.title}" removed`,
+          error: "Failed to delete task",
+        }
+      );
       setDeleteTarget(null);
       await fetchTasks();
-    } catch (err: any) {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error toast
     } finally {
       setDeleting(false);
     }
@@ -384,42 +394,45 @@ export default function SiteSupervisorTasksPage() {
   async function handleSubmitReview() {
     if (!reviewTask || !reviewSubmission) return;
     if ((reviewAction === "request_changes" || reviewAction === "feedback") && !reviewFeedback.trim()) {
-      toast({ title: "Feedback required", variant: "destructive" });
+      toast.warning("Feedback required");
       return;
     }
     setReviewing(true);
     try {
-      const res = await fetch(`/api/site-supervisor/tasks/${reviewTask.id}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          submission_id: reviewSubmission.id,
-          action: reviewAction,
-          feedback: reviewFeedback.trim(),
-          score: reviewScore ? parseFloat(reviewScore) : undefined,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Review failed (${res.status})`);
-      }
-      toast({
-        title:
-          reviewAction === "approve"
-            ? "Submission approved"
-            : reviewAction === "request_changes"
-              ? "Changes requested"
-              : "Feedback added",
-        description:
-          reviewAction === "approve"
-            ? "The next task is now unlocked for this student."
-            : "The student has been notified.",
-      });
+      await toast.fetch(
+        async () => {
+          const res = await fetch(`/api/site-supervisor/tasks/${reviewTask.id}/review`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              submission_id: reviewSubmission.id,
+              action: reviewAction,
+              feedback: reviewFeedback.trim(),
+              score: reviewScore ? parseFloat(reviewScore) : undefined,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err?.error || `Review failed (${res.status})`);
+          }
+          return res.json();
+        },
+        {
+          loading: "Submitting review...",
+          success:
+            reviewAction === "approve"
+              ? "Submission approved — next task unlocked"
+              : reviewAction === "request_changes"
+                ? "Changes requested — student notified"
+                : "Feedback added",
+          error: "Failed to submit review",
+        }
+      );
       setReviewTask(null);
       setReviewSubmission(null);
       await fetchTasks();
-    } catch (err: any) {
-      toast({ title: "Review failed", description: err.message, variant: "destructive" });
+    } catch {
+      // toast.fetch already showed the error toast
     } finally {
       setReviewing(false);
     }
@@ -534,7 +547,7 @@ export default function SiteSupervisorTasksPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All weeks</SelectItem>
-            {Array.from(tasksByWeek.keys()).map((wk) => (
+            {tasksByWeek.map(([wk]) => (
               <SelectItem key={wk} value={wk.toString()}>
                 {wk === "unsorted" ? "Unsorted" : `Week ${wk}`}
               </SelectItem>
@@ -623,238 +636,18 @@ export default function SiteSupervisorTasksPage() {
       )}
 
       {/* Create / Edit dialog — pinned header/footer, scrollable content */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent
-          className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0"
-        >
-          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-            <DialogTitle>{editingTask ? "Edit Task" : "Create New Task"}</DialogTitle>
-            <DialogDescription>
-              {editingTask
-                ? "Update the task details. Student assignment changes apply to new students only."
-                : "Fill in the task details. Fields marked optional can be left blank."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4">
-            <div className="space-y-4">
-              {/* Title */}
-              <div className="space-y-1.5">
-                <Label htmlFor="title">Task Title <span className="text-destructive">*</span></Label>
-                <Input
-                  id="title"
-                  placeholder="e.g., Set up Git & GitHub"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                />
-              </div>
-
-              {/* Week / Day / Priority */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="week">Week #</Label>
-                  <Input
-                    id="week"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    value={formData.week_number}
-                    onChange={(e) => setFormData({ ...formData, week_number: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="day">Day #</Label>
-                  <Input
-                    id="day"
-                    type="number"
-                    min="1"
-                    max="7"
-                    placeholder="1"
-                    value={formData.day_number}
-                    onChange={(e) => setFormData({ ...formData, day_number: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Priority</Label>
-                  <Select
-                    value={formData.priority}
-                    onValueChange={(v) => setFormData({ ...formData, priority: v as any })}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1.5">
-                <Label htmlFor="description">Task Description <span className="text-muted-foreground text-xs">(Markdown supported)</span></Label>
-                <Textarea
-                  id="description"
-                  placeholder="Explain what the student should do, the goals, and any context..."
-                  rows={4}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
-
-              {/* Expected Deliverable */}
-              <div className="space-y-1.5">
-                <Label htmlFor="deliverable">
-                  Expected Deliverable <span className="text-muted-foreground text-xs">(what the student should produce)</span>
-                </Label>
-                <Textarea
-                  id="deliverable"
-                  placeholder="e.g., A working GitHub repository with a README and 3 commits."
-                  rows={2}
-                  value={formData.expected_deliverable}
-                  onChange={(e) => setFormData({ ...formData, expected_deliverable: e.target.value })}
-                />
-              </div>
-
-              {/* Resources */}
-              <div className="space-y-1.5">
-                <Label htmlFor="resources">
-                  Resources / References <span className="text-muted-foreground text-xs">(optional, Markdown)</span>
-                </Label>
-                <Textarea
-                  id="resources"
-                  placeholder="Links to docs, articles, research material..."
-                  rows={2}
-                  value={formData.resources}
-                  onChange={(e) => setFormData({ ...formData, resources: e.target.value })}
-                />
-              </div>
-
-              {/* YouTube URL */}
-              <div className="space-y-1.5">
-                <Label htmlFor="youtube">
-                  YouTube Video URL <span className="text-muted-foreground text-xs">(optional)</span>
-                </Label>
-                <div className="relative">
-                  <Video className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="youtube"
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    className="pl-9"
-                    value={formData.youtube_url}
-                    onChange={(e) => setFormData({ ...formData, youtube_url: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* Due date + gating */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="due">
-                    Due Date <span className="text-muted-foreground text-xs">(optional)</span>
-                  </Label>
-                  <Input
-                    id="due"
-                    type="date"
-                    value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Unlock Behavior</Label>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <Checkbox
-                      id="gate"
-                      checked={formData.requires_previous_completion}
-                      onCheckedChange={(v) =>
-                        setFormData({ ...formData, requires_previous_completion: !!v })
-                      }
-                    />
-                    <Label htmlFor="gate" className="text-sm font-normal cursor-pointer">
-                      Require previous task approval before this one unlocks
-                    </Label>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Student assignment */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Assign to Students <span className="text-destructive">*</span></Label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setFormData({
-                          ...formData,
-                          student_user_ids: students.map((s) => s.user_id),
-                        })
-                      }
-                    >
-                      Select all
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setFormData({ ...formData, student_user_ids: [] })}
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                </div>
-                {students.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No students assigned to you.</p>
-                ) : (
-                  <div className="border rounded-md max-h-48 overflow-y-auto divide-y">
-                    {students.map((s) => {
-                      const checked = formData.student_user_ids.includes(s.user_id);
-                      return (
-                        <label
-                          key={s.user_id}
-                          className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-accent/50"
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => {
-                              if (v) {
-                                setFormData({
-                                  ...formData,
-                                  student_user_ids: [...formData.student_user_ids, s.user_id],
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  student_user_ids: formData.student_user_ids.filter(
-                                    (id) => id !== s.user_id
-                                  ),
-                                });
-                              }
-                            }}
-                          />
-                          <Avatar className="h-7 w-7">
-                            <AvatarImage src={s.avatar_url || undefined} />
-                            <AvatarFallback>
-                              {(s.full_name || s.email || "?").charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{s.full_name || "Unnamed"}</p>
-                            <p className="text-xs text-muted-foreground truncate">{s.email}</p>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="shrink-0 px-6 py-4 border-t bg-background">
+      <ScrollableDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        title={editingTask ? "Edit Task" : "Create New Task"}
+        description={
+          editingTask
+            ? "Update the task details. Student assignment changes apply to new students only."
+            : "Fill in the task details. Fields marked optional can be left blank."
+        }
+        maxWidthClassName="max-w-2xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={saving}>
               Cancel
             </Button>
@@ -871,9 +664,239 @@ export default function SiteSupervisorTasksPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="space-y-4 pb-2">
+          {/* Title */}
+          <div className="space-y-1.5">
+            <Label htmlFor="title">Task Title <span className="text-destructive">*</span></Label>
+            <Input
+              id="title"
+              placeholder="e.g., Set up Git & GitHub"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            />
+          </div>
+
+          {/* Week / Day / Priority */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="week">Week #</Label>
+              <Input
+                id="week"
+                type="number"
+                min="1"
+                placeholder="1"
+                value={formData.week_number}
+                onChange={(e) => setFormData({ ...formData, week_number: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="day">Day #</Label>
+              <Input
+                id="day"
+                type="number"
+                min="1"
+                max="7"
+                placeholder="1"
+                value={formData.day_number}
+                onChange={(e) => setFormData({ ...formData, day_number: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Priority</Label>
+              <Select
+                value={formData.priority}
+                onValueChange={(v) => setFormData({ ...formData, priority: v as any })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Description — Markdown editor */}
+          <div className="space-y-1.5">
+            <Label htmlFor="description">
+              Task Description{" "}
+              <span className="text-muted-foreground text-xs font-normal">(Markdown supported)</span>
+            </Label>
+            <MarkdownEditor
+              id="description"
+              value={formData.description}
+              onChange={(v) => setFormData({ ...formData, description: v })}
+              placeholder="Explain what the student should do, the goals, and any context..."
+              rows={5}
+              ariaLabel="Task description (Markdown)"
+            />
+          </div>
+
+          {/* Expected Deliverable */}
+          <div className="space-y-1.5">
+            <Label htmlFor="deliverable">
+              Expected Deliverable{" "}
+              <span className="text-muted-foreground text-xs font-normal">
+                (what the student should produce)
+              </span>
+            </Label>
+            <MarkdownEditor
+              id="deliverable"
+              value={formData.expected_deliverable}
+              onChange={(v) => setFormData({ ...formData, expected_deliverable: v })}
+              placeholder="e.g., A working GitHub repository with a README and 3 commits."
+              rows={3}
+              hidePreview
+              ariaLabel="Expected deliverable (Markdown)"
+            />
+          </div>
+
+          {/* Resources — Markdown editor */}
+          <div className="space-y-1.5">
+            <Label htmlFor="resources">
+              Resources / References{" "}
+              <span className="text-muted-foreground text-xs font-normal">(optional, Markdown)</span>
+            </Label>
+            <MarkdownEditor
+              id="resources"
+              value={formData.resources}
+              onChange={(v) => setFormData({ ...formData, resources: v })}
+              placeholder="Links to docs, articles, research material..."
+              rows={3}
+              hidePreview
+              ariaLabel="Resources / references (Markdown)"
+            />
+          </div>
+
+          {/* YouTube URL */}
+          <div className="space-y-1.5">
+            <Label htmlFor="youtube">
+              YouTube Video URL <span className="text-muted-foreground text-xs">(optional)</span>
+            </Label>
+            <div className="relative">
+              <Video className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="youtube"
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="pl-9"
+                value={formData.youtube_url}
+                onChange={(e) => setFormData({ ...formData, youtube_url: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Due date + gating */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="due">
+                Due Date <span className="text-muted-foreground text-xs">(optional)</span>
+              </Label>
+              <Input
+                id="due"
+                type="date"
+                value={formData.due_date}
+                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Unlock Behavior</Label>
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox
+                  id="gate"
+                  checked={formData.requires_previous_completion}
+                  onCheckedChange={(v) =>
+                    setFormData({ ...formData, requires_previous_completion: !!v })
+                  }
+                />
+                <Label htmlFor="gate" className="text-sm font-normal cursor-pointer">
+                  Require previous task approval before this one unlocks
+                </Label>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Student assignment */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Assign to Students <span className="text-destructive">*</span></Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      student_user_ids: students.map((s) => s.user_id),
+                    })
+                  }
+                >
+                  Select all
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setFormData({ ...formData, student_user_ids: [] })}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            {students.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No students assigned to you.</p>
+            ) : (
+              <div className="border rounded-md max-h-48 overflow-y-auto divide-y">
+                {students.map((s) => {
+                  const checked = formData.student_user_ids.includes(s.user_id);
+                  return (
+                    <label
+                      key={s.user_id}
+                      className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-accent/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          if (v) {
+                            setFormData({
+                              ...formData,
+                              student_user_ids: [...formData.student_user_ids, s.user_id],
+                            });
+                          } else {
+                            setFormData({
+                              ...formData,
+                              student_user_ids: formData.student_user_ids.filter(
+                                (id) => id !== s.user_id
+                              ),
+                            });
+                          }
+                        }}
+                      />
+                      <Avatar className="h-7 w-7">
+                        <AvatarImage src={s.avatar_url || undefined} />
+                        <AvatarFallback>
+                          {(s.full_name || s.email || "?").charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{s.full_name || "Unnamed"}</p>
+                        <p className="text-xs text-muted-foreground truncate">{s.email}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollableDialog>
 
       {/* Delete confirmation dialog (replaces native confirm()) */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -907,161 +930,18 @@ export default function SiteSupervisorTasksPage() {
       </AlertDialog>
 
       {/* Review dialog — pinned header/footer, scrollable content */}
-      <Dialog open={!!reviewTask} onOpenChange={(v) => !v && setReviewTask(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
-          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-            <DialogTitle>Review Submission</DialogTitle>
-            <DialogDescription>
-              {reviewTask?.title} — {reviewSubmission?.student?.full_name || reviewSubmission?.student?.email}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4">
-            {reviewSubmission && (
-              <div className="space-y-4 pb-2">
-                {/* Task details */}
-                <div>
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                    Task
-                  </h4>
-                  <p className="font-medium">{reviewTask?.title}</p>
-                  {reviewTask?.description && (
-                    <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
-                      {reviewTask.description}
-                    </p>
-                  )}
-                  {reviewTask?.expected_deliverable && (
-                    <p className="text-sm mt-2">
-                      <span className="font-medium">Expected deliverable: </span>
-                      <span className="text-muted-foreground">{reviewTask.expected_deliverable}</span>
-                    </p>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Student submission */}
-                <div>
-                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Student Submission
-                  </h4>
-                  {reviewSubmission.content && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
-                      <p className="text-sm whitespace-pre-wrap">{reviewSubmission.content}</p>
-                    </div>
-                  )}
-                  {reviewSubmission.links && reviewSubmission.links.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Links</p>
-                      <ul className="space-y-1">
-                        {reviewSubmission.links.map((l, i) => (
-                          <li key={i}>
-                            <a
-                              href={l.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              {l.label || l.url}
-                              {l.type && (
-                                <Badge variant="outline" className="text-xs">{l.type}</Badge>
-                              )}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {reviewSubmission.tools_used && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Tools Used</p>
-                      <p className="text-sm">{reviewSubmission.tools_used}</p>
-                    </div>
-                  )}
-                  {reviewSubmission.skills_learned && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Skills Learned</p>
-                      <p className="text-sm">{reviewSubmission.skills_learned}</p>
-                    </div>
-                  )}
-                  {reviewSubmission.problems_solved && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Problems Solved</p>
-                      <p className="text-sm whitespace-pre-wrap">{reviewSubmission.problems_solved}</p>
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Submitted: {new Date(reviewSubmission.submitted_at).toLocaleString()}
-                  </p>
-                </div>
-
-                <Separator />
-
-                {/* Review action */}
-                <div className="space-y-3">
-                  <Label>Action</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      type="button"
-                      variant={reviewAction === "approve" ? "default" : "outline"}
-                      onClick={() => setReviewAction("approve")}
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-1.5" /> Approve
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={reviewAction === "request_changes" ? "default" : "outline"}
-                      onClick={() => setReviewAction("request_changes")}
-                    >
-                      <XCircle className="h-4 w-4 mr-1.5" /> Request Changes
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={reviewAction === "feedback" ? "default" : "outline"}
-                      onClick={() => setReviewAction("feedback")}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-1.5" /> Feedback Only
-                    </Button>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="feedback">
-                      Feedback {reviewAction !== "approve" && <span className="text-destructive">*</span>}
-                    </Label>
-                    <Textarea
-                      id="feedback"
-                      placeholder={
-                        reviewAction === "approve"
-                          ? "Optional praise or notes for the student..."
-                          : reviewAction === "request_changes"
-                            ? "Explain what needs to be changed before the student can resubmit..."
-                            : "Provide feedback on the submission..."
-                      }
-                      rows={3}
-                      value={reviewFeedback}
-                      onChange={(e) => setReviewFeedback(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="score">
-                      Score <span className="text-muted-foreground text-xs">(optional, 0-100)</span>
-                    </Label>
-                    <Input
-                      id="score"
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder="85"
-                      value={reviewScore}
-                      onChange={(e) => setReviewScore(e.target.value)}
-                      className="w-32"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="shrink-0 px-6 py-4 border-t bg-background">
+      <ScrollableDialog
+        open={!!reviewTask}
+        onOpenChange={(v) => !v && setReviewTask(null)}
+        title="Review Submission"
+        description={
+          <span className="break-words">
+            {reviewTask?.title} — {reviewSubmission?.student?.full_name || reviewSubmission?.student?.email}
+          </span>
+        }
+        maxWidthClassName="max-w-3xl"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setReviewTask(null)} disabled={reviewing}>
               Cancel
             </Button>
@@ -1084,9 +964,159 @@ export default function SiteSupervisorTasksPage() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        {reviewSubmission && (
+          <div className="space-y-4 pb-2">
+            {/* Task details — Markdown rendered */}
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Task
+              </h4>
+              <p className="font-medium break-words">{reviewTask?.title}</p>
+              {reviewTask?.description && (
+                <div className="text-sm text-muted-foreground mt-1">
+                  <MarkdownRenderer content={reviewTask.description} compact />
+                </div>
+              )}
+              {reviewTask?.expected_deliverable && (
+                <div className="text-sm mt-2">
+                  <span className="font-medium">Expected deliverable: </span>
+                  <span className="text-muted-foreground">
+                    <MarkdownRenderer content={reviewTask.expected_deliverable} compact />
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Student submission — Markdown rendered */}
+            <div>
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Student Submission
+              </h4>
+              {reviewSubmission.content && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
+                  <MarkdownRenderer content={reviewSubmission.content} />
+                </div>
+              )}
+              {reviewSubmission.links && reviewSubmission.links.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Links</p>
+                  <ul className="space-y-1">
+                    {reviewSubmission.links.map((l, i) => (
+                      <li key={i}>
+                        <a
+                          href={l.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+                        >
+                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          {l.label || l.url}
+                          {l.type && (
+                            <Badge variant="outline" className="text-xs">{l.type}</Badge>
+                          )}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {reviewSubmission.tools_used && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Tools Used</p>
+                  <p className="text-sm">{reviewSubmission.tools_used}</p>
+                </div>
+              )}
+              {reviewSubmission.skills_learned && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Skills Learned</p>
+                  <p className="text-sm">{reviewSubmission.skills_learned}</p>
+                </div>
+              )}
+              {reviewSubmission.problems_solved && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Problems Solved</p>
+                  <MarkdownRenderer content={reviewSubmission.problems_solved} compact />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Submitted: {new Date(reviewSubmission.submitted_at).toLocaleString()}
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Review action */}
+            <div className="space-y-3">
+              <Label>Action</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  variant={reviewAction === "approve" ? "default" : "outline"}
+                  onClick={() => setReviewAction("approve")}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" /> Approve
+                </Button>
+                <Button
+                  type="button"
+                  variant={reviewAction === "request_changes" ? "default" : "outline"}
+                  onClick={() => setReviewAction("request_changes")}
+                >
+                  <XCircle className="h-4 w-4 mr-1.5" /> Request Changes
+                </Button>
+                <Button
+                  type="button"
+                  variant={reviewAction === "feedback" ? "default" : "outline"}
+                  onClick={() => setReviewAction("feedback")}
+                >
+                  <MessageSquare className="h-4 w-4 mr-1.5" /> Feedback Only
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="feedback">
+                  Feedback {reviewAction !== "approve" && <span className="text-destructive">*</span>}
+                  <span className="text-muted-foreground text-xs font-normal ml-1">(Markdown supported)</span>
+                </Label>
+                <MarkdownEditor
+                  id="feedback"
+                  value={reviewFeedback}
+                  onChange={setReviewFeedback}
+                  placeholder={
+                    reviewAction === "approve"
+                      ? "Optional praise or notes for the student..."
+                      : reviewAction === "request_changes"
+                        ? "Explain what needs to be changed before the student can resubmit..."
+                        : "Provide feedback on the submission..."
+                  }
+                  rows={3}
+                  hidePreview
+                  ariaLabel="Review feedback (Markdown)"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="score">
+                  Score <span className="text-muted-foreground text-xs">(optional, 0-100)</span>
+                </Label>
+                <Input
+                  id="score"
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="85"
+                  value={reviewScore}
+                  onChange={(e) => setReviewScore(e.target.value)}
+                  className="w-32"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </ScrollableDialog>
     </div>
   );
 }
@@ -1157,7 +1187,9 @@ function TaskRow({
             )}
           </div>
           {task.description && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+            <div className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              <MarkdownRenderer content={task.description} compact />
+            </div>
           )}
           {task.expected_deliverable && (
             <p className="text-xs text-muted-foreground mt-1">

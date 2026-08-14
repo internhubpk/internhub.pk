@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
 import { notifyTaskSubmitted } from "@/lib/notifications";
+import { sanitizeApiError } from "@/lib/api-error";
 
 /**
  * /api/student/tasks
@@ -135,10 +136,14 @@ export async function GET(request: NextRequest) {
     const { data: assignments, error: assignErr, count } = await query;
 
     if (assignErr) {
-      console.error("[/api/student/tasks] GET error:", assignErr);
+      // RLS recursion / policy errors produce 500 from Postgres. Sanitize
+      // the message so the client doesn't see raw SQL/RLS internals —
+      // the toast utility will show a friendly "Unable to load tasks"
+      // message and the raw error is preserved in server logs.
+      const { message, status } = sanitizeApiError(assignErr, "load tasks");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to fetch tasks: ${assignErr.message}` },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -275,13 +280,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("[/api/student/tasks] GET unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "process task request");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }
@@ -406,10 +408,10 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (subErr || !submission) {
-      console.error("[/api/student/tasks] submission upsert error:", subErr);
+      const { message, status } = sanitizeApiError(subErr, "submit task");
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: `Failed to submit task: ${subErr?.message || "unknown"}` },
-        { status: 500 }
+        { success: false, error: message },
+        { status }
       );
     }
 
@@ -604,13 +606,10 @@ export async function POST(request: NextRequest) {
       message: "Task submitted successfully",
     });
   } catch (err) {
-    console.error("[/api/student/tasks] POST unhandled:", err);
+    const { message, status } = sanitizeApiError(err, "submit task");
     return NextResponse.json<ApiResponse<never>>(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      { status: 500 }
+      { success: false, error: message },
+      { status }
     );
   }
 }
