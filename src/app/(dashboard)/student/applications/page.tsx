@@ -579,7 +579,7 @@ export default function StudentApplicationsPage() {
 
                       <div className="flex items-center justify-between text-sm text-muted-foreground pt-2 border-t">
                         <span>Applied {formatRelativeTime(application.applied_at)}</span>
-                        
+
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
@@ -589,7 +589,7 @@ export default function StudentApplicationsPage() {
                             <Eye className="h-3 w-3 mr-1" />
                             Details
                           </Button>
-                          
+
                           {(application.status === "pending" || application.status === "reviewing") && (
                             <Button
                               variant="outline"
@@ -601,6 +601,32 @@ export default function StudentApplicationsPage() {
                               }}
                             >
                               Withdraw
+                            </Button>
+                          )}
+
+                          {application.status === "withdrawn" && (
+                            <Button
+                              asChild
+                              size="sm"
+                              className="text-primary border-primary hover:bg-primary/5"
+                            >
+                              <Link href={`/marketplace/${application.internship_id}`}>
+                                <Plus className="h-3 w-3 mr-1" />
+                                Reapply
+                              </Link>
+                            </Button>
+                          )}
+
+                          {application.status === "rejected" && (
+                            <Button
+                              asChild
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Link href={`/marketplace/${application.internship_id}`}>
+                                <Plus className="h-3 w-3 mr-1" />
+                                Apply Again
+                              </Link>
                             </Button>
                           )}
                         </div>
@@ -663,6 +689,15 @@ export default function StudentApplicationsPage() {
                       >
                         <ArrowRightLeft className="h-3 w-3 mr-1" />
                         Withdraw
+                      </Button>
+                    )}
+
+                    {(detailApplication.status === "withdrawn" || detailApplication.status === "rejected") && (
+                      <Button asChild size="sm">
+                        <Link href={`/marketplace/${detailApplication.internship_id}`}>
+                          <Plus className="h-3 w-3 mr-1" />
+                          {detailApplication.status === "withdrawn" ? "Reapply" : "Apply Again"}
+                        </Link>
                       </Button>
                     )}
                   </div>
@@ -836,8 +871,9 @@ export default function StudentApplicationsPage() {
 
               <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
                 <p className="text-sm text-amber-800">
-                  <strong>Note:</strong> Once withdrawn, you&apos;ll need to submit a new application if you want to be considered again.
-                  This action cannot be undone.
+                  <strong>Note:</strong> Withdrawing removes your application from the
+                  company&apos;s review queue. You can reapply later from the
+                  internship&apos;s marketplace page if you change your mind.
                 </p>
               </div>
 

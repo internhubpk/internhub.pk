@@ -198,6 +198,7 @@ export default function CompanyHRApplicationsPage() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [isBatchRejectDialogOpen, setIsBatchRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectingAppId, setRejectingAppId] = useState<string | null>(null);
   const [selectedForBatch, setSelectedForBatch] = useState<string[]>([]);
@@ -290,6 +291,14 @@ export default function CompanyHRApplicationsPage() {
     }
   };
 
+  const handleBatchReject = async () => {
+    if (await updateApplicationStatus(selectedForBatch, "rejected", rejectReason || undefined)) {
+      setSelectedForBatch([]);
+      setRejectReason("");
+      setIsBatchRejectDialogOpen(false);
+    }
+  };
+
   const toggleSelectForBatch = (id: string) => {
     setSelectedForBatch(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -297,10 +306,14 @@ export default function CompanyHRApplicationsPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedForBatch.length === filteredApplications.filter(a => a.status === "pending").length) {
+    // Select all actionable applications — both "pending" (new) and
+    // "reviewing" (in-progress). Accepted/rejected/withdrawn are
+    // terminal states and shouldn't be bulk-actionable.
+    const actionable = filteredApplications.filter(a => a.status === "pending" || a.status === "reviewing");
+    if (selectedForBatch.length === actionable.length && actionable.length > 0) {
       setSelectedForBatch([]);
     } else {
-      setSelectedForBatch(filteredApplications.filter(a => a.status === "pending").map(a => a.id));
+      setSelectedForBatch(actionable.map(a => a.id));
     }
   };
 
@@ -398,6 +411,10 @@ export default function CompanyHRApplicationsPage() {
               <Button size="sm" onClick={handleBatchAccept} className="gap-1">
                 <CheckCircle2 className="h-4 w-4" />
                 Accept All Selected
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1 text-destructive hover:text-destructive" onClick={() => setIsBatchRejectDialogOpen(true)}>
+                <XCircle className="h-4 w-4" />
+                Reject All Selected
               </Button>
               <Button size="sm" variant="outline" onClick={() => setSelectedForBatch([])}>
                 Clear Selection
@@ -664,7 +681,11 @@ export default function CompanyHRApplicationsPage() {
                     </div>
                   )}
 
-                {/* Action Buttons */}
+                {/* Action Buttons — only shown for actionable statuses
+                    (pending, reviewing). Terminal statuses (accepted,
+                    rejected, withdrawn) have no action buttons. */}
+                {(selectedApplication.status === "pending" ||
+                  selectedApplication.status === "reviewing") && (
                 <div className="flex flex-wrap gap-3 pt-4 border-t">
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -691,7 +712,7 @@ export default function CompanyHRApplicationsPage() {
                       </div>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction 
+                        <AlertDialogAction
                           onClick={handleReject}
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
@@ -701,22 +722,25 @@ export default function CompanyHRApplicationsPage() {
                     </AlertDialogContent>
                   </AlertDialog>
 
-                  <Button
-                    variant="secondary"
-                    className="gap-1"
-                    onClick={() => handleMarkForReview(selectedApplication.id)}
-                    disabled={updating || selectedApplication.status === "reviewing"}
-                  >
-                    <Clock className="h-4 w-4" /> Mark for Review
-                  </Button>
+                  {selectedApplication.status === "pending" && (
+                    <Button
+                      variant="secondary"
+                      className="gap-1"
+                      onClick={() => handleMarkForReview(selectedApplication.id)}
+                      disabled={updating}
+                    >
+                      <Clock className="h-4 w-4" /> Mark for Review
+                    </Button>
+                  )}
 
-                  <Button 
+                  <Button
                     className="gap-1"
                     onClick={() => handleAccept(selectedApplication.id)}
                   >
                     <CheckCircle2 className="h-4 w-4" /> Accept Application
                   </Button>
                 </div>
+                )}
               </div>
             </>
           )}
@@ -744,11 +768,43 @@ export default function CompanyHRApplicationsPage() {
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setRejectReason("")}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleReject}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Reject Application
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch Reject Dialog */}
+      <AlertDialog open={isBatchRejectDialogOpen} onOpenChange={setIsBatchRejectDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject {selectedForBatch.length} Applications?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will notify all selected applicants about the decision.
+              The same reason (if provided) will be sent to each applicant.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="batch-reject-reason">Reason (optional)</Label>
+            <Textarea
+              id="batch-reject-reason"
+              placeholder="Provide feedback to help the candidates improve..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRejectReason("")}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBatchReject}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reject {selectedForBatch.length} Application{selectedForBatch.length !== 1 ? "s" : ""}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -881,7 +937,11 @@ function ApplicationTable({
                     {app.match_score}% Match
                   </span>
                   <div className="flex gap-1">
-                    {app.status === "pending" && (
+                    {/* Accept/Reject inline buttons appear for actionable
+                        statuses only (pending = new, reviewing = in-progress).
+                        Accepted/rejected/withdrawn are terminal — no inline
+                        action buttons, just View Details. */}
+                    {(app.status === "pending" || app.status === "reviewing") && (
                       <>
                         <Button size="sm" variant="ghost" className="text-green-600 hover:text-green-700" onClick={() => onAccept(app.id)}>
                           <CheckCircle2 className="h-4 w-4" />
@@ -891,8 +951,8 @@ function ApplicationTable({
                         </Button>
                       </>
                     )}
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => { setSelectedApplication(app); setIsDetailOpen(true); }}
                     >
                       View Details
@@ -912,7 +972,7 @@ function ApplicationTable({
                     <TableHead className="w-12">
                       <input
                         type="checkbox"
-                        checked={applications.filter(a => a.status === "pending").length > 0 && selectedForBatch.length === applications.filter(a => a.status === "pending").length}
+                        checked={applications.filter(a => a.status === "pending" || a.status === "reviewing").length > 0 && selectedForBatch.length === applications.filter(a => a.status === "pending" || a.status === "reviewing").length}
                         onChange={toggleSelectAll}
                         className="rounded"
                       />
@@ -931,7 +991,7 @@ function ApplicationTable({
                   <TableRow key={app.id} className="group">
                     {showBatchActions && (
                       <TableCell>
-                        {app.status === "pending" && (
+                        {(app.status === "pending" || app.status === "reviewing") && (
                           <input
                             type="checkbox"
                             checked={selectedForBatch.includes(app.id)}
@@ -967,20 +1027,20 @@ function ApplicationTable({
                     <TableCell>{new Date(app.applied_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {app.status === "pending" && (
+                        {(app.status === "pending" || app.status === "reviewing") && (
                           <>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                               onClick={() => onAccept(app.id)}
                               title="Accept"
                             >
                               <CheckCircle2 className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                               onClick={() => onReject(app.id)}
                               title="Reject"

@@ -129,6 +129,10 @@ export default function InternshipDetailPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [hasExistingApplication, setHasExistingApplication] = useState(false);
+  // ID of an existing (possibly withdrawn) application row for this
+  // student + internship. When set, the apply modal UPSERTs instead of
+  // INSERTing — this lets a student reapply after withdrawing.
+  const [existingApplicationId, setExistingApplicationId] = useState<string | null>(null);
   const [applicationData, setApplicationData] = useState({
     coverLetter: "",
     // Holds the Supabase Storage PATH (e.g. `cvs/<user_id>/123-resume.pdf`)
@@ -196,6 +200,12 @@ export default function InternshipDetailPage() {
         // Check if the user has already applied (for the apply button
         // state — show "Already Applied" instead of "Apply Now" when
         // an application row already exists for this student + internship).
+        // EXCEPTION: if the existing application was withdrawn, the user
+        // is allowed to reapply (the apply modal will UPSERT over the
+        // existing row instead of INSERTing, to satisfy the UNIQUE
+        // (internship_id, student_user_id) constraint). This matches the
+        // withdraw dialog's promise: "Once withdrawn, you'll need to
+        // submit a new application" — and now they can.
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
@@ -205,9 +215,13 @@ export default function InternshipDetailPage() {
               .eq("internship_id", internshipId)
               .eq("student_user_id", user.id)
               .maybeSingle();
-            if (existingApp) {
+            if (existingApp && existingApp.status !== "withdrawn") {
               setHasExistingApplication(true);
             }
+            // Stash the existing app id (if any) so the submit handler
+            // knows whether to INSERT (first apply) or UPDATE (reapply
+            // after withdraw).
+            setExistingApplicationId(existingApp?.id ?? null);
           }
         } catch {
           // Not logged in — that's fine, the apply button will route
@@ -454,7 +468,11 @@ export default function InternshipDetailPage() {
             }, {})
           : null;
 
-      // Insert into internship_applications.
+      // Insert into internship_applications (or UPDATE if re-applying
+      // after a withdrawal — the table has a UNIQUE(internship_id,
+      // student_user_id) constraint, so INSERT would fail with a 23505
+      // in that case).
+      //
       // The table schema (migration 0001) requires:
       //   internship_id, student_user_id, company_id
       // and accepts cover_letter, resume_url, additional_answers as
@@ -466,19 +484,45 @@ export default function InternshipDetailPage() {
       // dashboard fetches a signed URL on demand via
       // /api/applications/[id]/resume — the `cvs` bucket is private,
       // so we never store a publicly-accessible URL.
-      const { error } = await supabase
-        .from("internship_applications")
-        .insert({
-          internship_id: internshipId,
-          student_user_id: user.id,
-          company_id: internship.company_id,
-          cover_letter: applicationData.coverLetter || null,
-          resume_url: applicationData.resumeUrl || null,
-          additional_answers: additionalAnswersJson,
-          status: "pending",
-          applied_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      //
+      // Reapply semantics: when existingApplicationId is set (i.e. the
+      // student previously withdrew), we UPDATE that row back to
+      // 'pending' with the new cover letter / resume / answers. This
+      // preserves the application's history (the row id stays the same)
+      // and satisfies the UNIQUE constraint.
+      const nowIso = new Date().toISOString();
+      let error;
+      if (existingApplicationId) {
+        // Re-apply after withdrawal — UPDATE the existing row.
+        ({ error } = await supabase
+          .from("internship_applications")
+          .update({
+            cover_letter: applicationData.coverLetter || null,
+            resume_url: applicationData.resumeUrl || null,
+            additional_answers: additionalAnswersJson,
+            status: "pending",
+            // Reset applied_at so the HR dashboard shows this as a fresh
+            // application at the top of the inbox.
+            applied_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq("id", existingApplicationId));
+      } else {
+        // First-time apply — INSERT a new row.
+        ({ error } = await supabase
+          .from("internship_applications")
+          .insert({
+            internship_id: internshipId,
+            student_user_id: user.id,
+            company_id: internship.company_id,
+            cover_letter: applicationData.coverLetter || null,
+            resume_url: applicationData.resumeUrl || null,
+            additional_answers: additionalAnswersJson,
+            status: "pending",
+            applied_at: nowIso,
+            updated_at: nowIso,
+          }));
+      }
 
       if (error) {
         // The most common error is the UNIQUE(internship_id, student_user_id)
@@ -505,18 +549,23 @@ export default function InternshipDetailPage() {
         // The RPC may not exist on older deployments — silently ignore.
       }
 
-      // Best-effort: notify every company HR / admin attached to this
-      // company that a new application came in. Failures are non-fatal —
-      // the application row itself is already inserted; we just don't
-      // surface a bell-icon alert to the HR if this insert fails.
+      // Best-effort: notify every company HR attached to this company
+      // that a new application came in. Failures are non-fatal — the
+      // application row itself is already inserted; we just don't surface
+      // a bell-icon alert to the HR if this insert fails.
+      //
+      // HRs are identified via `profiles.company_id` + `role = 'company_hr'`
+      // (NOT the `company_users` table — that table is empty on this
+      // deployment, which was why HRs never received application
+      // notifications).
       try {
-        const { data: companyUsers } = await supabase
-          .from("company_users")
+        const { data: hrProfiles } = await supabase
+          .from("profiles")
           .select("user_id")
           .eq("company_id", internship.company_id)
-          .eq("is_active", true);
+          .eq("role", "company_hr");
 
-        const hrUserIds = (companyUsers || []).map((u) => u.user_id);
+        const hrUserIds = (hrProfiles || []).map((p) => p.user_id);
         if (hrUserIds.length > 0) {
           const studentName =
             profile?.full_name ||
@@ -526,10 +575,12 @@ export default function InternshipDetailPage() {
           await supabase.from("notifications").insert(
             hrUserIds.map((userId) => ({
               user_id: userId,
+              // sender_id MUST be set to auth.uid() per the notif_insert
+              // RLS policy (CHECK: sender_id IS NULL OR sender_id = auth.uid()).
+              sender_id: user.id,
               title: "New internship application",
               message: `${studentName} applied to "${internship.title}".`,
               category: "application",
-              type: "application",
               priority: "high",
               is_read: false,
               action_url: `/company-hr/applications`,
