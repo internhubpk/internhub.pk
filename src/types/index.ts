@@ -734,6 +734,18 @@ export interface InternshipProgress {
   daysElapsed?: number;
   /** Alias for `days_remaining`. */
   daysRemaining?: number;
+  /**
+   * Certificate issuance status for this internship.
+   * Used by the student internship-progress card to render a StatusBadge.
+   * Defaulted to "not_issued" by the API when no certificate exists yet.
+   */
+  certificateStatus?: string;
+  /**
+   * Academic transcript update status for this internship.
+   * Used by the student internship-progress card to render a transcript badge.
+   * Defaulted to "not_available" by the API when no transcript record exists.
+   */
+  transcriptStatus?: string;
 }
 
 /** Evaluation criteria (rubric line item). */

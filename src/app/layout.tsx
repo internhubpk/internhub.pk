@@ -160,6 +160,16 @@ export default async function RootLayout({
         tagline: "Internship Management Platform",
         description: "InternHub is a comprehensive platform for managing university internships.",
       },
+      features: {
+        enableMarketplace: true,
+        enableEvaluations: true,
+        enableCertificates: true,
+        enableAttendance: true,
+        customWorkflow: false,
+        enableSSO: false,
+        enableCustomDomain: false,
+        maxStudents: 0,
+      },
     };
   }
   

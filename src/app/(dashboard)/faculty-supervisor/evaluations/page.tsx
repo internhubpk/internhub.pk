@@ -82,7 +82,12 @@ import { MarkdownEditor } from "@/components/shared/markdown-editor";
 import { toast } from "@/components/shared/toast";
 
 // Types
-type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
+// Includes "draft" and "submitted" so a `WeeklyReport.status` (which can be
+// "draft" | "submitted" | "approved") can be assigned to `EvaluationRecord.status`
+// without a cast. The shared `EvaluationStatus` in `src/types/index.ts` is
+// narrower (no "draft") — this local type is intentionally a superset for
+// the faculty supervisor's evaluation-queue UI.
+type EvaluationStatus = "pending" | "in_progress" | "draft" | "submitted" | "approved" | "rejected" | "revision_required";
 type SubmissionType = "weekly_log" | "task_submission" | "document" | "midterm" | "final";
 
 interface PendingEvaluation {

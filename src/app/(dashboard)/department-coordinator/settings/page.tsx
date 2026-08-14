@@ -170,11 +170,15 @@ export default function CoordinatorSettingsPage() {
       // Notification prefs are persisted to `profiles.notification_prefs`
       // (migration 0043). The previous localStorage approach was
       // per-browser only and lost prefs on browser-data clear.
+      // Use `user.id` (the non-null auth uid) instead of `profileData.user_id`
+      // — `profileData` may be null here (the `if (profileData)` block above
+      // already returned / set state, but TS can't prove the narrowing
+      // holds past the block's closing brace).
       try {
         const { data: prefsRow } = await supabase
           .from("profiles")
           .select("notification_prefs")
-          .eq("user_id", profileData.user_id)
+          .eq("user_id", user.id)
           .maybeSingle();
         const stored = (prefsRow?.notification_prefs as Partial<NotificationPrefs> | null) || null;
         if (stored) {
@@ -253,7 +257,11 @@ export default function CoordinatorSettingsPage() {
       const { error: prefsErr } = await supabase
         .from("profiles")
         .update({
-          notification_prefs: prefs as Record<string, unknown>,
+          // Cast through `unknown` because `NotificationPrefs` (an interface
+          // with named boolean fields) doesn't structurally overlap with
+          // `Record<string, unknown>` — TS2352. The jsonb column accepts any
+          // JSON shape, so this is a safe persistence boundary.
+          notification_prefs: prefs as unknown as Record<string, unknown>,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);

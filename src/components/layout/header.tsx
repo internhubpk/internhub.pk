@@ -632,11 +632,15 @@ export function Header({ className }: HeaderProps) {
     return "User";
   };
 
-  // Get avatar URL with fallbacks
-  const getAvatarUrl = (): string | null | undefined => {
+  // Get avatar URL with fallbacks.
+  // Returns `string | undefined` (not `string | null | undefined`) because
+  // the `AvatarImage` `src` prop is typed as `string | undefined` — passing
+  // `null` triggers a TS error. `undefined` makes AvatarImage render the
+  // fallback, which is the desired behavior when no avatar is set.
+  const getAvatarUrl = (): string | undefined => {
     return profile?.avatar_url ||
            (user?.user_metadata as Record<string, string> | undefined)?.avatar_url ||
-           null;
+           undefined;
   };
 
   // Get user email for display
@@ -644,7 +648,11 @@ export function Header({ className }: HeaderProps) {
     return profile?.email || user?.email || "";
   };
 
-  const getInitials = (firstName?: string, lastName?: string) => {
+  // Accept `string | null | undefined` for both args — `profile.first_name`
+  // and `profile.last_name` are nullable columns, so callers pass `null`
+  // through when the user hasn't set them. Previously the signature only
+  // accepted `string | undefined`, causing TS2345 at the call sites.
+  const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0)?.toUpperCase() || "";
     const last = lastName?.charAt(0)?.toUpperCase() || "";
     // If no name, try to get initials from display name

@@ -249,7 +249,11 @@ export default function UniversityAdminSettingsPage() {
       const { error: prefsErr } = await supabase
         .from("profiles")
         .update({
-          notification_prefs: notifications as Record<string, unknown>,
+          // Cast through `unknown` because `NotificationPrefs` (an interface
+          // with named boolean fields) doesn't structurally overlap with
+          // `Record<string, unknown>` — TS2352. The jsonb column accepts any
+          // JSON shape, so this is a safe persistence boundary.
+          notification_prefs: notifications as unknown as Record<string, unknown>,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);

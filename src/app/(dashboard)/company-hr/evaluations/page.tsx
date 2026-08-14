@@ -618,7 +618,7 @@ export default function CompanyHREvaluationsPage() {
                                   const url = URL.createObjectURL(blob);
                                   const a = document.createElement("a");
                                   a.href = url;
-                                  a.download = `evaluation-${evaluation.studentName || evaluation.id}.pdf`;
+                                  a.download = `evaluation-${evaluation.intern_name || evaluation.id}.pdf`;
                                   document.body.appendChild(a);
                                   a.click();
                                   document.body.removeChild(a);

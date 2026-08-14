@@ -112,7 +112,9 @@ const itemVariants = {
 };
 
 // ============ HELPER FUNCTIONS ============
-const formatStipend = (amount?: number) => {
+// Accept `number | null | undefined` — `internship.stipend` is typed as
+// `number | null` in the Internship interface (DB column is nullable).
+const formatStipend = (amount?: number | null) => {
   if (!amount) return "Unpaid";
   return `Rs. ${amount.toLocaleString()}/mo`;
 };

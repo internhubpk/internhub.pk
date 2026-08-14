@@ -176,10 +176,15 @@ export function TenantProvider({ children, initialTenant }: TenantProviderProps)
     }
   }, [tenant, isLoading]);
 
-  // Feature check helper
+  // Feature check helper. NOTE: `TenantFeatures` has one numeric field
+  // (`maxStudents`) and the rest are booleans. Treating the result as a
+  // boolean is intentional — for the numeric field, a truthy check (any
+  // non-zero limit) is what callers want. We coerce explicitly so the
+  // return type stays `boolean`.
   const hasFeature = useCallback(
     (feature: keyof TenantFeatures): boolean => {
-      return tenant.features[feature] ?? false;
+      const value = tenant.features[feature];
+      return typeof value === "boolean" ? value : value > 0;
     },
     [tenant.features]
   );

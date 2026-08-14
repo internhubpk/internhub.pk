@@ -36,9 +36,16 @@ type CtaProps = {
   size?: React.ComponentProps<typeof Button>["size"];
 };
 
+// Import the press-animation classes for public-page click feedback.
+// These components are only used on public pages (landing footer,
+// /support page), so the animation is always enabled. Dashboards don't
+// use these components, so there's no risk of accidentally animating
+// dashboard buttons.
+import { PRESS_ANIMATION_CLASSES } from "@/components/public/interactive";
+
 export function ContactSupportButton({ className, variant = "outline", size = "default" }: CtaProps) {
   return (
-    <Button asChild variant={variant} size={size} className={cn("gap-2", className)}>
+    <Button asChild variant={variant} size={size} className={cn("gap-2", PRESS_ANIMATION_CLASSES, className)}>
       <a href={buildWhatsAppUrl(SUPPORT_MESSAGE)} target="_blank" rel="noopener noreferrer">
         <MessageCircle className="h-4 w-4" />
         Chat with Support
@@ -49,7 +56,7 @@ export function ContactSupportButton({ className, variant = "outline", size = "d
 
 export function BookACallButton({ className, variant = "default", size = "default" }: CtaProps) {
   return (
-    <Button asChild variant={variant} size={size} className={cn("gap-2", className)}>
+    <Button asChild variant={variant} size={size} className={cn("gap-2", PRESS_ANIMATION_CLASSES, className)}>
       <a href={buildWhatsAppUrl(BOOK_A_CALL_MESSAGE)} target="_blank" rel="noopener noreferrer">
         <PhoneCall className="h-4 w-4" />
         Book a Call

@@ -26,10 +26,13 @@ import type { Internship } from "@/types";
 interface InternshipCardProps {
   internship: Internship & {
     company_name?: string;
-    company_logo_url?: string;
+    // Match the Internship type: `company_logo_url?: string | null`.
+    // Narrowing this to `string | undefined` here would reject valid
+    // Internship objects whose `company_logo_url` is `null`.
+    company_logo_url?: string | null;
     is_saved?: boolean;
     applicant_count?: number;
-    rating?: number;
+    rating?: number | null;
     review_count?: number;
   };
   onApply?: (id: string) => void;
@@ -99,7 +102,11 @@ export function InternshipCard({
     return text.slice(0, maxLength).trim() + "...";
   };
 
-  const formatStipend = (amount?: number) => {
+  // Accept `number | null | undefined` — the Internship type declares
+  // `stipend: number | null` (DB column is nullable), and older call sites
+  // may pass `undefined`. Both should fall through to the "Competitive" /
+  // "Unpaid" fallback when absent.
+  const formatStipend = (amount?: number | null) => {
     if (!amount) return is_paid ? "Competitive" : "Unpaid";
     return `Rs. ${amount.toLocaleString()}/mo`;
   };
@@ -257,9 +264,9 @@ export function InternshipCard({
                   <Button
                     onClick={handleApply}
                     disabled={isApplying}
-                    className={`rounded-lg transition-all duration-300 ${
-                      isHovered 
-                        ? "bg-primary shadow-lg shadow-primary/25" 
+                    className={`rounded-lg transition-all duration-300 motion-safe:active:scale-[0.97] motion-safe:hover:scale-[1.02] ${
+                      isHovered
+                        ? "bg-primary shadow-lg shadow-primary/25"
                         : ""
                     }`}
                   >

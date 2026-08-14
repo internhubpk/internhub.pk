@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -16,9 +15,12 @@ import { Badge } from "@/components/ui/badge";
 import { SiteNav } from "@/components/layout/site-nav";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
-import { ShaderBackgroundClient as ShaderBackground } from "@/components/shared/shader-background-client";
-import { 
-  useTenant, 
+// Public-page-only opt-in click animation components. NOT used by any
+// dashboard — see the component file for why they're separate from the
+// shared `<Button>`.
+import { InteractiveButton } from "@/components/public/interactive";
+import {
+  useTenant,
   useTenantBranding,
 } from "@/components/providers/tenant-provider";
 import {
@@ -275,26 +277,33 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
       initial={{ opacity: 0, x: 30 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.8, delay: 0.3 }}
-      className="relative"
+      // `overflow-hidden` clips the glow effect to the preview's own box so
+      // the negative-inset decorative layer can never push the page wider
+      // than the viewport on mobile (previously the `-inset-4` glow was a
+      // major cause of right-side horizontal overflow at 360-414px).
+      className="relative overflow-hidden"
     >
-      {/* Glow effect - uses tenant color */}
-      <div 
-        className="absolute -inset-2 sm:-inset-4 rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl opacity-50 sm:opacity-60"
+      {/* Glow effect - uses tenant color.
+          Contained by `overflow-hidden` above; inset-0 (not negative) so it
+          stays inside the preview box. Opacity bumped slightly to compensate
+          for no longer bleeding outside. */}
+      <div
+        className="absolute inset-0 rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl opacity-60 sm:opacity-70"
         style={{
           background: `linear-gradient(to right, ${primaryColor}20, ${primaryColor}15, ${primaryColor}10)`
         }}
       />
-      
+
       {/* Main dashboard card */}
       <div className="relative bg-white dark:bg-gray-900 rounded-xl sm:rounded-2xl shadow-xl sm:shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         {/* Header bar */}
         <div className="bg-gray-50 dark:bg-gray-800 px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 shrink-0">
             <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-400" />
             <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-400" />
             <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-400" />
           </div>
-          <div className="flex-1 mx-2 sm:mx-4">
+          <div className="flex-1 mx-2 sm:mx-4 min-w-0">
             <div className="bg-gray-200 dark:bg-gray-700 rounded-md h-5 sm:h-6 max-w-[120px] sm:max-w-xs mx-auto" />
           </div>
         </div>
@@ -325,7 +334,7 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
                   initial={{ height: 0 }}
                   animate={{ height: `${h}%` }}
                   transition={{ duration: 0.5, delay: 0.8 + i * 0.1 }}
-                  className="flex-1 rounded-t-sm"
+                  className="flex-1 rounded-t-sm min-w-0"
                   style={{
                     background: `linear-gradient(to top, ${primaryColor}, ${primaryColor}99)`
                   }}
@@ -338,7 +347,7 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center gap-2 sm:gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div 
+                <div
                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0"
                   style={{ backgroundColor: `${primaryColor}15` }}
                 >
@@ -358,54 +367,70 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
   );
 }
 
-// Tenant-Specific Hero Section Component
-function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
+// Tenant-Specific Hero Section Component.
+// `branding` is the full return value of `useTenantBranding()` (a flat
+// object with primaryColor/secondaryColor/logo/name/tagline/description),
+// passed as a single `branding` prop from the parent. The parent already
+// calls `useTenantBranding()` once and threads the result through, so we
+// don't re-invoke the hook here.
+//
+// SHADER REMOVED: per user request, the landing hero no longer renders
+// <ShaderBackground /> (WebGPU/Aurora effects). The hero now uses a clean,
+// lightweight, professional design — a soft gradient background plus
+// subtle decorative orbs (CSS only, no JS, no canvas). The shader
+// component itself is preserved for use on the /login, /register, and
+// /support pages where it's still wanted.
+type Branding = ReturnType<typeof useTenantBranding>;
+function TenantHero({ branding }: { branding: Branding }) {
   const { tenant } = useTenant();
 
   return (
     <section
-      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
-      style={{ position: 'relative', zIndex: 1 }}
+      // `overflow-hidden` on the section clips the absolutely-positioned
+      // decorative orbs so they can never cause horizontal page scroll.
+      // Mobile-first: padding and min-height are tuned for small screens
+      // first, then scaled up at sm:/lg: breakpoints.
+      className="relative min-h-[70vh] sm:min-h-[80vh] lg:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
     >
-      {/* Ambient shader layer — kept subtle here so it never competes with
-          the tenant's own brand-colored orbs below. */}
-      <ShaderBackground intensity="low" />
-
-      {/* Background decorative elements using tenant colors - responsive sizes.
-          NOTE: orbs are confined to the section via overflow-hidden, and we
-          explicitly position them so they never push the layout wider than
-          the viewport on mobile (which previously caused horizontal
-          overflow / a left-clipped hero on small screens). */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
+      {/* Background decorative elements using tenant colors.
+          Mobile-first sizing: orbs are small on mobile (w-32/w-36) and
+          grow at sm:/lg:. They're positioned with positive offsets only
+          (no negative translate-x) so they stay inside the viewport on
+          360-414px screens. The center orb uses `left-1/2 -translate-x-1/2`
+          which is safe because its width is capped to viewport width. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
-          className="absolute top-10 left-4 sm:left-10 w-40 h-40 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl"
+          className="absolute top-8 left-4 sm:left-10 w-32 h-32 sm:w-56 sm:h-56 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl"
           style={{ backgroundColor: `${branding.primaryColor}26` }}
         />
         <div
-          className="absolute bottom-10 right-4 sm:right-10 w-44 h-44 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl"
+          className="absolute bottom-8 right-4 sm:right-10 w-36 h-36 sm:w-64 sm:h-64 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl"
           style={{ backgroundColor: `${branding.secondaryColor}26` }}
         />
+        {/* Center orb — capped to viewport width via `max-w-[90vw]` so it
+            can never push past the right edge even on a 360px screen. */}
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full blur-2xl sm:blur-3xl"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[240px] h-[240px] sm:w-[440px] sm:h-[440px] lg:w-[720px] lg:h-[720px] max-w-[90vw] max-h-[90vw] rounded-full blur-2xl sm:blur-3xl"
           style={{ background: `linear-gradient(to right, ${branding.primaryColor}1a, ${branding.secondaryColor}1a)` }}
         />
       </div>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 pb-12 sm:pb-16 relative z-10">
-        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-center">
-          {/* Left Content */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-20 pb-10 sm:pb-16 relative z-10 w-full">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+          {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
-            className="max-w-xl mx-auto lg:mx-0 min-w-0"
+            // `w-full` + `max-w-xl` + `mx-auto` keeps content centered and
+            // constrained on mobile. `min-w-0` prevents flex blowout.
+            className="w-full max-w-xl mx-auto lg:mx-0 min-w-0 text-center lg:text-left"
           >
             {/* Tenant Badge */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="text-center lg:text-left"
             >
               <Badge
                 variant="secondary"
@@ -415,15 +440,18 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
                   color: branding.primaryColor,
                 }}
               >
-                <Sparkles className="mr-2 h-4 w-4" />
+                <Sparkles className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 {branding.name} Portal
               </Badge>
             </motion.div>
 
-            {/* Headline - Responsive text sizes and centering on mobile */}
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] sm:leading-[1.1] mb-4 sm:mb-6 text-center lg:text-left">
+            {/* Headline — mobile-first smaller, scales up at sm:/lg:.
+                `text-balance` would be nice but isn't in Tailwind v3; the
+                responsive sizes + leading-tight keep lines from getting
+                too long on a 360px screen. */}
+            <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight leading-[1.15] sm:leading-[1.1] mb-4 sm:mb-6">
               <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Welcome to</motion.span>
-              <motion.span 
+              <motion.span
                 className="block mt-1 sm:mt-2 bg-clip-text text-transparent"
                 variants={heroLine}
                 custom={1}
@@ -438,27 +466,27 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
               <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Internship Portal</motion.span>
             </h1>
 
-            {/* Subtitle - uses tenant tagline/description - centered on mobile */}
-            <motion.p 
-              variants={heroLine} 
-              custom={3} 
-              initial="hidden" 
+            {/* Subtitle — mobile-first smaller text, constrained width */}
+            <motion.p
+              variants={heroLine}
+              custom={3}
+              initial="hidden"
               animate="show"
-              className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left"
+              className="text-sm sm:text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-prose sm:max-w-lg mx-auto lg:mx-0"
             >
-              {branding.tagline || branding.description || 
+              {branding.tagline || branding.description ||
                 "Manage your internship journey from application to completion."}
             </motion.p>
 
-            {/* CTA Buttons - Full width on mobile, centered */}
-            <motion.div 
-              variants={heroLine} 
-              custom={4} 
-              initial="hidden" 
+            {/* CTA Buttons — full width on mobile, centered, row on sm+ */}
+            <motion.div
+              variants={heroLine}
+              custom={4}
+              initial="hidden"
               animate="show"
               className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start"
             >
-              <Button
+              <InteractiveButton
                 size="lg"
                 asChild
                 className={`${HERO_BUTTON_SIZE} text-white shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group`}
@@ -469,26 +497,26 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
               >
                 <Link href="/login">
                   Sign In to Portal
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
-              </Button>
-              
+              </InteractiveButton>
+
               <QuickTourDialog buttonClassName={HERO_BUTTON_SIZE} />
             </motion.div>
 
-            {/* Trust Badges - tenant specific - centered on mobile */}
+            {/* Trust Badges — centered on mobile, wrap on small screens */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.5 }}
-              className="flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 pt-4 border-t border-border/50"
+              className="flex flex-wrap items-center justify-center lg:justify-start gap-3 sm:gap-6 pt-4 border-t border-border/50"
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                <Shield className="h-4 w-4" style={{ color: branding.primaryColor }} />
+                <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />
                 <span>Powered by <strong className="text-foreground">InternHub</strong></span>
               </div>
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                <TrendingUp className="h-4 w-4" style={{ color: branding.primaryColor }} />
+                <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />
                 <span><strong className="text-foreground">{tenant.features.maxStudents === Infinity ? 'Unlimited' : `${tenant.features.maxStudents.toLocaleString()}+`}</strong> Students</span>
               </div>
             </motion.div>
@@ -504,56 +532,66 @@ function TenantHero({ branding }: ReturnType<typeof useTenantBranding>) {
   );
 }
 
-// Main Platform Hero Section (original) - Fully Responsive
+// Main Platform Hero Section.
+//
+// SHADER REMOVED: per user request, the main landing hero no longer
+// renders <ShaderBackground /> (WebGPU/Aurora effects). The hero now uses
+// a clean, lightweight, professional design — a soft gradient background
+// plus subtle decorative orbs (CSS only, no JS, no canvas). This keeps
+// the hero fast (no WebGPU init, no dynamic import), accessible (no
+// motion concerns from the shader), and reliable across all browsers.
+//
+// MOBILE-FIRST: the layout is designed for 360-414px screens first and
+// scales up. Key fixes for the previous right-side overflow:
+//  - All decorative orbs use positive offsets (no negative translate-x
+//    outside the viewport) and are capped to viewport width.
+//  - The center orb uses `max-w-[90vw]` so it can never push past the
+//    right edge even at 360px.
+//  - Buttons are full-width on mobile (`w-full`) and stack vertically;
+//    they switch to auto-width side-by-side at the `sm:` breakpoint.
+//  - Text sizes scale up at sm:/lg: instead of starting large and
+//    shrinking — `text-3xl` on mobile, `lg:text-6xl` on desktop.
+//  - `min-w-0` on flex children prevents flex blowout from long words.
 function MainHero() {
   return (
-    <section 
-      className="relative min-h-[80vh] sm:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
-      style={{ position: 'relative', zIndex: 1 }}
+    <section
+      className="relative min-h-[70vh] sm:min-h-[80vh] lg:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
     >
-      {/* Ambient shader layer — subtle, theme-aware, sits behind the
-          existing decorative orbs. Never intercepts pointer events and
-          never grows past the section bounds (overflow-hidden on the
-          section + inset-0 on the shader wrapper). */}
-      <ShaderBackground intensity="high" />
-
-      {/* Background decorative elements - responsive sizes.
-          Orbs are kept inside the viewport on mobile (no negative
-          translate) so the hero doesn't horizontally overflow on
-          small screens. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ position: 'absolute' }}>
-        <div className="absolute top-10 left-4 sm:left-10 w-40 h-40 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72 bg-blue-400/10 rounded-full blur-2xl sm:blur-3xl" />
-        <div className="absolute bottom-10 right-4 sm:right-10 w-44 h-44 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-96 lg:h-96 bg-purple-400/10 rounded-full blur-2xl sm:blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] sm:w-[500px] sm:h-[500px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-2xl sm:blur-3xl" />
+      {/* Background decorative elements — CSS-only (no shader).
+          Mobile-first sizes; orbs grow at sm:/lg:. No negative translates. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-8 left-4 sm:left-10 w-32 h-32 sm:w-56 sm:h-56 lg:w-72 lg:h-72 bg-blue-400/10 rounded-full blur-2xl sm:blur-3xl" />
+        <div className="absolute bottom-8 right-4 sm:right-10 w-36 h-36 sm:w-64 sm:h-64 lg:w-96 lg:h-96 bg-purple-400/10 rounded-full blur-2xl sm:blur-3xl" />
+        {/* Center orb — capped to viewport width so it can't cause overflow. */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[240px] h-[240px] sm:w-[440px] sm:h-[440px] lg:w-[720px] lg:h-[720px] max-w-[90vw] max-h-[90vw] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-2xl sm:blur-3xl" />
       </div>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 pb-12 sm:pb-16 relative z-10">
-        <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-center">
-          {/* Left Content */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-20 pb-10 sm:pb-16 relative z-10 w-full">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+          {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
-            className="max-w-xl mx-auto lg:mx-0 min-w-0"
+            className="w-full max-w-xl mx-auto lg:mx-0 min-w-0 text-center lg:text-left"
           >
             {/* Badge */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="text-center lg:text-left"
             >
               <Badge
                 variant="secondary"
                 className="mb-4 sm:mb-6 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer transition-colors inline-flex"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
+                <Sparkles className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 #1 Enterprise Internship Platform
               </Badge>
             </motion.div>
 
-            {/* Headline with gradient text - responsive and centered on mobile */}
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] sm:leading-[1.1] mb-4 sm:mb-6 text-center lg:text-left">
+            {/* Headline — mobile-first smaller, scales up at sm:/lg: */}
+            <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight leading-[1.15] sm:leading-[1.1] mb-4 sm:mb-6">
               <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Enterprise Internship</motion.span>
               <motion.span className="block mt-1 sm:mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent" variants={heroLine} custom={1} initial="hidden" animate="show">
                 Management for Modern
@@ -561,37 +599,37 @@ function MainHero() {
               <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Universities</motion.span>
             </h1>
 
-            {/* Subtitle - centered on mobile */}
-            <motion.p 
-              variants={heroLine} 
-              custom={3} 
-              initial="hidden" 
+            {/* Subtitle — mobile-first smaller, constrained width */}
+            <motion.p
+              variants={heroLine}
+              custom={3}
+              initial="hidden"
               animate="show"
-              className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0 text-center lg:text-left"
+              className="text-sm sm:text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-prose sm:max-w-lg mx-auto lg:mx-0"
             >
               Streamline your entire internship program with our multi-tenant SaaS platform.
               From student onboarding to certificate generation — all in one place.
             </motion.p>
 
-            {/* CTA Buttons - full width on mobile */}
-            <motion.div 
-              variants={heroLine} 
-              custom={4} 
-              initial="hidden" 
+            {/* CTA Buttons — full width on mobile, centered, row on sm+ */}
+            <motion.div
+              variants={heroLine}
+              custom={4}
+              initial="hidden"
               animate="show"
               className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start"
             >
-              <Button
+              <InteractiveButton
                 size="lg"
                 asChild
                 className={`${HERO_BUTTON_SIZE} bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 cursor-pointer group`}
               >
                 <Link href="/register">
                   Get Started Free
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
-              </Button>
-              
+              </InteractiveButton>
+
               <QuickTourDialog buttonClassName={HERO_BUTTON_SIZE} />
             </motion.div>
 
@@ -606,14 +644,14 @@ function MainHero() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.5 }}
-              className="flex flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-6 pt-4 border-t border-border/50"
+              className="flex flex-wrap items-center justify-center lg:justify-start gap-3 sm:gap-6 pt-4 border-t border-border/50"
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                <Shield className="h-4 w-4 text-emerald-500" />
+                <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
                 <span>Role-based access for <strong className="text-foreground">every stakeholder</strong></span>
               </div>
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                <TrendingUp className="h-4 w-4 text-blue-500" />
+                <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
                 <span><strong className="text-foreground">One platform</strong>, unlimited universities</span>
               </div>
             </motion.div>
@@ -635,7 +673,12 @@ export default function LandingPage() {
   const branding = useTenantBranding();
 
   return (
-    <div className="min-h-screen bg-background" style={{ overflowX: 'hidden' }}>
+    // `overflow-x-hidden` is intentionally NOT used here as the overflow fix.
+    // The hero sections handle their own overflow via `overflow-hidden` on
+    // the section element + viewport-capped decorative orbs. Masking
+    // overflow at the page wrapper would hide real layout bugs instead of
+    // fixing them.
+    <div className="min-h-screen bg-background">
       {/* Navigation */}
       <SiteNav />
 
@@ -887,17 +930,17 @@ export default function LandingPage() {
             </p>
 
             {/* CTA Button - full width on mobile */}
-            <Button
+            <InteractiveButton
               size="lg"
               asChild
-              className="w-full sm:w-auto h-12 sm:h-14 px-8 sm:px-10 text-sm sm:text-base font-semibold bg-white hover:bg-white/90 shadow-xl shadow-black/20 hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer group"
+              className="w-full sm:w-auto h-12 sm:h-14 px-8 sm:px-10 text-sm sm:text-base font-semibold bg-white hover:bg-white/90 shadow-xl shadow-black/20 hover:shadow-2xl transition-all duration-300 cursor-pointer group"
               style={{ color: branding.primaryColor }}
             >
               <Link href={isTenant ? "/login" : "/register"}>
                 {isTenant ? "Sign In Now" : "Start Free Trial"}
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
-            </Button>
+            </InteractiveButton>
 
             {/* Trust text - responsive sizing and wrapping */}
             <p className="mt-5 sm:mt-6 text-xs sm:text-sm text-white/60 flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap px-4">

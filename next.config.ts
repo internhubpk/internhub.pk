@@ -3,9 +3,6 @@ import pkg from "./package.json";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   reactStrictMode: false,
   // Expose the app version (from package.json) to the client bundle so
   // settings pages can display the real version instead of a hardcoded

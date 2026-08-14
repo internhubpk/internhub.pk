@@ -63,7 +63,14 @@ import {
   User,
 } from "lucide-react";
 
-// Default empty internship - will be populated from database
+// Default empty internship - will be populated from database.
+// NOTE: only fields that actually exist on the `Internship` type are
+// included here. The previous default included `university_id`,
+// `department_ids` (plural), `program_ids` (plural), and `requirements`
+// as a string — none of which exist on `Internship` (which has
+// `department_id` singular, `program_id` singular, and `requirements`
+// as `string[]`). Those phantom fields were silently ignored at runtime
+// but broke the type check now that `ignoreBuildErrors` is off.
 const DEFAULT_INTERNSHIP: Internship & {
   company_name: string;
   company_logo_url?: string;
@@ -71,28 +78,32 @@ const DEFAULT_INTERNSHIP: Internship & {
   company_website?: string;
   company_size?: string;
   company_industry?: string;
-  requirements?: string;
-  responsibilities?: string;
-  benefits?: string[];
   about_team?: string;
 } = {
   id: "",
   company_id: "",
-  university_id: "",
   title: "Loading...",
   description: "Please wait while we load the internship details.",
-  department_ids: [],
-  program_ids: [],
-  skills: [],
+  department_id: null,
+  program_id: null,
   location: null,
+  remote: false,
   is_remote: false,
   is_paid: false,
   stipend: null,
+  stipend_currency: "PKR",
   duration_weeks: 0,
-  start_date: "",
-  end_date: "",
-  vacancies: 0,
   status: "open" as const,
+  required_skills: [],
+  skills: [],
+  requirements: [],
+  benefits: [],
+  max_applicants: null,
+  vacancies: null,
+  current_applicants: 0,
+  start_date: null,
+  end_date: null,
+  application_deadline: null,
   created_by: "",
   created_at: "",
   updated_at: "",
@@ -119,9 +130,6 @@ export default function InternshipDetailPage() {
     company_website?: string;
     company_size?: string;
     company_industry?: string;
-    requirements?: string;
-    responsibilities?: string;
-    benefits?: string[];
     about_team?: string;
   }>(DEFAULT_INTERNSHIP);
   const [similarInternships, setSimilarInternships] = useState<(Internship & { company_name: string })[]>(DEFAULT_SIMILAR);
@@ -662,7 +670,7 @@ export default function InternshipDetailPage() {
         <div className="text-center space-y-4">
           <h1 className="text-2xl font-bold">Internship Not Found</h1>
           <p className="text-muted-foreground">The internship you're looking for doesn't exist.</p>
-          <Button asChild>
+          <Button asChild className="motion-safe:active:scale-[0.97] motion-safe:hover:scale-[1.01] transition-transform duration-150">
             <Link href="/marketplace">Back to Marketplace</Link>
           </Button>
         </div>
@@ -804,23 +812,6 @@ export default function InternshipDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Responsibilities */}
-            {internship.responsibilities && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Briefcase className="h-5 w-5 text-primary" />
-                    What You'll Do
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="whitespace-pre-line text-muted-foreground">
-                    {internship.responsibilities}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Requirements */}
             {internship.requirements && (
               <Card>
@@ -924,7 +915,7 @@ export default function InternshipDetailPage() {
                   ) : (
                     <Dialog open={showApplyModal} onOpenChange={setShowApplyModal}>
                       <DialogTrigger asChild>
-                        <Button size="lg" className="w-full text-base py-6">
+                        <Button size="lg" className="w-full text-base py-6 motion-safe:active:scale-[0.98] motion-safe:hover:scale-[1.01] transition-transform duration-150">
                           {user ? "Apply Now" : "Sign in to Apply"}
                           <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>

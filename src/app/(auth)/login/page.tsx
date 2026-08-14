@@ -498,7 +498,7 @@ function LoginForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full h-11 cursor-pointer rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all mt-2"
+          className="w-full h-11 cursor-pointer rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all mt-2 motion-safe:active:scale-[0.98] motion-safe:hover:scale-[1.01]"
         >
           {isLoading ? (
             <>
@@ -717,7 +717,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full h-11 cursor-pointer rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all mt-2"
+          className="w-full h-11 cursor-pointer rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all mt-2 motion-safe:active:scale-[0.98] motion-safe:hover:scale-[1.01]"
         >
           {isLoading ? (
             <>

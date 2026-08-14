@@ -182,7 +182,12 @@ interface BarChartCardProps {
     dataKey: string;
     color?: string;
     name?: string;
-    radius?: number[];
+    // Recharts' `Bar` component accepts `radius` as either a single number
+    // (applied to all four corners) or a 4-tuple `[topLeft, topRight,
+    // bottomRight, bottomLeft]`. The previous `number[]` type was too loose
+    // — recharts' TypeScript definitions reject arrays that aren't exactly
+    // length 4.
+    radius?: number | [number, number, number, number];
   }>;
   xAxisKey?: string;
   layout?: "vertical" | "horizontal";
@@ -364,8 +369,8 @@ export function AreaChartCard({
   title,
   description,
   data,
-  areas = lines,
   lines,
+  areas,
   xAxisKey = "name",
   height = 300,
   showGrid = true,
@@ -373,6 +378,10 @@ export function AreaChartCard({
   className,
   index = 0,
 }: AreaChartCardProps) {
+  // Default `areas` to `lines` after destructuring — TS doesn't allow
+  // `areas = lines` in the destructuring pattern because `lines` is
+  // declared after `areas` (TS2373). Resolving it here is equivalent
+  // and clearer about the fallback intent.
   const chartAreas = areas || lines;
 
   return (

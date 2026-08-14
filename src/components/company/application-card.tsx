@@ -42,6 +42,12 @@ interface ApplicationCardProps {
     position_title?: string;
     department?: string;
     program?: string;
+    // Joined fields populated by the applications API route when the
+    // application has been reviewed. Not on the base `Application` type
+    // because they're not in the DB `applications` table — they're
+    // computed/derived for display purposes only.
+    reviewed_at?: string | null;
+    company_response?: string | null;
   };
   onAccept?: (id: string, comments?: string) => Promise<void>;
   onReject?: (id: string, comments?: string) => Promise<void>;
@@ -49,10 +55,18 @@ interface ApplicationCardProps {
   compact?: boolean;
 }
 
+// Status display config. Keys MUST cover every value in the
+// `ApplicationStatus` union (`src/types/index.ts`):
+//   "pending" | "reviewing" | "accepted" | "rejected" | "withdrawn" | "under_review"
+// `reviewing` and `under_review` are aliased (newer code uses `reviewing`,
+// legacy code/DB rows may still use `under_review`); both render identically.
+// `accepted` is the canonical "approved" state — there is no `approved` key
+// because `approved` is not in the ApplicationStatus union.
 const statusConfig: Record<ApplicationStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string }> = {
   pending: { label: "Pending", variant: "secondary", color: "text-amber-600 bg-amber-50" },
+  reviewing: { label: "Reviewing", variant: "outline", color: "text-blue-600 bg-blue-50" },
   under_review: { label: "Under Review", variant: "outline", color: "text-blue-600 bg-blue-50" },
-  approved: { label: "Approved", variant: "default", color: "text-emerald-600 bg-emerald-50" },
+  accepted: { label: "Accepted", variant: "default", color: "text-emerald-600 bg-emerald-50" },
   rejected: { label: "Rejected", variant: "destructive", color: "text-red-600 bg-red-50" },
   withdrawn: { label: "Withdrawn", variant: "outline", color: "text-gray-600 bg-gray-50" },
 };
@@ -408,6 +422,12 @@ interface ApplicationDetailProps {
     department?: string;
     program?: string;
     university?: string;
+    // Joined fields populated by the applications API route when the
+    // application has been reviewed. Not on the base `Application` type
+    // because they're not in the DB `applications` table — they're
+    // computed/derived for display purposes only.
+    reviewed_at?: string | null;
+    company_response?: string | null;
   };
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;

@@ -70,10 +70,38 @@ export function WeeklyLogForm({
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [formData, setFormData] = useState<WeeklyLogFormData>({
-    ...defaultFormData,
-    ...initialData,
-    week_number: initialData?.week_number || currentWeek,
+  // Merge `defaultFormData` with `initialData` (a `Partial<WeeklyLog>`).
+  // `WeeklyLog.tasks_completed` is `string[]` (DB column), but
+  // `WeeklyLogFormData.tasks_completed` is a single `string` (the form
+  // textarea value). When `initialData.tasks_completed` is an array,
+  // join it with newlines so the textarea shows one task per line.
+  // Similarly, `WeeklyLog.challenges`/`learnings`/`next_week_goals` are
+  // `string | null` (nullable DB columns), but the form expects `string`
+  // — coerce null to "" so the textarea is empty rather than showing "null".
+  // Without this normalization, the spread would assign `string | null` to
+  // `string` fields and TS would reject it.
+  const [formData, setFormData] = useState<WeeklyLogFormData>(() => {
+    const initial = initialData ?? {};
+    const rawTasks = initial.tasks_completed;
+    const tasksCompleted =
+      typeof rawTasks === "string"
+        ? rawTasks
+        : Array.isArray(rawTasks)
+          ? rawTasks.join("\n")
+          : "";
+    const coerceStr = (v: string | null | undefined): string => v ?? "";
+    const coerceNum = (v: number | null | undefined, fallback: number): number =>
+      v ?? fallback;
+    return {
+      ...defaultFormData,
+      ...initial,
+      tasks_completed: tasksCompleted,
+      challenges: coerceStr(initial.challenges),
+      learnings: coerceStr(initial.learnings),
+      next_week_goals: coerceStr(initial.next_week_goals),
+      hours_worked: coerceNum(initial.hours_worked, defaultFormData.hours_worked),
+      week_number: initial.week_number || currentWeek,
+    };
   });
 
   // Calculate default date range for the week

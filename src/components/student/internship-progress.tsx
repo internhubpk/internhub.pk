@@ -22,6 +22,39 @@ interface InternshipProgressProps {
   className?: string;
 }
 
+// Helper functions
+function getUrgencyLevel(deadline?: string | null): "complete" | "pending" | "overdue" | "active" {
+  if (!deadline) return "pending";
+
+  const now = new Date();
+  const deadlineDate = new Date(deadline);
+  const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysUntil < 0) return "overdue";
+  if (daysUntil <= 3) return "overdue";
+  if (daysUntil <= 7) return "pending";
+  return "complete";
+}
+
+function getUrgencyLabel(deadline?: string | null): string {
+  if (!deadline) return "—";
+
+  const now = new Date();
+  const deadlineDate = new Date(deadline);
+  const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysUntil < 0) return "Overdue";
+  if (daysUntil === 0) return "Today";
+  if (daysUntil === 1) return "Tomorrow";
+  if (daysUntil <= 7) return `${daysUntil}d left`;
+  return `${daysUntil}d left`;
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 // Status color configurations
 const statusColors = {
   complete: "bg-emerald-500",
@@ -41,6 +74,25 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
   const currentWeek = progress.currentWeek ?? 0;
   const totalWeeks = progress.totalWeeks ?? 0;
   const weeksArray = Array.from({ length: totalWeeks }, (_, i) => i + 1);
+
+  // The progress object exposes both snake_case (required) and camelCase
+  // (optional alias) variants of these fields. Prefer the required
+  // snake_case form, fall back to the camelCase alias, then 0. This keeps
+  // the UI rendering correctly whether the API returns the canonical
+  // snake_case names or the older camelCase aliases.
+  const weeklyLogsSubmitted =
+    progress.weekly_logs_submitted ?? progress.weeklyLogsSubmitted ?? 0;
+  const weeklyLogsRequired =
+    progress.weekly_logs_expected ?? progress.weeklyLogsRequired ?? 0;
+  const evaluationsCompleted =
+    progress.evaluations_completed ?? progress.evaluationsCompleted ?? 0;
+  const evaluationsRequired =
+    progress.evaluations_expected ?? progress.evaluationsRequired ?? 0;
+  const percentComplete = progress.percentage ?? progress.percent_complete ?? 0;
+  // certificateStatus / transcriptStatus are optional strings; default to
+  // a status that the StatusBadge config knows about (see status-badge.tsx).
+  const certificateStatus = progress.certificateStatus ?? "not_issued";
+  const transcriptStatus = progress.transcriptStatus ?? "not_available";
   
   return (
     <Card className={className}>
@@ -60,15 +112,15 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
         <div className="space-y-2">
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>Overall Progress</span>
-            <span className="font-medium text-foreground">{progress.percentage}%</span>
+            <span className="font-medium text-foreground">{percentComplete}%</span>
           </div>
           <motion.div
             initial={{ width: 0 }}
-            animate={{ width: `${progress.percentage}%` }}
+            animate={{ width: `${percentComplete}%` }}
             transition={{ duration: 1, ease: "easeOut" }}
             className="relative"
           >
-            <Progress value={progress.percentage} className="h-3" />
+            <Progress value={percentComplete} className="h-3" />
           </motion.div>
         </div>
 
@@ -136,14 +188,17 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Activity Log</p>
               <p className="text-sm font-medium">
-                {progress.weeklyLogsSubmitted}/{progress.weeklyLogsRequired} submitted
+                {weeklyLogsSubmitted}/{weeklyLogsRequired} submitted
               </p>
             </div>
-            <Badge 
-              variant={progress.weeklyLogsSubmitted >= progress.weeklyLogsRequired ? "default" : "outline"}
+            <Badge
+              variant={weeklyLogsSubmitted >= weeklyLogsRequired ? "default" : "outline"}
               className="text-xs shrink-0"
             >
-              {Math.round((progress.weeklyLogsSubmitted / progress.weeklyLogsRequired) * 100)}%
+              {weeklyLogsRequired > 0
+                ? Math.round((weeklyLogsSubmitted / weeklyLogsRequired) * 100)
+                : 0}
+              %
             </Badge>
           </motion.div>
 
@@ -152,20 +207,20 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
             whileHover={{ scale: 1.02 }}
             className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
           >
-            <div className={`p-2 rounded-full ${statusColors[progress.evaluationsCompleted >= progress.evaluationsRequired ? "complete" : "pending"]}`}>
+            <div className={`p-2 rounded-full ${statusColors[evaluationsCompleted >= evaluationsRequired ? "complete" : "pending"]}`}>
               <UserCheck className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Evaluation</p>
               <p className="text-sm font-medium">
-                {progress.evaluationsCompleted}/{progress.evaluationsRequired} completed
+                {evaluationsCompleted}/{evaluationsRequired} completed
               </p>
             </div>
-            <Badge 
-              variant={progress.evaluationsCompleted >= progress.evaluationsRequired ? "default" : "secondary"}
+            <Badge
+              variant={evaluationsCompleted >= evaluationsRequired ? "default" : "secondary"}
               className="text-xs shrink-0"
             >
-              {progress.evaluationsCompleted >= progress.evaluationsRequired ? "Done" : "Pending"}
+              {evaluationsCompleted >= evaluationsRequired ? "Done" : "Pending"}
             </Badge>
           </motion.div>
 
@@ -181,7 +236,7 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
               <p className="text-xs text-muted-foreground">Certificate</p>
               <p className="text-sm font-medium">Completion Cert.</p>
             </div>
-            <StatusBadge status={progress.certificateStatus} className="text-xs shrink-0" />
+            <StatusBadge status={certificateStatus} className="text-xs shrink-0" />
           </motion.div>
 
           {/* Transcript Status */}
@@ -196,8 +251,8 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
               <p className="text-xs text-muted-foreground">Transcript</p>
               <p className="text-sm font-medium">Academic Record Update</p>
             </div>
-            <Badge variant={transcriptStatusConfig[progress.transcriptStatus].variant} className="text-xs shrink-0">
-              {transcriptStatusConfig[progress.transcriptStatus].label}
+            <Badge variant={(transcriptStatusConfig[transcriptStatus] ?? transcriptStatusConfig.not_available).variant} className="text-xs shrink-0">
+              {(transcriptStatusConfig[transcriptStatus] ?? transcriptStatusConfig.not_available).label}
             </Badge>
           </motion.div>
         </div>
@@ -234,39 +289,6 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
       </CardContent>
     </Card>
   );
-}
-
-// Helper functions
-function getUrgencyLevel(deadline?: string): "complete" | "pending" | "overdue" | "active" {
-  if (!deadline) return "pending";
-  
-  const now = new Date();
-  const deadlineDate = new Date(deadline);
-  const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  
-  if (daysUntil < 0) return "overdue";
-  if (daysUntil <= 3) return "overdue";
-  if (daysUntil <= 7) return "pending";
-  return "complete";
-}
-
-function getUrgencyLabel(deadline?: string): string {
-  if (!deadline) return "—";
-  
-  const now = new Date();
-  const deadlineDate = new Date(deadline);
-  const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  
-  if (daysUntil < 0) return "Overdue";
-  if (daysUntil === 0) return "Today";
-  if (daysUntil === 1) return "Tomorrow";
-  if (daysUntil <= 7) return `${daysUntil}d left`;
-  return `${daysUntil}d left`;
-}
-
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export default InternshipProgressCard;
