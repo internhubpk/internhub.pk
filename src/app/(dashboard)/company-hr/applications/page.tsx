@@ -101,6 +101,7 @@ interface Application {
   match_score: number;
   cover_letter: string;
   resume_url?: string | null;
+  additional_answers?: Record<string, string> | null;
   skills: string[];
   phone?: string | null;
   student_bio?: string;
@@ -112,6 +113,27 @@ interface Application {
 const DEFAULT_APPLICATIONS: Application[] = [];
 
 const DEFAULT_PROGRAMS = ["All Programs"];
+
+// Human-readable labels for the structured `additional_answers` JSONB
+// values stored on internship_applications. Keys mirror the field names
+// written by the marketplace apply modal (src/app/marketplace/[id]/page.tsx).
+const ADDITIONAL_ANSWER_LABELS: Record<
+  string,
+  Record<string, string>
+> = {
+  availability: {
+    immediately: "Immediately",
+    "2_weeks": "Within 2 weeks",
+    "1_month": "Within 1 month",
+    flexible: "Flexible",
+  },
+  workAuth: {
+    yes_citizen: "Yes, I am a citizen",
+    yes_visa: "Yes, I have a valid work visa",
+    sponsorship: "I need visa sponsorship",
+    no: "No",
+  },
+};
 
 export default function CompanyHRApplicationsPage() {
   const { profile } = useAuth();
@@ -153,6 +175,7 @@ export default function CompanyHRApplicationsPage() {
         match_score: 0, // not computed
         cover_letter: app.cover_letter,
         resume_url: app.resume_url || app.student?.cv_url,
+        additional_answers: app.additional_answers || null,
         skills: [],
         phone: app.student?.phone,
         student_bio: app.student?.bio || "",
@@ -499,7 +522,18 @@ export default function CompanyHRApplicationsPage() {
                         className="gap-1"
                         asChild
                       >
-                        <a href={selectedApplication.resume_url} target="_blank" rel="noopener noreferrer">
+                        {/* The `cvs` storage bucket is private, so
+                            resume_url is a storage PATH (not a URL).
+                            Hit the signed-URL endpoint, which
+                            authorizes via RLS and 302-redirects to a
+                            short-lived signed URL. Legacy external
+                            https URLs are passed through by the same
+                            endpoint. */}
+                        <a
+                          href={`/api/applications/${selectedApplication.id}/resume`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <Download className="h-3 w-3" /> Resume
                         </a>
                       </Button>
@@ -583,9 +617,52 @@ export default function CompanyHRApplicationsPage() {
                     <FileText className="h-4 w-4" /> Cover Letter
                   </h4>
                   <div className="p-4 bg-muted/30 rounded-lg text-sm whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                    {selectedApplication.cover_letter}
+                    {selectedApplication.cover_letter || (
+                      <span className="text-muted-foreground italic">
+                        No cover letter provided.
+                      </span>
+                    )}
                   </div>
                 </div>
+
+                {/* Additional Answers — availability, work authorization, etc.
+                    Rendered from the JSONB column populated by the marketplace
+                    apply modal. Only shown if the student answered at least
+                    one question. */}
+                {selectedApplication.additional_answers &&
+                  Object.keys(selectedApplication.additional_answers).length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <FileText className="h-4 w-4" /> Additional Answers
+                      </h4>
+                      <div className="p-4 bg-muted/30 rounded-lg space-y-3 text-sm">
+                        {selectedApplication.additional_answers.availability && (
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Availability
+                            </p>
+                            <p className="font-medium mt-0.5">
+                              {ADDITIONAL_ANSWER_LABELS.availability?.[
+                                selectedApplication.additional_answers.availability
+                              ] || selectedApplication.additional_answers.availability}
+                            </p>
+                          </div>
+                        )}
+                        {selectedApplication.additional_answers.workAuth && (
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Work Authorization
+                            </p>
+                            <p className="font-medium mt-0.5">
+                              {ADDITIONAL_ANSWER_LABELS.workAuth?.[
+                                selectedApplication.additional_answers.workAuth
+                              ] || selectedApplication.additional_answers.workAuth}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-3 pt-4 border-t">
@@ -933,7 +1010,7 @@ function ApplicationTable({
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
                               <a
-                                href={app.resume_url || "#"}
+                                href={app.resume_url ? `/api/applications/${app.id}/resume` : "#"}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={app.resume_url ? "" : "pointer-events-none opacity-50"}

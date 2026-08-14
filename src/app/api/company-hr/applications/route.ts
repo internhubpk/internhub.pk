@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
         company_id,
         cover_letter,
         resume_url,
+        additional_answers,
         status,
         applied_at,
         updated_at,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -32,6 +32,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { InternshipCard, InternshipCardSkeleton } from "@/components/marketplace/internship-card";
 import type { Internship } from "@/types";
+import { cn } from "@/lib/utils";
 import {
   MapPin,
   DollarSign,
@@ -47,6 +48,7 @@ import {
   ArrowRight,
   CheckCircle2,
   XCircle,
+  X,
   Upload,
   FileText,
   Heart,
@@ -129,9 +131,18 @@ export default function InternshipDetailPage() {
   const [hasExistingApplication, setHasExistingApplication] = useState(false);
   const [applicationData, setApplicationData] = useState({
     coverLetter: "",
+    // Holds the Supabase Storage PATH (e.g. `cvs/<user_id>/123-resume.pdf`)
+    // of the uploaded resume. Empty string until the upload completes.
     resumeUrl: "",
+    resumeFileName: "", // original file name, shown in the success chip
     additionalAnswers: {} as Record<string, string>,
   });
+  // Upload UI state — separate from applicationData so we can show
+  // progress / validation errors without polluting the form payload.
+  const [isUploadingResume, setIsUploadingResume] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get internship ID from URL params
@@ -248,6 +259,152 @@ export default function InternshipDetailPage() {
     }
   }, [internship]);
 
+  // ============================================================
+  // RESUME UPLOAD
+  // ------------------------------------------------------------
+  // Uploads the selected file to the `cvs` Supabase Storage bucket
+  // (private; RLS policies in migration 0003 allow the owner student
+  // to upload, and company HR / assigned supervisors to read).
+  //
+  // Path convention enforced by the bucket's RLS policies:
+  //   `cvs/<student_user_id>/<filename>`
+  // The student_user_id prefix MUST match auth.uid() or the insert
+  // policy rejects the upload.
+  //
+  // Validation:
+  //   - PDF, DOC, DOCX only (matches bucket allowed_mime_types)
+  //   - Max 5 MB (matches bucket file_size_limit)
+  // ============================================================
+  const MAX_RESUME_SIZE = 5 * 1024 * 1024; // 5 MB
+  const ALLOWED_RESUME_EXT = [".pdf", ".doc", ".docx"];
+
+  const validateResumeFile = useCallback((file: File): string | null => {
+    const lowerName = file.name.toLowerCase();
+    const hasValidExt = ALLOWED_RESUME_EXT.some((ext) => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      return "Only PDF, DOC, or DOCX files are allowed.";
+    }
+    if (file.size > MAX_RESUME_SIZE) {
+      return `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`;
+    }
+    if (file.size === 0) {
+      return "File is empty. Please choose a valid resume.";
+    }
+    return null;
+  }, []);
+
+  const uploadResume = useCallback(
+    async (file: File): Promise<void> => {
+      if (!user) {
+        setUploadError("Please sign in to upload your resume.");
+        return;
+      }
+
+      const validationError = validateResumeFile(file);
+      if (validationError) {
+        setUploadError(validationError);
+        return;
+      }
+
+      setIsUploadingResume(true);
+      setUploadError(null);
+      try {
+        const supabase = createClient();
+
+        // Sanitize the filename — keep alphanumerics, dots, dashes,
+        // underscores; collapse everything else to underscore. Trim to
+        // 80 chars to avoid path-length issues.
+        const safeName = (file.name || "resume.pdf")
+          .replace(/[^a-zA-Z0-9._-]/g, "_")
+          .slice(0, 80);
+        const timestamp = Date.now();
+        // Path MUST start with the user's id — the `cvs_insert` RLS
+        // policy checks (storage.foldername(name))[1] = auth.uid().
+        const storagePath = `${user.id}/${timestamp}-${safeName}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("cvs")
+          .upload(storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "application/octet-stream",
+          });
+
+        if (uploadErr) {
+          console.error("Resume upload error:", uploadErr);
+          setUploadError(
+            uploadErr.message?.includes("policy")
+              ? "Upload blocked by storage policy. Please sign in again and retry."
+              : `Upload failed: ${uploadErr.message}`
+          );
+          return;
+        }
+
+        // Store the storage PATH (not a public URL — the cvs bucket is
+        // private). The HR dashboard fetches a signed URL on demand via
+        // /api/applications/[id]/resume.
+        setApplicationData((prev) => ({
+          ...prev,
+          resumeUrl: storagePath,
+          resumeFileName: file.name,
+        }));
+      } catch (err) {
+        console.error("Resume upload exception:", err);
+        setUploadError(
+          err instanceof Error ? err.message : "Failed to upload resume."
+        );
+      } finally {
+        setIsUploadingResume(false);
+      }
+    },
+    [user, validateResumeFile]
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        uploadResume(file);
+      }
+      // Reset the input value so the same file can be selected again
+      // after a validation failure (otherwise onChange won't fire twice
+      // for the same filename).
+      if (e.target) e.target.value = "";
+    },
+    [uploadResume]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) {
+        uploadResume(file);
+      }
+    },
+    [uploadResume]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleRemoveResume = useCallback(() => {
+    setApplicationData((prev) => ({
+      ...prev,
+      resumeUrl: "",
+      resumeFileName: "",
+    }));
+    setUploadError(null);
+  }, []);
+
   const handleSubmitApplication = async () => {
     // Require authentication — non-students are blocked from applying.
     if (!user) {
@@ -280,12 +437,35 @@ export default function InternshipDetailPage() {
     try {
       const supabase = createClient();
 
+      // Build the additional_answers JSON payload. Only include keys
+      // that have a non-empty value so we don't store `{availability: ""}`
+      // in the DB. Empty object becomes NULL at the DB level.
+      const answeredKeys = Object.keys(applicationData.additionalAnswers).filter(
+        (k) => {
+          const v = applicationData.additionalAnswers[k];
+          return typeof v === "string" && v.trim().length > 0;
+        }
+      );
+      const additionalAnswersJson =
+        answeredKeys.length > 0
+          ? answeredKeys.reduce<Record<string, string>>((acc, k) => {
+              acc[k] = applicationData.additionalAnswers[k];
+              return acc;
+            }, {})
+          : null;
+
       // Insert into internship_applications.
       // The table schema (migration 0001) requires:
       //   internship_id, student_user_id, company_id
-      // and accepts cover_letter + resume_url as optional fields.
-      // `status` defaults to 'pending' and applied_at/updated_at default
-      // to now() at the DB level.
+      // and accepts cover_letter, resume_url, additional_answers as
+      // optional fields. `status` defaults to 'pending' and
+      // applied_at/updated_at default to now() at the DB level.
+      //
+      // `resume_url` holds the Supabase Storage PATH inside the `cvs`
+      // bucket (e.g. `<user_id>/1234567890-resume.pdf`). The HR
+      // dashboard fetches a signed URL on demand via
+      // /api/applications/[id]/resume — the `cvs` bucket is private,
+      // so we never store a publicly-accessible URL.
       const { error } = await supabase
         .from("internship_applications")
         .insert({
@@ -293,11 +473,8 @@ export default function InternshipDetailPage() {
           student_user_id: user.id,
           company_id: internship.company_id,
           cover_letter: applicationData.coverLetter || null,
-          // The "resume" is currently just a filename captured client-
-          // side. Real resume upload is a separate feature — for now we
-          // store the filename so the company HR can at least see what
-          // the student named the file. NULL when no file was selected.
           resume_url: applicationData.resumeUrl || null,
+          additional_answers: additionalAnswersJson,
           status: "pending",
           applied_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -328,6 +505,47 @@ export default function InternshipDetailPage() {
         // The RPC may not exist on older deployments — silently ignore.
       }
 
+      // Best-effort: notify every company HR / admin attached to this
+      // company that a new application came in. Failures are non-fatal —
+      // the application row itself is already inserted; we just don't
+      // surface a bell-icon alert to the HR if this insert fails.
+      try {
+        const { data: companyUsers } = await supabase
+          .from("company_users")
+          .select("user_id")
+          .eq("company_id", internship.company_id)
+          .eq("is_active", true);
+
+        const hrUserIds = (companyUsers || []).map((u) => u.user_id);
+        if (hrUserIds.length > 0) {
+          const studentName =
+            profile?.full_name ||
+            profile?.first_name ||
+            user.email?.split("@")[0] ||
+            "A student";
+          await supabase.from("notifications").insert(
+            hrUserIds.map((userId) => ({
+              user_id: userId,
+              title: "New internship application",
+              message: `${studentName} applied to "${internship.title}".`,
+              category: "application",
+              type: "application",
+              priority: "high",
+              is_read: false,
+              action_url: `/company-hr/applications`,
+              metadata: {
+                application_internship_id: internshipId,
+                application_internship_title: internship.title,
+                student_user_id: user.id,
+                student_name: studentName,
+              },
+            }))
+          );
+        }
+      } catch (notifErr) {
+        console.debug("Failed to send application notification to HR:", notifErr);
+      }
+
       setHasExistingApplication(true);
       toast.success("Application submitted!", {
         description: "You can track its status from your dashboard.",
@@ -341,8 +559,10 @@ export default function InternshipDetailPage() {
       setApplicationData({
         coverLetter: "",
         resumeUrl: "",
+        resumeFileName: "",
         additionalAnswers: {},
       });
+      setUploadError(null);
     } catch (error) {
       console.error("Error submitting application:", error);
       toast.error("Couldn't submit application", {
@@ -704,37 +924,111 @@ export default function InternshipDetailPage() {
                           </div>
                         ) : (
                           <div className="py-4 space-y-6">
-                            {/* Resume Upload */}
+                            {/* Resume Upload — REAL upload to Supabase Storage `cvs` bucket. */}
                             <div className="space-y-2">
                               <Label htmlFor="resume-upload" className="font-medium flex items-center gap-2">
                                 <FileText className="h-4 w-4" />
                                 Resume/CV *
                               </Label>
-                              <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                                <p className="text-sm font-medium">Click to upload or drag and drop</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  PDF, DOC, DOCX (Max 5MB)
-                                </p>
-                                <input
-                                  type="file"
-                                  id="resume-upload"
-                                  className="hidden"
-                                  accept=".pdf,.doc,.docx"
-                                  onChange={(e) => {
-                                    if (e.target.files?.[0]) {
-                                      setApplicationData(prev => ({
-                                        ...prev,
-                                        resumeUrl: e.target.files![0].name
-                                      }));
+
+                              {/* Hidden file input — triggered by click on the dropzone
+                                  OR by the implicit label htmlFor binding (accessibility). */}
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                id="resume-upload"
+                                className="hidden"
+                                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                onChange={handleFileInputChange}
+                                disabled={isUploadingResume}
+                              />
+
+                              {/* DROPZONE
+                                  - Click anywhere → opens file picker (was missing before).
+                                  - Drag-and-drop → supported via onDrop / onDragOver / onDragLeave.
+                                  - Hidden when a file has been uploaded successfully (replaced
+                                    by the success chip below). */}
+                              {!applicationData.resumeUrl && (
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label="Upload resume — click or drag and drop a PDF, DOC, or DOCX file"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      fileInputRef.current?.click();
                                     }
                                   }}
-                                />
-                              </div>
-                              {applicationData.resumeUrl && (
-                                <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950 rounded-lg text-green-700 dark:text-green-400 text-sm">
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  {applicationData.resumeUrl}
+                                  onDrop={handleDrop}
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  className={cn(
+                                    "border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer",
+                                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                                    isDragOver
+                                      ? "border-primary bg-primary/5"
+                                      : uploadError
+                                      ? "border-destructive/60 bg-destructive/5 hover:border-destructive"
+                                      : "border-border hover:border-primary/50 hover:bg-muted/40",
+                                    isUploadingResume && "opacity-60 pointer-events-none"
+                                  )}
+                                >
+                                  {isUploadingResume ? (
+                                    <>
+                                      <Loader2 className="h-8 w-8 mx-auto text-primary mb-2 animate-spin" />
+                                      <p className="text-sm font-medium">Uploading…</p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Please wait while your resume is uploaded.
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload
+                                        className={cn(
+                                          "h-8 w-8 mx-auto mb-2 transition-colors",
+                                          isDragOver ? "text-primary" : "text-muted-foreground"
+                                        )}
+                                      />
+                                      <p className="text-sm font-medium">
+                                        {isDragOver
+                                          ? "Drop your resume here"
+                                          : "Click to upload or drag and drop"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        PDF, DOC, DOCX (Max 5 MB)
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Upload error */}
+                              {uploadError && (
+                                <div className="flex items-start gap-2 p-2 bg-destructive/10 dark:bg-destructive/20 rounded-lg text-destructive text-sm">
+                                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                                  <span>{uploadError}</span>
+                                </div>
+                              )}
+
+                              {/* Success chip — shows the uploaded file name + remove button.
+                                  Replaces the dropzone once a file has been uploaded. */}
+                              {applicationData.resumeUrl && applicationData.resumeFileName && (
+                                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-lg text-green-700 dark:text-green-400 text-sm">
+                                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                  <FileText className="h-4 w-4 shrink-0" />
+                                  <span className="truncate flex-1 font-medium">
+                                    {applicationData.resumeFileName}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleRemoveResume}
+                                    disabled={isSubmitting}
+                                    aria-label="Remove uploaded resume"
+                                    className="text-green-700 dark:text-green-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -761,7 +1055,7 @@ export default function InternshipDetailPage() {
                               </p>
                             </div>
 
-                            {/* Additional Questions (if any) */}
+                            {/* Additional Questions — saved to additional_answers JSONB column. */}
                             <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
                               <h4 className="font-medium text-sm">Additional Questions</h4>
 
@@ -769,12 +1063,15 @@ export default function InternshipDetailPage() {
                                 <Label htmlFor="availability" className="text-sm">
                                   When can you start? *
                                 </Label>
-                                <Select onValueChange={(value) =>
-                                  setApplicationData((prev) => ({
-                                    ...prev,
-                                    additionalAnswers: { ...prev.additionalAnswers, availability: value },
-                                  }))
-                                }>
+                                <Select
+                                  value={applicationData.additionalAnswers.availability || ""}
+                                  onValueChange={(value) =>
+                                    setApplicationData((prev) => ({
+                                      ...prev,
+                                      additionalAnswers: { ...prev.additionalAnswers, availability: value },
+                                    }))
+                                  }
+                                >
                                   <SelectTrigger id="availability">
                                     <SelectValue placeholder="Select your availability" />
                                   </SelectTrigger>
@@ -791,12 +1088,15 @@ export default function InternshipDetailPage() {
                                 <Label htmlFor="work-authorization" className="text-sm">
                                   Are you authorized to work in this country? *
                                 </Label>
-                                <Select onValueChange={(value) =>
-                                  setApplicationData((prev) => ({
-                                    ...prev,
-                                    additionalAnswers: { ...prev.additionalAnswers, workAuth: value },
-                                  }))
-                                }>
+                                <Select
+                                  value={applicationData.additionalAnswers.workAuth || ""}
+                                  onValueChange={(value) =>
+                                    setApplicationData((prev) => ({
+                                      ...prev,
+                                      additionalAnswers: { ...prev.additionalAnswers, workAuth: value },
+                                    }))
+                                  }
+                                >
                                   <SelectTrigger id="work-authorization">
                                     <SelectValue placeholder="Select an option" />
                                   </SelectTrigger>
@@ -816,13 +1116,18 @@ export default function InternshipDetailPage() {
                           <Button
                             variant="outline"
                             onClick={() => setShowApplyModal(false)}
+                            disabled={isSubmitting}
                           >
                             Cancel
                           </Button>
                           {user && (!profile?.role || profile.role === "student") && (
                             <Button
                               onClick={handleSubmitApplication}
-                              disabled={!applicationData.resumeUrl || isSubmitting}
+                              disabled={
+                                !applicationData.resumeUrl ||
+                                isUploadingResume ||
+                                isSubmitting
+                              }
                               className="min-w-[120px]"
                             >
                               {isSubmitting ? (

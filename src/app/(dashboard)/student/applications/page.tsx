@@ -63,6 +63,8 @@ interface Application {
   company_id?: string;
   status: "pending" | "reviewing" | "accepted" | "rejected" | "withdrawn";
   cover_letter?: string;
+  resume_url?: string | null;
+  additional_answers?: Record<string, string> | null;
   applied_at: string;
   updated_at: string;
   // Extended info
@@ -80,6 +82,24 @@ interface ApplicationTimeline {
   description: string;
   type: "applied" | "reviewing" | "decision" | "withdrawn";
 }
+
+// Human-readable labels for the structured `additional_answers` JSONB
+// values stored on internship_applications. Keys mirror the field names
+// written by the marketplace apply modal (src/app/marketplace/[id]/page.tsx).
+const STUDENT_ANSWER_LABELS: Record<string, Record<string, string>> = {
+  availability: {
+    immediately: "Immediately",
+    "2_weeks": "Within 2 weeks",
+    "1_month": "Within 1 month",
+    flexible: "Flexible",
+  },
+  workAuth: {
+    yes_citizen: "Yes, I am a citizen",
+    yes_visa: "Yes, I have a valid work visa",
+    sponsorship: "I need visa sponsorship",
+    no: "No",
+  },
+};
 
 export default function StudentApplicationsPage() {
   const { user } = useAuth();
@@ -137,6 +157,8 @@ export default function StudentApplicationsPage() {
           company_id: app.internships?.company_id,
           status: app.status,
           cover_letter: app.cover_letter,
+          resume_url: app.resume_url || null,
+          additional_answers: app.additional_answers || null,
           applied_at: app.applied_at,
           updated_at: app.updated_at,
           location: app.internships?.location,
@@ -682,6 +704,54 @@ export default function StudentApplicationsPage() {
                     <h3 className="font-semibold">Your Cover Letter</h3>
                     <div className="p-4 rounded-lg border bg-card whitespace-pre-wrap text-sm">
                       {detailApplication.cover_letter}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resume + Additional Answers summary */}
+                {(detailApplication.resume_url ||
+                  (detailApplication.additional_answers &&
+                    Object.keys(detailApplication.additional_answers).length > 0)) && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">Your Submission</h3>
+                    <div className="p-4 rounded-lg border bg-card space-y-3 text-sm">
+                      {detailApplication.resume_url && (
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-primary" />
+                          <span className="text-muted-foreground">Resume:</span>
+                          {/* Use the same signed-URL endpoint so students
+                              can re-download their own CV from the private
+                              `cvs` bucket. */}
+                          <a
+                            href={`/api/applications/${detailApplication.id}/resume`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-medium"
+                          >
+                            View resume
+                          </a>
+                        </div>
+                      )}
+                      {detailApplication.additional_answers?.availability && (
+                        <div>
+                          <span className="text-muted-foreground">Availability: </span>
+                          <span className="font-medium">
+                            {STUDENT_ANSWER_LABELS.availability?.[
+                              detailApplication.additional_answers.availability
+                            ] || detailApplication.additional_answers.availability}
+                          </span>
+                        </div>
+                      )}
+                      {detailApplication.additional_answers?.workAuth && (
+                        <div>
+                          <span className="text-muted-foreground">Work authorization: </span>
+                          <span className="font-medium">
+                            {STUDENT_ANSWER_LABELS.workAuth?.[
+                              detailApplication.additional_answers.workAuth
+                            ] || detailApplication.additional_answers.workAuth}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
