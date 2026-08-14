@@ -209,19 +209,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.error("Session error:", error.message);
+          // DETERMINISTIC AUTH STATE: on session error, mark as
+          // unauthenticated and stop loading. Previously we left
+          // isLoading=true briefly, which caused race conditions
+          // where RouteGuard would render the dashboard shell before
+          // auth state was resolved.
+          setUser(null);
+          setProfile(null);
+          setUniversity(null);
           setIsLoading(false);
           return;
         }
         
         if (session?.user) {
           setUser(session.user);
-          // Pass user data so fallback can be created if DB fails
+          // Pass user data so fallback can be created if DB fails.
+          // fetchProfile will call setIsLoading(false) in its finally
+          // block, so we don't set it here.
           await fetchProfile(session.user.id, supabase, session.user);
+          // Defensive: if fetchProfile returned without setting
+          // isLoading (e.g. due to an early return), force it to
+          // false here so the UI doesn't hang.
+          if (isMountedRef.current) {
+            setIsLoading(false);
+          }
+        } else {
+          // No session — explicitly clear user state and stop loading.
+          // This is the "unauthenticated" terminal state.
+          setUser(null);
+          setProfile(null);
+          setUniversity(null);
+          setIsLoading(false);
         }
       } catch (error) {
         console.error("Error initializing auth:", error instanceof Error ? error.message : error);
-      } finally {
         if (isMountedRef.current) {
+          setUser(null);
+          setProfile(null);
+          setUniversity(null);
           setIsLoading(false);
         }
       }
@@ -253,10 +278,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Re-fetch the profile too — RLS now evaluates against the
             // new role/tenant, so the profile data may change.
             await fetchProfile(session.user.id, supabase, session.user);
+          } else if (event === "INITIAL_SESSION") {
+            // The INITIAL_SESSION event fires when the SDK finishes
+            // loading the persisted session. If session is null here,
+            // it means there's no persisted session — ensure isLoading
+            // flips to false so the UI doesn't hang on the loading
+            // skeleton forever.
+            if (!session?.user) {
+              setUser(null);
+              setProfile(null);
+              setUniversity(null);
+            }
           }
         } catch (error) {
           console.error("Auth state change error:", error instanceof Error ? error.message : error);
         } finally {
+          // ALWAYS flip isLoading to false after processing an auth
+          // event. Previously, certain event paths (e.g. INITIAL_SESSION
+          // with no user) didn't flip isLoading, leaving the dashboard
+          // stuck on the loading skeleton and triggering React #310
+          // when hooks reordered on the eventual state transition.
           if (isMountedRef.current) {
             setIsLoading(false);
           }

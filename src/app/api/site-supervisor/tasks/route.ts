@@ -135,7 +135,34 @@ export async function GET(request: NextRequest) {
 
     const { data: tasks, error: tasksErr, count } = await query;
     if (tasksErr) {
+      // RLS recursion / policy errors produce 500 from Postgres and a
+      // message like "infinite recursion detected in policy for relation
+      // "tasks"". Surface a clear, distinct message so the frontend can
+      // show a meaningful error instead of a confusing "Failed to fetch
+      // tasks" toast.
       console.error("[/api/site-supervisor/tasks] GET error:", tasksErr);
+
+      const isRecursion = /infinite recursion/i.test(tasksErr.message);
+      const isRls = /policy/i.test(tasksErr.message) || /row-level security/i.test(tasksErr.message);
+      if (isRecursion) {
+        return NextResponse.json<ApiResponse<never>>(
+          {
+            success: false,
+            error:
+              "Database policy recursion detected. The site supervisor RLS policies are misconfigured. Please contact support.",
+          },
+          { status: 500 }
+        );
+      }
+      if (isRls) {
+        return NextResponse.json<ApiResponse<never>>(
+          {
+            success: false,
+            error: "Your account is not authorized to view tasks. If you believe this is an error, please contact your administrator.",
+          },
+          { status: 403 }
+        );
+      }
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: `Failed to fetch tasks: ${tasksErr.message}` },
         { status: 500 }

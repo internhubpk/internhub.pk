@@ -1440,3 +1440,71 @@
     border-radius: var(--radius-sm);
   }
 }
+
+/* ===================================================
+   DIALOG / MODAL SCROLL FIX (production safety)
+   ---------------------------------------------------
+   Ensures EVERY popup in the app stays within the
+   viewport and scrolls internally instead of pushing
+   buttons off-screen or growing the page. The shared
+   <DialogContent> already has overflow-hidden +
+   flex flex-col + max-h-[calc(100dvh-2rem)].
+
+   For popups that have NOT been migrated to use
+   <DialogBody>, this CSS makes the FIRST direct child
+   that isn't a [data-slot="dialog-header"] or
+   [data-slot="dialog-footer"] scrollable, so:
+
+     - Header stays pinned at top (shrink-0)
+     - Middle content scrolls vertically (flex-1 + overflow-y-auto)
+     - Footer stays pinned at bottom (shrink-0)
+
+   For popups that DO use <DialogBody>, this is a
+   no-op (DialogBody already has these classes).
+
+   Also handles AlertDialogContent the same way.
+   =================================================== */
+
+@layer utilities {
+  /* Make non-header/footer children of DialogContent scrollable.
+     We target by data-slot attribute so it works for any popup. */
+  [data-slot="dialog-content"] > *:not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not([data-slot="dialog-close"]) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* AlertDialog: simpler — the whole content scrolls if needed */
+  [data-slot="alert-dialog-content"] {
+    scrollbar-width: thin;
+  }
+
+  /* Custom scrollbar styling for dialog bodies */
+  [data-slot="dialog-content"] ::-webkit-scrollbar,
+  [data-slot="alert-dialog-content"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  [data-slot="dialog-content"] ::-webkit-scrollbar-track,
+  [data-slot="alert-dialog-content"] ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  [data-slot="dialog-content"] ::-webkit-scrollbar-thumb,
+  [data-slot="alert-dialog-content"] ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border, 215 16% 80%));
+    border-radius: 4px;
+  }
+  [data-slot="dialog-content"] ::-webkit-scrollbar-thumb:hover,
+  [data-slot="alert-dialog-content"] ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground, 215 16% 50%));
+  }
+
+  /* When a dialog is open, prevent the underlying page from scrolling.
+     Radix Dialog already adds pointer-events:none + overflow:hidden
+     to body via the <DialogOverlay>, but some browsers need this
+     explicit guard. */
+  body:has([data-slot="dialog-content"][data-state="open"]),
+  body:has([data-slot="alert-dialog-content"][data-state="open"]) {
+    overflow: hidden;
+  }
+}
