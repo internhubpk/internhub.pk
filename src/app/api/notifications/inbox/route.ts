@@ -2,21 +2,44 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
 // GET: Fetch notifications for the current user (their inbox)
+//
+// Auth handling: Returns 200 with an empty payload when the request is
+// unauthenticated, mirroring the behaviour of `/api/notifications/count`.
+// This is intentional — the inbox endpoint is polled every 60 s by the
+// dashboard Header's bell-icon widget. Returning 401 for unauthenticated
+// polling requests floods the browser console with red errors whenever
+// the user's session has expired client-side but the AuthProvider still
+// holds a stale `user.id`. The dashboard layout's RouteGuard already
+// handles true session expiry by redirecting to /login, so the inbox
+// endpoint does not need to surface 401s to the client.
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    // Parse query parameters
+    // Parse query parameters (needed for the empty-payload response below)
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const onlyUnread = searchParams.get("unread") === "true";
+
+    if (authError || !user) {
+      // Return 200 with empty data so the bell icon polling doesn't
+      // spam the console with 401s. The dashboard layout's RouteGuard
+      // will handle the actual session-expiry redirect separately.
+      return NextResponse.json({
+        success: true,
+        data: [],
+        meta: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
 
     // Build query - fetch notifications for this user
     let query = supabase
@@ -78,6 +101,10 @@ export async function GET(request: Request) {
 }
 
 // PATCH: Mark notification(s) as read
+//
+// Same auth-handling rationale as GET: return 200 with `updated: 0`
+// instead of 401 when unauthenticated, so the bell icon's mark-all-read
+// fire-and-forget call doesn't surface errors in the console.
 export async function PATCH(request: Request) {
   try {
     const supabase = await createClient();
@@ -85,7 +112,11 @@ export async function PATCH(request: Request) {
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({
+        success: true,
+        message: "Not authenticated — no notifications to update",
+        updated: 0,
+      });
     }
 
     const body = await request.json();
