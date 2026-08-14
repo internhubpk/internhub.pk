@@ -42,9 +42,22 @@ interface Evaluation {
   internship_title: string | null;
 }
 
-// Group evaluations by task (or "Weekly / Non-task" if task_id is null).
+// Group evaluations by task (or by week/type for non-task evaluations).
+//
+// CRITICAL: weekly evaluations (type='weekly', task_id IS NULL) MUST be
+// grouped by week_number — NOT by the literal string "weekly". The schema
+// allows MULTIPLE weekly evaluations per student (one per week, per
+// evaluator role). If all weekly evals share a single group key, the
+// second+ weekly eval from the same role gets pushed to `otherEvaluations`
+// and renders under "Additional Evaluations" with the literal role label
+// — making it look like the student has multiple "Site Supervisor"
+// entries when they actually have one site-supervisor eval per week.
+//
+// Same logic applies to midterm/final/supervisor_evaluation: each type
+// gets its own group so multiple evaluators of the same type can
+// contribute to a single group with separate site/faculty panels.
 interface TaskGroup {
-  key: string;                   // task_id or "weekly"
+  key: string;                   // task_id | `weekly_<weekN>` | `midterm` | `final` | `supervisor_evaluation` | id
   taskTitle: string;
   weekNumber: number | null;
   dayNumber: number | null;
@@ -113,13 +126,84 @@ function groupByTask(evals: Evaluation[]): TaskGroup[] {
   const groups = new Map<string, TaskGroup>();
 
   for (const e of evals) {
-    const key = e.task_id || "weekly";
+    // Determine the group key + display title for this evaluation.
+    //
+    // Priority:
+    //   1. task_id (if set) — group all evals for the same task together,
+    //      regardless of evaluator role. This lets us show "Site Supervisor"
+    //      and "Faculty Supervisor" panels side-by-side for the same task.
+    //
+    //   2. `weekly_<weekN>` for type='weekly' — group by week so each week
+    //      gets its own card. Without this, all weekly evals would lump
+    //      into a single "weekly" group and the second+ eval per role
+    //      would render under "Additional Evaluations" with the literal
+    //      role label — looking like duplicate "Site Supervisor" entries.
+    //
+    //   3. The evaluation type itself for midterm/final/supervisor_evaluation
+    //      — one group per type. Multiple evaluators of the same type can
+    //      contribute to the same group's site/faculty/other panels.
+    //
+    //   4. The evaluation id (last-resort fallback) — guarantees each
+    //      evaluation gets its own group if it doesn't match any of the
+    //      above. Prevents accidental grouping of unrelated evals.
+    let key: string;
+    let taskTitle: string;
+    let weekNumber: number | null = null;
+    let dayNumber: number | null = null;
+
+    if (e.task_id) {
+      key = e.task_id;
+      taskTitle = e.task_title || "Untitled Task";
+      weekNumber = e.task_week ?? null;
+      dayNumber = e.task_day ?? null;
+    } else if (e.type === "weekly") {
+      // Group by week_number. If week_number is null, fall back to a
+      // unique key per evaluation so unrelated weekly evals don't get
+      // lumped together.
+      const wk = e.task_week ?? null;
+      if (wk !== null) {
+        key = `weekly_${wk}`;
+        taskTitle = `Weekly Evaluation — Week ${wk}`;
+      } else {
+        key = `weekly_${e.id}`;
+        taskTitle = "Weekly Evaluation";
+      }
+      weekNumber = wk;
+    } else if (e.type === "midterm") {
+      key = "midterm";
+      taskTitle = "Midterm Evaluation";
+    } else if (e.type === "final") {
+      key = "final";
+      taskTitle = "Final Evaluation";
+    } else if (e.type === "supervisor_evaluation") {
+      key = "supervisor_evaluation";
+      taskTitle = "Supervisor Evaluation";
+    } else if (e.type === "company_evaluation") {
+      key = "company_evaluation";
+      taskTitle = "Company Evaluation";
+    } else if (e.type === "weekly_log") {
+      // Legacy weekly_log type — group by week_number if available.
+      const wk = e.task_week ?? null;
+      if (wk !== null) {
+        key = `weekly_log_${wk}`;
+        taskTitle = `Weekly Log — Week ${wk}`;
+      } else {
+        key = `weekly_log_${e.id}`;
+        taskTitle = "Weekly Log";
+      }
+      weekNumber = wk;
+    } else {
+      // Unknown type — group by id to avoid accidental merging.
+      key = `other_${e.id}`;
+      taskTitle = e.type ? e.type.replace(/_/g, " ") : "Evaluation";
+    }
+
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        taskTitle: e.task_id ? (e.task_title || "Untitled Task") : "Weekly / Program Evaluation",
-        weekNumber: e.task_week ?? null,
-        dayNumber: e.task_day ?? null,
+        taskTitle,
+        weekNumber,
+        dayNumber,
         internshipTitle: e.internship_title ?? null,
         siteSupervisorEval: null,
         facultySupervisorEval: null,
@@ -136,7 +220,7 @@ function groupByTask(evals: Evaluation[]): TaskGroup[] {
     }
   }
 
-  // Sort: by week desc, then day desc, then task title
+  // Sort: by week asc (nulls last), then day asc, then task title.
   return Array.from(groups.values()).sort((a, b) => {
     const wA = a.weekNumber ?? 9999;
     const wB = b.weekNumber ?? 9999;
@@ -219,8 +303,11 @@ export default function StudentEvaluationsPage() {
 
   const filteredGroups = taskGroups.filter((g) => {
     if (filter === "all") return true;
-    if (filter === "task") return g.key !== "weekly";
-    if (filter === "weekly") return g.key === "weekly";
+    // A group is a "task" evaluation if its key is a task_id (UUID-like).
+    // A group is "weekly" if its key starts with "weekly" (covers both
+    // `weekly_<N>` and the legacy `weekly_log_<N>`).
+    if (filter === "task") return !g.key.startsWith("weekly") && !["midterm", "final", "supervisor_evaluation", "company_evaluation"].includes(g.key);
+    if (filter === "weekly") return g.key.startsWith("weekly");
     if (filter === "approved") {
       return (g.siteSupervisorEval?.status === "approved") ||
              (g.facultySupervisorEval?.status === "approved");

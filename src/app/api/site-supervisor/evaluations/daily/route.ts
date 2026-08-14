@@ -260,8 +260,14 @@ export async function POST(request: NextRequest) {
       status: "submitted",
       scores: scores || {},
       comments: comments?.trim() || null,
-      rating:
-        typeof rating === "number" ? Math.max(0, Math.min(5, rating)) : null,
+      // Default rating to 0 (NOT null) when omitted. The student evaluations
+      // page renders null ratings as "—" which looks like the evaluation
+      // has no data. Defaulting to 0 makes the rating explicitly visible
+      // (even if the supervisor skipped the overall rating) and is
+      // consistent with the non-daily route
+      // (/api/site-supervisor/evaluations/route.ts) which already
+      // defaults to 0.
+      rating: typeof rating === "number" ? Math.max(0, Math.min(5, rating)) : 0,
       submitted_at: nowIso,
       internship_id: internshipId,
       student_internship_id: assignment.id,

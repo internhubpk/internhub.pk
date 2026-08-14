@@ -265,7 +265,7 @@ export default function FacultySupervisorEvaluationsPage() {
 
         // Fetch pending evaluations (evaluations with status pending/in_progress
         // that this supervisor needs to complete).
-        const [pendingRes, historyRes, weeklyReportsRes] = await Promise.all([
+        const [pendingRes, historyRes, weeklyReportsRes, taskSubsRes, existingTaskEvalsRes, existingWeeklyEvalsRes] = await Promise.all([
           supabase
             .from("evaluations")
             .select(`
@@ -325,7 +325,118 @@ export default function FacultySupervisorEvaluationsPage() {
                 .order("submitted_at", { ascending: false })
                 .limit(20)
             : Promise.resolve({ data: [] }),
+          // ---- NEW: fetch submitted task_submissions for supervised students ----
+          // These represent tasks the site supervisor assigned + the student
+          // submitted, but the faculty supervisor hasn't evaluated yet. We
+          // show them as "pending task evaluations" in the queue.
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("task_submissions")
+                .select(`
+                  id,
+                  task_id,
+                  student_user_id,
+                  status,
+                  submitted_at,
+                  notes,
+                  url,
+                  file_url,
+                  file_name,
+                  student:profiles!task_submissions_student_user_id_fkey(full_name, email, avatar_url),
+                  task:tasks(id, title, week_number, day_number, due_date)
+                `)
+                .in("student_user_id", supervisedStudentIds)
+                .in("status", ["submitted", "resubmitted"])
+                .order("submitted_at", { ascending: false })
+                .limit(50)
+            : Promise.resolve({ data: [] }),
+          // ---- Existing faculty task evaluations (to filter out already-evaluated) ----
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("evaluations")
+                .select("id, task_id, student_user_id, type, status")
+                .eq("evaluator_id", user.id)
+                .eq("evaluator_role", "faculty_supervisor")
+                .in("type", ["task"])
+                .in("student_user_id", supervisedStudentIds)
+            : Promise.resolve({ data: [] }),
+          // ---- Existing faculty weekly evaluations (to filter out already-evaluated weeks) ----
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("evaluations")
+                .select("id, week_number, student_user_id, type, status")
+                .eq("evaluator_id", user.id)
+                .eq("evaluator_role", "faculty_supervisor")
+                .in("type", ["weekly"])
+                .in("student_user_id", supervisedStudentIds)
+            : Promise.resolve({ data: [] }),
         ]);
+
+        // Build sets of (task_id, student_user_id) and (week_number, student_user_id)
+        // that already have a faculty evaluation, so we can filter them out
+        // of the "needs attention" list.
+        const evaluatedTaskKeys = new Set<string>();
+        for (const e of (existingTaskEvalsRes.data || []) as any[]) {
+          if (e.task_id && e.student_user_id) {
+            evaluatedTaskKeys.add(`${e.task_id}|${e.student_user_id}`);
+          }
+        }
+        const evaluatedWeekKeys = new Set<string>();
+        for (const e of (existingWeeklyEvalsRes.data || []) as any[]) {
+          if (e.week_number != null && e.student_user_id) {
+            evaluatedWeekKeys.add(`${e.week_number}|${e.student_user_id}`);
+          }
+        }
+
+        // Build "needs attention" pending items from task_submissions that
+        // don't have a faculty evaluation yet.
+        const needsAttention: PendingEvaluation[] = [];
+        for (const sub of (taskSubsRes.data || []) as any[]) {
+          const key = `${sub.task_id}|${sub.student_user_id}`;
+          if (evaluatedTaskKeys.has(key)) continue; // already evaluated
+          const student = sub.student as any;
+          const task = sub.task as any;
+          needsAttention.push({
+            id: `pending-task-${sub.id}`, // synthetic id; submit endpoint will create the real row
+            studentId: sub.student_user_id,
+            studentName: student?.full_name || "Unknown Student",
+            studentEmail: student?.email || "",
+            studentAvatar: student?.avatar_url,
+            submissionType: "task_submission",
+            title: task?.title || "Untitled Task",
+            description: sub.notes || sub.url || "Student submitted this task. Please evaluate.",
+            submittedAt: sub.submitted_at || "",
+            dueDate: task?.due_date || new Date().toISOString(),
+            priority: "medium",
+            contentPreview: sub.notes || undefined,
+            // Stash the task_id on the object so handleSubmitEvaluation
+            // can include it in the submit request body.
+            ...({ taskId: sub.task_id, weekNumber: task?.week_number ?? undefined } as any),
+          });
+        }
+
+        // Also add weekly periods that need eval: any weekly_log with
+        // status='submitted' that doesn't have a corresponding faculty
+        // weekly evaluation yet.
+        for (const log of (weeklyReportsRes.data || []) as any[]) {
+          const wk = log.week_number;
+          if (wk == null) continue;
+          const key = `${wk}|${log.student_user_id}`;
+          if (evaluatedWeekKeys.has(key)) continue; // already evaluated
+          needsAttention.push({
+            id: `pending-weekly-${log.id}`,
+            studentId: log.student_user_id,
+            studentName: log.student_profile?.full_name || "Unknown Student",
+            studentEmail: "",
+            submissionType: "weekly_log",
+            title: `Weekly Evaluation — Week ${wk}`,
+            description: log.challenges || log.learnings || "Student submitted a weekly log. Please provide your faculty evaluation.",
+            submittedAt: log.submitted_at || "",
+            dueDate: log.week_end_date || new Date().toISOString(),
+            priority: "medium",
+            ...({ weekNumber: wk, taskId: undefined } as any),
+          });
+        }
 
         const pending: PendingEvaluation[] = (pendingRes.data || []).map((e: any) => ({
           id: e.id,
@@ -340,7 +451,10 @@ export default function FacultySupervisorEvaluationsPage() {
           dueDate: e.submitted_at || new Date().toISOString(),
           priority: "medium",
         }));
-        setPendingEvaluations(pending);
+        // Merge: existing pending rows + auto-discovered "needs attention" items.
+        // Dedupe by id (synthetic ids don't collide with real UUIDs).
+        const mergedPending = [...pending, ...needsAttention];
+        setPendingEvaluations(mergedPending);
 
         const history: EvaluationRecord[] = (historyRes.data || []).map((e: any) => {
           const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
@@ -551,8 +665,6 @@ export default function FacultySupervisorEvaluationsPage() {
     setIsSubmitting(true);
 
     try {
-      const supabase = createClient();
-
       // Build scores JSONB from criteria scores.
       const scores: Record<string, number> = {};
       evaluationForm.criteria.forEach((c) => {
@@ -572,42 +684,63 @@ export default function FacultySupervisorEvaluationsPage() {
           .filter(Boolean)
           .join("\n\n--- Feedback for student ---\n") || null;
 
-      const { error } = await supabase
-        .from("evaluations")
-        .update({
-          rating: evaluationForm.rating,
-          scores,
-          comments: combinedComments,
-          status: newStatus,
-          submitted_at: new Date().toISOString(),
-        })
-        .eq("id", selectedEvaluation.id)
-        .eq("evaluator_id", user.id); // defense-in-depth: only update own evals
+      // Call the new UPSERT endpoint. This fixes the "faculty supervisor
+      // cannot create evaluations" bug (G.4): the previous flow did a
+      // direct UPDATE on `evaluations` filtered by `evaluator_id = user.id`
+      // AND `evaluator_role = 'faculty_supervisor'`, but NOTHING in the
+      // system ever created pending rows with those filters — so the
+      // UPDATE always matched zero rows and the evaluation was silently
+      // dropped. The new /api/faculty-supervisor/evaluations/submit
+      // endpoint INSERTs if no matching row exists (UPSERT) and verifies
+      // the student is actively assigned to this faculty supervisor via
+      // student_internships.faculty_supervisor_id (RLS-enforced).
+      //
+      // The submit endpoint accepts: type, student_user_id, scores,
+      // comments, rating, task_id?, task_submission_id?, week_number?.
+      // The selectedEvaluation object carries studentId + submissionType
+      // (mapped from the eval's `type` field). We reverse-map the
+      // submissionType back to the API's `type` field.
+      const apiType: "task" | "weekly" | "midterm" | "final" =
+        selectedEvaluation.submissionType === "task_submission" ? "task"
+        : selectedEvaluation.submissionType === "weekly_log" ? "weekly"
+        : selectedEvaluation.submissionType === "midterm" ? "midterm"
+        : selectedEvaluation.submissionType === "final" ? "final"
+        : "weekly"; // safe default
 
-      if (error) throw error;
+      const submitBody: Record<string, unknown> = {
+        type: apiType,
+        student_user_id: selectedEvaluation.studentId,
+        scores,
+        comments: combinedComments,
+        rating: evaluationForm.rating,
+      };
+      // Include task_id / week_number if present on the selected evaluation.
+      // The PendingEvaluation interface doesn't carry these, but the
+      // underlying evaluation row (if this is an existing pending eval)
+      // may have them. The submit endpoint will look up the task's
+      // week_number if task_id is provided.
+      if (apiType === "task" && (selectedEvaluation as any).taskId) {
+        submitBody.task_id = (selectedEvaluation as any).taskId;
+      }
+      if (apiType === "weekly" && (selectedEvaluation as any).weekNumber) {
+        submitBody.week_number = (selectedEvaluation as any).weekNumber;
+      }
 
-      // Send notification to student.
-      await supabase.from("notifications").insert({
-        user_id: selectedEvaluation.studentId,
-        sender_id: user.id,
-        title:
-          evaluationForm.decision === "approve"
-            ? "Evaluation Approved"
-            : evaluationForm.decision === "reject"
-            ? "Evaluation Rejected"
-            : "Evaluation Submitted — Revision Requested",
-        message: evaluationForm.feedback || evaluationForm.comments || "Your evaluation has been updated.",
-        category: "evaluation",
-        priority: evaluationForm.decision === "reject" ? "high" : "medium",
-        is_read: false,
-        metadata: { evaluation_id: selectedEvaluation.id, decision: evaluationForm.decision },
+      const res = await fetch("/api/faculty-supervisor/evaluations/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submitBody),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Failed to submit evaluation (HTTP ${res.status})`);
+      }
 
       // Move the item from pending → history locally.
       setPendingEvaluations((prev) => prev.filter((e) => e.id !== selectedEvaluation.id));
       setEvaluationHistory((prev) => [
         {
-          id: selectedEvaluation.id,
+          id: json.data?.id || selectedEvaluation.id,
           studentName: selectedEvaluation.studentName,
           type: selectedEvaluation.submissionType,
           title: selectedEvaluation.title,

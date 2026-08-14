@@ -138,14 +138,81 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search");
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "50", 10);
+    // scope=mine (default) returns tasks created by this faculty supervisor.
+    // scope=assigned returns tasks assigned to this faculty supervisor's
+    // students (regardless of who created them — typically the site
+    // supervisor). This is the PRIMARY view per the production brief:
+    // "Faculty supervisors should see the tasks assigned by the SITE
+    // SUPERVISOR" and "Faculty supervisors should NOT create/assign
+    // their own internship tasks." The faculty supervisor evaluates
+    // students based on the site-supervisor task/submission workflow,
+    // not a duplicate task system.
+    const scope = searchParams.get("scope") || "mine";
+
+    // Build the list of supervised student IDs (for scope=assigned).
+    // RLS on student_internships restricts to rows where the caller is
+    // the assigned faculty_supervisor.
+    let supervisedStudentIds: string[] = [];
+    if (scope === "assigned") {
+      const { data: assignedStudents, error: assignStudentsErr } = await supabase
+        .from("student_internships")
+        .select("student_user_id")
+        .eq("faculty_supervisor_id", user.id)
+        .in("status", ["assigned", "active"]);
+      if (assignStudentsErr) {
+        console.error("[/api/faculty-supervisor/tasks] assigned students error:", assignStudentsErr);
+        // Non-fatal — return empty list
+      }
+      supervisedStudentIds = Array.from(
+        new Set((assignedStudents || []).map((a: any) => a.student_user_id))
+      );
+      if (supervisedStudentIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [] as EnrichedTask[],
+          meta: { page, limit, total: 0, totalPages: 0 },
+        });
+      }
+    }
 
     // Build tasks query
     let query = supabase
       .from("tasks")
       .select("*", { count: "exact" })
-      .eq("created_by", user.id)
       .order("created_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
+
+    if (scope === "assigned") {
+      // Tasks assigned to my students — query task_assignments for my
+      // students' user IDs, then fetch the corresponding tasks. We use
+      // a two-step query because PostgREST doesn't support
+      // "tasks WHERE EXISTS (assignment with student_user_id IN (...))".
+      const { data: assignmentRows, error: assignmentErr } = await supabase
+        .from("task_assignments")
+        .select("task_id")
+        .in("student_user_id", supervisedStudentIds);
+      if (assignmentErr) {
+        console.error("[/api/faculty-supervisor/tasks] scope=assigned task_assignments error:", assignmentErr);
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `Failed to fetch assigned tasks: ${assignmentErr.message}` },
+          { status: 500 }
+        );
+      }
+      const taskIdsForMyStudents = Array.from(
+        new Set((assignmentRows || []).map((a: any) => a.task_id))
+      );
+      if (taskIdsForMyStudents.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [] as EnrichedTask[],
+          meta: { page, limit, total: 0, totalPages: 0 },
+        });
+      }
+      query = query.in("id", taskIdsForMyStudents);
+    } else {
+      // scope=mine — tasks created by this faculty supervisor.
+      query = query.eq("created_by", user.id);
+    }
 
     if (status && status !== "all") {
       query = query.eq("status", status);

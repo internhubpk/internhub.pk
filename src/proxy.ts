@@ -436,13 +436,24 @@ export async function proxy(request: NextRequest) {
     }
 
     // ==========================================
-    // TENANT-SUBDOMAIN REDIRECTION (domain-agnostic)
+    // TENANT-SUBDOMAIN REDIRECTION (domain-agnostic, session-preserving)
     // ==========================================
     // University-scoped users (admin / coordinator / supervisor / student)
     // are redirected to their own tenant subdomain if they're not already
     // on it. This keeps each university's users on their own subdomain so
     // the landing page renders their branding, RLS context matches, and
     // bookmarked URLs don't accidentally cross tenants.
+    //
+    // SESSION-PRESERVING (production fix for React #310 + forced re-login):
+    //   The auth cookie is now scoped to `Domain=.<apex>` (see
+    //   src/utils/supabase/client.ts::buildCookieAttributes), so it is
+    //   shared across ALL subdomains of the apex. When we redirect a user
+    //   from the apex (or the wrong tenant subdomain) to their correct
+    //   tenant subdomain, their session CARRIES OVER — no re-login needed.
+    //   The previous implementation wiped cookies on cross-tenant redirect,
+    //   which (combined with the host-only cookie bug) forced a re-login
+    //   on every subdomain switch and triggered an auth state storm that
+    //   destabilized React's hook dispatcher → React error #310.
     //
     // Conditions for redirect:
     //   1. Role is tenant-scoped (see TENANT_SCOPED_ROLES).
@@ -462,42 +473,25 @@ export async function proxy(request: NextRequest) {
     if (TENANT_SCOPED_ROLES.has(userRole) && userTenantSlug) {
       const currentSubdomain = getCurrentSubdomain(request.nextUrl.hostname);
       if (currentSubdomain !== userTenantSlug) {
-        // ==========================================
-        // CROSS-TENANT BLOCK (defense in depth)
-        // ==========================================
-        // The login page already signs the user out and redirects them to
-        // their home tenant. This block handles the case where a tenant-
-        // scoped user is somehow carrying a valid session on the WRONG
-        // tenant subdomain (e.g. cookies leaked across subdomains, or the
-        // login guard was bypassed). Instead of silently redirecting them
-        // (which keeps the session alive), we clear their cookies by
-        // redirecting to /login?redirected=wrong_tenant on their correct
-        // subdomain. The login page's wrong-tenant banner will explain.
+        // Redirect to the correct tenant subdomain, preserving the
+        // pathname + search params so the user lands on their original
+        // destination. The auth cookie carries over automatically because
+        // it's scoped to `Domain=.<apex>`.
         //
-        // We only do this for non-public paths — public paths fall through
-        // to the existing redirect (so the user lands on the right tenant's
-        // login page without a hard sign-out, which is fine because they
-        // aren't authenticated on the right tenant yet anyway).
-        if (!isPublicRoute(pathname)) {
-          const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug, userTenantDomain);
-          const loginUrl = new URL("/login", redirectUrl);
-          loginUrl.searchParams.set("redirected", "wrong_tenant");
-          // Carry returnUrl so the user lands on their original destination
-          // after they re-authenticate on the correct subdomain.
-          loginUrl.searchParams.set("returnUrl", pathname);
-          // Sign out by clearing auth cookies on the response. The actual
-          // session invalidation happens via Supabase when the user signs
-          // in again on the correct subdomain.
-          const signOutResponse = NextResponse.redirect(loginUrl);
-          // Clear all sb-* cookies (Supabase auth cookies follow this prefix).
-          request.cookies.getAll().forEach((c) => {
-            if (c.name.startsWith("sb-")) {
-              signOutResponse.cookies.delete(c.name);
-            }
-          });
-          return signOutResponse;
-        }
-        // Public route → just redirect to the right tenant subdomain.
+        // We do NOT wipe cookies here. The previous "cross-tenant block"
+        // logic (signing the user out on wrong-tenant redirect) was
+        // defense-in-depth against cookie leakage, but with Domain-scoped
+        // cookies the session is intentionally shared — wiping it would
+        // force a re-login on every subdomain switch, which is the
+        // exact bug we're fixing.
+        //
+        // True cross-tenant attacks (a user from university A trying to
+        // access university B's data) are still prevented by RLS at the
+        // database layer: every query is scoped to the authenticated
+        // user's university_id, which is set in their JWT app_metadata
+        // by the profiles_sync_auth_metadata trigger (migration 0011/0038).
+        // The proxy redirect here is a UX/branding concern, not a
+        // security boundary.
         const redirectUrl = buildTenantRedirectUrl(request, userTenantSlug, userTenantDomain);
         return NextResponse.redirect(redirectUrl);
       }

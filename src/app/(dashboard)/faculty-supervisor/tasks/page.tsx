@@ -324,6 +324,14 @@ export default function FacultySupervisorTasksPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  // Scope: "assigned" (default) = tasks created by the SITE SUPERVISOR for
+  // this faculty supervisor's students. "mine" = tasks created by this
+  // faculty supervisor. Per the production brief, faculty supervisors
+  // should NOT create/assign internship tasks — they view and evaluate
+  // based on the site-supervisor task workflow. The "mine" scope is kept
+  // as a secondary view in case the faculty supervisor has academic
+  // (non-internship) tasks they created.
+  const [scope, setScope] = useState<"assigned" | "mine">("assigned");
   
   // Dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -371,9 +379,12 @@ export default function FacultySupervisorTasksPage() {
       );
       setStudents(dedupedStudents);
 
-      // Fetch tasks via the API
+      // Fetch tasks via the API. Default scope=assigned returns tasks
+      // created by the SITE SUPERVISOR for this faculty supervisor's
+      // students (the primary view per the production brief). scope=mine
+      // returns tasks created by this faculty supervisor.
       try {
-        const res = await fetch("/api/faculty-supervisor/tasks", { cache: "no-store" });
+        const res = await fetch(`/api/faculty-supervisor/tasks?scope=${scope}`, { cache: "no-store" });
         const json = await res.json().catch(() => ({ success: false, data: [] }));
         if (res.ok && json?.success && Array.isArray(json.data)) {
           setTasks((json.data as any[]).map(mapApiTaskToUi));
@@ -396,6 +407,13 @@ export default function FacultySupervisorTasksPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Re-fetch when scope changes (toggle between site-supervisor tasks
+  // and my tasks). fetchData depends on `scope` via useCallback closure.
+  useEffect(() => {
+    setIsLoading(true);
+    fetchData();
+  }, [scope]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -657,45 +675,84 @@ export default function FacultySupervisorTasksPage() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Task Management"
-        description="Create and manage tasks for your supervised students"
+        title="Student Tasks"
+        description={scope === "assigned"
+          ? "Tasks assigned by the Site Supervisor to your students. View submissions and evaluate."
+          : "Academic tasks you created for your students."
+        }
         actions={
           <div className="flex gap-2">
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2" onClick={resetForm}>
-                  <Plus className="h-4 w-4" /> New Task
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Create New Task</DialogTitle>
-                  <DialogDescription>
-                    Assign a new task to one or more students in your programs.
-                  </DialogDescription>
-                </DialogHeader>
-                <TaskForm
-                  formData={formData}
-                  students={students}
-                  onFormDataChange={setFormData}
-                  onSelectAllStudents={selectAllStudents}
-                  onDeselectAllStudents={deselectAllStudents}
-                  onToggleStudentSelection={toggleStudentSelection}
-                />
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
+            {/* Scope toggle: switch between site-supervisor tasks (default)
+                and my own tasks. Per the production brief, faculty supervisors
+                should NOT create internship tasks — the primary view is
+                site-supervisor-created tasks. */}
+            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+              <button
+                type="button"
+                onClick={() => setScope("assigned")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-colors ${
+                  scope === "assigned"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Site Supervisor Tasks
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope("mine")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-colors ${
+                  scope === "mine"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                My Tasks
+              </button>
+            </div>
+            {/* Create Task button — ONLY shown when scope=mine. Per the
+                production brief, faculty supervisors should NOT create
+                internship tasks. The button is hidden in the default
+                (scope=assigned) view. It remains available in the
+                scope=mine view in case the faculty supervisor needs to
+                create academic (non-internship) tasks. */}
+            {scope === "mine" && (
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2" onClick={resetForm}>
+                    <Plus className="h-4 w-4" /> New Task
                   </Button>
-                  <Button
-                    onClick={handleCreateTask}
-                    disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-                  >
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Task
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Create New Academic Task</DialogTitle>
+                    <DialogDescription>
+                      Assign a new academic task to one or more students in your programs.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <TaskForm
+                    formData={formData}
+                    students={students}
+                    onFormDataChange={setFormData}
+                    onSelectAllStudents={selectAllStudents}
+                    onDeselectAllStudents={deselectAllStudents}
+                    onToggleStudentSelection={toggleStudentSelection}
+                  />
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateTask}
+                      disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
+                    >
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Create Task
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         }
       />
@@ -951,13 +1008,21 @@ export default function FacultySupervisorTasksPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <ListTodo className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium mb-2">No tasks found</h3>
+              <h3 className="text-lg font-medium mb-2">
+                {scope === "assigned"
+                  ? "No site-supervisor tasks found"
+                  : "No tasks found"}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Try adjusting your search or filter criteria, or create a new task.
+                {scope === "assigned"
+                  ? "Tasks assigned by the Site Supervisor to your students will appear here. Try adjusting your search or filter criteria."
+                  : "Try adjusting your search or filter criteria, or create a new academic task."}
               </p>
-              <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" /> Create New Task
-              </Button>
+              {scope === "mine" && (
+                <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+                  <Plus className="h-4 w-4" /> Create New Academic Task
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

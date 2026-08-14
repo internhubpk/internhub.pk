@@ -267,24 +267,36 @@ export function RouteGuard({
     // actually change — not on every AuthProvider re-render.
   }, [guardState.checked, guardState.isAuthorized, resolveRole, router, pathname]);
 
-  // Show loading state during auth initialization
-  // But don't block forever - timeout after 3 seconds. This is a safety
-  // net for the rare case where the auth state never resolves (e.g. the
-  // Supabase client throws during getSession and the finally block doesn't
-  // fire). It is NOT involved in the normal login flow.
-  useEffect(() => {
-    if (guardState.isLoading && guardState.checked) return;
-
-    const timer = setTimeout(() => {
-      if (guardState.isLoading && !guardState.checked) {
-        // Force allow after timeout to prevent infinite loading.
-        // Silent — this is a safety net, not a normal path.
-        setGuardState({ isAuthorized: true, isLoading: false, checked: true });
-      }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [guardState.isLoading, guardState.checked]);
+  // Show loading state during auth initialization.
+  //
+  // PREVIOUSLY this block had a 3-second setTimeout that forced
+  // `isAuthorized = true` if auth state hadn't resolved. That was a
+  // workaround for an old bug where AuthProvider could hang on
+  // `isLoading=true`. It is REMOVED because:
+  //
+  //   1. AuthProvider now deterministically flips isLoading=false in its
+  //      finally block on EVERY auth event (SIGNED_IN, SIGNED_OUT,
+  //      TOKEN_REFRESHED, INITIAL_SESSION). The "stuck loading" scenario
+  //      can no longer happen.
+  //
+  //   2. The 3-second timeout was a SECURITY LEAK — if auth state was
+  //      slow to resolve (e.g. slow network, Supabase outage), the guard
+  //      would grant access unconditionally. For sensitive pages
+  //      (super-admin settings, university-admin user management) this
+  //      could briefly render protected UI to a user whose session had
+  //      actually expired. Server-side proxy + RLS still prevented data
+  //      exfiltration, but the UI flash was a real risk.
+  //
+  //   3. The 3-second timeout ALSO contributed to React error #310
+  //      during cross-subdomain transitions: when the proxy redirected
+  //      an authenticated user from apex to tenant subdomain, the
+  //      AuthProvider briefly held `isLoading=true` while re-fetching
+  //      the session from the now-shared cookie. The timeout fired
+  //      mid-transition, set `isAuthorized=true`, and the dashboard
+  //      shell rendered with profile=null — which then cascaded into
+  //      rapid re-renders when the profile finally resolved. Removing
+  //      the timeout lets the natural auth-loading skeleton handle the
+  //      transition cleanly.
 
   // Show loading state
   if (guardState.isLoading && !guardState.checked) {

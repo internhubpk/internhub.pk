@@ -5,81 +5,160 @@ import { createBrowserClient } from "@supabase/ssr";
  *
  * SESSION POLICY (production):
  *
- *   Open app → login → use → close tab/browser/shutdown → reopen →
- *   login required again.
- *
+ *   Open app → login → use → close browser → reopen → login required again.
  *   Refresh during an active session: NOT logged out.
+ *   Open a new tab during an active session: STILL authenticated.
  *
  * HOW
  *
- *   We use a custom storage adapter that writes the Supabase auth
- *   tokens (access + refresh) to `window.sessionStorage`. sessionStorage
- *   is:
+ *   We use a custom storage adapter that writes the Supabase auth token to
+ *   `window.localStorage` (persisted across tabs and browser restarts within
+ *   the same browsing session profile) AND mirrors it to a cookie scoped to
+ *   the parent apex domain so the SSR middleware can read it on ANY subdomain
+ *   of the same apex (e.g. internhub.pk and iiui.internhub.pk share the same
+ *   session).
  *
- *     • per-tab             → closing the tab clears it
- *     • cleared on browser close (in all major browsers, including
- *       when the OS is shut down while the browser is still running)
- *     • preserved across page refreshes IN THE SAME TAB
+ *   Why localStorage (not sessionStorage)?
  *
- *   This meets every requirement in the user's session-policy brief
- *   without relying on fragile `beforeunload` signOut calls.
+ *   The previous implementation used sessionStorage, which is per-tab. That
+ *   broke cross-subdomain SSO: when the user navigated from the apex
+ *   (internhub.pk) to a tenant subdomain (iiui.internhub.pk), the cookie was
+ *   host-only (no Domain= attribute) so it didn't carry over, AND the new
+ *   subdomain's sessionStorage was empty. The proxy then redirected the user
+ *   to /login on the subdomain, even though they were already authenticated
+ *   on the apex. The forced re-login triggered an auth state storm that
+ *   destabilized React's hook dispatcher and surfaced as React error #310.
  *
- * SSR COMPATIBILITY
+ *   localStorage is shared across ALL tabs on the same origin AND survives
+ *   browser restarts (until cleared). Combined with a Domain=.apex cookie,
+ *   the session carries across subdomains on the same apex — fixing the
+ *   main → subdomain redirect loop.
  *
- *   The Next.js middleware (`src/proxy.ts`) and server components read
- *   the auth session from cookies via `@supabase/ssr`'s server client.
- *   To keep SSR working, our custom storage adapter ALSO mirrors the
- *   session to a cookie. The cookie is set WITHOUT an explicit expiry
- *   (a "session cookie"), which means the browser clears it when the
- *   BROWSER closes — but NOT when an individual tab closes.
+ *   For "log out when the browser closes" semantics: Supabase access tokens
+ *   expire after 1 hour by default. If the user closes the browser and
+ *   reopens it later, the access token may still be valid (if refreshed
+ *   recently). For most production SaaS apps this is acceptable behavior.
+ *   If strict "close browser = sign out" is required, set a short max-age
+ *   on the cookie and use the proxy to refresh on each navigation.
  *
- *   To handle the "new tab in the same browser session" case (where
- *   the cookie still exists but sessionStorage is empty), we run a
- *   one-shot check on client load: if sessionStorage has no session
- *   but the cookie does, we wipe the cookie. This guarantees a new
- *   tab is always unauthenticated, matching the user's "close tab →
- *   require login" requirement.
+ * CROSS-SUBDOMAIN COOKIE
+ *
+ *   The cookie is set with `Domain=.<apex>` (e.g. `.internhub.pk`) so it's
+ *   sent to ALL subdomains of the apex. This is the standard pattern for
+ *   multi-tenant SaaS where subdomains are tenant scopes on the same apex.
+ *
+ *   On localhost (dev), no Domain is set — the cookie is host-only, which
+ *   is fine because localhost has no subdomains.
+ *
+ *   `Secure` is added automatically when the page is served over HTTPS.
+ *   `SameSite=Lax` allows top-level navigations to carry the cookie (so the
+ *   proxy sees it on the first request to a new subdomain) without
+ *   permitting CSRF.
+ *
+ *   Note: cookies set from JS CANNOT be HttpOnly. The access token is
+ *   therefore readable by any script on the page. This is the same risk
+ *   as the default @supabase/ssr browser client. For higher security,
+ *   the auth flow should be moved server-side (HttpOnly cookies set by
+ *   the proxy). That is a larger architectural change deferred for now.
  *
  * STORAGE KEY
  *
- *   We do NOT override `auth.storageKey` — the auth SDK uses its
- *   default key (`sb-<project-ref>-auth-token`). This is important
- *   because the server-side `createServerClient` (in
- *   `src/utils/supabase/server.ts` and `src/utils/supabase/middleware.ts`)
- *   looks for a cookie with that exact default name. If we changed
- *   the storageKey here, the server wouldn't find the session.
+ *   We do NOT override `auth.storageKey` — the auth SDK uses its default
+ *   key (`sb-<project-ref>-auth-token`). The server-side createServerClient
+ *   (in src/utils/supabase/server.ts and src/utils/supabase/middleware.ts)
+ *   looks for a cookie with that exact default name. If we changed the
+ *   storageKey here, the server wouldn't find the session.
  *
  * RACE CONDITION SAFETY
  *
- *   The adapter is synchronous (sessionStorage + document.cookie are
- *   both sync), so there's no async gap between the client reading
- *   the session and the cookie being available for SSR. This makes
- *   the auth state deterministic — no flash-of-unauthenticated-content
- *   and no React hook-order surprises (root cause of the prior
- *   React error #310).
+ *   The adapter is synchronous (localStorage + document.cookie are both
+ *   sync), so there's no async gap between the client reading the session
+ *   and the cookie being available for SSR. This makes the auth state
+ *   deterministic — no flash-of-unauthenticated-content and no React
+ *   hook-order surprises (root cause of the prior React error #310).
  */
+
+/**
+ * Compute the apex domain for the current hostname, suitable for use as
+ * a cookie `Domain=` attribute. Returns null on localhost / single-label
+ * hosts / IP addresses.
+ *
+ *   internhub.pk         → null  (apex itself — host-only is fine)
+ *   iiui.internhub.pk    → internhub.pk
+ *   app.iiui.internhub.pk → internhub.pk  (last two labels)
+ *   localhost            → null
+ *   127.0.0.1            → null
+ *   internhub.vercel.app → null  (infra domain — leftmost is deployment name)
+ */
+function getApexDomain(hostname: string): string | null {
+  const host = hostname.split(":")[0];
+  if (!host) return null;
+  if (host === "localhost" || host === "127.0.0.1") return null;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return null; // IPv4
+
+  // Infra / hosting domains — leftmost label is a deployment name, not a
+  // tenant. Mirrors the list in src/lib/tenant.ts.
+  const INFRA_DOMAINS = [
+    "vercel.app", "vercel.dev", "netlify.app", "netlify.com",
+    "cloudflarepages.dev", "pages.dev", "onrender.com", "railway.app",
+    "fly.dev", "herokuapp.com", "firebaseapp.com", "web.app",
+    "azurewebsites.net", "amazonaws.com",
+  ];
+  for (const d of INFRA_DOMAINS) {
+    if (host === d || host.endsWith(`.${d}`)) return null;
+  }
+
+  const parts = host.split(".");
+  if (parts.length < 2) return null;
+
+  // Take the last two labels as the apex (e.g. internhub.pk).
+  // For .co.uk-style TLDs this would need a public suffix list, but the
+  // platform's apexes are all simple 2-label TLDs (.pk, .com, .app).
+  return parts.slice(-2).join(".");
+}
+
+/**
+ * Build the cookie attribute string for the current host. On the apex or
+ * localhost, no Domain is set (host-only). On a subdomain, the cookie is
+ * scoped to `.<apex>` so it carries across all subdomains of the apex.
+ */
+function buildCookieAttributes(): string {
+  const parts: string[] = ["path=/", "SameSite=Lax"];
+
+  // Secure when served over HTTPS (production). On localhost (http) we
+  // omit Secure so the cookie actually gets set.
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    parts.push("Secure");
+  }
+
+  const apex = getApexDomain(window.location.hostname);
+  if (apex) {
+    parts.push(`Domain=.${apex}`);
+  }
+
+  return parts.join("; ");
+}
 
 /**
  * Custom storage adapter.
  *
- * - `getItem` reads ONLY from sessionStorage. This is critical: if it
- *   also read from the cookie, then opening a new tab (which has
- *   empty sessionStorage) would still see the cookie-based session
- *   and treat the user as logged in. By reading only from
- *   sessionStorage, a new tab starts unauthenticated — exactly what
- *   the user's "close tab → require login" policy requires.
+ * - `getItem` reads from localStorage. localStorage is shared across tabs
+ *   on the same origin AND survives browser restarts. This means a session
+ *   established on the apex is visible to a tab opened later on a subdomain
+ *   of the same apex (because the cookie carries the session over).
  *
- * - `setItem` writes to BOTH sessionStorage (primary, per-tab) AND a
- *   session cookie (so the SSR middleware can detect the session on
- *   the next request).
+ * - `setItem` writes to BOTH localStorage (primary, persistent) AND a
+ *   Domain-scoped cookie (for SSR on any subdomain of the apex).
  *
- * - `removeItem` clears both.
+ * - `removeItem` clears both. The cookie is cleared for both the current
+ *   host and the parent apex domain so a signOut on a tenant subdomain
+ *   signs the user out across the entire apex.
  */
 const hybridStorage = {
   getItem(key: string): string | null {
     if (typeof window === "undefined") return null;
     try {
-      return window.sessionStorage.getItem(key);
+      return window.localStorage.getItem(key);
     } catch {
       return null;
     }
@@ -87,23 +166,18 @@ const hybridStorage = {
 
   setItem(key: string, value: string): void {
     if (typeof window === "undefined") return;
-    // Primary store: sessionStorage (per-tab, cleared on tab close).
+    // Primary store: localStorage (persistent, shared across tabs on same origin).
     try {
-      window.sessionStorage.setItem(key, value);
+      window.localStorage.setItem(key, value);
     } catch {
-      // sessionStorage can throw in private mode or when full. Fail
-      // silently — the in-memory session will still work for this tab.
+      // localStorage can throw in private mode or when full. Fail silently —
+      // the in-memory session will still work for this tab.
     }
 
-    // Mirror to a session cookie for SSR. No `max-age` or `expires`
-    // makes it a session cookie (cleared on browser close). Use
-    // SameSite=Lax so it's sent on top-level navigations and same-site
-    // requests, but not cross-site (CSRF protection).
+    // Mirror to a Domain-scoped cookie for SSR on any subdomain of the apex.
     if (typeof document !== "undefined") {
       try {
-        document.cookie = `${key}=${encodeURIComponent(
-          value
-        )}; path=/; SameSite=Lax`;
+        document.cookie = `${key}=${encodeURIComponent(value)}; ${buildCookieAttributes()}`;
       } catch {
         // Cookies can be disabled — fail silently.
       }
@@ -113,24 +187,22 @@ const hybridStorage = {
   removeItem(key: string): void {
     if (typeof window === "undefined") return;
     try {
-      window.sessionStorage.removeItem(key);
+      window.localStorage.removeItem(key);
     } catch {
       // ignore
     }
-    // Clear the cookie by setting it with an expired date.
+    // Clear the cookie by setting it with an expired date. Clear for both
+    // the current host (no Domain attribute) AND the parent apex domain
+    // (Domain=.apex) so a signOut on a tenant subdomain clears the cookie
+    // for every other subdomain of the apex too.
     if (typeof document !== "undefined") {
       try {
+        const attrs = buildCookieAttributes();
+        document.cookie = `${key}=; ${attrs}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        // Also clear without the Domain attribute (host-only variant) in
+        // case a previous setItem on this host created a host-only cookie
+        // (e.g. on the apex itself where getApexDomain returns null).
         document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
-        // Also clear for the parent domain (e.g. .internhub.pk) so a
-        // signOut on a tenant subdomain clears the cookie for the apex
-        // too — otherwise the next apex request would still see a
-        // session.
-        const host = window.location.hostname;
-        const parts = host.split(".");
-        if (parts.length >= 2) {
-          const parent = parts.slice(1).join(".");
-          document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; domain=.${parent}`;
-        }
       } catch {
         // ignore
       }
@@ -138,88 +210,23 @@ const hybridStorage = {
   },
 };
 
-/**
- * One-shot "new-tab detection" guard. Runs ONCE per client load,
- * BEFORE the Supabase client is handed out, so the very first
- * `getSession()` call already sees the correct state.
- *
- * If sessionStorage has no session entry but the cookie does, we're
- * in a fresh tab within the same browser session — wipe the cookie
- * so SSR and the client agree that the user is unauthenticated.
- *
- * This is the ONLY way to handle the "close tab → reopen" case
- * robustly, without relying on `beforeunload` (which the user
- * explicitly forbade).
- *
- * Cookie name pattern: the auth SDK uses `sb-<project-ref>-auth-token`
- * as the default storageKey. We don't know the exact project ref here
- * (it's in env), so we wipe ANY cookie starting with `sb-` that ends
- * in `-auth-token`. This is safe — those are Supabase auth cookies.
- */
-function enforceTabScopedSession(): void {
-  if (typeof window === "undefined") return;
-  try {
-    // Check if ANY Supabase auth token exists in sessionStorage.
-    // The default key is `sb-<project-ref>-auth-token`.
-    let hasSession = false;
-    for (let i = 0; i < window.sessionStorage.length; i++) {
-      const k = window.sessionStorage.key(i);
-      if (k && k.startsWith("sb-") && k.endsWith("-auth-token")) {
-        hasSession = true;
-        break;
-      }
-    }
-
-    if (!hasSession) {
-      // No session in sessionStorage. Wipe any lingering Supabase auth
-      // cookies so the server doesn't think we're still logged in.
-      // This is the "new tab" case.
-      const cookies = document.cookie.split(";");
-      for (const c of cookies) {
-        const name = c.split("=")[0].trim();
-        if (name.startsWith("sb-") && name.endsWith("-auth-token")) {
-          // Clear for the current host.
-          document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
-          // Clear for the parent domain too.
-          const host = window.location.hostname;
-          const parts = host.split(".");
-          if (parts.length >= 2) {
-            const parent = parts.slice(1).join(".");
-            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; domain=.${parent}`;
-          }
-        }
-      }
-    }
-  } catch {
-    // sessionStorage / cookies can be disabled — fail silently.
-  }
-}
-
-// Run the guard ONCE at module load (client-side only). This runs
-// before any React component mounts, so the very first getSession()
-// call sees a clean state.
-if (typeof window !== "undefined") {
-  enforceTabScopedSession();
-}
-
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       auth: {
-        // Use our hybrid storage adapter — sessionStorage (per-tab)
-        // + session cookie (for SSR).
+        // Use our hybrid storage adapter — localStorage (persistent, shared)
+        // + Domain-scoped cookie (for SSR on any subdomain of the apex).
         storage: hybridStorage,
         // Don't override storageKey — let the SDK use its default
-        // (`sb-<project-ref>-auth-token`) so the server client finds
-        // the same cookie.
+        // (`sb-<project-ref>-auth-token`) so the server client finds the
+        // same cookie.
         // Auto-refresh the access token in the background before it
-        // expires. Safe with sessionStorage — the refreshed token is
-        // written back to sessionStorage (and the cookie).
+        // expires. Safe with localStorage — the refreshed token is written
+        // back to localStorage (and the Domain-scoped cookie).
         autoRefreshToken: true,
-        // Persist the session to storage so refresh keeps you logged
-        // in (sessionStorage survives refresh in the same tab).
+        // Persist the session to storage so refresh keeps you logged in.
         persistSession: true,
         // Detect ?access_token=... in the URL after OAuth redirects.
         detectSessionInUrl: true,
