@@ -329,9 +329,14 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: GraduationCap,
     },
     {
+      title: "Tasks",
+      href: "/site-supervisor/tasks",
+      icon: CheckSquare,
+    },
+    {
       title: "Evaluations",
       href: "/site-supervisor/evaluations",
-      icon: CheckSquare,
+      icon: ClipboardList,
     },
     {
       title: "Weekly Logs",

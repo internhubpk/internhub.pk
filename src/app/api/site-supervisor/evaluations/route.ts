@@ -174,18 +174,49 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify the student is assigned to this supervisor. Use real columns:
-    // site_supervisor_id (profiles.user_id) and student_user_id.
+    // --- Defense-in-depth: verify caller role BEFORE the insert -------------
+    // The `eval_insert` RLS policy (0028_security_hardening.sql) requires:
+    //   evaluator_id = auth.uid()
+    //   evaluator_role = internhub.current_role()    <-- profiles.role
+    //   internhub.is_assigned_supervisor(student_user_id)
+    //     <-- requires student_internships.status IN ('assigned','active')
+    //
+    // If any of these fail, RLS rejects the INSERT with a 42501 error which
+    // we previously surfaced as a 500. We now check all three up-front and
+    // return a clear 403 so the client can show an actionable message.
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("user_id, role")
+      .eq("user_id", supervisorUserId)
+      .maybeSingle();
+
+    if (profileErr || !profile) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "PROFILE_NOT_FOUND", message: "Your supervisor profile could not be loaded. Please re-login." } },
+        { status: 403 }
+      );
+    }
+    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: `Your account role is "${profile.role}". Only site supervisors can submit site-supervisor evaluations.` } },
+        { status: 403 }
+      );
+    }
+
+    // Verify the student is actively assigned to this supervisor.
+    // RLS requires status IN ('assigned','active') — we mirror that here so
+    // we can return 403 with a helpful message instead of letting RLS fail.
     const { data: assignment, error: assignError } = await supabase
       .from("student_internships")
-      .select("id")
+      .select("id, status")
       .eq("site_supervisor_id", supervisorUserId)
       .eq("student_user_id", body.student_user_id)
+      .in("status", ["assigned", "active"])
       .maybeSingle();
 
     if (assignError || !assignment) {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "FORBIDDEN", message: "Student is not assigned to this supervisor" } },
+        { success: false, error: { code: "FORBIDDEN", message: "This student is not actively assigned to you. Internship status must be 'assigned' or 'active' for evaluations." } },
         { status: 403 }
       );
     }
@@ -220,9 +251,17 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("Error creating evaluation:", insertError);
+      // RLS violations (42501) should be 403, not 500 — we've already done
+      // the defense-in-depth checks above, so an RLS rejection here means
+      // either a race condition or a policy mismatch the API didn't catch.
+      const isRlsViolation =
+        insertError.code === "42501" ||
+        /row-level security policy/i.test(insertError.message);
+      const status = isRlsViolation ? 403 : 500;
+      const code = isRlsViolation ? "RLS_DENIED" : "DB_ERROR";
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "DB_ERROR", message: insertError.message } },
-        { status: 500 }
+        { success: false, error: { code, message: insertError.message } },
+        { status }
       );
     }
 

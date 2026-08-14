@@ -3,165 +3,118 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Target,
-  Search,
-  Filter,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Upload,
-  FileText,
-  Send,
-  Eye,
-  Paperclip,
-  CalendarDays,
-  BookOpen,
-  ChevronRight,
-  RefreshCw,
-  Plus,
-  ExternalLink,
-  MessageSquare,
-  FileCode,
-  Image as ImageIcon,
+  AlertCircle, RefreshCw, Loader2, CheckCircle2, Clock, Lock,
+  Calendar, Youtube, ArrowRight, Send, FileText, Link as LinkIcon,
+  Plus, X, ExternalLink, MessageSquare, AlertTriangle, ListTodo,
+  Wrench, BookOpen, Lightbulb,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/providers/auth-provider";
-import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { StatCard } from "@/components/dashboard/stat-card";
 
-// Types
+// ---------------------------------------------------------------------------
+// Types — matches the EnrichedTaskRow from /api/student/tasks
+// ---------------------------------------------------------------------------
 interface Task {
   id: string;
   title: string;
   description: string | null;
-  course_name: string | null;
+  expected_deliverable: string | null;
+  resources: string | null;
+  youtube_url: string | null;
   due_date: string | null;
-  status:
-    | "pending"
-    | "assigned"
-    | "in_progress"
-    | "submitted"
-    | "resubmitted"
-    | "under_review"
-    | "approved"
-    | "rejected";
-  priority: "low" | "medium" | "high" | "urgent";
-  created_at: string;
-  submission?: TaskSubmission;
+  priority: string | null;
+  week_number: number | null;
+  day_number: number | null;
+  sort_order: number;
+  requires_previous_completion: boolean;
+  // Assignment state
+  assignment_id: string;
+  assignment_status: string;
+  // Submission
+  submission_id: string | null;
+  submission_status: string | null;
+  submission_content: string | null;
+  submission_links: Array<{ label: string; url: string; type?: string }> | null;
+  submission_tools_used: string | null;
+  submission_skills_learned: string | null;
+  submission_problems_solved: string | null;
+  submission_submitted_at: string | null;
+  submission_reviewed_at: string | null;
+  submission_feedback: string | null;
+  submission_score: number | null;
+  // Unlock state
+  is_unlocked: boolean;
+  is_current: boolean;
 }
 
-interface TaskSubmission {
-  id: string;
-  task_id: string;
-  notes: string | null;
-  url: string | null;
-  file_url: string | null;
-  file_name: string | null;
-  submitted_at: string;
-  status: "pending" | "submitted" | "resubmitted" | "under_review" | "approved" | "rejected";
-  feedback: string | null;
-  reviewed_at: string | null;
+interface SubmissionForm {
+  content: string;
+  links: Array<{ label: string; url: string }>;
+  tools_used: string;
+  skills_learned: string;
+  problems_solved: string;
 }
 
+const EMPTY_FORM: SubmissionForm = {
+  content: "",
+  links: [{ label: "", url: "" }],
+  tools_used: "",
+  skills_learned: "",
+  problems_solved: "",
+};
+
+// ---------------------------------------------------------------------------
 export default function StudentTasksPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  
-  // Submission dialog state
-  const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [submissionNotes, setSubmissionNotes] = useState("");
-  const [submissionUrl, setSubmissionUrl] = useState("");
-  const [submissionFile, setSubmissionFile] = useState<File | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  
-  // View submission dialog
-  const [viewSubmission, setViewSubmission] = useState<TaskSubmission | null>(null);
+
+  // Submission dialog
+  const [submitTask, setSubmitTask] = useState<Task | null>(null);
+  const [submitForm, setSubmitForm] = useState<SubmissionForm>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+
+  // View feedback dialog
+  const [viewTask, setViewTask] = useState<Task | null>(null);
 
   const fetchTasks = useCallback(async () => {
     if (!user) return;
-
+    setLoading(true);
+    setError(null);
     try {
-      // Fetch tasks via the API (which queries task_assignments, not
-      // tasks directly — tasks has no student_user_id column).
       const res = await fetch("/api/student/tasks", { cache: "no-store" });
-      const json = await res.json().catch(() => ({ success: false, data: [] }));
-      if (res.ok && json?.success && Array.isArray(json.data)) {
-        // Map the API's enriched rows to the UI's Task interface.
-        const tasksWithSubmissions: Task[] = (json.data as any[]).map((row) => ({
-          id: row.id,
-          title: row.title || "",
-          description: row.description || null,
-          course_name: null, // not in schema; left null
-          due_date: row.due_date || null,
-          // Use the assignment status as the task status for the student's
-          // view (pending/submitted/approved/rejected).
-          status: (row.assignment_status as Task["status"]) || "pending",
-          priority: (row.priority as Task["priority"]) || "medium",
-          created_at: row.created_at || new Date().toISOString(),
-          submission: row.submission_id
-            ? {
-                id: row.submission_id,
-                task_id: row.id,
-                notes: row.submission_notes,
-                url: row.submission_url,
-                file_url: row.submission_file_url,
-                file_name: row.submission_file_name,
-                submitted_at: row.submission_submitted_at || new Date().toISOString(),
-                status: (row.submission_status as TaskSubmission["status"]) || "pending",
-                feedback: row.submission_feedback,
-                reviewed_at: row.submission_reviewed_at,
-              }
-            : undefined,
-        }));
-        setTasks(tasksWithSubmissions);
-      } else {
-        console.error("Error fetching tasks:", json?.error || `HTTP ${res.status}`);
-        setTasks([]);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `Failed to fetch tasks (${res.status})`);
       }
-    } catch (error) {
-      console.error("Error fetching tasks:", error);
+      const json = await res.json();
+      setTasks(json.data || []);
+    } catch (err: any) {
+      console.error("[student/tasks] fetch error:", err);
+      setError(err?.message || "Failed to load tasks");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }, [user]);
 
@@ -169,721 +122,738 @@ export default function StudentTasksPage() {
     fetchTasks();
   }, [fetchTasks]);
 
-  // Filtered tasks
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch =
-      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.course_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || task.status === statusFilter;
-    const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
-    
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+  // ---------------------------------------------------------------------------
+  // Compute progress + grouping
+  // ---------------------------------------------------------------------------
+  const stats = (() => {
+    const total = tasks.length;
+    const approved = tasks.filter((t) => t.assignment_status === "approved").length;
+    const inProgress = tasks.filter(
+      (t) => t.assignment_status === "pending" || t.assignment_status === "resubmitted"
+    ).length;
+    const pendingReview = tasks.filter((t) => t.assignment_status === "submitted").length;
+    return { total, approved, inProgress, pendingReview };
+  })();
+  const completionPct = stats.total === 0 ? 0 : Math.round((stats.approved / stats.total) * 100);
 
-  // Stats calculations
-  const pendingCount = tasks.filter(t => ["pending", "assigned"].includes(t.status)).length;
-  const inProgressCount = tasks.filter(t => t.status === "in_progress").length;
-  const submittedCount = tasks.filter(t => ["submitted", "under_review"].includes(t.submission?.status || "")).length;
-  const approvedCount = tasks.filter(t => t.submission?.status === "approved").length;
-  const totalCount = tasks.length;
-  const completionRate = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 0;
-
-  // Priority badge helper
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case "urgent":
-        return <Badge className="bg-red-100 text-red-700 border-red-200">Urgent</Badge>;
-      case "high":
-        return <Badge className="bg-orange-100 text-orange-700 border-orange-200">High</Badge>;
-      case "medium":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">Medium</Badge>;
-      default:
-        return <Badge variant="secondary">Low</Badge>;
+  const tasksByWeek = (() => {
+    const groups = new Map<number | string, Task[]>();
+    for (const t of tasks) {
+      const key = t.week_number ?? "unsorted";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
     }
-  };
-
-  // Due date color helper
-  const getDueDateStyle = (dueDate: string | null) => {
-    if (!dueDate) return "text-muted-foreground";
-    
-    const now = new Date();
-    const due = new Date(dueDate);
-    const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) return "text-red-600 font-medium";
-    if (diffDays <= 1) return "text-red-500 font-medium";
-    if (diffDays <= 3) return "text-amber-500 font-medium";
-    return "text-muted-foreground";
-  };
-
-  // Format date helper
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+    for (const [, list] of groups) {
+      list.sort((a, b) => (a.day_number ?? 99) - (b.day_number ?? 99) || a.sort_order - b.sort_order);
+    }
+    return Array.from(groups.entries()).sort((a, b) => {
+      if (a[0] === "unsorted") return 1;
+      if (b[0] === "unsorted") return -1;
+      return (a[0] as number) - (b[0] as number);
     });
-  };
+  })();
 
-  // Format relative time
-  const formatRelativeTime = (dateStr: string) => {
-    const now = new Date();
-    const date = new Date(dateStr);
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  // Find current and next task for "Go to Next Task" CTA
+  const currentTask = tasks.find((t) => t.is_current);
+  const nextTask = (() => {
+    if (!currentTask) return null;
+    const sorted = [...tasks].sort(
+      (a, b) => (a.week_number ?? 99) - (b.week_number ?? 99)
+        || (a.day_number ?? 99) - (b.day_number ?? 99)
+        || a.sort_order - b.sort_order
+    );
+    const idx = sorted.findIndex((t) => t.id === currentTask.id);
+    return idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
+  })();
 
-    if (diffHours < 1) return "Just now";
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return formatDate(dateStr);
-  };
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+  function openSubmit(task: Task) {
+    if (!task.is_unlocked) {
+      toast({
+        title: "Task locked",
+        description: "Complete and get approval on the previous task first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSubmitTask(task);
+    // Pre-fill from existing submission (for resubmissions)
+    setSubmitForm({
+      content: task.submission_content || "",
+      links: task.submission_links && task.submission_links.length > 0
+        ? task.submission_links.map((l) => ({ label: l.label || "", url: l.url }))
+        : [{ label: "", url: "" }],
+      tools_used: task.submission_tools_used || "",
+      skills_learned: task.submission_skills_learned || "",
+      problems_solved: task.submission_problems_solved || "",
+    });
+  }
 
-  // Handle task submission
-  const handleSubmitTask = async () => {
-    if (!selectedTask || !user) return;
-
-    setIsSubmitting(true);
-
+  async function handleSubmit() {
+    if (!submitTask) return;
+    if (!submitForm.content.trim()) {
+      toast({ title: "Please describe what you completed", variant: "destructive" });
+      return;
+    }
+    setSubmitting(true);
     try {
-      let fileUrl: string | null = null;
-      let fileName: string | null = null;
-
-      // Upload file if provided
-      if (submissionFile) {
-        const supabase = createClient();
-        const fileExt = submissionFile.name.split('.').pop();
-        const fileNameUnique = `submission_${user.id}_${selectedTask.id}_${Date.now()}.${fileExt}`;
-        const filePath = `submissions/${fileNameUnique}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(filePath, submissionFile);
-
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from('documents')
-          .getPublicUrl(filePath);
-
-        fileUrl = urlData.publicUrl;
-        fileName = submissionFile.name;
-      }
-
-      // Submit via the API (which upserts task_submissions + updates the
-      // assignment status atomically).
+      const links = submitForm.links
+        .filter((l) => l.url.trim())
+        .map((l) => ({
+          label: l.label.trim() || l.url.trim(),
+          url: l.url.trim(),
+          type: "other" as const,
+        }));
       const res = await fetch("/api/student/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          task_id: selectedTask.id,
-          notes: submissionNotes || undefined,
-          url: submissionUrl || undefined,
-          file_url: fileUrl || undefined,
-          file_name: fileName || undefined,
+          task_id: submitTask.id,
+          content: submitForm.content.trim(),
+          links,
+          tools_used: submitForm.tools_used.trim(),
+          skills_learned: submitForm.skills_learned.trim(),
+          problems_solved: submitForm.problems_solved.trim(),
         }),
       });
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || `Failed to submit task (HTTP ${res.status})`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `Submit failed (${res.status})`);
       }
-
-      // Reset form and close dialog
-      setSubmitDialogOpen(false);
-      setSelectedTask(null);
-      setSubmissionNotes("");
-      setSubmissionUrl("");
-      setSubmissionFile(null);
-      
-      // Refresh tasks
+      toast({
+        title: "Task submitted!",
+        description: "Your supervisor has been notified. You'll see feedback here once they review it.",
+      });
+      setSubmitTask(null);
       await fetchTasks();
-    } catch (error) {
-      console.error("Error submitting task:", error);
-      alert(error instanceof Error ? error.message : "Failed to submit task. Please try again.");
+    } catch (err: any) {
+      toast({ title: "Submission failed", description: err.message, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
-  };
+  }
 
-  // Simple markdown preview (basic implementation)
-  const renderMarkdownPreview = (text: string) => {
-    if (!text) return <p className="text-muted-foreground italic">Nothing to preview</p>;
-    
-    // Basic markdown-like rendering
-    let html = text
-      .replace(/^# (.*$)/gm, '<h1 class="text-xl font-bold mb-2">$1</h1>')
-      .replace(/^## (.*$)/gm, '<h2 class="text-lg font-semibold mb-2">$1</h2>')
-      .replace(/^### (.*$)/gm, '<h3 class="text-base font-semibold mb-1">$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`([^`]+)`/g, '<code class="bg-muted px-1 rounded text-sm">$1</code>')
-      .replace(/\n/g, '<br />');
-    
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
-  };
-
-  // Get file icon based on type
-  const getFileIcon = (fileName: string | null) => {
-    if (!fileName) return <FileText className="h-4 w-4" />;
-    
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'pdf':
-        return <FileText className="h-4 w-4 text-red-500" />;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-        return <ImageIcon className="h-4 w-4 text-blue-500" />;
-      case 'zip':
-      case 'rar':
-        return <FileCode className="h-4 w-4 text-yellow-500" />;
-      default:
-        return <FileCode className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  if (isLoading) {
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+  if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-4 w-64 mt-2" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="h-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-12 w-1/3" />
+        <Skeleton className="h-32" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <PageHeader title="My Tasks" description="Your internship tasks and submissions" />
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+              <div>
+                <p className="font-medium text-destructive">Failed to load</p>
+                <p className="text-sm text-muted-foreground mt-1">{error}</p>
+                <Button onClick={fetchTasks} variant="outline" size="sm" className="mt-3">
+                  <RefreshCw className="h-4 w-4 mr-2" /> Retry
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 p-6">
       <PageHeader
         title="My Tasks"
-        description="View assignments, submit work, and track your progress"
+        description="Complete tasks in order. Each task unlocks after your supervisor approves the previous one."
         actions={
-          <Button variant="outline" onClick={fetchTasks} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
+          <Button variant="outline" size="sm" onClick={fetchTasks}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
           </Button>
         }
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {/* Empty state */}
+      {tasks.length === 0 && (
         <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">Total Tasks</p>
-            <p className="text-2xl font-bold">{totalCount}</p>
+          <CardContent className="py-16 text-center">
+            <ListTodo className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-muted-foreground">No tasks assigned to you yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Your supervisor will assign tasks as your internship progresses. Check back soon!
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">Pending</p>
-            <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">In Progress</p>
-            <p className="text-2xl font-bold text-blue-600">{inProgressCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">Submitted</p>
-            <p className="text-2xl font-bold text-purple-600">{submittedCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">Completion</p>
-            <p className="text-2xl font-bold text-emerald-600">{completionRate}%</p>
-            <Progress value={completionRate} className="h-1 mt-2" />
-          </CardContent>
-        </Card>
-      </div>
+      )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by title, description, or course..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="assigned">Assigned</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="submitted">Submitted</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-full sm:w-[140px]">
-                <SelectValue placeholder="Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priority</SelectItem>
-                <SelectItem value="urgent">Urgent</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="text-sm text-muted-foreground self-center">
-              {filteredTasks.length} of {tasks.length} tasks
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tasks Content */}
-      {filteredTasks.length === 0 ? (
-        <Card>
-          <CardContent className="py-16">
-            <div className="flex flex-col items-center text-center">
-              <Target className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">
-                {searchTerm || statusFilter !== "all" || priorityFilter !== "all" 
-                  ? "No Matching Tasks" 
-                  : "No Tasks Assigned Yet"}
-              </h3>
-              <p className="text-muted-foreground max-w-md mb-4">
-                {searchTerm || statusFilter !== "all" || priorityFilter !== "all"
-                  ? "Try adjusting your search or filter criteria."
-                  : "You don't have any tasks assigned yet. They will appear here once your supervisor assigns them."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
+      {/* Progress overview */}
+      {tasks.length > 0 && (
         <>
-          {/* Desktop Table View */}
-          <div className="hidden md:block">
-            <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Task</TableHead>
-                      <TableHead>Course</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[120px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTasks.map((task) => (
-                      <TableRow key={task.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{task.title}</p>
-                            {task.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
-                                {task.description}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">{task.course_name || "-"}</span>
-                        </TableCell>
-                        <TableCell>{getPriorityBadge(task.priority)}</TableCell>
-                        <TableCell>
-                          <span className={`text-sm ${getDueDateStyle(task.due_date)}`}>
-                            {task.due_date ? formatDate(task.due_date) : "No deadline"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {task.submission 
-                            ? <StatusBadge status={task.submission.status} />
-                            : <StatusBadge status={task.status} />
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {task.submission && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => setViewSubmission(task.submission!)}
-                                title="View Submission"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {!task.submission && !["approved", "submitted"].includes(task.status) && (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                className="gap-1"
-                                onClick={() => {
-                                  setSelectedTask(task);
-                                  setSubmitDialogOpen(true);
-                                }}
-                              >
-                                <Send className="h-3 w-3" />
-                                Submit
-                              </Button>
-                            )}
-                            {task.submission?.status === "rejected" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1"
-                                onClick={() => {
-                                  setSelectedTask(task);
-                                  setSubmitDialogOpen(true);
-                                }}
-                              >
-                                <RefreshCw className="h-3 w-3" />
-                                Resubmit
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard label="Total Tasks" value={stats.total} icon={ListTodo} variant="info" />
+            <StatCard label="Completed" value={stats.approved} icon={CheckCircle2} variant="success" />
+            <StatCard label="In Progress" value={stats.inProgress} icon={Clock} variant="warning" />
+            <StatCard label="Awaiting Review" value={stats.pendingReview} icon={MessageSquare} variant="default" />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Overall Progress</CardTitle>
+              <CardDescription>
+                {stats.approved} of {stats.total} tasks completed
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <Progress value={completionPct} className="h-3 flex-1" />
+                <span className="font-medium text-lg">{completionPct}%</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Current task callout */}
+          {currentTask && (
+            <Card className="border-primary bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="default" className="bg-primary text-primary-foreground">
+                        Current Task
+                      </Badge>
+                      {currentTask.week_number && (
+                        <span className="text-xs text-muted-foreground">
+                          Week {currentTask.week_number}
+                          {currentTask.day_number ? ` · Day ${currentTask.day_number}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-lg">{currentTask.title}</h3>
+                    {currentTask.description && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                        {currentTask.description}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
+                      {currentTask.due_date && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Due {new Date(currentTask.due_date).toLocaleDateString()}
+                        </span>
+                      )}
+                      {currentTask.submission_status === "submitted" && (
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+                          <Clock className="h-3 w-3 mr-1" /> Awaiting review
+                        </Badge>
+                      )}
+                      {currentTask.submission_status === "resubmitted" && (
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                          <AlertTriangle className="h-3 w-3 mr-1" /> Changes requested
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {currentTask.assignment_status === "approved" ? (
+                      nextTask ? (
+                        <Button onClick={() => openSubmit(nextTask)}>
+                          Go to Next Task <ArrowRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      ) : (
+                        <Badge variant="default" className="bg-green-600 hover:bg-green-600">
+                          <CheckCircle2 className="h-4 w-4 mr-1" /> All tasks complete!
+                        </Badge>
+                      )
+                    ) : currentTask.submission_status === "submitted" ||
+                      currentTask.submission_status === "resubmitted" ? (
+                      <Button variant="outline" onClick={() => setViewTask(currentTask)}>
+                        View Feedback
+                      </Button>
+                    ) : (
+                      <Button onClick={() => openSubmit(currentTask)}>
+                        <Send className="h-4 w-4 mr-2" /> Submit Work
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-4">
-            {filteredTasks.map((task) => (
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <Card className="overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h3 className="font-semibold truncate">{task.title}</h3>
-                          {task.course_name && (
-                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                              <BookOpen className="h-3 w-3" />
-                              {task.course_name}
-                            </p>
-                          )}
-                        </div>
-                        <div className="shrink-0">
-                          {task.submission 
-                            ? <StatusBadge status={task.submission.status} />
-                            : getPriorityBadge(task.priority)
-                          }
-                        </div>
-                      </div>
-
-                      {task.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="flex items-center justify-between pt-2 border-t">
-                        <div className="flex items-center gap-1 text-sm">
-                          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                          <span className={getDueDateStyle(task.due_date)}>
-                            {task.due_date ? formatDate(task.due_date) : "No deadline"}
-                          </span>
-                        </div>
-
-                        <div className="flex gap-2">
-                          {task.submission && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setViewSubmission(task.submission!)}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                          )}
-                          {!task.submission && !["approved", "submitted"].includes(task.status) && (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setSelectedTask(task);
-                                setSubmitDialogOpen(true);
-                              }}
-                            >
-                              <Send className="h-3 w-3 mr-1" />
-                              Submit
-                            </Button>
-                          )}
-                          {task.submission?.status === "rejected" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedTask(task);
-                                setSubmitDialogOpen(true);
-                              }}
-                            >
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              Resubmit
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+          )}
         </>
       )}
 
-      {/* Submit Task Dialog */}
-      <Dialog open={submitDialogOpen} onOpenChange={setSubmitDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5" />
-              Submit Task
-            </DialogTitle>
-            <DialogDescription>
-              Submit your work for: <strong>{selectedTask?.title}</strong>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 mt-4">
-            {/* Notes with Markdown Preview */}
-            <div className="space-y-2">
-              <Label htmlFor="notes">
-                Notes / Description
-                <span className="text-muted-foreground ml-2">(Markdown supported)</span>
-              </Label>
-              
-              <Tabs defaultValue="write" className="w-full">
-                <TabsList className="w-full">
-                  <TabsTrigger value="write" className="flex-1">Write</TabsTrigger>
-                  <TabsTrigger value="preview" className="flex-1">Preview</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="write">
-                  <Textarea
-                    id="notes"
-                    value={submissionNotes}
-                    onChange={(e) => setSubmissionNotes(e.target.value)}
-                    rows={8}
-                    placeholder="Describe what you've done...&#10;&#10;You can use **bold**, *italic*, `code`, etc."
-                    className="font-mono text-sm"
-                  />
-                </TabsContent>
-                
-                <TabsContent value="preview">
-                  <div className="border rounded-md p-4 min-h-[200px] prose prose-sm dark:prose-invert max-w-none">
-                    {renderMarkdownPreview(submissionNotes)}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-
-            {/* URL Field */}
-            <div className="space-y-2">
-              <Label htmlFor="url">
-                Link (Optional)
-                <span className="text-muted-foreground ml-2">GitHub repo, live demo, etc.</span>
-              </Label>
-              <Input
-                id="url"
-                value={submissionUrl}
-                onChange={(e) => setSubmissionUrl(e.target.value)}
-                placeholder="https://github.com/your-repo or https://your-demo.com"
-                type="url"
-              />
-            </div>
-
-            {/* File Upload */}
-            <div className="space-y-2">
-              <Label>Attachment (Optional)</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                <input
-                  type="file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      // Validate size (max 25MB)
-                      if (file.size > 25 * 1024 * 1024) {
-                        alert("File must be less than 25MB");
-                        return;
-                      }
-                      setSubmissionFile(file);
-                    }
-                  }}
-                  className="hidden"
-                  id="task-file-upload"
+      {/* Tasks grouped by week */}
+      <div className="space-y-4">
+        {tasksByWeek.map(([week, weekTasks]) => (
+          <Card key={week}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                {week === "unsorted" ? "Tasks" : `Week ${week}`}
+                <Badge variant="outline">
+                  {weekTasks.filter((t) => t.assignment_status === "approved").length}/{weekTasks.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {weekTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  onSubmit={() => openSubmit(task)}
+                  onViewFeedback={() => setViewTask(task)}
                 />
-                <label htmlFor="task-file-upload" className="cursor-pointer">
-                  <Paperclip className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    {submissionFile ? (
-                      <span className="font-medium text-foreground">{submissionFile.name}</span>
-                    ) : (
-                      "Click to select a file"
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Any file type up to 25MB
-                  </p>
-                </label>
-              </div>
-            </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSubmitDialogOpen(false);
-                  setSelectedTask(null);
-                  setSubmissionNotes("");
-                  setSubmissionUrl("");
-                  setSubmissionFile(null);
-                }}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSubmitTask}
-                disabled={isSubmitting || (!submissionNotes.trim() && !submissionUrl && !submissionFile)}
-                className="gap-2"
-              >
-                {isSubmitting ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                {isSubmitting ? "Submitting..." : "Submit Task"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Submission Dialog */}
-      <Dialog open={!!viewSubmission} onOpenChange={() => setViewSubmission(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Submission dialog */}
+      <Dialog open={!!submitTask} onOpenChange={(v) => !v && setSubmitTask(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              Submission Details
+            <DialogTitle>
+              {submitTask?.submission_status === "resubmitted"
+                ? "Resubmit Task"
+                : "Submit Task"}
             </DialogTitle>
             <DialogDescription>
-              Submitted on {viewSubmission?.submitted_at ? formatRelativeTime(viewSubmission.submitted_at) : ""}
+              {submitTask?.title}
+              {submitTask?.expected_deliverable && (
+                <span className="block mt-1 text-xs">
+                  Expected: {submitTask.expected_deliverable}
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
-
-          {viewSubmission && (
-            <div className="space-y-6 mt-4">
-              {/* Status */}
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <StatusBadge status={viewSubmission.status} />
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="space-y-4 pb-2">
+              {/* Description */}
+              <div className="space-y-1.5">
+                <Label htmlFor="content">
+                  Description <span className="text-destructive">*</span>{" "}
+                  <span className="text-muted-foreground text-xs font-normal">
+                    (Markdown supported — explain what you completed)
+                  </span>
+                </Label>
+                <Textarea
+                  id="content"
+                  placeholder="I completed the landing page by following the design mockup. Used Tailwind for styling..."
+                  rows={5}
+                  value={submitForm.content}
+                  onChange={(e) => setSubmitForm({ ...submitForm, content: e.target.value })}
+                />
               </div>
 
-              {/* Notes */}
-              {viewSubmission.notes && (
+              {/* Links */}
+              <div className="space-y-1.5">
+                <Label>Links <span className="text-muted-foreground text-xs font-normal">(GitHub, live demo, Figma, docs, etc.)</span></Label>
                 <div className="space-y-2">
-                  <Label>Submitted Notes</Label>
-                  <div className="border rounded-md p-4 prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                    {viewSubmission.notes}
-                  </div>
-                </div>
-              )}
-
-              {/* URL */}
-              {viewSubmission.url && (
-                <div className="space-y-2">
-                  <Label>Attached Link</Label>
-                  <a
-                    href={viewSubmission.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-3 border rounded-md hover:bg-muted/50 transition-colors"
-                  >
-                    <ExternalLink className="h-4 w-4 text-primary" />
-                    <span className="text-sm text-primary truncate">{viewSubmission.url}</span>
-                  </a>
-                </div>
-              )}
-
-              {/* File Attachment */}
-              {viewSubmission.file_url && (
-                <div className="space-y-2">
-                  <Label>Attached File</Label>
-                  <a
-                    href={viewSubmission.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-3 border rounded-md hover:bg-muted/50 transition-colors"
-                  >
-                    {getFileIcon(viewSubmission.file_name)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{viewSubmission.file_name}</p>
+                  {submitForm.links.map((link, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        placeholder="Label (e.g., GitHub repo)"
+                        value={link.label}
+                        onChange={(e) => {
+                          const links = [...submitForm.links];
+                          links[idx] = { ...links[idx], label: e.target.value };
+                          setSubmitForm({ ...submitForm, links });
+                        }}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="https://..."
+                        value={link.url}
+                        onChange={(e) => {
+                          const links = [...submitForm.links];
+                          links[idx] = { ...links[idx], url: e.target.value };
+                          setSubmitForm({ ...submitForm, links });
+                        }}
+                        className="flex-[2]"
+                      />
+                      {submitForm.links.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const links = submitForm.links.filter((_, i) => i !== idx);
+                            setSubmitForm({ ...submitForm, links });
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                    <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </a>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSubmitForm({
+                        ...submitForm,
+                        links: [...submitForm.links, { label: "", url: "" }],
+                      })
+                    }
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add another link
+                  </Button>
                 </div>
-              )}
+              </div>
 
-              {/* Feedback (if reviewed) */}
-              {viewSubmission.feedback && (
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    Feedback
-                  </Label>
-                  <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
-                    <p className="text-sm text-amber-900 whitespace-pre-wrap">
-                      {viewSubmission.feedback}
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Tools used */}
+              <div className="space-y-1.5">
+                <Label htmlFor="tools" className="flex items-center gap-1">
+                  <Wrench className="h-3.5 w-3.5" /> Tools Used
+                  <span className="text-muted-foreground text-xs font-normal">
+                    (comma-separated)
+                  </span>
+                </Label>
+                <Input
+                  id="tools"
+                  placeholder="React, Next.js, Tailwind CSS, Supabase, Git"
+                  value={submitForm.tools_used}
+                  onChange={(e) => setSubmitForm({ ...submitForm, tools_used: e.target.value })}
+                />
+              </div>
+
+              {/* Skills learned */}
+              <div className="space-y-1.5">
+                <Label htmlFor="skills" className="flex items-center gap-1">
+                  <BookOpen className="h-3.5 w-3.5" /> Skills Learned
+                  <span className="text-muted-foreground text-xs font-normal">
+                    (comma-separated)
+                  </span>
+                </Label>
+                <Input
+                  id="skills"
+                  placeholder="API integration, authentication, database queries, responsive design"
+                  value={submitForm.skills_learned}
+                  onChange={(e) => setSubmitForm({ ...submitForm, skills_learned: e.target.value })}
+                />
+              </div>
+
+              {/* Problems solved */}
+              <div className="space-y-1.5">
+                <Label htmlFor="problems" className="flex items-center gap-1">
+                  <Lightbulb className="h-3.5 w-3.5" /> Problems Solved
+                  <span className="text-muted-foreground text-xs font-normal">
+                    (brief explanation)
+                  </span>
+                </Label>
+                <Textarea
+                  id="problems"
+                  placeholder="I had trouble with CORS errors when calling the API. Solved it by configuring the right headers..."
+                  rows={3}
+                  value={submitForm.problems_solved}
+                  onChange={(e) => setSubmitForm({ ...submitForm, problems_solved: e.target.value })}
+                />
+              </div>
             </div>
-          )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubmitTask(null)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" /> Submit Task
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Feedback / view dialog */}
+      <Dialog open={!!viewTask} onOpenChange={(v) => !v && setViewTask(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{viewTask?.title}</DialogTitle>
+            <DialogDescription>
+              {viewTask?.week_number && `Week ${viewTask.week_number}`}
+              {viewTask?.day_number ? ` · Day ${viewTask.day_number}` : ""}
+              {" · "}
+              <span className="capitalize">{viewTask?.assignment_status}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            {viewTask && (
+              <div className="space-y-4 pb-2">
+                {/* Task details */}
+                {viewTask.description && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Task</p>
+                    <p className="text-sm whitespace-pre-wrap">{viewTask.description}</p>
+                  </div>
+                )}
+                {viewTask.expected_deliverable && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Expected Deliverable</p>
+                    <p className="text-sm">{viewTask.expected_deliverable}</p>
+                  </div>
+                )}
+                {viewTask.resources && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Resources</p>
+                    <p className="text-sm whitespace-pre-wrap">{viewTask.resources}</p>
+                  </div>
+                )}
+                {viewTask.youtube_url && (
+                  <a
+                    href={viewTask.youtube_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                  >
+                    <Youtube className="h-4 w-4 text-red-500" /> Watch YouTube video
+                  </a>
+                )}
+
+                <Separator />
+
+                {/* Submission */}
+                {viewTask.submission_id ? (
+                  <>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Your Submission</p>
+                      <p className="text-xs text-muted-foreground">
+                        Submitted {viewTask.submission_submitted_at && new Date(viewTask.submission_submitted_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {viewTask.submission_content && (
+                      <p className="text-sm whitespace-pre-wrap">{viewTask.submission_content}</p>
+                    )}
+                    {viewTask.submission_links && viewTask.submission_links.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Links</p>
+                        <ul className="space-y-1">
+                          {viewTask.submission_links.map((l, i) => (
+                            <li key={i}>
+                              <a
+                                href={l.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                {l.label || l.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {viewTask.submission_tools_used && (
+                      <p className="text-sm"><span className="font-medium">Tools:</span> {viewTask.submission_tools_used}</p>
+                    )}
+                    {viewTask.submission_skills_learned && (
+                      <p className="text-sm"><span className="font-medium">Skills:</span> {viewTask.submission_skills_learned}</p>
+                    )}
+                    {viewTask.submission_problems_solved && (
+                      <p className="text-sm whitespace-pre-wrap">
+                        <span className="font-medium">Problems solved:</span> {viewTask.submission_problems_solved}
+                      </p>
+                    )}
+
+                    {/* Feedback */}
+                    {viewTask.submission_feedback && (
+                      <div className="p-3 rounded-md bg-muted">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Supervisor Feedback</p>
+                        <p className="text-sm whitespace-pre-wrap">{viewTask.submission_feedback}</p>
+                        {viewTask.submission_score != null && (
+                          <p className="text-xs mt-2"><span className="font-medium">Score:</span> {viewTask.submission_score}/100</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Status / actions */}
+                    {viewTask.submission_status === "resubmitted" && (
+                      <div className="p-3 rounded-md bg-orange-50 border border-orange-200">
+                        <p className="text-sm font-medium text-orange-900 flex items-center gap-1.5">
+                          <AlertTriangle className="h-4 w-4" /> Changes requested
+                        </p>
+                        <p className="text-xs text-orange-800 mt-1">
+                          Please update your work based on the feedback and resubmit.
+                        </p>
+                        <Button size="sm" className="mt-2" onClick={() => { setViewTask(null); openSubmit(viewTask); }}>
+                          <Send className="h-3.5 w-3.5 mr-1.5" /> Resubmit
+                        </Button>
+                      </div>
+                    )}
+                    {viewTask.submission_status === "approved" && (
+                      <div className="p-3 rounded-md bg-green-50 border border-green-200">
+                        <p className="text-sm font-medium text-green-900 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4" /> Approved
+                        </p>
+                        <p className="text-xs text-green-800 mt-1">
+                          Great work! The next task is now unlocked.
+                        </p>
+                        {nextTask && (
+                          <Button size="sm" className="mt-2" onClick={() => { setViewTask(null); openSubmit(nextTask); }}>
+                            Go to Next Task <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-6 text-center">
+                    <p className="text-sm text-muted-foreground">You haven't submitted work for this task yet.</p>
+                    <Button className="mt-3" onClick={() => { setViewTask(null); openSubmit(viewTask); }}>
+                      <Send className="h-4 w-4 mr-2" /> Submit Work
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TaskRow — one task with current/locked/completed state
+// ---------------------------------------------------------------------------
+function TaskRow({
+  task,
+  onSubmit,
+  onViewFeedback,
+}: {
+  task: Task;
+  onSubmit: () => void;
+  onViewFeedback: () => void;
+}) {
+  const isApproved = task.assignment_status === "approved";
+  const isSubmitted =
+    task.submission_status === "submitted" || task.submission_status === "resubmitted";
+  const isResubmit = task.submission_status === "resubmitted";
+  const isLocked = !task.is_unlocked;
+  const isCurrent = task.is_current;
+
+  // Icon prefix
+  const Icon = isApproved ? CheckCircle2 : isCurrent ? Clock : isLocked ? Lock : Clock;
+  const iconColor = isApproved
+    ? "text-green-600"
+    : isCurrent
+      ? "text-blue-600"
+      : isLocked
+        ? "text-muted-foreground"
+        : "text-muted-foreground";
+
+  return (
+    <div
+      className={
+        "flex items-start gap-3 p-3 border rounded transition-colors " +
+        (isCurrent ? "border-primary bg-primary/5" : "hover:bg-accent/30")
+      }
+    >
+      <Icon className={"h-5 w-5 mt-0.5 flex-shrink-0 " + iconColor} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          {task.day_number && (
+            <span className="text-xs text-muted-foreground">Day {task.day_number}</span>
+          )}
+          <p className={"font-medium " + (isLocked ? "text-muted-foreground" : "")}>
+            {task.title}
+          </p>
+          {isApproved && (
+            <Badge variant="outline" className="border-green-500 text-green-700 text-xs">
+              Completed
+            </Badge>
+          )}
+          {isResubmit && (
+            <Badge variant="outline" className="border-orange-500 text-orange-700 text-xs">
+              Changes requested
+            </Badge>
+          )}
+          {isSubmitted && !isApproved && !isResubmit && (
+            <Badge variant="outline" className="border-amber-500 text-amber-700 text-xs">
+              Awaiting review
+            </Badge>
+          )}
+          {isCurrent && !isSubmitted && (
+            <Badge variant="default" className="bg-primary text-primary-foreground text-xs">
+              Current
+            </Badge>
+          )}
+          {isLocked && (
+            <Badge variant="outline" className="text-muted-foreground text-xs">
+              <Lock className="h-3 w-3 mr-1" /> Locked
+            </Badge>
+          )}
+        </div>
+        {task.description && !isLocked && (
+          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+        )}
+        {task.expected_deliverable && !isLocked && (
+          <p className="text-xs text-muted-foreground mt-1">
+            <span className="font-medium">Deliverable:</span> {task.expected_deliverable}
+          </p>
+        )}
+        <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+          {task.due_date && (
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              Due {new Date(task.due_date).toLocaleDateString()}
+            </span>
+          )}
+          {task.youtube_url && !isLocked && (
+            <span className="flex items-center gap-1 text-red-600">
+              <Youtube className="h-3 w-3" /> Video
+            </span>
+          )}
+          {task.submission_submitted_at && (
+            <span>
+              Submitted {new Date(task.submission_submitted_at).toLocaleDateString()}
+            </span>
+          )}
+          {task.submission_score != null && (
+            <span>Score: {task.submission_score}/100</span>
+          )}
+        </div>
+        {isLocked && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Complete and get approval on the previous task to unlock this one.
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {isApproved ? (
+          <Button size="sm" variant="ghost" onClick={onViewFeedback}>
+            View Feedback
+          </Button>
+        ) : isSubmitted ? (
+          <Button size="sm" variant="outline" onClick={onViewFeedback}>
+            View Feedback
+          </Button>
+        ) : isLocked ? (
+          <Button size="sm" variant="ghost" disabled>
+            <Lock className="h-3.5 w-3.5 mr-1" /> Locked
+          </Button>
+        ) : (
+          <Button size="sm" onClick={onSubmit}>
+            <Send className="h-3.5 w-3.5 mr-1" /> Submit
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

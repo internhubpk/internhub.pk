@@ -41,6 +41,14 @@ interface EnrichedTaskRow {
   priority: string | null;
   created_at: string;
   updated_at: string;
+  // new fields (migration 0050)
+  week_number: number | null;
+  day_number: number | null;
+  expected_deliverable: string | null;
+  resources: string | null;
+  youtube_url: string | null;
+  sort_order: number;
+  requires_previous_completion: boolean;
   // joined assignment
   assignment_id: string;
   assignment_status: string;
@@ -56,6 +64,15 @@ interface EnrichedTaskRow {
   submission_reviewed_at: string | null;
   submission_feedback: string | null;
   submission_score: number | null;
+  // new submission fields (migration 0050)
+  submission_content: string | null;
+  submission_links: any[] | null;
+  submission_tools_used: string | null;
+  submission_skills_learned: string | null;
+  submission_problems_solved: string | null;
+  // unlock state for "Go to Next Task"
+  is_unlocked: boolean;
+  is_current: boolean;
 }
 
 // ----------------------------------------------------------------------------
@@ -99,12 +116,15 @@ export async function GET(request: NextRequest) {
         updated_at,
         task:tasks(
           id, title, description, instructions, due_date, status,
-          priority, created_at, updated_at
+          priority, created_at, updated_at,
+          week_number, day_number, expected_deliverable, resources,
+          youtube_url, sort_order, requires_previous_completion
         )
       `,
         { count: "exact" }
       )
       .eq("student_user_id", user.id)
+      // Order by week → day → sort_order for the "Go to Next Task" flow
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -136,13 +156,14 @@ export async function GET(request: NextRequest) {
 
     const taskIds = assignmentRows.map((a) => a.task_id).filter(Boolean);
 
-    // Fetch the student's submissions for these tasks
+    // Fetch the student's submissions for these tasks (with new fields)
     let submissionsByTask = new Map<string, any>();
     if (taskIds.length > 0) {
       const { data: subs, error: subErr } = await supabase
         .from("task_submissions")
         .select(
           `id, task_id, student_user_id, status, notes, url, file_url, file_name,
+           content, links, tools_used, skills_learned, problems_solved,
            submitted_at, reviewed_at, feedback, score`
         )
         .eq("student_user_id", user.id)
@@ -156,12 +177,53 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Sort the assignmentRows by sort_order (and week/day if available) so we
+    // can compute the "current task" (first non-approved) and "locked" state
+    // for tasks requiring previous completion.
+    const sortedForUnlock = [...assignmentRows]
+      .filter((a) => a.task)
+      .sort((a, b) => {
+        const ta = a.task;
+        const tb = b.task;
+        // Sort by week → day → sort_order → created_at
+        if (ta.week_number != null && tb.week_number != null && ta.week_number !== tb.week_number) {
+          return ta.week_number - tb.week_number;
+        }
+        if (ta.day_number != null && tb.day_number != null && ta.day_number !== tb.day_number) {
+          return ta.day_number - tb.day_number;
+        }
+        if (ta.sort_order !== tb.sort_order) {
+          return ta.sort_order - tb.sort_order;
+        }
+        return new Date(ta.created_at).getTime() - new Date(tb.created_at).getTime();
+      });
+
+    // Walk the sorted list and determine each task's unlock state.
+    // A task is unlocked if:
+    //   - it doesn't require previous completion, OR
+    //   - it's the first task, OR
+    //   - the previous task's assignment.status === 'approved'
+    const unlockStateByTaskId = new Map<string, { is_unlocked: boolean; is_current: boolean }>();
+    let foundCurrent = false;
+    let prevApproved = true; // first task is always unlocked
+    for (const a of sortedForUnlock) {
+      const requiresPrev = a.task.requires_previous_completion !== false; // default true
+      const isUnlocked = !requiresPrev || prevApproved;
+      // "current" = first unlocked task that isn't yet approved
+      const isCurrent = isUnlocked && !foundCurrent && a.status !== "approved";
+      if (isCurrent) foundCurrent = true;
+      unlockStateByTaskId.set(a.task_id, { is_unlocked: isUnlocked, is_current: isCurrent });
+      // Update prevApproved for the next iteration
+      prevApproved = a.status === "approved";
+    }
+
     // Assemble enriched rows
     const enriched: EnrichedTaskRow[] = assignmentRows
       .filter((a) => a.task) // skip orphaned assignments (task deleted)
       .map((a) => {
         const t = a.task;
         const sub = submissionsByTask.get(a.task_id);
+        const unlock = unlockStateByTaskId.get(a.task_id) || { is_unlocked: true, is_current: false };
         return {
           id: t.id,
           title: t.title,
@@ -172,6 +234,13 @@ export async function GET(request: NextRequest) {
           priority: t.priority,
           created_at: t.created_at,
           updated_at: t.updated_at,
+          week_number: t.week_number ?? null,
+          day_number: t.day_number ?? null,
+          expected_deliverable: t.expected_deliverable ?? null,
+          resources: t.resources ?? null,
+          youtube_url: t.youtube_url ?? null,
+          sort_order: t.sort_order ?? 0,
+          requires_previous_completion: t.requires_previous_completion !== false,
           assignment_id: a.id,
           assignment_status: a.status,
           assignment_due_date: a.due_date,
@@ -185,6 +254,13 @@ export async function GET(request: NextRequest) {
           submission_reviewed_at: sub?.reviewed_at || null,
           submission_feedback: sub?.feedback || null,
           submission_score: sub?.score ?? null,
+          submission_content: sub?.content || null,
+          submission_links: sub?.links || null,
+          submission_tools_used: sub?.tools_used || null,
+          submission_skills_learned: sub?.skills_learned || null,
+          submission_problems_solved: sub?.problems_solved || null,
+          is_unlocked: unlock.is_unlocked,
+          is_current: unlock.is_current,
         };
       });
 
@@ -236,12 +312,23 @@ export async function POST(request: NextRequest) {
       url,
       file_url,
       file_name,
+      // New submission fields (migration 0050):
+      content,             // markdown description of what was done
+      links,               // array of { label, url, type? }
+      tools_used,          // comma-separated string
+      skills_learned,      // comma-separated string
+      problems_solved,     // markdown text
     } = body as {
       task_id?: string;
       notes?: string;
       url?: string;
       file_url?: string;
       file_name?: string;
+      content?: string;
+      links?: Array<{ label: string; url: string; type?: string }> | string;
+      tools_used?: string;
+      skills_learned?: string;
+      problems_solved?: string;
     };
 
     if (!task_id) {
@@ -274,6 +361,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize `links` to a JSONB array
+    let normalizedLinks: any[] = [];
+    if (Array.isArray(links)) {
+      normalizedLinks = links.filter((l) => l && typeof l.url === "string" && l.url.trim());
+    } else if (typeof links === "string" && links.trim()) {
+      // Accept a single URL string as a fallback
+      normalizedLinks = [{ label: "Link", url: links.trim(), type: "other" }];
+    }
+
+    // Determine submission status — if this is a resubmission (was previously
+    // rejected/needs_changes), mark as 'resubmitted'; otherwise 'submitted'.
+    const newSubmissionStatus =
+      assignment.status === "resubmitted" || assignment.status === "rejected"
+        ? "resubmitted"
+        : "submitted";
+
     // Upsert the submission. The UNIQUE (task_id, student_user_id) constraint
     // added in migration 0023 makes this safe.
     const { data: submission, error: subErr } = await supabase
@@ -283,11 +386,18 @@ export async function POST(request: NextRequest) {
           task_assignment_id: assignment.id,
           task_id,
           student_user_id: user.id,
+          // New rich submission fields
+          content: content?.trim() || null,
+          links: normalizedLinks,
+          tools_used: tools_used?.trim() || null,
+          skills_learned: skills_learned?.trim() || null,
+          problems_solved: problems_solved?.trim() || null,
+          // Legacy fields (kept for backward compat)
           notes: notes?.trim() || null,
-          url: url?.trim() || null,
+          url: url?.trim() || (normalizedLinks[0]?.url ?? null),
           file_url: file_url || null,
           file_name: file_name || null,
-          status: "submitted",
+          status: newSubmissionStatus,
           submitted_at: new Date().toISOString(),
         },
         { onConflict: "task_id,student_user_id" }
@@ -303,12 +413,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update the assignment status to 'submitted' so the supervisor's
-    // UI shows the student has submitted.
+    // Update the assignment status to match the submission status so the
+    // supervisor's UI shows the student has submitted (or resubmitted).
     const { error: updAssignErr } = await supabase
       .from("task_assignments")
       .update({
-        status: "submitted",
+        status: newSubmissionStatus,
         updated_at: new Date().toISOString(),
       })
       .eq("id", assignment.id);
