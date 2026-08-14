@@ -78,6 +78,7 @@ import {
   Building2,
   Printer,
 } from "lucide-react";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 
 // Types
 type NotificationPriority = "low" | "medium" | "high" | "urgent";
@@ -933,8 +934,8 @@ export default function FacultySupervisorNotificationsPage() {
                     <CardTitle className="text-base">Message Content</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap p-4 bg-muted/30 rounded-lg">
-                      {selectedNotification.message}
+                    <div className="p-4 bg-muted/30 rounded-lg">
+                      <MarkdownRenderer content={selectedNotification.message} />
                     </div>
                   </CardContent>
                 </Card>

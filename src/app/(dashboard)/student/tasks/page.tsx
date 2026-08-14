@@ -16,7 +16,7 @@ import {
   AlertCircle, RefreshCw, CheckCircle2, Clock, Lock,
   Calendar, Youtube, ArrowRight, Send, FileText, Link as LinkIcon,
   Plus, X, ExternalLink, MessageSquare, AlertTriangle, ListTodo,
-  Wrench, BookOpen, Lightbulb,
+  Wrench, BookOpen, Lightbulb, ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -394,29 +394,17 @@ export default function StudentTasksPage() {
         </>
       )}
 
-      {/* Tasks grouped by week */}
-      <div className="space-y-4">
+      {/* Tasks grouped by week — collapsible weeks + day grouping */}
+      <div className="space-y-3">
         {tasksByWeek.map(([week, weekTasks]) => (
-          <Card key={week}>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                {week === "unsorted" ? "Tasks" : `Week ${week}`}
-                <Badge variant="outline">
-                  {weekTasks.filter((t) => t.assignment_status === "approved").length}/{weekTasks.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {weekTasks.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  onSubmit={() => openSubmit(task)}
-                  onViewFeedback={() => setViewTask(task)}
-                />
-              ))}
-            </CardContent>
-          </Card>
+          <WeekModule
+            key={week}
+            week={week}
+            tasks={weekTasks}
+            onSubmit={openSubmit}
+            onViewFeedback={setViewTask}
+            defaultExpanded={tasksByWeek.length === 1 || week === tasksByWeek[0]?.[0]}
+          />
         ))}
       </div>
 
@@ -760,7 +748,160 @@ export default function StudentTasksPage() {
 }
 
 // ---------------------------------------------------------------------------
-// TaskRow — one task with current/locked/completed state
+// WeekModule — a collapsible week with day-grouped tasks inside.
+// Uses proper <button> + aria-expanded for accessibility.
+// ---------------------------------------------------------------------------
+function WeekModule({
+  week,
+  tasks,
+  onSubmit,
+  onViewFeedback,
+  defaultExpanded = false,
+}: {
+  week: number | string;
+  tasks: Task[];
+  onSubmit: (task: Task) => void;
+  onViewFeedback: (task: Task) => void;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const approvedCount = tasks.filter((t) => t.assignment_status === "approved").length;
+  const pendingCount = tasks.filter(
+    (t) => t.assignment_status === "pending" || t.assignment_status === "resubmitted"
+  ).length;
+  const submittedCount = tasks.filter((t) => t.assignment_status === "submitted").length;
+
+  // Group tasks by day_number within this week
+  const tasksByDay = (() => {
+    const groups = new Map<number | string, Task[]>();
+    for (const t of tasks) {
+      const key = t.day_number ?? "no_day";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    }
+    for (const [, list] of groups) {
+      list.sort((a, b) => a.sort_order - b.sort_order);
+    }
+    return Array.from(groups.entries()).sort((a, b) => {
+      if (a[0] === "no_day") return 1;
+      if (b[0] === "no_day") return -1;
+      return (a[0] as number) - (b[0] as number);
+    });
+  })();
+
+  const weekLabel = week === "unsorted" ? "Tasks" : `Week ${week}`;
+
+  return (
+    <Card>
+      {/* Week header — clickable button for expand/collapse */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-controls={`week-${week}-content`}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/30 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-inset rounded-t-lg"
+      >
+        <motion.span
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={{ duration: 0.15 }}
+          className="shrink-0 text-muted-foreground"
+          aria-hidden
+        >
+          <ChevronRight className="h-4 w-4" />
+        </motion.span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm sm:text-base">{weekLabel}</span>
+            <Badge variant="outline" className="text-xs">
+              {approvedCount}/{tasks.length} done
+            </Badge>
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800">
+                {pendingCount} to do
+              </Badge>
+            )}
+            {submittedCount > 0 && (
+              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800">
+                {submittedCount} in review
+              </Badge>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {/* Week content — day groups + tasks */}
+      {expanded && (
+        <div
+          id={`week-${week}-content`}
+          className="px-4 pb-4 pt-1 space-y-3 border-t"
+        >
+          {tasksByDay.map(([day, dayTasks]) => (
+            <DayGroup
+              key={day}
+              day={day}
+              tasks={dayTasks}
+              onSubmit={onSubmit}
+              onViewFeedback={onViewFeedback}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DayGroup — tasks within a single day of a week
+// ---------------------------------------------------------------------------
+function DayGroup({
+  day,
+  tasks,
+  onSubmit,
+  onViewFeedback,
+}: {
+  day: number | string;
+  tasks: Task[];
+  onSubmit: (task: Task) => void;
+  onViewFeedback: (task: Task) => void;
+}) {
+  if (day === "no_day") {
+    // No day number — just render the tasks without a day header
+    return (
+      <div className="space-y-2 pt-2">
+        {tasks.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            onSubmit={() => onSubmit(task)}
+            onViewFeedback={() => onViewFeedback(task)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-2">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <Calendar className="h-3 w-3" /> Day {day}
+      </p>
+      <div className="space-y-2 ml-1">
+        {tasks.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            onSubmit={() => onSubmit(task)}
+            onViewFeedback={() => onViewFeedback(task)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TaskRow — one task with expand/collapse for full content reading.
+// Compact summary when collapsed; full Markdown content when expanded.
 // ---------------------------------------------------------------------------
 function TaskRow({
   task,
@@ -771,6 +912,7 @@ function TaskRow({
   onSubmit: () => void;
   onViewFeedback: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const isApproved = task.assignment_status === "approved";
   const isSubmitted =
     task.submission_status === "submitted" || task.submission_status === "resubmitted";
@@ -787,20 +929,63 @@ function TaskRow({
         ? "text-muted-foreground"
         : "text-muted-foreground";
 
+  // Parse resources — could be Markdown with links, or plain URLs
+  const resourceLinks = (() => {
+    if (!task.resources) return [];
+    // Extract URLs from the resources text (both Markdown links and bare URLs)
+    const mdLinkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const bareUrlRe = /(https?:\/\/[^\s<>"']+)/g;
+    const links: Array<{ label: string; url: string }> = [];
+    let m;
+    const seen = new Set<string>();
+    while ((m = mdLinkRe.exec(task.resources)) !== null) {
+      if (!seen.has(m[2])) {
+        seen.add(m[2]);
+        links.push({ label: m[1], url: m[2] });
+      }
+    }
+    // Also extract bare URLs not already captured
+    const textWithoutMdLinks = task.resources.replace(mdLinkRe, "");
+    while ((m = bareUrlRe.exec(textWithoutMdLinks)) !== null) {
+      if (!seen.has(m[1])) {
+        seen.add(m[1]);
+        links.push({ label: m[1], url: m[1] });
+      }
+    }
+    return links;
+  })();
+
   return (
     <div
       className={
-        "flex flex-col sm:flex-row sm:items-start gap-3 p-3 border rounded transition-colors " +
-        (isCurrent ? "border-primary bg-primary/5" : "hover:bg-accent/30")
+        "border rounded-lg overflow-hidden transition-colors " +
+        (isCurrent ? "border-primary bg-primary/5" : "hover:border-foreground/20")
       }
     >
-      <div className="flex items-start gap-3 flex-1 min-w-0">
+      {/* Task summary — always visible, clickable to expand */}
+      <div className="flex items-start gap-3 p-3">
+        <button
+          type="button"
+          onClick={() => !isLocked && setExpanded(!expanded)}
+          disabled={isLocked}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse task" : "Expand task"}
+          className="mt-0.5 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded shrink-0"
+        >
+          {isLocked ? (
+            <Lock className="h-4 w-4" />
+          ) : (
+            <motion.span animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.15 }} aria-hidden>
+              <ChevronRight className="h-4 w-4" />
+            </motion.span>
+          )}
+        </button>
+
         <Icon className={"h-5 w-5 mt-0.5 flex-shrink-0 " + iconColor} />
+
         <div className="flex-1 min-w-0">
+          {/* Title + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
-            {task.day_number && (
-              <span className="text-xs text-muted-foreground">Day {task.day_number}</span>
-            )}
             <p className={"font-medium break-words " + (isLocked ? "text-muted-foreground" : "")}>
               {task.title}
             </p>
@@ -826,20 +1011,19 @@ function TaskRow({
             )}
             {isLocked && (
               <Badge variant="outline" className="text-muted-foreground text-xs">
-                <Lock className="h-3 w-3 mr-1" /> Locked
+                Locked
               </Badge>
             )}
           </div>
-          {task.description && !isLocked && (
+
+          {/* Compact description preview (collapsed) */}
+          {!expanded && task.description && !isLocked && (
             <div className="text-sm text-muted-foreground mt-1 line-clamp-2">
               <MarkdownRenderer content={task.description} compact />
             </div>
           )}
-          {task.expected_deliverable && !isLocked && (
-            <p className="text-xs text-muted-foreground mt-1">
-              <span className="font-medium">Deliverable:</span> {task.expected_deliverable}
-            </p>
-          )}
+
+          {/* Metadata row */}
           <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground flex-wrap">
             {task.due_date && (
               <span className="flex items-center gap-1">
@@ -861,33 +1045,168 @@ function TaskRow({
               <span>Score: {task.submission_score}/100</span>
             )}
           </div>
+
           {isLocked && (
             <p className="text-xs text-muted-foreground mt-1">
               Complete and get approval on the previous task to unlock this one.
             </p>
           )}
         </div>
+
+        {/* Action button */}
+        <div className="flex shrink-0">
+          {isApproved ? (
+            <Button size="sm" variant="ghost" onClick={onViewFeedback}>
+              View Feedback
+            </Button>
+          ) : isSubmitted ? (
+            <Button size="sm" variant="outline" onClick={onViewFeedback}>
+              View Feedback
+            </Button>
+          ) : isLocked ? (
+            <Button size="sm" variant="ghost" disabled>
+              <Lock className="h-3.5 w-3.5 mr-1" /> Locked
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onSubmit}>
+              <Send className="h-3.5 w-3.5 mr-1" /> Submit
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="flex sm:flex-col gap-1.5 sm:items-end">
-        {isApproved ? (
-          <Button size="sm" variant="ghost" onClick={onViewFeedback} className="w-full sm:w-auto">
-            View Feedback
-          </Button>
-        ) : isSubmitted ? (
-          <Button size="sm" variant="outline" onClick={onViewFeedback} className="w-full sm:w-auto">
-            View Feedback
-          </Button>
-        ) : isLocked ? (
-          <Button size="sm" variant="ghost" disabled className="w-full sm:w-auto">
-            <Lock className="h-3.5 w-3.5 mr-1" /> Locked
-          </Button>
-        ) : (
-          <Button size="sm" onClick={onSubmit} className="w-full sm:w-auto">
-            <Send className="h-3.5 w-3.5 mr-1" /> Submit
-          </Button>
-        )}
-      </div>
+      {/* Expanded: full task content with proper hierarchy */}
+      {expanded && !isLocked && (
+        <div className="px-4 pb-4 pt-1 space-y-4 border-t bg-background/50">
+          {/* Description */}
+          {task.description && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Description
+              </p>
+              <MarkdownRenderer content={task.description} />
+            </div>
+          )}
+
+          {/* Expected Deliverable */}
+          {task.expected_deliverable && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Expected Deliverable
+              </p>
+              <MarkdownRenderer content={task.expected_deliverable} />
+            </div>
+          )}
+
+          {/* Resources */}
+          {task.resources && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Resources
+              </p>
+              {resourceLinks.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {resourceLinks.map((link, i) => (
+                    <li key={i}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline break-all"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
+                        {link.label || link.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <MarkdownRenderer content={task.resources} compact />
+              )}
+            </div>
+          )}
+
+          {/* YouTube resource */}
+          {task.youtube_url && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Video Tutorial
+              </p>
+              <a
+                href={task.youtube_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-primary hover:underline break-all"
+              >
+                <Youtube className="h-4 w-4 text-red-500 flex-shrink-0" />
+                Watch on YouTube
+              </a>
+            </div>
+          )}
+
+          {/* Submission status */}
+          {task.submission_id ? (
+            <div className="rounded-md border p-3 bg-muted/30">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Your Submission
+              </p>
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <Badge
+                  variant="outline"
+                  className={
+                    "text-xs " +
+                    (task.submission_status === "approved"
+                      ? "border-green-500 text-green-700"
+                      : task.submission_status === "resubmitted"
+                        ? "border-orange-500 text-orange-700"
+                        : "border-amber-500 text-amber-700")
+                  }
+                >
+                  {task.submission_status === "approved"
+                    ? "Approved"
+                    : task.submission_status === "resubmitted"
+                      ? "Changes requested"
+                      : task.submission_status === "submitted"
+                        ? "Awaiting review"
+                        : task.submission_status}
+                </Badge>
+                {task.submission_submitted_at && (
+                  <span className="text-xs text-muted-foreground">
+                    Submitted {new Date(task.submission_submitted_at).toLocaleString()}
+                  </span>
+                )}
+                {task.submission_score != null && (
+                  <span className="text-xs font-medium">
+                    Score: {task.submission_score}/100
+                  </span>
+                )}
+              </div>
+              {task.submission_content && (
+                <div className="mt-2">
+                  <MarkdownRenderer content={task.submission_content} compact />
+                </div>
+              )}
+              {task.submission_feedback && (
+                <div className="mt-2 p-2 rounded bg-background">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">
+                    Supervisor Feedback
+                  </p>
+                  <MarkdownRenderer content={task.submission_feedback} compact />
+                </div>
+              )}
+            </div>
+          ) : (
+            !isLocked && (
+              <div className="rounded-md border border-dashed p-3 text-center">
+                <p className="text-sm text-muted-foreground">Not submitted yet</p>
+                <Button size="sm" className="mt-2" onClick={onSubmit}>
+                  <Send className="h-3.5 w-3.5 mr-1" /> Submit Work
+                </Button>
+              </div>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }

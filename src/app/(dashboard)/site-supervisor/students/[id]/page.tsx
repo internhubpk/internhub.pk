@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -528,7 +529,9 @@ export default function StudentSupervisionView() {
                       </Badge>
                     </div>
                     {sub.content && (
-                      <p className="text-sm mt-2 whitespace-pre-wrap">{sub.content}</p>
+                      <div className="mt-2">
+                        <MarkdownRenderer content={sub.content} compact />
+                      </div>
                     )}
                     {sub.links && sub.links.length > 0 && (
                       <div className="mt-2">

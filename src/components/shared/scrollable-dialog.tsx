@@ -103,6 +103,12 @@ export function ScrollableDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        // ScrollableDialog renders its own close button in the header
+        // (positioned correctly within the header layout). We MUST disable
+        // DialogContent's auto-rendered close button to avoid having TWO
+        // close buttons (one from DialogContent's absolute-positioned X in
+        // the top-right, and one from ScrollableDialog's header X).
+        showCloseButton={false}
         className={cn(
           // Layout: vertical flex column that fills the viewport height
           // up to a max of 90vh. Header + footer are shrink-0; body is

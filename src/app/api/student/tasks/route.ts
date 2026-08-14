@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { ApiResponse } from "@/types";
 import { notifyTaskSubmitted } from "@/lib/notifications";
 import { sanitizeApiError } from "@/lib/api-error";
@@ -490,6 +491,21 @@ export async function POST(request: NextRequest) {
     // evaluations page. Without this auto-creation, the supervisor
     // would never see anything to evaluate (the evaluations table
     // would stay empty).
+    //
+    // SECURITY NOTE: We use the service_role client for this insert
+    // because the eval_insert RLS policy requires `evaluator_id =
+    // auth.uid()`. The student is auth.uid(), but evaluator_id is the
+    // faculty supervisor — so the student's own client would be denied
+    // by RLS. The service_role client bypasses RLS, which is safe here
+    // because:
+    //   1. We verified the student has an active student_internships
+    //      row with this faculty_supervisor_id (authoritative
+    //      relationship check, not client-supplied).
+    //   2. We checked no existing pending evaluation exists (prevents
+    //      duplicates).
+    //   3. The evaluation is created with status='pending' — the
+    //      faculty supervisor must still review and approve/reject it.
+    //   4. The service_role key is NEVER exposed to the client.
     // ============================================================
     try {
       const { data: taskInfo2 } = await supabase
@@ -525,19 +541,31 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
           if (!existingEval) {
-            await supabase.from("evaluations").insert({
-              type: "task", // valid evaluation_type enum value (migration 0001)
-              student_user_id: user.id,
-              internship_id: internshipId2,
-              student_internship_id: siRow2?.id || null,
-              task_id: task_id,
-              task_submission_id: submission.id,
-              evaluator_id: facultySupervisorId,
-              evaluator_role: "faculty_supervisor",
-              status: "pending",
-              scores: {},
-              comments: null,
-            });
+            // Use service_role client to bypass RLS (see SECURITY NOTE above).
+            const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            if (serviceRoleKey && supabaseUrl) {
+              const adminClient = createServiceClient(
+                supabaseUrl,
+                serviceRoleKey,
+                { auth: { persistSession: false } }
+              );
+              await adminClient.from("evaluations").insert({
+                type: "task",
+                student_user_id: user.id,
+                internship_id: internshipId2,
+                student_internship_id: siRow2?.id || null,
+                task_id: task_id,
+                task_submission_id: submission.id,
+                evaluator_id: facultySupervisorId,
+                evaluator_role: "faculty_supervisor",
+                status: "pending",
+                scores: {},
+                comments: null,
+              });
+            } else {
+              console.warn("[/api/student/tasks] SUPABASE_SERVICE_ROLE_KEY not set — cannot auto-create faculty evaluation");
+            }
           }
         }
       }

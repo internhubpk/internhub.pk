@@ -1023,9 +1023,7 @@ export default function FacultySupervisorTasksPage() {
                       <CardTitle className="text-base">Description</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                        {selectedTask.description}
-                      </div>
+                      <MarkdownRenderer content={selectedTask.description} />
                     </CardContent>
                   </Card>
                 )}
