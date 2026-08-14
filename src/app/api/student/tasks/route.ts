@@ -409,7 +409,30 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (subErr || !submission) {
-      const { message, status } = sanitizeApiError(subErr, "submit task");
+      // Log the FULL error details for debugging. The error could be:
+      //   - RLS WITH CHECK violation → "new row violates row-level security policy"
+      //   - RLS USING violation → "new row violates row-level security policy"
+      //   - UNIQUE constraint → "duplicate key value violates unique constraint"
+      //   - NOT NULL → "null value in column ... violates not-null constraint"
+      //   - FK violation → "violates foreign key constraint"
+      // The sanitized message shown to the user is generic; this log
+      // preserves the raw error for server-side diagnostics.
+      console.error("[/api/student/tasks] POST submit failed:", {
+        userId: user.id,
+        taskId: task_id,
+        assignmentId: assignment.id,
+        newSubmissionStatus,
+        normalizedLinks,
+        error: subErr ? {
+          message: subErr.message,
+          code: (subErr as any).code,
+          details: (subErr as any).details,
+          hint: (subErr as any).hint,
+        } : "No error object — submission was null",
+        submission: submission ? "exists" : "null",
+      });
+
+      const { message, status } = sanitizeApiError(subErr || new Error("Submission returned no data"), "submit task");
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: message },
         { status }

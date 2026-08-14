@@ -246,10 +246,18 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Generate unique filename
+    // Generate unique filename.
+    // Path convention: {user_id}/avatar_{timestamp}.{ext}
+    // This matches the Storage RLS policy:
+    //   (storage.foldername(name))[1] = auth.uid()::text
+    // The first path segment MUST be the user's UUID for the INSERT
+    // to pass the WITH CHECK clause. (Previously the path was
+    // `avatars/${fileName}` which caused the folder to be the literal
+    // string "avatars" — RLS denied the upload with "new row violates
+    // row-level security policy".)
     const ext = file.name.split(".").pop() || "jpg";
     const fileName = `avatar_${user.id}_${Date.now()}.${ext}`;
-    const filePath = `avatars/${fileName}`;
+    const filePath = `${user.id}/${fileName}`;
 
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage

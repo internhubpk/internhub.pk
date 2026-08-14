@@ -42,6 +42,10 @@ export interface Profile {
   github_url?: string | null;
   linkedin_url?: string | null;
   is_active: boolean;
+  // Joined relations (populated by select with PostgREST relationship syntax)
+  // The key names match the FK column alias used in the select query.
+  universities?: Pick<University, "id" | "name" | "slug" | "logo_url" | "domain"> | null;
+  departments?: Pick<Department, "id" | "name" | "code"> | null;
 }
 
 export interface User {

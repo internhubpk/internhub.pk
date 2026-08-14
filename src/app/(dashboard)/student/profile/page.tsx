@@ -55,6 +55,8 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { toast as sharedToast } from "@/components/shared/toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -456,59 +458,11 @@ export default function StudentProfilePage() {
     }
   };
 
+  // Avatar upload is now handled by the shared <AvatarUploader /> component.
+  // The handler below is kept only for backward compatibility — it's no
+  // longer called from the UI (the AvatarUploader manages its own input).
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast({ title: "Action required", description: "Please select an image file", variant: "destructive" });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "Failed", description: "Image must be less than 5MB", variant: "destructive" });
-      return;
-    }
-
-    setAvatarUploading(true);
-
-    try {
-      const supabase = createClient();
-      
-      const fileExt = file.name.split('.').pop();
-      const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
-      // Update profile with new avatar URL
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: urlData.publicUrl })
-        .eq('user_id', user.id);
-
-      if (updateError) throw updateError;
-
-      await refreshProfile();
-    } catch (error) {
-      console.error("Error uploading avatar:", error);
-      toast({ title: "Failed", description: "Failed to upload avatar. Please try again.", variant: "destructive" });
-    } finally {
-      setAvatarUploading(false);
-    }
+    // No-op: delegated to AvatarUploader component
   };
 
   const formatFileSize = (bytes: number) => {
@@ -573,37 +527,13 @@ export default function StudentProfilePage() {
           {/* Avatar Card */}
           <Card>
             <CardContent className="p-6 text-center space-y-4">
-              <div className="relative inline-block">
-                <Avatar className="h-28 w-28 mx-auto">
-                  <AvatarImage src={profile?.avatar_url || undefined} alt="Profile" />
-                  <AvatarFallback className="text-3xl bg-primary text-primary-foreground">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                
-                {isEditing && (
-                  <>
-                    <input
-                      ref={avatarInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleAvatarUpload}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => avatarInputRef.current?.click()}
-                      disabled={avatarUploading}
-                      className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    >
-                      {avatarUploading ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Camera className="h-4 w-4" />
-                      )}
-                    </button>
-                  </>
-                )}
-              </div>
+              <AvatarUploader
+                userId={user?.id || ""}
+                currentUrl={profile?.avatar_url}
+                fullName={profile?.full_name || `${profileData.firstName} ${profileData.lastName}`}
+                onUploaded={() => refreshProfile()}
+                size="lg"
+              />
               
               {!isEditing ? (
                 <>
@@ -652,10 +582,6 @@ export default function StudentProfilePage() {
                 </>
               ) : (
                 <div className="space-y-3">
-                  <Button variant="outline" className="w-full" type="button" disabled={avatarUploading}>
-                    <Camera className="h-4 w-4 mr-2" />
-                    {avatarUploading ? "Uploading..." : "Change Photo"}
-                  </Button>
                   <p className="text-xs text-muted-foreground">
                     Edit your profile to update academic and professional details.
                   </p>
@@ -826,11 +752,15 @@ export default function StudentProfilePage() {
                   <span>{profileData.phone || "Not provided"}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
+                  <GraduationCap className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span>
+                    {profile?.universities?.name || "University not set"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
                   <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span>
-                    {(profile as any)?.department?.name ||
-                      (profileData as any)?.department_name ||
-                      "Department not set"}
+                    {profile?.departments?.name || "Department not set"}
                   </span>
                 </div>
               </div>

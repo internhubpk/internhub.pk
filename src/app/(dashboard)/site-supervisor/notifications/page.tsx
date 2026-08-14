@@ -198,6 +198,32 @@ export default function SiteSupervisorNotificationsPage() {
       return;
     }
 
+    // Validate that no raw template tokens ({...}) remain in the title or
+    // content. If a supervisor used a template and didn't fill in all the
+    // placeholders, we block the send and show them which tokens need
+    // values. This prevents raw `{meeting_topic}` / `{date_time}` etc.
+    // from being stored in the database and shown to students.
+    const tokenRegex = /\{([a-z_]+)\}/gi;
+    const titleTokens = notificationTitle.match(tokenRegex) || [];
+    const contentTokens = notificationContent.match(tokenRegex) || [];
+    const allTokens = [...new Set([...titleTokens, ...contentTokens])];
+    // {student_name} and {supervisor_name} are auto-substituted by
+    // applyTemplate(), so they're always safe — exclude them from the
+    // "unfilled tokens" check.
+    const unfilledTokens = allTokens.filter(
+      (t) => t !== "{student_name}" && t !== "{supervisor_name}"
+    );
+    if (unfilledTokens.length > 0) {
+      toast({
+        title: "Please fill in all template fields",
+        description: `These placeholders still need values: ${unfilledTokens.join(
+          ", "
+        )}. Replace them with actual content before sending.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (recipientType === "individual" && selectedStudentIds.length === 0) {
       toast({
         title: "No recipients selected",

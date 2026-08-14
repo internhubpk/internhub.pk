@@ -116,12 +116,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string, client: SupabaseClient | null, userData?: User) => {
     if (!client || !isMountedRef.current) return;
-    
+
     try {
-      // Check if profiles table exists and is accessible
+      // Fetch the profile with joined university and department data.
+      // PostgREST relationship syntax: `departments:department_id` means
+      // "join the departments table on the department_id FK column".
+      // This populates profile.departments and profile.universities so
+      // the UI can display the actual names instead of raw UUIDs.
       const { data: profileData, error: profileError } = await client
         .from("profiles")
-        .select("*")
+        .select(
+          `*,
+          departments:department_id ( id, name, code ),
+          universities:university_id ( id, name, slug, logo_url, domain )`
+        )
         .eq("user_id", userId)
         .single();
 
@@ -158,20 +166,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isMountedRef.current) {
         setProfile(profileData as Profile);
 
-        // Fetch university if profile has university_id
-        if (profileData?.university_id) {
+        // The joined query above already populated `universities` on the
+        // profile object. Set it on the separate `university` state so
+        // existing consumers (sidebar, header) that read `university` from
+        // the context still work.
+        const joinedUni = (profileData as any)?.universities;
+        if (joinedUni) {
+          // Fetch the full university record (with all fields like
+          // settings, license_tier, etc.) for the sidebar/header branding.
+          // The joined query only selected a subset of fields for display.
           try {
-            const { data: uniData, error: uniError } = await client
+            const { data: uniData } = await client
               .from("universities")
               .select("*")
               .eq("id", profileData.university_id)
               .single();
-
-            if (!uniError && uniData && isMountedRef.current) {
+            if (uniData && isMountedRef.current) {
               setUniversity(uniData as University);
+            } else if (isMountedRef.current) {
+              // Use the partial data from the join as a fallback
+              setUniversity(joinedUni as University);
             }
-          } catch (uniErr) {
-            // University table might not exist - that's ok, fall through silently
+          } catch {
+            // University table might not exist - use joined data
+            if (isMountedRef.current) {
+              setUniversity(joinedUni as University);
+            }
           }
         }
       }
