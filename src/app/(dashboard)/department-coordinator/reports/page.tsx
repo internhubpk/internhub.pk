@@ -19,6 +19,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
+  Briefcase,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -76,6 +77,50 @@ interface MonthlyTrend {
   internships_started: number;
   internships_completed: number;
   students_enrolled: number;
+}
+
+// Per-student row returned by /api/department-coordinator/reports?type=students
+interface StudentRosterRow {
+  user_id: string;
+  student_id_number: string | null;
+  enrollment_year: number | null;
+  expected_graduation: string | null;
+  cgpa: number | null;
+  created_at: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  program_name: string;
+  program_code: string;
+  department_name: string;
+  department_code: string;
+  internship_status: string | null;
+  internship_start_date: string | null;
+  internship_end_date: string | null;
+  internship_company: string | null;
+  supervisor_name: string | null;
+  supervisor_email: string | null;
+}
+
+// Per-internship row returned by /api/department-coordinator/reports?type=internships
+interface InternshipDetailRow {
+  internship_id: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string;
+  updated_at: string;
+  student_user_id: string;
+  student_name: string;
+  student_email: string;
+  student_id_number: string | null;
+  program_name: string;
+  program_code: string;
+  company_name: string;
+  company_industry: string | null;
+  supervisor_name: string;
+  supervisor_email: string;
 }
 
 // Simple bar chart component (no external chart library needed)
@@ -198,6 +243,7 @@ function TrendChart({ data }: { data: MonthlyTrend[] }) {
 export default function ReportsPage() {
   const { profile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   
   // Data states
@@ -205,30 +251,38 @@ export default function ReportsPage() {
   const [programPerformance, setProgramPerformance] = useState<ProgramPerformance[]>([]);
   const [supervisorWorkload, setSupervisorWorkload] = useState<SupervisorWorkload[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
+  const [studentRoster, setStudentRoster] = useState<StudentRosterRow[]>([]);
+  const [internshipDetail, setInternshipDetail] = useState<InternshipDetailRow[]>([]);
 
   // Fetch all report data
   const fetchReportData = useCallback(async () => {
     try {
       setIsLoading(true);
 
-      const [statsRes, programsRes, supervisorsRes, trendsRes] = await Promise.all([
+      const [statsRes, programsRes, supervisorsRes, trendsRes, studentsRes, internshipsRes] = await Promise.all([
         fetch(`/api/department-coordinator/reports?type=overview`),
         fetch(`/api/department-coordinator/reports?type=programs`),
         fetch(`/api/department-coordinator/reports?type=supervisors`),
         fetch(`/api/department-coordinator/reports?type=trends&year=${selectedYear}`),
+        fetch(`/api/department-coordinator/reports?type=students`),
+        fetch(`/api/department-coordinator/reports?type=internships`),
       ]);
 
-      const [statsData, programsData, supervisorsData, trendsData] = await Promise.all([
+      const [statsData, programsData, supervisorsData, trendsData, studentsData, internshipsData] = await Promise.all([
         statsRes.json(),
         programsRes.json(),
         supervisorsRes.json(),
         trendsRes.json(),
+        studentsRes.json(),
+        internshipsRes.json(),
       ]);
 
       if (statsData.success) setStats(statsData.data);
       if (programsData.success) setProgramPerformance(programsData.data || []);
       if (supervisorsData.success) setSupervisorWorkload(supervisorsData.data || []);
       if (trendsData.success) setMonthlyTrends(trendsData.data || []);
+      if (studentsData.success) setStudentRoster(studentsData.data?.students || []);
+      if (internshipsData.success) setInternshipDetail(internshipsData.data?.internships || []);
     } catch (error) {
       console.error("Error fetching report data:", error);
     } finally {
@@ -240,34 +294,80 @@ export default function ReportsPage() {
     fetchReportData();
   }, [fetchReportData]);
 
-  // Export report to CSV
-  const exportToCSV = (type: "overview" | "programs" | "supervisors") => {
-    let csvContent = "";
-    let filename = "";
+  // ----------------------------------------------------------------
+  // CSV helpers
+  // ----------------------------------------------------------------
+
+  // Quote a single CSV cell. Doubles any embedded double-quotes, wraps
+  // the value in double-quotes. Numbers are stringified. Null/undefined
+  // become empty string (so the cell shows as empty in Excel rather than
+  // the literal text "null").
+  const csvCell = (v: unknown): string => {
+    if (v === null || v === undefined) return '""';
+    const s = String(v);
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
+  // Convert a 2D array of cells into CSV text. Each row becomes one
+  // comma-separated line.
+  const rowsToCsv = (rows: unknown[][]): string =>
+    rows.map((row) => row.map(csvCell).join(",")).join("\n");
+
+  // Trigger a browser download of the given CSV text.
+  const downloadCsv = (filename: string, csvContent: string) => {
+    // Prepend a UTF-8 BOM so Excel opens the file with the correct
+    // encoding (without this, accented characters render as garbled
+    // mojibake when the CSV is opened by double-clicking).
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  // Export ONE section (overview / programs / supervisors) — kept for
+  // the per-tab "Export CSV" buttons.
+  const exportToCSV = (type: "overview" | "programs" | "supervisors" | "students" | "internships") => {
+    const today = new Date().toISOString().split("T")[0];
 
     switch (type) {
-      case "overview":
+      case "overview": {
         if (!stats) return;
-        csvContent = [
+        const effectiveActive = stats.inProgressInternships ?? stats.activeInternships ?? 0;
+        const totalInternships = effectiveActive + (stats.completedInternships || 0);
+        const participationRate =
+          stats.totalStudents > 0 ? Math.round((effectiveActive / stats.totalStudents) * 100) : 0;
+        const completionRate =
+          totalInternships > 0 ? Math.round((stats.completedInternships / totalInternships) * 100) : 0;
+        const csv = rowsToCsv([
           ["Metric", "Value"],
+          ["Report Section", "Executive Summary"],
+          ["Generated At", new Date().toISOString()],
+          ["", ""],
           ["Total Students", stats.totalStudents],
           ["Active Students", stats.activeStudents],
           ["Total Programs", stats.totalPrograms],
           ["Active Programs", stats.activePrograms],
           ["Total Supervisors", stats.totalSupervisors],
-          ["In-Progress Internships", stats.inProgressInternships ?? stats.activeInternships],
-          ["Active Internships (status='active')", stats.activeInternships],
+          ["In-Progress Internships (assigned + active + paused)", effectiveActive],
           ["Completed Internships", stats.completedInternships],
-          ["Pending Assignments", stats.pendingAssignments],
-        ].map(row => row.join(",")).join("\n");
-        filename = `department_overview_${new Date().toISOString().split("T")[0]}.csv`;
+          ["Total Internships (in-progress + completed)", totalInternships],
+          ["Student Participation Rate (%)", participationRate],
+          ["Internship Completion Rate (%)", completionRate],
+          ["Pending Supervisor Assignments", stats.pendingAssignments],
+        ]);
+        downloadCsv(`department_overview_${today}.csv`, csv);
         break;
+      }
 
-      case "programs":
+      case "programs": {
         if (programPerformance.length === 0) return;
-        csvContent = [
+        const csv = rowsToCsv([
           ["Program Name", "Code", "Total Students", "Active Internships", "Completed", "Completion Rate (%)"],
-          ...programPerformance.map(p => [
+          ...programPerformance.map((p) => [
             p.program_name,
             p.program_code,
             p.total_students,
@@ -275,32 +375,288 @@ export default function ReportsPage() {
             p.completed_internships,
             p.completion_rate,
           ]),
-        ].map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
-        filename = `program_performance_${new Date().toISOString().split("T")[0]}.csv`;
+        ]);
+        downloadCsv(`program_performance_${today}.csv`, csv);
         break;
+      }
 
-      case "supervisors":
+      case "supervisors": {
         if (supervisorWorkload.length === 0) return;
-        csvContent = [
-          ["Supervisor Name", "Email", "Assigned Students", "Active Supervisions", "Completed"],
-          ...supervisorWorkload.map(s => [
+        const csv = rowsToCsv([
+          ["Supervisor Name", "Email", "Assigned Students", "Active Supervisions", "Completed Supervisions"],
+          ...supervisorWorkload.map((s) => [
             s.supervisor_name,
             s.supervisor_email,
             s.assigned_students,
             s.active_supervisions,
             s.completed_supervisions,
           ]),
-        ].map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
-        filename = `supervisor_workload_${new Date().toISOString().split("T")[0]}.csv`;
+        ]);
+        downloadCsv(`supervisor_workload_${today}.csv`, csv);
         break;
-    }
+      }
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
+      case "students": {
+        if (studentRoster.length === 0) return;
+        const csv = rowsToCsv([
+          [
+            "Student ID Number",
+            "First Name",
+            "Last Name",
+            "Email",
+            "Phone",
+            "Program",
+            "Program Code",
+            "Enrollment Year",
+            "Expected Graduation",
+            "CGPA",
+            "Department",
+            "Internship Status",
+            "Internship Company",
+            "Internship Start Date",
+            "Internship End Date",
+            "Faculty Supervisor",
+            "Supervisor Email",
+          ],
+          ...studentRoster.map((s) => [
+            s.student_id_number ?? "",
+            s.first_name,
+            s.last_name,
+            s.email,
+            s.phone ?? "",
+            s.program_name,
+            s.program_code,
+            s.enrollment_year ?? "",
+            s.expected_graduation ?? "",
+            s.cgpa ?? "",
+            s.department_name,
+            s.department_code,
+            s.internship_status ?? "Not Started",
+            s.internship_company ?? "",
+            s.internship_start_date ?? "",
+            s.internship_end_date ?? "",
+            s.supervisor_name ?? "Unassigned",
+            s.supervisor_email ?? "",
+          ]),
+        ]);
+        downloadCsv(`student_roster_${today}.csv`, csv);
+        break;
+      }
+
+      case "internships": {
+        if (internshipDetail.length === 0) return;
+        const csv = rowsToCsv([
+          [
+            "Student Name",
+            "Student ID",
+            "Student Email",
+            "Program",
+            "Company",
+            "Industry",
+            "Internship Status",
+            "Start Date",
+            "End Date",
+            "Faculty Supervisor",
+            "Supervisor Email",
+            "Created At",
+          ],
+          ...internshipDetail.map((i) => [
+            i.student_name,
+            i.student_id_number ?? "",
+            i.student_email,
+            i.program_name,
+            i.company_name,
+            i.company_industry ?? "",
+            i.status,
+            i.start_date ?? "",
+            i.end_date ?? "",
+            i.supervisor_name ?? "Unassigned",
+            i.supervisor_email ?? "",
+            i.created_at,
+          ]),
+        ]);
+        downloadCsv(`internship_detail_${today}.csv`, csv);
+        break;
+      }
+    }
+  };
+
+  // ----------------------------------------------------------------
+  // Comprehensive Full Report CSV — single download with ALL sections.
+  // This is what the user asked for: "a proper csv report with real
+  // info, charts etc." The CSV can't carry charts but it CAN carry
+  // every section of the report (executive summary, student roster,
+  // internship detail, program performance, supervisor workload,
+  // monthly trends) so a coordinator can open one file and see the
+  // complete picture, instead of having to download 5 separate CSVs.
+  // ----------------------------------------------------------------
+  const exportFullReportCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Make sure we have the latest student + internship data — the
+      // page may have loaded them already, but if the user clicked
+      // the button before the initial fetch completed we need to
+      // fetch them now so the CSV is complete.
+      let students = studentRoster;
+      let internships = internshipDetail;
+      if (students.length === 0 || internships.length === 0) {
+        const [studentsRes, internshipsRes] = await Promise.all([
+          fetch(`/api/department-coordinator/reports?type=students`),
+          fetch(`/api/department-coordinator/reports?type=internships`),
+        ]);
+        const [studentsData, internshipsData] = await Promise.all([
+          studentsRes.json(),
+          internshipsRes.json(),
+        ]);
+        if (studentsData.success) students = studentsData.data?.students || [];
+        if (internshipsData.success) internships = internshipsData.data?.internships || [];
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const now = new Date().toISOString();
+      const effectiveActive = stats?.inProgressInternships ?? stats?.activeInternships ?? 0;
+      const totalInternships = effectiveActive + (stats?.completedInternships || 0);
+      const participationRate =
+        stats && stats.totalStudents > 0
+          ? Math.round((effectiveActive / stats.totalStudents) * 100)
+          : 0;
+      const completionRate =
+        totalInternships > 0
+          ? Math.round(((stats?.completedInternships || 0) / totalInternships) * 100)
+          : 0;
+
+      const sections: string[] = [];
+
+      // -------- Section 1: Report metadata --------
+      sections.push(rowsToCsv([
+        ["InternHub.pk — Department Coordinator Full Report"],
+        ["Generated At", now],
+        ["Scope", profile?.role === "department_coordinator" ? "Department" : "University"],
+        ["Report Year", selectedYear],
+      ]));
+
+      // -------- Section 2: Executive Summary --------
+      sections.push("");
+      sections.push("SECTION 1 — EXECUTIVE SUMMARY");
+      sections.push(rowsToCsv([
+        ["Metric", "Value"],
+        ["Total Students", stats?.totalStudents ?? 0],
+        ["Active Students", stats?.activeStudents ?? 0],
+        ["Total Programs", stats?.totalPrograms ?? 0],
+        ["Active Programs", stats?.activePrograms ?? 0],
+        ["Total Faculty Supervisors", stats?.totalSupervisors ?? 0],
+        ["In-Progress Internships (assigned + active + paused)", effectiveActive],
+        ["Completed Internships", stats?.completedInternships ?? 0],
+        ["Total Internships (in-progress + completed)", totalInternships],
+        ["Student Participation Rate (%)", participationRate],
+        ["Internship Completion Rate (%)", completionRate],
+        ["Pending Supervisor Assignments", stats?.pendingAssignments ?? 0],
+      ]));
+
+      // -------- Section 3: Student Roster --------
+      sections.push("");
+      sections.push("SECTION 2 — STUDENT ROSTER");
+      if (students.length === 0) {
+        sections.push(rowsToCsv([["No students found."]]));
+      } else {
+        sections.push(rowsToCsv([
+          [
+            "Student ID Number", "First Name", "Last Name", "Email", "Phone",
+            "Program", "Program Code", "Enrollment Year", "Expected Graduation",
+            "CGPA", "Department", "Internship Status", "Internship Company",
+            "Internship Start Date", "Internship End Date",
+            "Faculty Supervisor", "Supervisor Email",
+          ],
+          ...students.map((s: StudentRosterRow) => [
+            s.student_id_number ?? "",
+            s.first_name, s.last_name, s.email, s.phone ?? "",
+            s.program_name, s.program_code,
+            s.enrollment_year ?? "", s.expected_graduation ?? "", s.cgpa ?? "",
+            s.department_name, s.department_code,
+            s.internship_status ?? "Not Started",
+            s.internship_company ?? "",
+            s.internship_start_date ?? "", s.internship_end_date ?? "",
+            s.supervisor_name ?? "Unassigned", s.supervisor_email ?? "",
+          ]),
+        ]));
+      }
+
+      // -------- Section 4: Internship Detail --------
+      sections.push("");
+      sections.push("SECTION 3 — INTERNSHIP DETAIL");
+      if (internships.length === 0) {
+        sections.push(rowsToCsv([["No internships found."]]));
+      } else {
+        sections.push(rowsToCsv([
+          [
+            "Student Name", "Student ID", "Student Email", "Program",
+            "Company", "Industry", "Internship Status",
+            "Start Date", "End Date",
+            "Faculty Supervisor", "Supervisor Email", "Created At",
+          ],
+          ...internships.map((i: InternshipDetailRow) => [
+            i.student_name, i.student_id_number ?? "", i.student_email,
+            i.program_name, i.company_name, i.company_industry ?? "",
+            i.status, i.start_date ?? "", i.end_date ?? "",
+            i.supervisor_name ?? "Unassigned", i.supervisor_email ?? "",
+            i.created_at,
+          ]),
+        ]));
+      }
+
+      // -------- Section 5: Program Performance --------
+      sections.push("");
+      sections.push("SECTION 4 — PROGRAM PERFORMANCE");
+      if (programPerformance.length === 0) {
+        sections.push(rowsToCsv([["No programs found."]]));
+      } else {
+        sections.push(rowsToCsv([
+          ["Program Name", "Code", "Total Students", "Active Internships", "Completed Internships", "Completion Rate (%)"],
+          ...programPerformance.map((p) => [
+            p.program_name, p.program_code,
+            p.total_students, p.active_internships,
+            p.completed_internships, p.completion_rate,
+          ]),
+        ]));
+      }
+
+      // -------- Section 6: Supervisor Workload --------
+      sections.push("");
+      sections.push("SECTION 5 — SUPERVISOR WORKLOAD");
+      if (supervisorWorkload.length === 0) {
+        sections.push(rowsToCsv([["No supervisors found."]]));
+      } else {
+        sections.push(rowsToCsv([
+          ["Supervisor Name", "Email", "Assigned Students", "Active Supervisions", "Completed Supervisions"],
+          ...supervisorWorkload.map((s) => [
+            s.supervisor_name, s.supervisor_email,
+            s.assigned_students, s.active_supervisions, s.completed_supervisions,
+          ]),
+        ]));
+      }
+
+      // -------- Section 7: Monthly Trends --------
+      sections.push("");
+      sections.push(`SECTION 6 — MONTHLY TRENDS (${selectedYear})`);
+      if (monthlyTrends.length === 0) {
+        sections.push(rowsToCsv([["No trend data."]]));
+      } else {
+        sections.push(rowsToCsv([
+          ["Month", "Students Enrolled", "Internships Started", "Internships Completed", "Net Change"],
+          ...monthlyTrends.map((t) => [
+            t.month, t.students_enrolled, t.internships_started, t.internships_completed,
+            t.internships_started - t.internships_completed,
+          ]),
+        ]));
+      }
+
+      const fullCsv = sections.join("\n");
+      downloadCsv(`internhub_full_report_${today}.csv`, fullCsv);
+    } catch (error) {
+      console.error("Error generating full report:", error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Calculate participation rate using in-progress internships
@@ -326,7 +682,7 @@ export default function ReportsPage() {
         title="Reports & Analytics"
         description="Department performance metrics and insights"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={selectedYear} onValueChange={setSelectedYear}>
               <SelectTrigger className="w-[120px]">
                 <Calendar className="h-4 w-4 mr-2" />
@@ -344,6 +700,18 @@ export default function ReportsPage() {
             <Button variant="outline" onClick={fetchReportData} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
+            </Button>
+
+            {/* PRIMARY ACTION — comprehensive multi-section CSV download.
+                This is the button the user wanted when they said "it
+                should create a proper csv report with real info". */}
+            <Button onClick={exportFullReportCSV} disabled={isExporting || isLoading}>
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {isExporting ? "Generating..." : "Download Full Report (CSV)"}
             </Button>
           </div>
         }
@@ -392,8 +760,10 @@ export default function ReportsPage() {
 
       {/* Report Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 lg:w-auto lg:inline-grid">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="students">Students</TabsTrigger>
+          <TabsTrigger value="internships">Internships</TabsTrigger>
           <TabsTrigger value="programs">Programs</TabsTrigger>
           <TabsTrigger value="supervisors">Supervisors</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
@@ -568,6 +938,279 @@ export default function ReportsPage() {
               </Card>
             </motion.div>
           </div>
+        </TabsContent>
+
+        {/* Students Tab — per-student roster table.
+            Replaces the previous behavior where the only way to see
+            student data was to download a CSV and open it in Excel.
+            Coordinators can now see, inline on the page:
+              - Who is enrolled (name, ID, email, program)
+              - Whether they have an internship and at which company
+              - Whether they have a faculty supervisor assigned
+            This is the "real info" the user wanted visible without
+            having to download anything. */}
+        <TabsContent value="students" className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Student Roster</CardTitle>
+                    <CardDescription>
+                      {studentRoster.length} student{studentRoster.length === 1 ? "" : "s"} enrolled · with internship status and faculty supervisor assignment
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportToCSV("students")}
+                    disabled={studentRoster.length === 0}
+                  >
+                    <Download className="h-4 w-4 mr-1" /> Export CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="py-6 space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-8" />
+                    ))}
+                  </div>
+                ) : studentRoster.length === 0 ? (
+                  <EmptyState
+                    icon={<Users className="h-10 w-10 text-muted-foreground" />}
+                    title="No students found"
+                    description="Students enrolled in your department will appear here."
+                  />
+                ) : (
+                  <div className="rounded-md border overflow-hidden">
+                    <div className="max-h-[600px] overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2.5 text-left font-medium">Student</th>
+                            <th className="px-3 py-2.5 text-left font-medium">ID Number</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Program</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Internship</th>
+                            <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Supervisor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {studentRoster.map((s) => {
+                            const statusColors: Record<string, string> = {
+                              active: "bg-emerald-100 text-emerald-700",
+                              assigned: "bg-blue-100 text-blue-700",
+                              completed: "bg-purple-100 text-purple-700",
+                              paused: "bg-amber-100 text-amber-700",
+                              terminated: "bg-red-100 text-red-700",
+                              withdrawn: "bg-slate-100 text-slate-600",
+                            };
+                            const statusColor = s.internship_status
+                              ? statusColors[s.internship_status] || "bg-slate-100 text-slate-600"
+                              : "bg-slate-100 text-slate-500";
+                            return (
+                              <tr key={s.user_id} className="hover:bg-muted/30">
+                                <td className="px-3 py-2.5">
+                                  <div>
+                                    <p className="font-medium">{s.first_name} {s.last_name}</p>
+                                    <p className="text-xs text-muted-foreground">{s.email}</p>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-muted-foreground">
+                                  {s.student_id_number || "—"}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <div>
+                                    <p className="text-sm">{s.program_name || "—"}</p>
+                                    {s.program_code && (
+                                      <p className="text-xs text-muted-foreground">{s.program_code}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {s.internship_company ? (
+                                    <div>
+                                      <p className="text-sm font-medium">{s.internship_company}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {s.internship_start_date
+                                          ? new Date(s.internship_start_date).toLocaleDateString()
+                                          : ""}
+                                        {s.internship_end_date
+                                          ? ` → ${new Date(s.internship_end_date).toLocaleDateString()}`
+                                          : ""}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">Not started</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <Badge
+                                    variant="secondary"
+                                    className={`text-xs capitalize ${statusColor}`}
+                                  >
+                                    {s.internship_status || "none"}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {s.supervisor_name ? (
+                                    <div>
+                                      <p className="text-sm">{s.supervisor_name}</p>
+                                      <p className="text-xs text-muted-foreground">{s.supervisor_email}</p>
+                                    </div>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                                      Unassigned
+                                    </Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+
+        {/* Internships Tab — per-internship detail table.
+            One row per `student_internships` row, joined with student,
+            company, and supervisor info. This is the data the previous
+            reports page completely lacked — coordinators could see
+            "2 in-progress internships" as a count but had no way to
+            see WHICH 2 students, at WHICH companies, with WHICH
+            supervisors. */}
+        <TabsContent value="internships" className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Internship Detail</CardTitle>
+                    <CardDescription>
+                      {internshipDetail.length} internship record{internshipDetail.length === 1 ? "" : "s"} · student × company × supervisor
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportToCSV("internships")}
+                    disabled={internshipDetail.length === 0}
+                  >
+                    <Download className="h-4 w-4 mr-1" /> Export CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="py-6 space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-8" />
+                    ))}
+                  </div>
+                ) : internshipDetail.length === 0 ? (
+                  <EmptyState
+                    icon={<Briefcase className="h-10 w-10 text-muted-foreground" />}
+                    title="No internship records"
+                    description="Internships will appear here once students are placed."
+                  />
+                ) : (
+                  <div className="rounded-md border overflow-hidden">
+                    <div className="max-h-[600px] overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2.5 text-left font-medium">Student</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Program</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Company</th>
+                            <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Duration</th>
+                            <th className="px-3 py-2.5 text-left font-medium">Supervisor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {internshipDetail.map((i) => {
+                            const statusColors: Record<string, string> = {
+                              active: "bg-emerald-100 text-emerald-700",
+                              assigned: "bg-blue-100 text-blue-700",
+                              completed: "bg-purple-100 text-purple-700",
+                              paused: "bg-amber-100 text-amber-700",
+                              terminated: "bg-red-100 text-red-700",
+                              withdrawn: "bg-slate-100 text-slate-600",
+                            };
+                            const statusColor = statusColors[i.status] || "bg-slate-100 text-slate-600";
+                            return (
+                              <tr key={i.internship_id} className="hover:bg-muted/30">
+                                <td className="px-3 py-2.5">
+                                  <div>
+                                    <p className="font-medium">{i.student_name}</p>
+                                    <p className="text-xs text-muted-foreground">{i.student_email}</p>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <div>
+                                    <p className="text-sm">{i.program_name || "—"}</p>
+                                    {i.program_code && (
+                                      <p className="text-xs text-muted-foreground">{i.program_code}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <div>
+                                    <p className="text-sm font-medium">{i.company_name || "—"}</p>
+                                    {i.company_industry && (
+                                      <p className="text-xs text-muted-foreground">{i.company_industry}</p>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <Badge variant="secondary" className={`text-xs capitalize ${statusColor}`}>
+                                    {i.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                                  {i.start_date
+                                    ? new Date(i.start_date).toLocaleDateString()
+                                    : "—"}
+                                  {i.end_date
+                                    ? ` → ${new Date(i.end_date).toLocaleDateString()}`
+                                    : ""}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {i.supervisor_name ? (
+                                    <div>
+                                      <p className="text-sm">{i.supervisor_name}</p>
+                                      <p className="text-xs text-muted-foreground">{i.supervisor_email}</p>
+                                    </div>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
+                                      Unassigned
+                                    </Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         </TabsContent>
 
         {/* Programs Tab */}

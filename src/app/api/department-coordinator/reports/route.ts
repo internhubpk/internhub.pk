@@ -110,6 +110,8 @@ export async function GET(request: NextRequest) {
         return await getMonthlyTrends(supabase, deptFilter, year);
       case "students":
         return await getStudentReport(supabase, deptFilter, searchParams);
+      case "internships":
+        return await getInternshipDetail(supabase, deptFilter);
       default:
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Invalid report type" },
@@ -707,7 +709,24 @@ async function getMonthlyTrends(
 }
 
 /**
- * Get detailed student report (for CSV export)
+ * Get detailed student report (for CSV export + on-page roster table)
+ *
+ * Each student row is enriched with:
+ *   - profile (name, email, phone)
+ *   - program (name, code)
+ *   - department (name, code)
+ *   - internship status (latest internship row, if any) — joined as a
+ *     lateral SELECT to avoid N+1 queries
+ *   - assigned faculty supervisor (name, email) — resolved via either
+ *     `students.faculty_supervisor_id` (pre-internship assignment,
+ *     migration 0041) OR `student_internships.faculty_supervisor_id`
+ *     (internship-time assignment)
+ *
+ * This is the data source for BOTH the on-page Student Roster table and
+ * the per-student section of the comprehensive CSV export. The previous
+ * implementation only returned basic profile info and never included
+ * internship/supervisor data — coordinators had no way to see, in one
+ * view, "student X has internship Y with supervisor Z".
  */
 async function getStudentReport(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -729,6 +748,7 @@ async function getStudentReport(
       expected_graduation,
       cgpa,
       created_at,
+      faculty_supervisor_id,
       profiles:user_id(first_name, last_name, email, phone),
       programs:program_id(name, code),
       departments:department_id(name, code)
@@ -750,27 +770,126 @@ async function getStudentReport(
     throw error;
   }
 
-  // Enrich with supervisor info if needed
-  let enrichedStudents = students || [];
+  // Cast to any[] so we can replace the nested-join shape returned by
+  // Supabase (with `profiles`, `programs`, `departments` as arrays)
+  // with the flattened shape we build below. Without this cast TS
+  // infers the original shape and refuses to let us reassign.
+  let enrichedStudents: any[] = (students || []) as any[];
 
-  if (hasSupervisor === "true" || hasSupervisor === "false") {
-    const studentIds = enrichedStudents.map(s => s.user_id);
-    
-    if (studentIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from("student_internships")
-        .select("student_user_id, faculty_supervisor_id")
-        .in("student_user_id", studentIds)
-        .not("faculty_supervisor_id", "is", null);
+  // ----------------------------------------------------------------
+  // Batch-fetch internship + supervisor info for ALL students in one
+  // round-trip per table, then merge locally. This avoids the N+1 query
+  // storm where each student triggered 2 separate queries.
+  // ----------------------------------------------------------------
+  const studentUserIds = enrichedStudents.map((s: any) => s.user_id);
 
-      const studentsWithSupervisor = new Set(assignments?.map(a => a.student_user_id) || []);
+  // (a) Latest internship per student (so we can show "Active",
+  //     "Completed", "Not Started" in the roster). We fetch ALL rows
+  //     and pick the latest locally because PostgREST doesn't support
+  //     DISTINCT ON in the select() builder.
+  let internshipByStudent = new Map<string, any>();
+  let supervisorIdsFromInternships = new Set<string>();
+  if (studentUserIds.length > 0) {
+    const { data: internships, error: internshipsErr } = await supabase
+      .from("student_internships")
+      .select(`
+        id,
+        student_user_id,
+        status,
+        start_date,
+        end_date,
+        company_id,
+        faculty_supervisor_id,
+        created_at,
+        companies:company_id(name)
+      `)
+      .in("student_user_id", studentUserIds)
+      .order("created_at", { ascending: false });
 
-      if (hasSupervisor === "true") {
-        enrichedStudents = enrichedStudents.filter(s => studentsWithSupervisor.has(s.user_id));
-      } else {
-        enrichedStudents = enrichedStudents.filter(s => !studentsWithSupervisor.has(s.user_id));
+    if (!internshipsErr && internships) {
+      for (const si of internships) {
+        if (!internshipByStudent.has(si.student_user_id)) {
+          internshipByStudent.set(si.student_user_id, si);
+          if (si.faculty_supervisor_id) {
+            supervisorIdsFromInternships.add(si.faculty_supervisor_id);
+          }
+        }
       }
     }
+  }
+
+  // (b) Faculty supervisor profiles. Collect from BOTH:
+  //     - `students.faculty_supervisor_id` (pre-internship assignment)
+  //     - `student_internships.faculty_supervisor_id` (internship-time)
+  //     Then fetch their profiles in one query.
+  const allSupervisorIds = new Set<string>();
+  for (const s of enrichedStudents) {
+    if (s.faculty_supervisor_id) allSupervisorIds.add(s.faculty_supervisor_id);
+  }
+  for (const sid of supervisorIdsFromInternships) allSupervisorIds.add(sid);
+
+  let supervisorProfileById = new Map<string, any>();
+  if (allSupervisorIds.size > 0) {
+    const { data: supervisorProfiles, error: supErr } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, email")
+      .in("id", Array.from(allSupervisorIds));
+    if (!supErr && supervisorProfiles) {
+      for (const p of supervisorProfiles) {
+        supervisorProfileById.set(p.id, p);
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Merge everything into the final student roster rows.
+  // ----------------------------------------------------------------
+  enrichedStudents = enrichedStudents.map((s) => {
+    const internship = internshipByStudent.get(s.user_id);
+    // Prefer internship-time supervisor if set, else fall back to the
+    // pre-internship assignment on `students.faculty_supervisor_id`.
+    const supervisorId =
+      internship?.faculty_supervisor_id || s.faculty_supervisor_id;
+    const supervisorProfile = supervisorId
+      ? supervisorProfileById.get(supervisorId)
+      : null;
+
+    return {
+      user_id: s.user_id,
+      student_id_number: s.student_id_number,
+      enrollment_year: s.enrollment_year,
+      expected_graduation: s.expected_graduation,
+      cgpa: s.cgpa,
+      created_at: s.created_at,
+      first_name: s.profiles?.first_name ?? "",
+      last_name: s.profiles?.last_name ?? "",
+      email: s.profiles?.email ?? "",
+      phone: s.profiles?.phone ?? "",
+      program_name: s.programs?.name ?? "",
+      program_code: s.programs?.code ?? "",
+      department_name: s.departments?.name ?? "",
+      department_code: s.departments?.code ?? "",
+      // Internship info (null if the student hasn't started one yet)
+      internship_status: internship?.status ?? null,
+      internship_start_date: internship?.start_date ?? null,
+      internship_end_date: internship?.end_date ?? null,
+      internship_company: internship?.companies?.name ?? null,
+      // Supervisor info (null if none assigned via either path)
+      supervisor_name: supervisorProfile
+        ? `${supervisorProfile.first_name || ""} ${supervisorProfile.last_name || ""}`.trim()
+        : null,
+      supervisor_email: supervisorProfile?.email ?? null,
+    };
+  });
+
+  // Apply the optional `has_supervisor` filter (true/false) on the
+  // enriched data — this is more accurate than the previous impl which
+  // only checked `student_internships.faculty_supervisor_id` and
+  // missed students assigned via `students.faculty_supervisor_id`.
+  if (hasSupervisor === "true" || hasSupervisor === "false") {
+    enrichedStudents = enrichedStudents.filter((s: any) =>
+      hasSupervisor === "true" ? !!s.supervisor_name : !s.supervisor_name
+    );
   }
 
   return NextResponse.json<ApiResponse<any>>({
@@ -778,6 +897,108 @@ async function getStudentReport(
     data: {
       students: enrichedStudents,
       total: enrichedStudents.length,
+      generated_at: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * Get detailed internship report (for CSV export + on-page internship table)
+ *
+ * Each row is one `student_internships` row, enriched with:
+ *   - student profile (name, email, student_id_number)
+ *   - student program (name, code)
+ *   - company (name, industry)
+ *   - faculty supervisor (name, email)
+ *
+ * This gives coordinators a per-internship view that the previous
+ * reports page lacked entirely — they could see counts ("2 in-progress
+ * internships") but never the actual list of which student is at which
+ * company with which supervisor.
+ */
+async function getInternshipDetail(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filters: Record<string, string | null>
+): Promise<NextResponse<ApiResponse<any>>> {
+  let query = supabase
+    .from("student_internships")
+    .select(`
+      id,
+      student_user_id,
+      status,
+      start_date,
+      end_date,
+      created_at,
+      updated_at,
+      company_id,
+      faculty_supervisor_id,
+      companies:company_id(name, industry),
+      students:student_user_id(
+        student_id_number,
+        profiles:user_id(first_name, last_name, email),
+        programs:program_id(name, code)
+      ),
+      supervisors:faculty_supervisor_id(
+        profiles:user_id(first_name, last_name, email)
+      )
+    `);
+
+  if (filters.department_id) {
+    query = query.eq("department_id", filters.department_id);
+  } else if (filters.university_id) {
+    query = query.eq("university_id", filters.university_id);
+  }
+
+  query = query.order("created_at", { ascending: false });
+
+  const { data: internships, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  // Flatten the nested joins so the CSV exporter and the page UI can
+  // read fields directly without digging through `students.profiles[0].first_name`.
+  const flattened = (internships || []).map((si: any) => {
+    const student = si.students;
+    const profile = student?.profiles;
+    const program = student?.programs;
+    const company = si.companies;
+    const supervisor = si.supervisors?.profiles;
+
+    return {
+      internship_id: si.id,
+      status: si.status,
+      start_date: si.start_date,
+      end_date: si.end_date,
+      created_at: si.created_at,
+      updated_at: si.updated_at,
+      // Student
+      student_user_id: si.student_user_id,
+      student_name:
+        profile
+          ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
+          : "",
+      student_email: profile?.email ?? "",
+      student_id_number: student?.student_id_number ?? "",
+      program_name: program?.name ?? "",
+      program_code: program?.code ?? "",
+      // Company
+      company_name: company?.name ?? "",
+      company_industry: company?.industry ?? "",
+      // Faculty supervisor
+      supervisor_name: supervisor
+        ? `${supervisor.first_name || ""} ${supervisor.last_name || ""}`.trim()
+        : "",
+      supervisor_email: supervisor?.email ?? "",
+    };
+  });
+
+  return NextResponse.json<ApiResponse<any>>({
+    success: true,
+    data: {
+      internships: flattened,
+      total: flattened.length,
       generated_at: new Date().toISOString(),
     },
   });

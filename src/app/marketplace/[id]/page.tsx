@@ -194,19 +194,33 @@ export default function InternshipDetailPage() {
           return;
         }
 
-        // Compute the REAL applicant count from the joined application
-        // rows. We exclude `withdrawn` applications because they represent
-        // students who explicitly cancelled (the row still exists for
-        // audit but shouldn't count toward seats taken). This replaces
-        // the unreliable `internships.current_applicants` column that
-        // was supposed to be bumped by the (missing) `increment_applicant_count`
-        // RPC and was always 0 in practice.
-        const apps = Array.isArray((internshipData as any).applications)
+        // APPLICANT COUNT SOURCE OF TRUTH:
+        //   `internships.current_applicants` (the DB column), NOT the
+        //   joined `internship_applications` rows.
+        //
+        // The `internship_applications` table has RLS that restricts SELECT
+        // to: super_admin (all), student (only own rows), company_hr (only
+        // own company's rows). There is NO policy allowing a browsing
+        // student to see OTHER students' applications — so the PostgREST
+        // JOIN `applications:internship_applications(id, status)` returns
+        // an empty array for any internship the current user hasn't applied
+        // to. The previous code overrode the column-backed
+        // `current_applicants` with this 0, which is why the detail page
+        // always showed "0 applied".
+        //
+        // The `current_applicants` column is kept accurate by the
+        // `trg_internships_applicant_count` trigger (migration 0057) and
+        // is publicly readable via the `int_select_anon` RLS policy
+        // (migration 0046). We trust it as the canonical count.
+        const joinCount = Array.isArray((internshipData as any).applications)
           ? (internshipData as any).applications.filter(
               (a: any) => a && a.status !== "withdrawn",
-            )
-          : [];
-        const realApplicantCount = apps.length;
+            ).length
+          : 0;
+        const realApplicantCount =
+          (internshipData as any).current_applicants != null
+            ? Math.max((internshipData as any).current_applicants, joinCount)
+            : joinCount;
 
         const formattedData: typeof internship = {
           ...internshipData,
@@ -216,7 +230,8 @@ export default function InternshipDetailPage() {
           company_website: internshipData.company?.website,
           company_size: internshipData.company?.size,
           company_industry: internshipData.company?.industry,
-          // Override the column-backed value with the real count.
+          // Trust the DB-maintained column. Don't override with the
+          // RLS-truncated JOIN count.
           current_applicants: realApplicantCount,
         };
 

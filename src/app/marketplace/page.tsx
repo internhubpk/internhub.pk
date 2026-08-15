@@ -170,22 +170,55 @@ function MarketplacePageContent() {
         } else if (data) {
           // Transform raw rows into MarketplaceInternship shape that
           // InternshipCard expects (flat company_name, etc.).
+          //
+          // APPLICANT COUNT SOURCE OF TRUTH:
+          //   `internships.current_applicants` (the DB column), NOT the
+          //   joined `internship_applications` rows.
+          //
+          // WHY: the `internship_applications` table has RLS policies
+          // (migration 0002) that restrict SELECT to:
+          //   - super_admin (all rows)
+          //   - student (only their OWN rows: `student_user_id = auth.uid()`)
+          //   - company_hr (only their company's rows)
+          // There is NO policy that lets a browsing student see OTHER
+          // students' applications. So the PostgREST JOIN
+          // `applications:internship_applications(id, status)` returns
+          // an empty array for any internship the current user hasn't
+          // applied to — and `apps.length` is 0 even when there are
+          // real applications in the DB. The previous code overwrote
+          // the column-backed `current_applicants` with this 0, which
+          // is why the marketplace always showed "0 applied" despite
+          // the column being maintained.
+          //
+          // The `current_applicants` column is kept accurate by the
+          // `trg_internships_applicant_count` trigger (migration 0057)
+          // which recomputes the count of non-withdrawn applications
+          // on every INSERT / UPDATE / DELETE of `internship_applications`.
+          // The column is publicly readable because the `int_select_anon`
+          // RLS policy (migration 0046) allows anon+authenticated to SELECT
+          // any internship with status IN ('open','active').
+          //
+          // We still keep the JOIN in the SELECT clause so that, if the
+          // current user IS the only applicant and wants to verify their
+          // own application is reflected, they see the correct count.
+          // But when the JOIN returns 0 we DON'T override the DB column.
           const transformed: MarketplaceInternship[] = (data as unknown as RawInternshipRow[]).map((row) => {
             const company = row.company;
-            // Count REAL applications, excluding withdrawn ones.
-            // PostgREST returns the joined rows under the ALIAS we
-            // declared in the select() call. The previous code read
-            // `row.internship_applications` — but the alias is
-            // `applications`, so the array was always undefined and
-            // the displayed count was always 0. Read BOTH shapes for
-            // defensive back-compat.
             const appsSource = (row as any).applications ?? (row as any).internship_applications;
-            const apps = Array.isArray(appsSource)
+            const joinCount = Array.isArray(appsSource)
               ? appsSource.filter(
                   (a: any) => a && a.status !== "withdrawn",
-                )
-              : [];
-            const realApplicantCount = apps.length;
+                ).length
+              : 0;
+            // Trust the DB-maintained column. Only fall back to the
+            // JOIN count if the column is null/undefined (defensive —
+            // shouldn't happen because the column is NOT NULL DEFAULT 0,
+            // but if a future schema change makes it nullable we want
+            // *something* to display).
+            const realApplicantCount =
+              row.current_applicants != null
+                ? Math.max(row.current_applicants, joinCount)
+                : joinCount;
             return {
               id: row.id,
               title: row.title,
