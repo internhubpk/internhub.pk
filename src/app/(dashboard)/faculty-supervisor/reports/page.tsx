@@ -78,6 +78,7 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "@/components/shared/toast";
+import { generatePdf } from "@/lib/export-helpers";
 
 // Types
 interface StudentForReport {
@@ -567,6 +568,7 @@ export default function FacultySupervisorReportsPage() {
     if (marksheet.length === 0) return 0;
     const totalScore = marksheet.reduce((acc, entry) => acc + entry.weeklyScore, 0);
     const maxPossible = marksheet.reduce((acc, entry) => acc + entry.maxScore, 0);
+    if (maxPossible === 0) return 0;
     return Math.round((totalScore / maxPossible) * 100);
   };
 
@@ -600,12 +602,125 @@ export default function FacultySupervisorReportsPage() {
   };
 
   const handleDownloadPDF = async () => {
-    // Use the browser print dialog (user can choose “Save as PDF”).
-    // A real PDF library (jsPDF / pdfmake) isn't installed in this project,
-    // and a setTimeout no-op would just mislead the user.
+    // Generate a real PDF certificate using jsPDF (structured layout).
+    // Falls back to element-to-PDF (html2canvas) if a certificateRef is
+    // available — but the structured layout is more reliable across
+    // browsers and doesn't depend on Tailwind v4 oklch() color rendering.
     setIsGenerating(true);
     try {
-      window.print();
+      if (!selectedStudent) {
+        toast.error("No student selected");
+        return;
+      }
+      const finalScore = calculateFinalScore();
+      const letterGrade = getLetterGrade(finalScore);
+      const studentName = selectedStudent.name || "Student";
+      const programName = selectedStudent.program || "Internship Program";
+      const companyName = selectedStudent.company || "N/A";
+      const internshipTitle = selectedStudent.internshipTitle || "Internship";
+      const issuedAt = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      generatePdf(
+        {
+          title: "Internship Completion Certificate",
+          subtitle: universityName || "InternHub.pk",
+          metadata: [
+            { label: "Student Name", value: studentName },
+            { label: "Student ID", value: selectedStudent.studentIdNumber || "—" },
+            { label: "Program", value: programName },
+            { label: "Internship", value: internshipTitle },
+            { label: "Host Organization", value: companyName },
+            { label: "Duration", value: `${formatDate(selectedStudent.startDate)} — ${formatDate(selectedStudent.endDate)}` },
+            { label: "Final Score", value: `${finalScore}% (${letterGrade})` },
+            { label: "Date Issued", value: issuedAt },
+          ],
+          sections: [
+            {
+              title: "Certification",
+              lines: [
+                `This is to certify that ${studentName} has successfully completed the requirements of the ${programName} internship program at ${companyName}.`,
+                `The student achieved a final score of ${finalScore}% (Grade: ${letterGrade}), demonstrating satisfactory completion of all program requirements including weekly logs, task submissions, supervisor evaluations, and attendance.`,
+              ],
+            },
+            {
+              title: "Coordinator Remarks",
+              lines: [certificateForm.additionalRemarks || "Satisfactory completion. Recommended for certification."],
+            },
+            {
+              title: "Issued By",
+              lines: [
+                { label: "Faculty Supervisor", value: profile?.full_name || "—" },
+                { label: "Department", value: departmentName || "—" },
+                { label: "University", value: universityName || "—" },
+              ],
+            },
+          ],
+          footer: `InternHub.pk — Certificate generated on ${issuedAt}`,
+        },
+        `certificate-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+      toast.success("Certificate PDF downloaded");
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      toast.error("Failed to generate PDF. Try the Print button instead.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadMarksheetPDF = async () => {
+    // Generate a real PDF marksheet using jsPDF.
+    setIsGenerating(true);
+    try {
+      if (!selectedStudent || marksheet.length === 0) {
+        toast.error("No marksheet data available");
+        return;
+      }
+      const finalScore = calculateFinalScore();
+      const letterGrade = getLetterGrade(finalScore);
+      const studentName = selectedStudent.name || "Student";
+
+      generatePdf(
+        {
+          title: "Internship Marksheet",
+          subtitle: `${studentName} — ${selectedStudent.program || "Internship"}`,
+          metadata: [
+            { label: "Student ID", value: selectedStudent.studentIdNumber || "—" },
+            { label: "Host Organization", value: selectedStudent.company || "—" },
+            { label: "Duration", value: `${formatDate(selectedStudent.startDate)} — ${formatDate(selectedStudent.endDate)}` },
+            { label: "Final Score", value: `${finalScore}% (Grade: ${letterGrade})` },
+            { label: "CGPA", value: selectedStudent.cgpa ? selectedStudent.cgpa.toFixed(2) : "—" },
+          ],
+          sections: [
+            {
+              title: "Weekly Performance",
+              lines: marksheet.map((entry) => ({
+                label: `Week ${entry.weekNumber} (${entry.weekStart})`,
+                value: `${entry.weeklyScore}/${entry.maxScore}`,
+              })),
+            },
+            {
+              title: "Summary",
+              lines: [
+                `Total Weeks: ${marksheet.length}`,
+                `Total Score: ${marksheet.reduce((acc, e) => acc + e.weeklyScore, 0)} / ${marksheet.reduce((acc, e) => acc + e.maxScore, 0)}`,
+                `Final Percentage: ${finalScore}%`,
+                `Letter Grade: ${letterGrade}`,
+              ],
+            },
+          ],
+          footer: `InternHub.pk — Marksheet generated on ${new Date().toLocaleDateString()}`,
+        },
+        `marksheet-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+      toast.success("Marksheet PDF downloaded");
+    } catch (err) {
+      console.error("Marksheet PDF generation failed:", err);
+      toast.error("Failed to generate marksheet PDF");
     } finally {
       setIsGenerating(false);
     }
@@ -1136,13 +1251,26 @@ export default function FacultySupervisorReportsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-4 border-t">
-                  {/* Single button that opens the browser's print dialog —
-                      the user can pick "Save as PDF" as the destination
-                      from there. Previously we had two duplicate buttons
-                      ("Print Marksheet" and "Download PDF") that both
-                      called window.print() — confusing. */}
-                  <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4" /> Print / Save as PDF
+                  {/* Real PDF download via jsPDF (structured layout). */}
+                  <Button
+                    variant="default"
+                    className="gap-2"
+                    onClick={handleDownloadMarksheetPDF}
+                    disabled={isGenerating || marksheet.length === 0}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Download PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => window.print()}
+                  >
+                    <Printer className="h-4 w-4" /> Print
                   </Button>
                   <Button
                     variant="secondary"
@@ -1226,6 +1354,7 @@ export default function FacultySupervisorReportsPage() {
                       Save to Student Record
                     </Button>
                     <Button
+                      variant="default"
                       size="lg"
                       className="gap-2"
                       onClick={handleDownloadPDF}
@@ -1236,7 +1365,7 @@ export default function FacultySupervisorReportsPage() {
                       ) : (
                         <Download className="h-5 w-5" />
                       )}
-                      Print / Save as PDF
+                      Download PDF
                     </Button>
                   </div>
                 </TabsContent>

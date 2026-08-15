@@ -922,9 +922,9 @@ export default function CompanyHRInternsPage() {
                   <div className="mt-3">
                     <div className="flex justify-between text-sm mb-1">
                       <span>Weekly Progress</span>
-                      <span>{Math.round((selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100)}%</span>
+                      <span>{selectedIntern.total_weeks > 0 ? Math.round((selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100) : 0}%</span>
                     </div>
-                    <Progress value={(selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100} className="h-2" />
+                    <Progress value={selectedIntern.total_weeks > 0 ? (selectedIntern.weekly_logs_submitted / selectedIntern.total_weeks) * 100 : 0} className="h-2" />
                   </div>
                 </div>
 

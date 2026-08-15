@@ -462,7 +462,7 @@ export default function CompanyHREvaluationsPage() {
               </SelectTrigger>
               <SelectContent>
                 {programs.map(program => (
-                  <SelectItem key={program} value={program.toLowerCase().replace(" ", "_")}>{program}</SelectItem>
+                  <SelectItem key={program} value={program}>{program}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -608,12 +608,17 @@ export default function CompanyHREvaluationsPage() {
                               <Eye className="mr-2 h-4 w-4" /> Full Details
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              disabled={!evaluation.certificate_issued}
                               onClick={async () => {
                                 // Fetch the certificate PDF from the existing
                                 // /api/company-hr/evaluations/[id]/certificate
                                 // endpoint. The endpoint streams a PDF — opening
                                 // it in a new tab lets the browser handle the
                                 // download/print flow.
+                                if (!evaluation.certificate_issued) {
+                                  toast.error("Certificate not issued", { description: "Approve the evaluation first to issue the certificate." });
+                                  return;
+                                }
                                 try {
                                   const res = await fetch(`/api/company-hr/evaluations/${evaluation.id}/certificate`);
                                   if (!res.ok) {
@@ -625,7 +630,7 @@ export default function CompanyHREvaluationsPage() {
                                   const url = URL.createObjectURL(blob);
                                   const a = document.createElement("a");
                                   a.href = url;
-                                  a.download = `evaluation-${evaluation.intern_name || evaluation.id}.pdf`;
+                                  a.download = `certificate-${evaluation.intern_name || evaluation.id}.pdf`;
                                   document.body.appendChild(a);
                                   a.click();
                                   document.body.removeChild(a);
@@ -635,7 +640,7 @@ export default function CompanyHREvaluationsPage() {
                                 }
                               }}
                             >
-                              <Download className="mr-2 h-4 w-4" /> Export PDF
+                              <Download className="mr-2 h-4 w-4" /> Download Certificate
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -646,7 +651,7 @@ export default function CompanyHREvaluationsPage() {
                                 window.location.href = "/company-hr/notifications";
                               }}
                             >
-                              <MessageSquare className="mr-2 h-4 w-4" /> Send to Intern
+                              <MessageSquare className="mr-2 h-4 w-4" /> Open Notifications
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

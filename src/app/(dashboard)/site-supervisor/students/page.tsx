@@ -881,7 +881,7 @@ export default function SiteSupervisorStudentsPage() {
                         </div>
                         <div className="text-center">
                           <p className="text-2xl font-bold text-amber-600">
-                            {Math.round(studentLogs.reduce((sum, l) => sum + l.hoursLogged, 0) / studentLogs.length)}
+                            {studentLogs.length > 0 ? Math.round(studentLogs.reduce((sum, l) => sum + l.hoursLogged, 0) / studentLogs.length) : 0}
                           </p>
                           <p className="text-xs text-muted-foreground">Avg Hours/Week</p>
                         </div>

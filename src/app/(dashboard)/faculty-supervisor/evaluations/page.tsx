@@ -349,7 +349,14 @@ export default function FacultySupervisorEvaluationsPage() {
           const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
           const scoreValues = Object.values(scoresObj).filter((v): v is number => typeof v === "number");
           const total = scoreValues.reduce((acc, v) => acc + v, 0);
-          const max = scoreValues.length * 10 || 100;
+          // Score each criterion out of 10, but normalize to a 100-point
+          // scale so the displayed percentage is meaningful regardless of
+          // how many criteria were scored. If no scores, fall back to 100
+          // so the rating column shows "0/100" instead of "0/0".
+          const max = scoreValues.length > 0 ? 100 : 100;
+          const normalizedTotal = scoreValues.length > 0
+            ? Math.round((total / (scoreValues.length * 10)) * 100)
+            : 0;
           return {
             id: e.id,
             studentName: e.student_profile?.full_name || "Unknown Student",
@@ -357,8 +364,8 @@ export default function FacultySupervisorEvaluationsPage() {
             title: `${(e.type || "evaluation").replace(/_/g, " ")} evaluation`,
             submittedAt: e.submitted_at || e.created_at || "",
             evaluatedAt: e.submitted_at || e.created_at || "",
-            status: (e.status === "approved" ? "approved" : e.status === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
-            score: total,
+            status: (e.status === "approved" ? "approved" : e.status === "rejected" ? "rejected" : e.status === "submitted" ? "submitted" : "revision_required") as EvaluationStatus,
+            score: normalizedTotal,
             maxScore: max,
             evaluatorComments: e.comments || "",
           };

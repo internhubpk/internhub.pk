@@ -60,6 +60,7 @@ interface WeeklyLog {
   hours_worked: number;
   status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
   submitted_at?: string;
+  reviewed_at?: string;
   // Review-only fields (populated when a log is opened in the dialog)
   tasks_completed?: string[];
   challenges?: string;
@@ -112,12 +113,13 @@ export default function FacultySupervisorWeeklyLogsPage() {
             hours_worked,
             status,
             submitted_at,
+            reviewed_at,
             student_user_id,
             tasks_completed,
             challenges,
             learnings,
             supervisor_feedback,
-            profiles:student_user_id(first_name, last_name)
+            student_profile:student_user_id(full_name, email)
           `)
           .in("student_user_id", studentIds)
           .order("week_start_date", { ascending: false });
@@ -128,7 +130,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
           id: log.id,
           student_user_id: log.student_user_id,
           student_name:
-            `${log.profiles?.first_name || ""} ${log.profiles?.last_name || ""}`.trim() ||
+            log.student_profile?.full_name ||
             "Unknown Student",
           week_number: log.week_number,
           week_start_date: log.week_start_date,
@@ -136,6 +138,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
           hours_worked: log.hours_worked || 0,
           status: log.status,
           submitted_at: log.submitted_at,
+          reviewed_at: log.reviewed_at,
           tasks_completed: Array.isArray(log.tasks_completed) ? log.tasks_completed : [],
           challenges: log.challenges,
           learnings: log.learnings,
