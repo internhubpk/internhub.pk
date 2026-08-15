@@ -133,9 +133,9 @@ export default function LoginPage() {
   }, []);
 
   return (
-    <div className="w-full px-1 py-2">
+    <div className="w-full">
       {/* Tab toggle */}
-      <div className="grid grid-cols-2 gap-1 p-1 mb-5 bg-muted rounded-xl">
+      <div className="grid grid-cols-2 gap-1 p-1 mb-6 bg-muted rounded-xl">
         <button
           type="button"
           onClick={() => setMode("login")}

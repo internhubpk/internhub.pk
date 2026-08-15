@@ -39,7 +39,6 @@ import { SiteNav } from "@/components/layout/site-nav";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { ContactSupportButton, BookACallButton } from "@/components/shared/whatsapp-cta";
 import { useTenant, useTenantBranding } from "@/components/providers/tenant-provider";
-import { ShaderBackgroundClient as ShaderBackground } from "@/components/shared/shader-background-client";
 
 // Exact URL given in the design brief — used verbatim for all four guides
 // rather than inventing distinct routes that don't exist.
@@ -80,9 +79,12 @@ export default function SupportPage() {
       <SiteNav />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border/50">
-        <ShaderBackground intensity="low" />
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-20 relative z-10">
+      <section className="relative overflow-hidden border-b border-border/50 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50 dark:from-gray-950 dark:via-gray-900 dark:to-purple-950/20">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-400/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-24 -right-24 w-80 h-80 bg-purple-400/10 rounded-full blur-3xl" />
+        </div>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-24 relative z-10">
           <div className="max-w-2xl mx-auto text-center">
             <Badge variant="outline" className="mb-3 sm:mb-4 px-2.5 sm:px-3 py-1 text-xs sm:text-sm">
               Support Center
