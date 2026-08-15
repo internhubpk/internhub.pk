@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 /**
  * /api/certificates/verify/[code]
@@ -30,9 +30,43 @@ import { createClient } from "@/utils/supabase/server";
  * because a revoked certificate should fail verification just like a
  * non-existent one. (The detailed status IS shown on the verification
  * PAGE for transparency, but not in this JSON response.)
+ *
+ * SERVICE-ROLE CLIENT
+ * -------------------
+ * This endpoint MUST use the Supabase service-role key, NOT the
+ * user-bound `createClient()` from `@/utils/supabase/server`. The
+ * user-bound client inherits RLS policies from the (anonymous)
+ * request session — and the `profiles` table's SELECT policy
+ * requires an authenticated session. Anonymous visitors (employers,
+ * LinkedIn's verification bot, anyone the student shared the link
+ * with) have no session, so RLS returns null for the student name
+ * lookup and the page renders "Certified Individual: —".
+ *
+ * The service-role key bypasses RLS entirely. We only return a
+ * curated subset of fields (see comment above), so this is safe —
+ * we never expose email, file_url, or other PII through this
+ * endpoint.
  */
 
 export const dynamic = "force-dynamic";
+
+// Lazy-init the service-role client so we don't construct it on
+// every request. Cached across warm invocations.
+let _adminClient: ReturnType<typeof createAdminClient> | null = null;
+function getAdminClient() {
+  if (_adminClient) return _adminClient;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — required for public certificate verification."
+    );
+  }
+  _adminClient = createAdminClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return _adminClient;
+}
 
 export async function GET(
   _request: NextRequest,
@@ -48,10 +82,7 @@ export async function GET(
       );
     }
 
-    // Use the service role to bypass RLS — this is a public lookup, and
-    // the certificates table's SELECT policy requires authentication.
-    // We only return a curated subset of fields (see comment above).
-    const supabase = await createClient();
+    const supabase = getAdminClient();
 
     const { data: cert, error } = await supabase
       .from("certificates")
@@ -61,7 +92,7 @@ export async function GET(
         student_user_id, internship_id, company_id
       `)
       .eq("verification_code", code.toUpperCase())
-      .maybeSingle();
+      .maybeSingle() as { data: any | null; error: any };
 
     if (error) {
       console.error("[/api/certificates/verify] lookup error:", error);
@@ -81,12 +112,16 @@ export async function GET(
     // Hydrate the student name, internship title, and company name in
     // parallel. Each is best-effort — if any one fails we still return
     // the certificate with that field as null.
+    //
+    // Using the service-role client (no RLS) — see file-level comment.
     const [studentRes, internshipRes, companyRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("user_id", cert.student_user_id)
-        .maybeSingle(),
+      cert.student_user_id
+        ? supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", cert.student_user_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
       cert.internship_id
         ? supabase
             .from("internships")
