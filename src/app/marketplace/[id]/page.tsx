@@ -178,7 +178,8 @@ export default function InternshipDetailPage() {
           .from("internships")
           .select(`
             *,
-            company:companies(name, logo_url, description, website, size, industry)
+            company:companies(name, logo_url, description, website, size, industry),
+            applications:internship_applications(id, status)
           `)
           .eq("id", internshipId)
           .in("status", ["open", "active"])
@@ -193,6 +194,20 @@ export default function InternshipDetailPage() {
           return;
         }
 
+        // Compute the REAL applicant count from the joined application
+        // rows. We exclude `withdrawn` applications because they represent
+        // students who explicitly cancelled (the row still exists for
+        // audit but shouldn't count toward seats taken). This replaces
+        // the unreliable `internships.current_applicants` column that
+        // was supposed to be bumped by the (missing) `increment_applicant_count`
+        // RPC and was always 0 in practice.
+        const apps = Array.isArray((internshipData as any).applications)
+          ? (internshipData as any).applications.filter(
+              (a: any) => a && a.status !== "withdrawn",
+            )
+          : [];
+        const realApplicantCount = apps.length;
+
         const formattedData: typeof internship = {
           ...internshipData,
           company_name: internshipData.company?.name || "Unknown Company",
@@ -201,7 +216,14 @@ export default function InternshipDetailPage() {
           company_website: internshipData.company?.website,
           company_size: internshipData.company?.size,
           company_industry: internshipData.company?.industry,
+          // Override the column-backed value with the real count.
+          current_applicants: realApplicantCount,
         };
+
+        // Stash on the internship object so the seats header section can
+        // read it. The Internship type doesn't declare `applicant_count`
+        // but the page reads it via `as any` below.
+        (formattedData as any).applicant_count = realApplicantCount;
 
         setInternship(formattedData);
 
@@ -548,13 +570,28 @@ export default function InternshipDetailPage() {
       }
 
       // Best-effort: bump internships.current_applicants so the marketplace
-      // card shows the updated applicant count without a re-fetch. Failure
-      // is non-fatal (the count is also re-computed by the company HR
-      // dashboard's query).
+      // card shows the updated applicant count without a re-fetch. We use
+      // a raw SQL increment via the `rpc` API on a stored function we
+      // ship in migration 0057; if that RPC is missing (older deployment)
+      // we silently fall through — the marketplace now also re-computes
+      // the count from `internship_applications` directly, so the UI is
+      // correct on next page load regardless.
       try {
         await supabase.rpc("increment_applicant_count", { p_internship_id: internshipId });
       } catch {
-        // The RPC may not exist on older deployments — silently ignore.
+        // Silently ignore — see comment above.
+      }
+      // Locally bump the displayed count so the user sees immediate
+      // feedback without a re-fetch.
+      try {
+        setInternship((prev) => ({
+          ...prev,
+          current_applicants: (prev.current_applicants ?? 0) + 1,
+          // Keep the shadow field in sync if it exists.
+          ...({ applicant_count: ((prev as any).applicant_count ?? 0) + 1 } as any),
+        }));
+      } catch {
+        // Non-fatal — UI state update.
       }
 
       // Best-effort: notify every company HR attached to this company
@@ -896,8 +933,29 @@ export default function InternshipDetailPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Vacancies</span>
-                      <span className="font-semibold">{internship.vacancies} positions</span>
+                      <span className="font-semibold">
+                        {internship.vacancies
+                          ? `${internship.vacancies} position${internship.vacancies !== 1 ? "s" : ""}`
+                          : "Open"}
+                      </span>
                     </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Applied So Far</span>
+                      <span className="font-semibold">
+                        {(internship as any).applicant_count ?? internship.current_applicants ?? 0}
+                        {internship.vacancies
+                          ? ` / ${internship.vacancies}`
+                          : ""}
+                      </span>
+                    </div>
+                    {internship.vacancies && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Seats Remaining</span>
+                        <span className="font-semibold text-primary">
+                          {Math.max(0, internship.vacancies - ((internship as any).applicant_count ?? internship.current_applicants ?? 0))}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Posted</span>
                       <span className="font-semibold">

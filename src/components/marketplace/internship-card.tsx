@@ -34,6 +34,10 @@ interface InternshipCardProps {
     applicant_count?: number;
     rating?: number | null;
     review_count?: number;
+    // Optional: total seats (vacancies) — when provided the card renders
+    // "X / Y seats" instead of just "X applied" so students can see how
+    // many spots remain.
+    max_applicants?: number | null;
   };
   onApply?: (id: string) => void;
   onSave?: (id: string) => void;
@@ -72,10 +76,37 @@ export function InternshipCard({
     created_at,
     status,
     applicant_count = 0,
+    max_applicants = null,
     rating = null,
     review_count = 0,
     image_url,
   } = internship;
+
+  // Render the Apply button for ANY visible marketplace status.
+  // The `internship_status` enum has values: 'draft','open','active',
+  // 'completed','cancelled','expired' — and the marketplace list page
+  // already filters to ['open','active']. The previous check
+  // (`status === 'published'`) was wrong because 'published' is a
+  // task_status enum value, NOT an internship_status value — so the
+  // Apply button was NEVER rendered, and students could only apply
+  // from the detail page (which had no such gate).
+  const isApplyable =
+    status === "open" ||
+    status === "active" ||
+    // Back-compat: if some legacy code path still sets `published`,
+    // don't break the card.
+    (status as string) === "published";
+
+  // Seats helper. When `max_applicants` is NULL the internship has
+  // unlimited seats — we render just `N applied`. When set, we render
+  // `N / Y` so students can see remaining capacity at a glance.
+  const seatsLabel = (() => {
+    if (max_applicants != null && max_applicants > 0) {
+      const remaining = Math.max(0, max_applicants - applicant_count);
+      return `${applicant_count} / ${max_applicants} seats · ${remaining} left`;
+    }
+    return `${applicant_count} applied`;
+  })();
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -222,7 +253,7 @@ export function InternshipCard({
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Users className="h-4 w-4" />
-                    {applicant_count} applicants
+                    {seatsLabel}
                   </span>
                 </div>
 
@@ -260,7 +291,7 @@ export function InternshipCard({
                   Posted {getTimeAgo(created_at)}
                 </span>
                 
-                {showApplyButton && status === "published" && onApply && (
+                {showApplyButton && isApplyable && onApply && (
                   <Button
                     onClick={handleApply}
                     disabled={isApplying}
@@ -470,7 +501,7 @@ export function InternshipCard({
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Users className="h-3.5 w-3.5" />
-                {applicant_count} applied
+                {seatsLabel}
               </span>
               <span>•</span>
               <span>{getTimeAgo(created_at)}</span>
@@ -489,7 +520,7 @@ export function InternshipCard({
                 </Button>
               </Link>
               
-              {showApplyButton && status === "published" && onApply && (
+              {showApplyButton && isApplyable && onApply && (
                 <motion.div whileTap={{ scale: 0.97 }}>
                   <Button
                     size="sm"

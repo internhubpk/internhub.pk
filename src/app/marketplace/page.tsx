@@ -75,9 +75,11 @@ interface RawInternshipRow {
     industry?: string | null;
   } | null;
   // applications is an array because of the has-many relationship — the
-  // API joins with count: "exact" but a select with the FK returns an
-  // array of rows. We use the array length as the applicant_count.
-  internship_applications?: { id: string }[] | null;
+  // PostgREST join returns one row per application. We filter out
+  // `withdrawn` rows in JS and use the array length as the real
+  // applicant_count (replacing the unreliable `internships.current_applicants`
+  // column which is only bumped by a missing RPC).
+  internship_applications?: { id: string; status: string }[] | null;
 }
 
 export default function MarketplacePage() {
@@ -127,11 +129,26 @@ function MarketplacePageContent() {
         // (Previously this filtered for "published" which is NOT a valid
         // internship_status enum value — it's a task_status value — and
         // caused a 400 Bad Request.)
+        //
+        // We ALSO join `internship_applications` so we can compute the
+        // REAL applicant count from the actual application rows.
+        // Previously we relied on the `internships.current_applicants`
+        // column — but that column is only ever bumped by the
+        // `increment_applicant_count` RPC, which is called from the
+        // apply flow on the detail page (and only bumps it on INSERT,
+        // never on withdraw). As a result, the marketplace always
+        // showed "0 applied" even after students applied.
+        //
+        // The PostgREST join returns an array per row (because the FK
+        // is one-to-many); we count non-withdrawn applications for the
+        // displayed number. We exclude `withdrawn` because the
+        // application_status enum has it as a "soft-deleted" state.
         const { data, error } = await supabase
           .from("internships")
           .select(`
             *,
-            company:companies(name, logo_url, industry)
+            company:companies(name, logo_url, industry),
+            applications:internship_applications(id, status)
           `)
           .in("status", ["open", "active"])
           .order("created_at", { ascending: false })
@@ -150,6 +167,13 @@ function MarketplacePageContent() {
           // InternshipCard expects (flat company_name, etc.).
           const transformed: MarketplaceInternship[] = (data as unknown as RawInternshipRow[]).map((row) => {
             const company = row.company;
+            // Count REAL applications, excluding withdrawn ones.
+            const apps = Array.isArray(row.internship_applications)
+              ? row.internship_applications.filter(
+                  (a: any) => a && a.status !== "withdrawn",
+                )
+              : [];
+            const realApplicantCount = apps.length;
             return {
               id: row.id,
               title: row.title,
@@ -172,7 +196,7 @@ function MarketplacePageContent() {
               benefits: row.benefits ?? [],
               max_applicants: row.max_applicants,
               vacancies: row.max_applicants,
-              current_applicants: row.current_applicants ?? 0,
+              current_applicants: realApplicantCount,
               start_date: row.start_date,
               end_date: row.end_date,
               application_deadline: row.application_deadline,
@@ -182,7 +206,7 @@ function MarketplacePageContent() {
               image_url: row.image_url,
               company_logo_url: company?.logo_url ?? null,
               company_industry: company?.industry ?? null,
-              applicant_count: row.current_applicants ?? 0,
+              applicant_count: realApplicantCount,
               is_saved: false,
             };
           });

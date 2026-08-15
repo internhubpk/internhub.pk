@@ -72,7 +72,12 @@ interface DepartmentInfo {
   id: string;
   name: string;
   code: string;
-  description: string | null;
+  // NOTE: `departments` table has NO `description` column. Kept on the
+  // TS interface as `null` so the JSX `department.description && …`
+  // guard below type-checks, but the value is always null in practice.
+  // If a description column is added later, just add it back to the
+  // select() call above.
+  description?: string | null;
   university_id: string;
   is_active: boolean;
   created_at: string;
@@ -105,10 +110,16 @@ export default function DepartmentCoordinatorDashboard() {
       // coordinator cannot edit department fields, only see them).
       // RLS on `departments` allows coordinators to SELECT their own
       // department but not UPDATE it.
+      //
+      // NOTE: the `departments` table has NO `description` column
+      // (migration 0001 defines only id, university_id, name, code,
+      // head_id, is_active, created_at, updated_at). The previous
+      // select included `description`, which made PostgREST 400 every
+      // call and the dashboard's "Your Department" card never rendered.
       if (profile?.department_id) {
         const { data: deptData } = await supabase
           .from("departments")
-          .select("id, name, code, description, university_id, is_active, created_at")
+          .select("id, name, code, university_id, is_active, created_at")
           .eq("id", profile.department_id)
           .maybeSingle();
         if (deptData) {

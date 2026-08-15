@@ -54,7 +54,10 @@ interface DepartmentInfo {
   id: string;
   name: string;
   code: string | null;
-  description: string | null;
+  // `departments` table has no `description` column. Kept as optional
+  // null so the JSX `department?.description && …` guard still
+  // type-checks; the value is always null in practice.
+  description?: string | null;
 }
 
 interface UniversityInfo {
@@ -150,9 +153,13 @@ export default function CoordinatorSettingsPage() {
         setProfileForm(profileData as CoordinatorProfile);
 
         if (profileData.department_id) {
+          // `departments` table has no `description` column — including
+          // it caused PostgREST to 400 every call. Migration 0001
+          // defines only: id, university_id, name, code, head_id,
+          // is_active, created_at, updated_at.
           const { data: dept } = await supabase
             .from("departments")
-            .select("id, name, code, description")
+            .select("id, name, code")
             .eq("id", profileData.department_id)
             .maybeSingle();
           if (dept) setDepartment(dept as DepartmentInfo);
