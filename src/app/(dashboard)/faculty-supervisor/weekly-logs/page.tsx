@@ -115,15 +115,38 @@ export default function FacultySupervisorWeeklyLogsPage() {
       try {
         const supabase = createClient();
 
-        // Get this supervisor's assigned students. faculty_supervisor_id on
-        // student_internships references profiles.user_id.
-        const { data: assignedInternships } = await supabase
+        // Get this supervisor's assigned students via THREE-PATH UNION (see
+        // faculty-supervisor/page.tsx for full rationale).
+        const { data: directSIs } = await supabase
           .from("student_internships")
           .select("student_user_id")
           .eq("faculty_supervisor_id", user.id);
 
+        const { data: preInternshipStudents } = await supabase
+          .from("students")
+          .select("user_id")
+          .eq("faculty_supervisor_id", user.id);
+
+        const { data: defaultPrograms } = await supabase
+          .from("programs")
+          .select("id")
+          .eq("default_faculty_supervisor_id", user.id);
+        const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
+        let programStudentIds: string[] = [];
+        if (defaultProgramIds.length > 0) {
+          const { data: programStudents } = await supabase
+            .from("students")
+            .select("user_id")
+            .in("program_id", defaultProgramIds);
+          programStudentIds = (programStudents || []).map((s) => s.user_id);
+        }
+
         const studentIds = Array.from(
-          new Set((assignedInternships || []).map((a) => a.student_user_id))
+          new Set([
+            ...((directSIs || []).map((a: any) => a.student_user_id)),
+            ...((preInternshipStudents || []).map((s: any) => s.user_id)),
+            ...programStudentIds,
+          ].filter(Boolean))
         );
 
         if (studentIds.length === 0) {

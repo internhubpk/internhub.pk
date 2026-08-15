@@ -91,7 +91,11 @@ export async function GET(request: NextRequest) {
         .in("status", ["pending", "reviewing"]),
       supabase
         .from("student_internships")
-        .select("id, status, student_user_id, internship_id, start_date", { count: "exact", head: false })
+        .select(`
+          id, status, student_user_id, internship_id, start_date,
+          student:profiles!student_internships_student_user_id_fkey(full_name, first_name, last_name, email, avatar_url),
+          internship:internship_id(title)
+        `, { count: "exact", head: false })
         .eq("company_id", companyId)
         .order("created_at", { ascending: false }),
       supabase
@@ -199,10 +203,16 @@ export async function GET(request: NextRequest) {
         submittedEvals.length > 0
           ? submittedEvals.reduce((s, e) => s + Number(e.rating), 0) / submittedEvals.length
           : 0;
+      const studentProfile = si.student && (Array.isArray(si.student) ? si.student[0] : si.student) || {};
+      const internshipInfo = si.internship && (Array.isArray(si.internship) ? si.internship[0] : si.internship) || {};
       return {
         student_internship_id: si.id,
         student_user_id: si.student_user_id,
+        student_name: studentProfile.full_name || [studentProfile.first_name, studentProfile.last_name].filter(Boolean).join(" ") || "",
+        student_email: studentProfile.email || "",
+        student_avatar: studentProfile.avatar_url || null,
         internship_id: si.internship_id,
+        internship_title: internshipInfo.title || "",
         attendance_rate: attRate,
         rating: Number(rating.toFixed(2)),
         status: si.status,

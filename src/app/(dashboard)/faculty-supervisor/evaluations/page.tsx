@@ -259,13 +259,41 @@ export default function FacultySupervisorEvaluationsPage() {
       try {
         const supabase = createClient();
 
-        // Find supervised students (faculty_supervisor_id references profiles.user_id).
-        const { data: assignedInternships } = await supabase
+        // Find supervised students via THREE-PATH UNION (see
+        // faculty-supervisor/page.tsx for full rationale):
+        //   Path 1: student_internships.faculty_supervisor_id
+        //   Path 2: students.faculty_supervisor_id             (migration 0041)
+        //   Path 3: programs.default_faculty_supervisor_id     (migration 0015)
+        const { data: directSIs } = await supabase
           .from("student_internships")
           .select("student_user_id")
           .eq("faculty_supervisor_id", user.id);
+
+        const { data: preInternshipStudents } = await supabase
+          .from("students")
+          .select("user_id")
+          .eq("faculty_supervisor_id", user.id);
+
+        const { data: defaultPrograms } = await supabase
+          .from("programs")
+          .select("id")
+          .eq("default_faculty_supervisor_id", user.id);
+        const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
+        let programStudentIds: string[] = [];
+        if (defaultProgramIds.length > 0) {
+          const { data: programStudents } = await supabase
+            .from("students")
+            .select("user_id")
+            .in("program_id", defaultProgramIds);
+          programStudentIds = (programStudents || []).map((s) => s.user_id);
+        }
+
         const supervisedStudentIds = Array.from(
-          new Set((assignedInternships || []).map((a) => a.student_user_id))
+          new Set([
+            ...((directSIs || []).map((a: any) => a.student_user_id)),
+            ...((preInternshipStudents || []).map((s: any) => s.user_id)),
+            ...programStudentIds,
+          ].filter(Boolean))
         );
 
         // Fetch pending evaluations (evaluations with status pending/in_progress

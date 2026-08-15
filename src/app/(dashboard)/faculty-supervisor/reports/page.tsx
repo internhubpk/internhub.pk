@@ -269,11 +269,9 @@ export default function FacultySupervisorReportsPage() {
       try {
         const supabase = createClient();
 
-        // Fetch supervised students. faculty_supervisor_id references
-        // profiles.user_id (not supervisors.id); student_internships has no FK
-        // to `students`, so we join profiles via student_user_id and fetch the
-        // `students` rows separately for program/cgpa.
-        const { data: studentData } = await supabase
+        // Fetch supervised students via THREE-PATH UNION (see
+        // faculty-supervisor/page.tsx for full rationale).
+        const { data: directData } = await supabase
           .from("student_internships")
           .select(`
             id,
@@ -286,6 +284,73 @@ export default function FacultySupervisorReportsPage() {
             company:company_id(name)
           `)
           .eq("faculty_supervisor_id", user.id);
+
+        const { data: preInternshipStudents } = await supabase
+          .from("students")
+          .select("user_id, program_id")
+          .eq("faculty_supervisor_id", user.id);
+
+        const { data: defaultPrograms } = await supabase
+          .from("programs")
+          .select("id, name")
+          .eq("default_faculty_supervisor_id", user.id);
+        const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
+        let programStudentIds: string[] = [];
+        if (defaultProgramIds.length > 0) {
+          const { data: programStudents } = await supabase
+            .from("students")
+            .select("user_id")
+            .in("program_id", defaultProgramIds);
+          programStudentIds = (programStudents || []).map((s) => s.user_id);
+        }
+
+        const directStudentIds = new Set((directData || []).map((s: any) => s.student_user_id));
+        const preInternshipOnlyIds = (preInternshipStudents || [])
+          .map((s) => s.user_id)
+          .filter((id) => !directStudentIds.has(id));
+        const programOnlyIds = programStudentIds.filter(
+          (id) => !directStudentIds.has(id) && !preInternshipOnlyIds.includes(id)
+        );
+        const additionalStudentIds = Array.from(new Set([...preInternshipOnlyIds, ...programOnlyIds]));
+
+        let additionalRows: any[] = [];
+        if (additionalStudentIds.length > 0) {
+          const { data: extra } = await supabase
+            .from("student_internships")
+            .select(`
+              id,
+              status,
+              start_date,
+              end_date,
+              student_user_id,
+              student_profile:student_user_id(full_name, email, avatar_url),
+              internship:internships(id, title, location, remote),
+              company:company_id(name)
+            `)
+            .in("student_user_id", additionalStudentIds);
+          const seenIds = new Set((extra || []).map((r: any) => r.student_user_id));
+          const missingIds = additionalStudentIds.filter((id) => !seenIds.has(id));
+          let missingProfiles: any[] = [];
+          if (missingIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("user_id, full_name, email, avatar_url")
+              .in("user_id", missingIds);
+            missingProfiles = (profiles || []).map((p) => ({
+              id: null,
+              status: "no_internship",
+              start_date: null,
+              end_date: null,
+              student_user_id: p.user_id,
+              student_profile: p,
+              internship: null,
+              company: null,
+            }));
+          }
+          additionalRows = [...(extra || []), ...missingProfiles];
+        }
+
+        const studentData: any[] = [...(directData || []), ...additionalRows];
 
         const studentUserIds = Array.from(
           new Set((studentData || []).map((s: any) => s.student_user_id))

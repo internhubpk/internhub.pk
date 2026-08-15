@@ -384,9 +384,14 @@ function LoginForm() {
         description: "You have been successfully logged in.",
       });
 
-      // Determine redirect path from role
+      // Determine redirect path from role.
+      // Read app_metadata FIRST (matches proxy.ts and dashboard/page.tsx).
+      // user_metadata.role may be stale for users whose role was upgraded
+      // after signup (e.g., student → site_supervisor via admin tool),
+      // causing a brief flash of the old dashboard before the proxy
+      // redirects to the correct one.
       let redirectPath = "/dashboard";
-      const metaRole = data.user?.user_metadata?.role || data.user?.app_metadata?.role;
+      const metaRole = data.user?.app_metadata?.role || data.user?.user_metadata?.role;
       const rolePaths: Record<string, string> = {
         super_admin: "/super-admin",
         university_admin: "/university-admin",

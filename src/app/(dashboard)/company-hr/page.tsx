@@ -80,7 +80,11 @@ interface ActiveProgram {
 interface InternPerformance {
   student_internship_id: string;
   student_user_id: string;
+  student_name?: string;
+  student_email?: string;
+  student_avatar?: string | null;
   internship_id: string;
+  internship_title?: string;
   attendance_rate: number;
   rating: number;
   status: string;
@@ -474,8 +478,11 @@ export default function CompanyHRDashboard() {
                         href={`/company-hr/interns`}
                         className="font-medium text-sm hover:underline"
                       >
-                        {p.student_user_id.slice(0, 8)}…
+                        {p.student_name || p.student_email || `${p.student_user_id.slice(0, 8)}…`}
                       </Link>
+                      {p.internship_title && (
+                        <p className="text-xs text-muted-foreground">{p.internship_title}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">Started {fmtDate(p.start_date)}</p>
                     </TableCell>
                     <TableCell>

@@ -188,10 +188,13 @@ async function getOverviewStats(
   };
 
   const buildSupervisorQuery = () => {
+    // Count faculty supervisors via the profiles table (role='faculty_supervisor').
+    // This catches BOTH supervisors with a `supervisors` table row AND legacy /
+    // program-default-only assignments where the user has only a profile row.
     let q = supabase
-      .from("supervisors")
-      .select("id", { count: "exact" })
-      .eq("type", "faculty");
+      .from("profiles")
+      .select("user_id", { count: "exact", head: true })
+      .eq("role", "faculty_supervisor");
     if (filters.department_id) {
       q = q.eq("department_id", filters.department_id);
     } else if (filters.university_id) {

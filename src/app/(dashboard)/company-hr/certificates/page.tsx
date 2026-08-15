@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -576,7 +577,8 @@ export default function CompanyHrCertificatesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleUpload} className="space-y-4">
+          <DialogBody className="space-y-4">
+            <form onSubmit={handleUpload} className="space-y-4">
             {/* Student + Internship picker */}
             <div className="space-y-2">
               <Label htmlFor="student_internship">Student & Internship *</Label>
@@ -652,7 +654,7 @@ export default function CompanyHrCertificatesPage() {
             {/* File upload */}
             <div className="space-y-2">
               <Label htmlFor="file">Certificate File *</Label>
-              <div className="border-2 border-dashed border-input rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+              <div className="border-2 border-dashed border-input rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
                 <input
                   id="file"
                   type="file"
@@ -660,11 +662,11 @@ export default function CompanyHrCertificatesPage() {
                   onChange={(e) => setCertFile(e.target.files?.[0] || null)}
                   className="hidden"
                 />
-                <Label htmlFor="file" className="cursor-pointer">
+                <Label htmlFor="file" className="cursor-pointer justify-center w-full">
                   {certFile ? (
                     <div className="flex flex-col items-center gap-2">
                       <FileText className="h-8 w-8 text-primary" />
-                      <div>
+                      <div className="text-center">
                         <div className="font-medium text-sm">{certFile.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {(certFile.size / 1024 / 1024).toFixed(2)} MB · {certFile.type}
@@ -673,8 +675,10 @@ export default function CompanyHrCertificatesPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <Upload className="h-8 w-8" />
-                      <div>
+                      <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                        <Upload className="h-6 w-6" />
+                      </div>
+                      <div className="text-center">
                         <div className="font-medium text-sm">Click to upload</div>
                         <div className="text-xs">PDF, PNG, JPEG, or WebP (max 10MB)</div>
                       </div>
@@ -705,7 +709,8 @@ export default function CompanyHrCertificatesPage() {
                 )}
               </Button>
             </DialogFooter>
-          </form>
+            </form>
+          </DialogBody>
         </DialogContent>
       </Dialog>
     </div>

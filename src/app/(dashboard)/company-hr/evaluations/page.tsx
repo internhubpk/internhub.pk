@@ -87,6 +87,7 @@ interface FinalEvaluation {
   internship_id: string;
   internship_title: string;
   supervisor_name?: string | null;
+  evaluator_role?: string | null;
   status: EvaluationStatus;
   overall_rating?: number | null;
   skills_rating?: number | null;
@@ -153,6 +154,7 @@ export default function CompanyHREvaluationsPage() {
           internship_id: ev.internship_id,
           internship_title: ev.internship_title || "Unknown Program",
           supervisor_name: ev.evaluator_name || null,
+          evaluator_role: ev.evaluator_role || null,
           status: ev.status || "pending",
           overall_rating: scores.overall ?? ev.rating ?? 0,
           skills_rating: scores.technical ?? 0,
@@ -757,7 +759,7 @@ export default function CompanyHREvaluationsPage() {
                 <div className="grid gap-4 sm:grid-cols-2 text-sm">
                   <div className="p-3 bg-muted/30 rounded-lg space-y-2">
                     <InfoRow label="Evaluator" value={selectedEvaluation.supervisor_name || "N/A"} />
-                    <InfoRow label="Evaluated By" value={selectedEvaluation.evaluated_by || "N/A"} />
+                    <InfoRow label="Evaluator Role" value={selectedEvaluation.evaluator_role ? selectedEvaluation.evaluator_role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "N/A"} />
                   </div>
                   <div className="p-3 bg-muted/30 rounded-lg space-y-2">
                     <InfoRow label="Created" value={new Date(selectedEvaluation.created_at).toLocaleDateString()} />

@@ -599,39 +599,56 @@ function EvaluationPanel({
         {statusBadge(evaluation.status)}
       </div>
 
-      <div className="space-y-2">
-        <div>
-          <p className="text-xs text-muted-foreground">Rating</p>
-          {ratingStars(evaluation.rating)}
+      <div className="space-y-3">
+        {/* Overall Rating — pill block */}
+        <div className="flex items-center justify-between rounded-md bg-white/70 dark:bg-black/20 p-2.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Overall Rating</span>
+          <div className="flex items-center gap-1.5">
+            {ratingStars(evaluation.rating)}
+            <Badge variant="secondary" className="ml-1 font-mono text-xs">
+              {(evaluation.rating ?? 0).toFixed(1)}/5
+            </Badge>
+          </div>
         </div>
 
+        {/* Criteria Scores — grid of pills */}
         {evaluation.scores && Object.keys(evaluation.scores).length > 0 && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Criteria Scores</p>
-            <div className="space-y-1">
-              {Object.entries(evaluation.scores).slice(0, 5).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</span>
-                  <span className="font-medium">{String(v)}/10</span>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Criteria Scores</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {Object.entries(evaluation.scores).slice(0, 6).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="flex items-center justify-between rounded-md border bg-white/60 dark:bg-black/10 px-2.5 py-1.5"
+                >
+                  <span className="text-xs text-muted-foreground capitalize truncate">
+                    {k.replace(/_/g, " ")}
+                  </span>
+                  <Badge variant="outline" className="font-mono text-xs ml-1.5 shrink-0">
+                    {String(v)}/5
+                  </Badge>
                 </div>
               ))}
             </div>
           </div>
         )}
 
+        {/* Comments — card-style */}
         {evaluation.comments && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Comments</p>
-            <div className="text-sm whitespace-pre-wrap bg-white/60 dark:bg-black/20 rounded p-2">
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Comments</p>
+            <div className="text-sm whitespace-pre-wrap bg-white/70 dark:bg-black/20 rounded-md p-2.5 border">
               <MarkdownRenderer content={evaluation.comments} compact />
             </div>
           </div>
         )}
 
+        {/* Submitted timestamp — footer */}
         {evaluation.submitted_at && (
-          <p className="text-xs text-muted-foreground pt-1">
-            Submitted: {new Date(evaluation.submitted_at).toLocaleString()}
-          </p>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 border-t">
+            <Clock className="h-3 w-3" />
+            <span>Submitted {new Date(evaluation.submitted_at).toLocaleString()}</span>
+          </div>
         )}
       </div>
     </div>
