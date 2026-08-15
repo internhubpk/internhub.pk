@@ -3,20 +3,18 @@
 /**
  * NotificationsPopover — shared notification center popover.
  *
- * Professional redesign with:
- *   - Clear visual hierarchy (icon → title → summary → metadata → timestamp)
+ * Redesigned with:
+ *   - Icon vertically centered against the full content block (items-center)
+ *   - Polished hover: left accent bar, smooth multi-property transition, icon scale
+ *   - Reliable native scrolling (overflow-y-auto) instead of Radix ScrollArea
+ *     which breaks inside flex containers
+ *   - Custom slim scrollbar styling
  *   - Read/unread state (subtle background + indicator dot)
- *   - Per-notification mark-as-read
- *   - Mark all as read
+ *   - Per-notification mark-as-read + Mark all as read
  *   - Click-to-navigate via action_url
- *   - Responsive (desktop: 400px popover, mobile: full-width)
- *   - Scrollable list with fixed header/footer
- *   - Concise message (line-clamp-2, not the full message)
- *   - No auto-mark-all-read on open (user controls read state)
+ *   - Responsive (desktop: 420px popover, mobile: full-width)
  *   - Toast feedback for actions
- *
- * Uses the shared toast utility for consistent feedback.
- * Polls every 60s for new notifications.
+ *   - Polls every 60s for new notifications
  *
  * Usage in header:
  *   <NotificationsPopover role={profile?.role} />
@@ -27,7 +25,6 @@ import { useRouter } from "next/navigation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Bell,
@@ -38,11 +35,9 @@ import {
   GraduationCap,
   Clock,
   CheckCheck,
-  Check,
   ChevronRight,
   Loader2,
   Users,
-  AlertCircle,
 } from "lucide-react";
 import { toast } from "@/components/shared/toast";
 import { cn } from "@/lib/utils";
@@ -78,52 +73,61 @@ interface NotificationsPopoverProps {
 // ---------------------------------------------------------------------------
 const CATEGORY_ICON: Record<
   string,
-  { icon: React.ElementType; color: string; bg: string }
+  { icon: React.ElementType; color: string; bg: string; ring: string }
 > = {
   application: {
     icon: Briefcase,
     color: "text-blue-600 dark:text-blue-400",
     bg: "bg-blue-50 dark:bg-blue-950/50",
+    ring: "ring-blue-200/60 dark:ring-blue-800/40",
   },
   evaluation: {
     icon: ClipboardCheck,
     color: "text-purple-600 dark:text-purple-400",
     bg: "bg-purple-50 dark:bg-purple-950/50",
+    ring: "ring-purple-200/60 dark:ring-purple-800/40",
   },
   task: {
     icon: FileText,
     color: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-50 dark:bg-amber-950/50",
+    ring: "ring-amber-200/60 dark:ring-amber-800/40",
   },
   announcement: {
     icon: Users,
     color: "text-indigo-600 dark:text-indigo-400",
     bg: "bg-indigo-50 dark:bg-indigo-950/50",
+    ring: "ring-indigo-200/60 dark:ring-indigo-800/40",
   },
   message: {
     icon: MessageSquare,
     color: "text-cyan-600 dark:text-cyan-400",
     bg: "bg-cyan-50 dark:bg-cyan-950/50",
+    ring: "ring-cyan-200/60 dark:ring-cyan-800/40",
   },
   certificate: {
     icon: GraduationCap,
     color: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-50 dark:bg-emerald-950/50",
+    ring: "ring-emerald-200/60 dark:ring-emerald-800/40",
   },
   deadline: {
     icon: Clock,
     color: "text-red-600 dark:text-red-400",
     bg: "bg-red-50 dark:bg-red-950/50",
+    ring: "ring-red-200/60 dark:ring-red-800/40",
   },
   system: {
     icon: Bell,
     color: "text-slate-600 dark:text-slate-400",
     bg: "bg-slate-50 dark:bg-slate-900/50",
+    ring: "ring-slate-200/60 dark:ring-slate-700/40",
   },
   attendance: {
     icon: Clock,
     color: "text-orange-600 dark:text-orange-400",
     bg: "bg-orange-50 dark:bg-orange-950/50",
+    ring: "ring-orange-200/60 dark:ring-orange-800/40",
   },
 };
 
@@ -133,6 +137,7 @@ function getIcon(category: string) {
       icon: Bell,
       color: "text-slate-600 dark:text-slate-400",
       bg: "bg-slate-50 dark:bg-slate-900/50",
+      ring: "ring-slate-200/60 dark:ring-slate-700/40",
     }
   );
 }
@@ -364,7 +369,7 @@ export function NotificationsPopover({
 
           {/* ===== Loading state ===== */}
           {loading && notifications.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 px-4 text-sm text-muted-foreground">
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-sm text-muted-foreground shrink-0">
               <Loader2 className="h-5 w-5 mb-2 animate-spin opacity-50" />
               <p>Loading notifications...</p>
             </div>
@@ -372,7 +377,7 @@ export function NotificationsPopover({
 
           {/* ===== Empty state ===== */}
           {!loading && notifications.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center shrink-0">
               <Bell className="h-10 w-10 mb-3 opacity-20" />
               <p className="font-medium text-sm">No notifications</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-[260px]">
@@ -382,86 +387,131 @@ export function NotificationsPopover({
             </div>
           )}
 
-          {/* ===== Scrollable notification list ===== */}
+          {/* ===== Scrollable notification list =====
+               Native overflow-y-auto instead of Radix ScrollArea — Radix's
+               Viewport doesn't reliably pick up flex-derived heights, so the
+               list wouldn't scroll. Native overflow with min-h-0 inside a
+               flex column always works. */}
           {notifications.length > 0 && (
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="divide-y">
-                {notifications.map((notif) => {
-                  const { icon: Icon, color, bg } = getIcon(notif.category);
-                  const isUnread = !notif.is_read;
-                  const isMarkingThis = markingId === notif.id;
-                  return (
-                    <button
-                      key={notif.id}
-                      type="button"
-                      onClick={() => handleNotificationClick(notif)}
+            <div
+              className="flex-1 min-h-0 overflow-y-auto
+                         [scrollbar-width:thin]
+                         [scrollbar-color:hsl(var(--border)_/_0.6)_transparent]
+                         [&::-webkit-scrollbar]:w-2
+                         [&::-webkit-scrollbar-track]:bg-transparent
+                         [&::-webkit-scrollbar-thumb]:rounded-full
+                         [&::-webkit-scrollbar-thumb]:bg-border/60
+                         [&::-webkit-scrollbar-thumb:hover]:bg-border"
+              role="list"
+            >
+              {notifications.map((notif) => {
+                const { icon: Icon, color, bg, ring } = getIcon(notif.category);
+                const isUnread = !notif.is_read;
+                const isMarkingThis = markingId === notif.id;
+                return (
+                  <button
+                    key={notif.id}
+                    type="button"
+                    onClick={() => handleNotificationClick(notif)}
+                    className={cn(
+                      // Layout: relative for the hover accent bar; items-center
+                      // vertically centers the icon against the full content
+                      // block (title + message + metadata).
+                      "relative w-full text-left flex items-center gap-3 px-4 py-3 group",
+                      "transition-[background-color,box-shadow] duration-150 ease-out",
+                      "focus:outline-none focus-visible:bg-accent/60",
+                      // Hover: brighter accent + subtle inset ring + left bar
+                      "hover:bg-accent/70",
+                      "hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.5)]",
+                      isUnread
+                        ? "bg-primary/[0.04] hover:bg-primary/[0.08]"
+                        : "",
+                      isMarkingThis && "opacity-60 pointer-events-none"
+                    )}
+                    role="listitem"
+                  >
+                    {/* Left accent bar — grows on hover, indicates interactivity */}
+                    <span
+                      aria-hidden
                       className={cn(
-                        "w-full text-left flex gap-3 px-4 py-3 hover:bg-accent/50 transition-colors group focus:outline-none focus:bg-accent/50",
-                        isUnread && "bg-primary/[0.03]"
+                        "absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full",
+                        "bg-primary/0 group-hover:bg-primary/70",
+                        "transition-[background-color,transform] duration-200 ease-out",
+                        "origin-center scale-y-0 group-hover:scale-y-100",
+                        // For unread, always show a faint bar
+                        isUnread && "bg-primary/40 group-hover:bg-primary"
                       )}
-                      role="listitem"
+                    />
+
+                    {/* Icon — centered against full content row */}
+                    <div
+                      className={cn(
+                        "shrink-0 rounded-xl p-2 ring-1",
+                        bg,
+                        ring,
+                        "transition-transform duration-200 ease-out",
+                        "group-hover:scale-105 group-hover:-translate-y-px"
+                      )}
+                      aria-hidden
                     >
-                      {/* Icon */}
-                      <div
-                        className={cn(
-                          "shrink-0 rounded-lg p-2 mt-0.5",
-                          bg
-                        )}
-                        aria-hidden
-                      >
-                        <Icon className={cn("h-4 w-4", color)} />
-                      </div>
+                      <Icon className={cn("h-4 w-4", color)} />
+                    </div>
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0 space-y-0.5">
-                        {/* Title row */}
-                        <div className="flex items-start justify-between gap-2">
-                          <p
-                            className={cn(
-                              "text-sm leading-snug break-words",
-                              isUnread
-                                ? "font-semibold text-foreground"
-                                : "font-medium text-muted-foreground"
-                            )}
-                          >
-                            {notif.title}
-                          </p>
-                          {isUnread && (
-                            <span
-                              className="shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5"
-                              aria-label="Unread"
-                            />
+                    {/* Content */}
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      {/* Title row */}
+                      <div className="flex items-start justify-between gap-2">
+                        <p
+                          className={cn(
+                            "text-sm leading-snug break-words",
+                            isUnread
+                              ? "font-semibold text-foreground"
+                              : "font-medium text-muted-foreground"
                           )}
-                        </div>
-
-                        {/* Message — truncated to 2 lines */}
-                        <p className="text-xs text-muted-foreground line-clamp-2 break-words">
-                          {notif.message}
+                        >
+                          {notif.title}
                         </p>
-
-                        {/* Metadata + timestamp */}
-                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70 pt-0.5">
-                          <Clock className="h-2.5 w-2.5" />
-                          <span>{formatRelativeTime(notif.created_at)}</span>
-                          {notif.metadata?.sender_name &&
-                            notif.metadata.sender_name !== "System" && (
-                              <>
-                                <span>·</span>
-                                <span className="truncate max-w-[140px]">
-                                  {notif.metadata.sender_name}
-                                </span>
-                              </>
-                            )}
-                          {notif.action_url && (
-                            <ChevronRight className="h-2.5 w-2.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </div>
+                        {isUnread && (
+                          <span
+                            className="shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5 ring-2 ring-background"
+                            aria-label="Unread"
+                          />
+                        )}
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+
+                      {/* Message — truncated to 2 lines */}
+                      <p className="text-xs text-muted-foreground line-clamp-2 break-words">
+                        {notif.message}
+                      </p>
+
+                      {/* Metadata + timestamp */}
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70 pt-0.5">
+                        <Clock className="h-2.5 w-2.5" />
+                        <span>{formatRelativeTime(notif.created_at)}</span>
+                        {notif.metadata?.sender_name &&
+                          notif.metadata.sender_name !== "System" && (
+                            <>
+                              <span>·</span>
+                              <span className="truncate max-w-[140px]">
+                                {notif.metadata.sender_name}
+                              </span>
+                            </>
+                          )}
+                        {notif.action_url && (
+                          <ChevronRight
+                            className={cn(
+                              "h-3 w-3 ml-auto transition-all duration-200",
+                              "opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5",
+                              "text-primary"
+                            )}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {/* ===== Footer ===== */}
