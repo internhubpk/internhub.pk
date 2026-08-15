@@ -166,6 +166,35 @@ function SimpleBarChart({
   );
 }
 
+// Format a date string (YYYY-MM-DD from a Postgres `date` column, or an
+// ISO timestamp from `timestamptz`) for display in the roster table.
+//
+// IMPORTANT: pass an explicit locale ('en-US') AND explicit options with
+// `timeZone: 'UTC'`. Without this, Node (server) renders in UTC while the
+// browser (client) renders in the user's local timezone — for date-only
+// columns like start_date this would shift the day backwards for users
+// behind UTC (e.g. a 2026-08-15 date becomes 8/14/2026 in PST), causing a
+// server/client HTML mismatch and the React #418 hydration error logged
+// in the browser console. Pinning to UTC keeps the rendered string stable
+// across server and client because both compute from the same instant.
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "";
+  try {
+    // `date` columns come back as 'YYYY-MM-DD' (no time, no Z). JS's Date
+    // constructor parses that as UTC midnight, so toLocaleDateString with
+    // timeZone:'UTC' preserves the same calendar day regardless of the
+    // viewer's timezone.
+    return new Date(value).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return String(value);
+  }
+}
+
 // Simple line chart visualization using bars
 function TrendChart({ data }: { data: MonthlyTrend[] }) {
   const maxVal = Math.max(
@@ -1038,10 +1067,10 @@ export default function ReportsPage() {
                                       <p className="text-sm font-medium">{s.internship_company}</p>
                                       <p className="text-xs text-muted-foreground">
                                         {s.internship_start_date
-                                          ? new Date(s.internship_start_date).toLocaleDateString()
+                                          ? formatDate(s.internship_start_date)
                                           : ""}
                                         {s.internship_end_date
-                                          ? ` → ${new Date(s.internship_end_date).toLocaleDateString()}`
+                                          ? ` → ${formatDate(s.internship_end_date)}`
                                           : ""}
                                       </p>
                                     </div>
@@ -1182,10 +1211,10 @@ export default function ReportsPage() {
                                 </td>
                                 <td className="px-3 py-2.5 text-xs text-muted-foreground">
                                   {i.start_date
-                                    ? new Date(i.start_date).toLocaleDateString()
+                                    ? formatDate(i.start_date)
                                     : "—"}
                                   {i.end_date
-                                    ? ` → ${new Date(i.end_date).toLocaleDateString()}`
+                                    ? ` → ${formatDate(i.end_date)}`
                                     : ""}
                                 </td>
                                 <td className="px-3 py-2.5">
