@@ -113,11 +113,12 @@
   --muted-foreground: #64748b;
   
   /*
-   * ACCENT COLOR - Success Green (#059669)
-   * For positive actions, success states, confirmations
+   * ACCENT COLOR - Neutral slate (matches --sidebar-accent)
+   * Used for hover/active states on buttons, dropdowns, dialogs, etc.
+   * NOTE: success states use --success, NOT --accent.
    */
-  --accent: #059669;
-  --accent-foreground: #ffffff;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
   
   /* Destructive - Error/danger actions (Red) */
   --destructive: #dc2626;
@@ -222,9 +223,9 @@
   --muted: #1e293b;
   --muted-foreground: #94a3b8;
   
-  /* Accent - Vibrant green for dark mode */
-  --accent: #10b981;
-  --accent-foreground: #ffffff;
+  /* Accent - Neutral slate for dark mode (matches sidebar-accent) */
+  --accent: #1e293b;
+  --accent-foreground: #e2e8f0;
   
   /* Destructive - Brighter red on dark */
   --destructive: #ef4444;
