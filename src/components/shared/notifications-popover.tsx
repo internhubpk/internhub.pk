@@ -334,7 +334,11 @@ export function NotificationsPopover({
         // Avoid the popover being cut off on mobile
         collisionPadding={8}
       >
-        <div className="flex flex-col max-h-[min(600px,80vh)]">
+        {/* No max-h on the outer wrapper — we constrain the LIST directly.
+            Going through flex-1 + min-h-0 + a parent max-h was unreliable
+            inside Radix PopoverContent (the Viewport/transform context
+            broke height propagation, so the list never scrolled). */}
+        <div className="flex flex-col">
           {/* ===== Header ===== */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0">
             <div className="flex items-center gap-2 min-w-0">
@@ -388,13 +392,14 @@ export function NotificationsPopover({
           )}
 
           {/* ===== Scrollable notification list =====
-               Native overflow-y-auto instead of Radix ScrollArea — Radix's
-               Viewport doesn't reliably pick up flex-derived heights, so the
-               list wouldn't scroll. Native overflow with min-h-0 inside a
-               flex column always works. */}
+               Direct fixed max-height (~3 notifications × ~96px each) so the
+               user sees about 3 items at a time and scrolls for the rest.
+               Using a direct max-h instead of flex-derived height because
+               Radix PopoverContent's transform/portal context doesn't
+               reliably propagate flex heights to children. */}
           {notifications.length > 0 && (
             <div
-              className="flex-1 min-h-0 overflow-y-auto
+              className="max-h-[288px] overflow-y-auto overflow-x-hidden
                          [scrollbar-width:thin]
                          [scrollbar-color:hsl(var(--border)_/_0.6)_transparent]
                          [&::-webkit-scrollbar]:w-2
@@ -443,10 +448,16 @@ export function NotificationsPopover({
                       )}
                     />
 
-                    {/* Icon — centered against full content row */}
+                    {/* Icon — container is itself a flex/center box so the
+                        SVG is centered within the padded tile. Without this,
+                        the inline SVG sits on the baseline and looks
+                        top-aligned even though the container is centered
+                        against the row via items-center. */}
                     <div
                       className={cn(
                         "shrink-0 rounded-xl p-2 ring-1",
+                        "flex items-center justify-center",
+                        "h-9 w-9", // explicit tile size so it doesn't depend on SVG metrics
                         bg,
                         ring,
                         "transition-transform duration-200 ease-out",
