@@ -667,11 +667,7 @@ export default function StudentsPage() {
       );
     } catch (error) {
       console.error("Error generating weekly logs PDF:", error);
-      toast({
-        title: "Download failed",
-        description: error instanceof Error ? error.message : "Could not generate the weekly logs PDF.",
-        variant: "destructive",
-      });
+      toast.error("Download failed", { description: error instanceof Error ? error.message : "Could not generate the weekly logs PDF." });
     } finally {
       setDownloadingFor(null);
     }
@@ -841,11 +837,7 @@ export default function StudentsPage() {
       );
     } catch (error) {
       console.error("Error generating final report PDF:", error);
-      toast({
-        title: "Download failed",
-        description: error instanceof Error ? error.message : "Could not generate the final report PDF.",
-        variant: "destructive",
-      });
+      toast.error("Download failed", { description: error instanceof Error ? error.message : "Could not generate the final report PDF." });
     } finally {
       setDownloadingFor(null);
     }

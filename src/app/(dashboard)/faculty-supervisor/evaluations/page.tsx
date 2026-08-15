@@ -1008,7 +1008,11 @@ export default function FacultySupervisorEvaluationsPage() {
                               title: `Weekly Report — Week ${report.weekNumber}`,
                               submittedAt: report.weekEnd,
                               evaluatedAt: report.status === "approved" ? report.weekEnd : "",
-                              status: report.status,
+                              // Map weekly-log status (draft/submitted/approved)
+                              // onto EvaluationStatus (approved/rejected/
+                              // revision_required) so the View dialog's
+                              // status badge renders correctly.
+                              status: report.status === "approved" ? "approved" : report.status === "submitted" ? "revision_required" : "revision_required",
                               score: report.overallScore,
                               maxScore: 100,
                               evaluatorComments: report.supervisorRemarks,

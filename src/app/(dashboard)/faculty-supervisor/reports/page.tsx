@@ -77,7 +77,7 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 
 // Types
 interface StudentForReport {
@@ -129,7 +129,7 @@ const DEFAULT_MARKSHEET: MarksheetEntry[] = [];
 
 export default function FacultySupervisorReportsPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
+  // toast is imported directly (Sonner wrapper) — no hook needed.
   // State
   const [students, setStudents] = useState<StudentForReport[]>(DEFAULT_STUDENTS);
   const [marksheet, setMarksheet] = useState<MarksheetEntry[]>(DEFAULT_MARKSHEET);
@@ -148,10 +148,7 @@ export default function FacultySupervisorReportsPage() {
   // other faculty-supervisor pages.
   const handleExportAll = () => {
     if (!students || students.length === 0) {
-      toast({
-        title: "Nothing to export",
-        description: "There are no students to export yet.",
-      });
+      toast.error("Nothing to export", { description: "There are no students to export yet." });
       return;
     }
     const headers = [
@@ -245,17 +242,10 @@ export default function FacultySupervisorReportsPage() {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.error?.message || `Failed to save certificate (HTTP ${res.status})`);
       }
-      toast({
-        title: "Certificate saved",
-        description: "The certificate has been saved to the student's record.",
-      });
+      toast.success("Certificate saved", { description: "The certificate has been saved to the student's record." });
     } catch (err) {
       console.error("Error saving certificate:", err);
-      toast({
-        title: "Failed to save certificate",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Certificate save failed", { description: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setIsSavingCertificate(false);
     }
