@@ -321,10 +321,10 @@ export function NotificationsPopover({
             "relative h-9 w-9 text-muted-foreground",
             "transition-all duration-200",
             "hover:text-foreground",
-            // Glassy hover background with subtle ring
-            "hover:bg-accent/40 hover:ring-1 hover:ring-border/60",
-            // When popover is open: stronger glass + primary tint
-            "data-[state=open]:bg-accent/60 data-[state=open]:text-foreground",
+            // Use sidebar-accent (neutral slate) instead of accent (emerald)
+            // so the hover matches the sidebar's hover color across the app.
+            "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
             "data-[state=open]:ring-1 data-[state=open]:ring-primary/30",
             "data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)_/_0.08)]",
             className
@@ -462,18 +462,17 @@ export function NotificationsPopover({
             </div>
           )}
 
-          {/* ===== Scrollable notification list ===== */}
+          {/* ===== Scrollable notification list =====
+               The global custom scrollbar in globals.css handles the base
+               look. We only override the thumb color here to give the
+               popover a subtle primary tint that matches the glassy theme. */}
           {notifications.length > 0 && (
             <div
               className={cn(
                 "max-h-[288px] overflow-y-auto overflow-x-hidden",
-                "[scrollbar-width:thin]",
-                "[scrollbar-color:hsl(var(--primary)_/_0.3)_transparent]",
-                "[&::-webkit-scrollbar]:w-2",
-                "[&::-webkit-scrollbar-track]:bg-transparent",
-                "[&::-webkit-scrollbar-thumb]:rounded-full",
-                "[&::-webkit-scrollbar-thumb]:bg-primary/20",
-                "[&::-webkit-scrollbar-thumb:hover]:bg-primary/40"
+                "[&::-webkit-scrollbar-thumb]:bg-primary/25",
+                "[&::-webkit-scrollbar-thumb:hover]:bg-primary/45",
+                "[scrollbar-color:hsl(var(--primary)_/_0.3)_transparent]"
               )}
               role="list"
             >
@@ -489,13 +488,14 @@ export function NotificationsPopover({
                     className={cn(
                       "relative w-full text-left flex items-center gap-3 px-4 py-3 group",
                       "transition-all duration-200 ease-out",
-                      "focus:outline-none focus-visible:bg-accent/60",
-                      // Hover: gradient overlay + lift shadow + inset ring
-                      "hover:bg-gradient-to-r hover:from-accent/60 hover:to-accent/20",
+                      "focus:outline-none focus-visible:bg-sidebar-accent",
+                      // Hover: gradient overlay using sidebar-accent (neutral)
+                      // — matches the sidebar's hover color across the app.
+                      "hover:bg-sidebar-accent",
                       "hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.6),0_4px_12px_-4px_rgba(15,23,42,0.08)]",
                       "dark:hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.4),0_4px_12px_-4px_rgba(0,0,0,0.4)]",
                       isUnread
-                        ? "bg-primary/[0.04] hover:bg-gradient-to-r hover:from-primary/[0.1] hover:to-primary/[0.03]"
+                        ? "bg-primary/[0.04] hover:bg-primary/[0.06]"
                         : "",
                       isMarkingThis && "opacity-60 pointer-events-none"
                     )}
