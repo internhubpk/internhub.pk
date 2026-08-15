@@ -19,6 +19,11 @@ import { QuickTourDialog } from "@/components/marketplace/quick-tour-dialog";
 // dashboard — see the component file for why they're separate from the
 // shared `<Button>`.
 import { InteractiveButton } from "@/components/public/interactive";
+// Animated developer-laptop SVG used as the hero visual on desktop.
+// Hidden on mobile via `hidden md:block` (Tailwind) AND a `@media
+// (max-width: 767px) { display: none !important; }` rule inside the
+// component. Pure SVG + CSS — no canvas/WebGL/JS animation loop.
+import DeveloperLaptopHero from "@/components/hero/developer-laptop-hero";
 import {
   useTenant,
   useTenantBranding,
@@ -275,102 +280,12 @@ function AnimatedSection({
   );
 }
 
-// Dashboard Preview Component - Now accepts primaryColor prop
-function DashboardPreview({ primaryColor }: { primaryColor: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 30 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.8, delay: 0.3 }}
-      // `overflow-hidden` clips the glow effect to the preview's own box so
-      // the negative-inset decorative layer can never push the page wider
-      // than the viewport on mobile (previously the `-inset-4` glow was a
-      // major cause of right-side horizontal overflow at 360-414px).
-      className="relative overflow-hidden"
-    >
-      {/* Glow effect - uses tenant color.
-          Contained by `overflow-hidden` above; inset-0 (not negative) so it
-          stays inside the preview box. Opacity bumped slightly to compensate
-          for no longer bleeding outside. */}
-      <div
-        className="absolute inset-0 rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl opacity-60 sm:opacity-70"
-        style={{
-          background: `linear-gradient(to right, ${primaryColor}20, ${primaryColor}15, ${primaryColor}10)`
-        }}
-      />
-
-      {/* Main dashboard card */}
-      <div className="relative bg-white dark:bg-gray-900 rounded-xl sm:rounded-2xl shadow-xl sm:shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        {/* Header bar */}
-        <div className="bg-gray-50 dark:bg-gray-800 px-3 sm:px-4 py-2 sm:py-3 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex gap-1.5 shrink-0">
-            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-400" />
-            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-400" />
-            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-400" />
-          </div>
-          <div className="flex-1 mx-2 sm:mx-4 min-w-0">
-            <div className="bg-gray-200 dark:bg-gray-700 rounded-md h-5 sm:h-6 max-w-[120px] sm:max-w-xs mx-auto" />
-          </div>
-        </div>
-
-        {/* Dashboard content */}
-        <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-          {/* Stats row - responsive grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            {[
-              { label: "Students", value: "2,847", color: "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400" },
-              { label: "Companies", value: "156", color: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400" },
-              { label: "Active Interns", value: "892", color: "bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400" },
-              { label: "Completion", value: "94%", color: "bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400" },
-            ].map((stat) => (
-              <div key={stat.label} className={`${stat.color} rounded-lg p-2 sm:p-3`}>
-                <div className="text-[10px] sm:text-xs font-medium opacity-70">{stat.label}</div>
-                <div className="text-base sm:text-lg font-bold">{stat.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Chart placeholder */}
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 sm:p-4 h-28 sm:h-32">
-            <div className="flex items-end justify-between h-full gap-2 px-2">
-              {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${h}%` }}
-                  transition={{ duration: 0.5, delay: 0.8 + i * 0.1 }}
-                  className="flex-1 rounded-t-sm min-w-0"
-                  style={{
-                    background: `linear-gradient(to top, ${primaryColor}, ${primaryColor}99)`
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Recent activity */}
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-2 sm:gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: `${primaryColor}15` }}
-                >
-                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: primaryColor }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="h-1.5 sm:h-2 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-1" />
-                  <div className="h-1.5 sm:h-2 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
-                </div>
-                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+// DashboardPreview was removed — the landing hero's right-side visual is
+// now `<DeveloperLaptopHero />` (an animated SVG of a laptop displaying
+// typed code). The previous DashboardPreview was a static mock dashboard
+// card with a Framer Motion bar chart; it has been replaced per the
+// hero-animation-replacement task. All hero content (headline, subtitle,
+// CTAs, trust badges) remains unchanged.
 
 // Tenant-Specific Hero Section Component.
 // `branding` is the full return value of `useTenantBranding()` (a flat
@@ -379,46 +294,27 @@ function DashboardPreview({ primaryColor }: { primaryColor: string }) {
 // calls `useTenantBranding()` once and threads the result through, so we
 // don't re-invoke the hook here.
 //
-// SHADER REMOVED: per user request, the landing hero no longer renders
-// <ShaderBackground /> (WebGPU/Aurora effects). The hero now uses a clean,
-// lightweight, professional design — a soft gradient background plus
-// subtle decorative orbs (CSS only, no JS, no canvas). The shader
-// component itself is preserved for use on the /login, /register, and
-// /support pages where it's still wanted.
+// HERO VISUAL REPLACED: the previous decorative orbs (CSS-only blurred
+// gradient circles) and the right-side `<DashboardPreview />` mock card
+// have been removed. The hero's right-side visual is now
+// `<DeveloperLaptopHero />` — an animated SVG of a laptop displaying
+// typed code. The laptop animation is hidden on mobile (`hidden md:block`
+// + an inner `@media (max-width: 767px) { display: none !important; }`
+// rule) and honors `prefers-reduced-motion`.
 type Branding = ReturnType<typeof useTenantBranding>;
 function TenantHero({ branding }: { branding: Branding }) {
   const { tenant } = useTenant();
 
   return (
     <section
-      // `overflow-hidden` on the section clips the absolutely-positioned
-      // decorative orbs so they can never cause horizontal page scroll.
+      // `overflow-hidden` on the section clips any decorative overflow.
       // Mobile-first: padding and min-height are tuned for small screens
       // first, then scaled up at sm:/lg: breakpoints.
       className="relative min-h-[70vh] sm:min-h-[80vh] lg:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
     >
-      {/* Background decorative elements using tenant colors.
-          Mobile-first sizing: orbs are small on mobile (w-32/w-36) and
-          grow at sm:/lg:. They're positioned with positive offsets only
-          (no negative translate-x) so they stay inside the viewport on
-          360-414px screens. The center orb uses `left-1/2 -translate-x-1/2`
-          which is safe because its width is capped to viewport width. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-8 left-4 sm:left-10 w-32 h-32 sm:w-56 sm:h-56 lg:w-72 lg:h-72 rounded-full blur-2xl sm:blur-3xl"
-          style={{ backgroundColor: `${branding.primaryColor}26` }}
-        />
-        <div
-          className="absolute bottom-8 right-4 sm:right-10 w-36 h-36 sm:w-64 sm:h-64 lg:w-96 lg:h-96 rounded-full blur-2xl sm:blur-3xl"
-          style={{ backgroundColor: `${branding.secondaryColor}26` }}
-        />
-        {/* Center orb — capped to viewport width via `max-w-[90vw]` so it
-            can never push past the right edge even on a 360px screen. */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[240px] h-[240px] sm:w-[440px] sm:h-[440px] lg:w-[720px] lg:h-[720px] max-w-[90vw] max-h-[90vw] rounded-full blur-2xl sm:blur-3xl"
-          style={{ background: `linear-gradient(to right, ${branding.primaryColor}1a, ${branding.secondaryColor}1a)` }}
-        />
-      </div>
+      {/* No more decorative orbs — the laptop SVG is the hero visual on
+          desktop, and on mobile the gradient background + content alone
+          keep the hero clean and professional. */}
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-20 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
@@ -527,9 +423,14 @@ function TenantHero({ branding }: { branding: Branding }) {
             </motion.div>
           </motion.div>
 
-          {/* Right Side - Dashboard Preview - hidden on mobile/tablet */}
+          {/* Right Side - Animated Developer Laptop Hero.
+              Visible only on `md:` and up — the component itself wraps
+              its content in `hidden md:block`, so on mobile it renders
+              nothing and consumes no layout space. The `pointer-events-none`
+              + `aria-hidden` is set inside the component, so it never
+              blocks clicks on the hero CTAs. */}
           <div className="hidden lg:block min-w-0">
-            <DashboardPreview primaryColor={branding.primaryColor} />
+            <DeveloperLaptopHero />
           </div>
         </div>
       </div>
@@ -539,37 +440,28 @@ function TenantHero({ branding }: { branding: Branding }) {
 
 // Main Platform Hero Section.
 //
-// SHADER REMOVED: per user request, the main landing hero no longer
-// renders <ShaderBackground /> (WebGPU/Aurora effects). The hero now uses
-// a clean, lightweight, professional design — a soft gradient background
-// plus subtle decorative orbs (CSS only, no JS, no canvas). This keeps
-// the hero fast (no WebGPU init, no dynamic import), accessible (no
-// motion concerns from the shader), and reliable across all browsers.
+// HERO VISUAL REPLACED: the previous decorative orbs (CSS-only blurred
+// gradient circles) and the right-side `<DashboardPreview />` mock card
+// have been removed. The hero's right-side visual is now
+// `<DeveloperLaptopHero />` — an animated SVG of a laptop displaying
+// typed code. The laptop animation is hidden on mobile (`hidden md:block`
+// + an inner `@media (max-width: 767px) { display: none !important; }`
+// rule) and honors `prefers-reduced-motion`.
 //
 // MOBILE-FIRST: the layout is designed for 360-414px screens first and
-// scales up. Key fixes for the previous right-side overflow:
-//  - All decorative orbs use positive offsets (no negative translate-x
-//    outside the viewport) and are capped to viewport width.
-//  - The center orb uses `max-w-[90vw]` so it can never push past the
-//    right edge even at 360px.
-//  - Buttons are full-width on mobile (`w-full`) and stack vertically;
-//    they switch to auto-width side-by-side at the `sm:` breakpoint.
-//  - Text sizes scale up at sm:/lg: instead of starting large and
-//    shrinking — `text-3xl` on mobile, `lg:text-6xl` on desktop.
-//  - `min-w-0` on flex children prevents flex blowout from long words.
+// scales up. Buttons are full-width on mobile (`w-full`) and stack
+// vertically; they switch to auto-width side-by-side at the `sm:`
+// breakpoint. Text sizes scale up at sm:/lg: instead of starting large
+// and shrinking — `text-3xl` on mobile, `lg:text-6xl` on desktop.
+// `min-w-0` on flex children prevents flex blowout from long words.
 function MainHero() {
   return (
     <section
       className="relative min-h-[70vh] sm:min-h-[80vh] lg:min-h-[85vh] flex items-center overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-blue-950/30"
     >
-      {/* Background decorative elements — CSS-only (no shader).
-          Mobile-first sizes; orbs grow at sm:/lg:. No negative translates. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-8 left-4 sm:left-10 w-32 h-32 sm:w-56 sm:h-56 lg:w-72 lg:h-72 bg-blue-400/10 rounded-full blur-2xl sm:blur-3xl" />
-        <div className="absolute bottom-8 right-4 sm:right-10 w-36 h-36 sm:w-64 sm:h-64 lg:w-96 lg:h-96 bg-purple-400/10 rounded-full blur-2xl sm:blur-3xl" />
-        {/* Center orb — capped to viewport width so it can't cause overflow. */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[240px] h-[240px] sm:w-[440px] sm:h-[440px] lg:w-[720px] lg:h-[720px] max-w-[90vw] max-h-[90vw] bg-gradient-to-r from-blue-200/5 to-purple-200/5 rounded-full blur-2xl sm:blur-3xl" />
-      </div>
+      {/* No more decorative orbs — the laptop SVG is the hero visual on
+          desktop, and on mobile the gradient background + content alone
+          keep the hero clean and professional. */}
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-14 sm:pt-20 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
@@ -662,9 +554,14 @@ function MainHero() {
             </motion.div>
           </motion.div>
 
-          {/* Right Side - Dashboard Preview - hidden on mobile/tablet */}
+          {/* Right Side - Animated Developer Laptop Hero.
+              Visible only on `md:` and up — the component itself wraps
+              its content in `hidden md:block`, so on mobile it renders
+              nothing and consumes no layout space. The `pointer-events-none`
+              + `aria-hidden` is set inside the component, so it never
+              blocks clicks on the hero CTAs. */}
           <div className="hidden lg:block min-w-0">
-            <DashboardPreview primaryColor="#2563eb" />
+            <DeveloperLaptopHero />
           </div>
         </div>
       </div>

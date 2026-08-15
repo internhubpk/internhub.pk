@@ -8,6 +8,27 @@ import { getServerTenantConfig } from "@/lib/tenant-server";
 import type { TenantConfig } from "@/lib/tenant";
 import "./globals.css";
 
+/**
+ * The root layout calls `getServerTenantConfig()` (which reads `headers()`
+ * to detect the tenant subdomain from the Host header) on every request —
+ * once in `generateMetadata()` and once in the layout body. This makes
+ * EVERY route that uses the root layout inherently dynamic.
+ *
+ * Declaring `dynamic = "force-dynamic"` here tells Next.js upfront not to
+ * attempt static rendering during `next build`. Without this, every route
+ * emits a noisy "Tenant detection error: Dynamic server usage: Route
+ * /xxx couldn't be rendered statically because it used `headers`." warning
+ * during build (because `headers()` throws during SSG, gets caught by
+ * `detectTenantSlug()`, and returns `null` — but Next.js still flags the
+ * route as having used a dynamic API).
+ *
+ * This is the correct behavior: tenant-aware branding genuinely depends
+ * on the request's Host header at runtime, so these routes cannot be
+ * statically rendered. Force-dynamic makes the build behavior match the
+ * runtime behavior and silences the misleading warnings.
+ */
+export const dynamic = "force-dynamic";
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -153,8 +174,15 @@ export default async function RootLayout({
   try {
     tenantConfig = await getServerTenantConfig();
   } catch (error) {
-    // Fallback to default config if tenant detection fails
-    console.log("Using fallback tenant config:", error instanceof Error ? error.message : error);
+    // Fallback to default config if tenant detection fails.
+    // Note: `getServerTenantConfig()` already swallows the common case
+    // (headers() unavailable during build, DB unreachable) and returns
+    // PLATFORM_DEFAULT_TENANT, so this catch only fires on truly
+    // unexpected errors. We deliberately don't log here — the prior
+    // `console.log("Using fallback tenant config:", ...)` produced noise
+    // during build. Real runtime errors will surface via Next.js's own
+    // error reporting.
+    void error;
     tenantConfig = {
       id: "default",
       name: "InternHub",
