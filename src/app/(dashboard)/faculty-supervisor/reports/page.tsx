@@ -77,6 +77,9 @@ import {
   Loader2,
   ChevronRight,
   Clock,
+  ExternalLink,
+  Copy,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "@/components/shared/toast";
 
@@ -210,6 +213,12 @@ export default function FacultySupervisorReportsPage() {
   // the platform apex domain if the university has no `domain` set.
   const [universityDomain, setUniversityDomain] = useState<string>("internhub.pk");
   const [departmentName, setDepartmentName] = useState<string>("Department");
+  // After saving the certificate to the DB, the API returns the
+  // generated verification_code + verification_url. We surface them
+  // in the certificate dialog so the faculty supervisor can copy /
+  // share the public verify link.
+  const [issuedVerificationUrl, setIssuedVerificationUrl] = useState<string | null>(null);
+  const [issuedVerificationCode, setIssuedVerificationCode] = useState<string | null>(null);
 
   // Persist certificate to the `certificates` table via the
   // /api/faculty-supervisor/reports endpoint. The certificate isn't a file
@@ -242,7 +251,21 @@ export default function FacultySupervisorReportsPage() {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.error?.message || `Failed to save certificate (HTTP ${res.status})`);
       }
-      toast.success("Certificate saved", { description: "The certificate has been saved to the student's record." });
+      const json = await res.json();
+      // Capture the generated verification code + URL so the faculty
+      // supervisor can copy / share them. The API generates these on
+      // insert (see /api/faculty-supervisor/reports route, action=
+      // generate_certificate).
+      if (json?.data?.verification_url) {
+        setIssuedVerificationUrl(json.data.verification_url);
+      }
+      if (json?.data?.verification_code) {
+        setIssuedVerificationCode(json.data.verification_code);
+      }
+      toast.success("Certificate saved", {
+        description:
+          "The certificate has been saved with a public verification URL. Share it so employers can verify authenticity.",
+      });
     } catch (err) {
       console.error("Error saving certificate:", err);
       toast.error("Failed to save certificate", { description: err instanceof Error ? err.message : "Unknown error" });
@@ -617,6 +640,10 @@ export default function FacultySupervisorReportsPage() {
       coordinatorName: "",
       additionalRemarks: "",
     });
+    // Reset the issued-verification-URL state so opening the dialog
+    // for a new student doesn't show the previous student's URL.
+    setIssuedVerificationUrl(null);
+    setIssuedVerificationCode(null);
     setIsCertificateDialogOpen(true);
   };
 
@@ -766,7 +793,16 @@ export default function FacultySupervisorReportsPage() {
         <p>Certificate ID: {data.certificateId}</p>
         <p>Issue Date: {formatDate(data.issueDate)}</p>
         <p className="mt-2 text-gray-400">
-          This certificate is issued electronically and can be verified at {universityDomain}/verify
+          This certificate is issued electronically and can be verified at{" "}
+          {issuedVerificationUrl ? (
+            <span className="font-mono break-all">
+              {issuedVerificationUrl}
+            </span>
+          ) : (
+            <span className="font-mono">
+              https://{universityDomain}/verify/&lt;code&gt;
+            </span>
+          )}
         </p>
       </div>
     </div>
@@ -1280,6 +1316,70 @@ export default function FacultySupervisorReportsPage() {
                       Print / Save as PDF
                     </Button>
                   </div>
+
+                  {/* Verification URL banner — appears after the certificate
+                      has been saved to the DB. Shows the public verify URL
+                      and a copy button so the faculty supervisor can share
+                      it with the student / employer. */}
+                  {issuedVerificationUrl && (
+                    <div className="mt-4 print:hidden rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                          <ShieldCheck className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                            Verification URL generated
+                          </p>
+                          <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                            {issuedVerificationCode && (
+                              <>
+                                Code:{" "}
+                                <span className="font-mono">{issuedVerificationCode}</span>
+                                {" · "}
+                              </>
+                            )}
+                            Share this URL so employers and LinkedIn can verify the certificate.
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <a
+                              href={issuedVerificationUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:underline"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Open verification page
+                            </a>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => {
+                                if (!issuedVerificationUrl) return;
+                                navigator.clipboard
+                                  .writeText(issuedVerificationUrl)
+                                  .then(() => {
+                                    toast.success("Verification URL copied", {
+                                      description: "Paste it into an email, LinkedIn, or share with employers.",
+                                    });
+                                  })
+                                  .catch(() => {
+                                    toast.error("Couldn't copy", {
+                                      description: "Please copy the URL manually.",
+                                    });
+                                  });
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              Copy URL
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="customize" className="mt-4 space-y-4">

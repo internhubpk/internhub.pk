@@ -364,12 +364,38 @@ export default function StudentCertificatesPage() {
                     </div>
                   )}
 
-                  {/* Primary actions — Add to LinkedIn + Verify */}
+                  {/* Primary action — View Certificate (full width).
+                      Opens the certificate file (PDF/image) when available.
+                      If the file isn't available (e.g. faculty-supervisor-
+                      issued certificates that have no file_url), this falls
+                      back to opening the public verification page so the
+                      student can still SEE the certificate record. */}
+                  <Button
+                    size="sm"
+                    className="w-full gap-1.5"
+                    onClick={() => {
+                      if (certificate.fileUrl) {
+                        window.open(certificate.fileUrl, "_blank", "noopener,noreferrer");
+                      } else if (certificate.verificationUrl) {
+                        window.open(certificate.verificationUrl, "_blank", "noopener,noreferrer");
+                      } else if (certificate.verificationCode) {
+                        window.open(`/verify/${certificate.verificationCode}`, "_blank", "noopener,noreferrer");
+                      } else {
+                        toast.error("Certificate is not yet available to view.");
+                      }
+                    }}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View Certificate
+                  </Button>
+
+                  {/* Secondary actions — Add to LinkedIn + Verify (only when issued) */}
                   {certificate.status === "issued" && (
-                    <div className="grid grid-cols-2 gap-2 pt-4 border-t">
+                    <div className="grid grid-cols-2 gap-2">
                       <Button
                         size="sm"
-                        className="gap-1.5 bg-[#0A66C2] hover:bg-[#0A66C2]/90 text-white"
+                        variant="outline"
+                        className="gap-1.5 border-[#0A66C2]/30 text-[#0A66C2] hover:bg-[#0A66C2]/5"
                         onClick={() => handleAddToLinkedIn(certificate)}
                         disabled={markingId === certificate.id}
                       >
@@ -378,7 +404,7 @@ export default function StudentCertificatesPage() {
                         ) : (
                           <Linkedin className="h-3.5 w-3.5" />
                         )}
-                        {certificate.linkedinAddedAt ? "Re-add to LinkedIn" : "Add to LinkedIn"}
+                        {certificate.linkedinAddedAt ? "Re-add" : "LinkedIn"}
                       </Button>
                       <Button
                         variant="outline"
@@ -398,30 +424,15 @@ export default function StudentCertificatesPage() {
                     </div>
                   )}
 
-                  {/* Secondary actions — View + Download + Copy link */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1"
-                      onClick={() => {
-                        if (certificate.fileUrl) {
-                          window.open(certificate.fileUrl, "_blank", "noopener,noreferrer");
-                        } else {
-                          toast.error("Certificate file is not yet available.");
-                        }
-                      }}
-                      disabled={!certificate.fileUrl}
-                    >
-                      <Eye className="h-3 w-3" /> View
-                    </Button>
+                  {/* Tertiary actions — Download + Copy link */}
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-1"
                       onClick={() => {
                         if (!certificate.fileUrl) {
-                          toast.error("Certificate not yet available for download.");
+                          toast.error("Certificate file is not yet available for download.");
                           return;
                         }
                         const a = document.createElement("a");
@@ -435,7 +446,7 @@ export default function StudentCertificatesPage() {
                       }}
                       disabled={!certificate.fileUrl}
                     >
-                      <Download className="h-3 w-3" /> PDF
+                      <Download className="h-3.5 w-3.5" /> Download
                     </Button>
                     <Button
                       variant="outline"
@@ -445,9 +456,9 @@ export default function StudentCertificatesPage() {
                       disabled={!certificate.verificationUrl}
                     >
                       {copiedId === certificate.id ? (
-                        <><Check className="h-3 w-3" /> Copied</>
+                        <><Check className="h-3.5 w-3.5" /> Copied</>
                       ) : (
-                        <><Copy className="h-3 w-3" /> Link</>
+                        <><Copy className="h-3.5 w-3.5" /> Copy Link</>
                       )}
                     </Button>
                   </div>

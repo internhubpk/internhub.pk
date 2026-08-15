@@ -515,16 +515,29 @@ export default function CompanyHrCertificatesPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {cert.file_url && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => window.open(cert.file_url!, "_blank", "noopener,noreferrer")}
-                              title="View certificate file"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
+                          {/* View Certificate — opens the file when
+                              available, otherwise falls back to the
+                              public verification page. */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (cert.file_url) {
+                                window.open(cert.file_url!, "_blank", "noopener,noreferrer");
+                              } else if (cert.verification_url) {
+                                window.open(cert.verification_url, "_blank", "noopener,noreferrer");
+                              } else if (cert.verification_code) {
+                                window.open(`/verify/${cert.verification_code}`, "_blank", "noopener,noreferrer");
+                              } else {
+                                toast.error("Certificate is not yet available to view.");
+                              }
+                            }}
+                            title="View certificate"
+                            className="gap-1"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">View</span>
+                          </Button>
                           {cert.status === "issued" ? (
                             <Button
                               variant="ghost"

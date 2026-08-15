@@ -23,7 +23,20 @@ type UserRole =
   | "site_supervisor"
   | "external_evaluator";
 
-/** Public routes that don't require authentication */
+/** Public routes that don't require authentication.
+ *
+ * NOTE on `/verify`:
+ *   The certificate verification page (`/verify/[code]`) MUST be public.
+ *   Employers, LinkedIn's verification bot, and anyone a student shares
+ *   the verification URL with will land here without an InternHub
+ *   session. If we don't list `/verify` here, the proxy will redirect
+ *   them to `/login?returnUrl=/verify/<code>` — which breaks public
+ *   verification entirely (the user never sees the verification result,
+ *   they see a login wall) and exposes Vercel deployment URLs in the
+ *   redirect chain. This was the root cause of the
+ *   `https://internhub-...vercel.app/login?returnUrl=%2Fverify%2F...`
+ *   bug reported in the certificate verification audit.
+ */
 const PUBLIC_ROUTES: string[] = [
   "/",
   "/login",
@@ -32,6 +45,7 @@ const PUBLIC_ROUTES: string[] = [
   "/auth",
   "/auth/callback",
   "/auth/confirm",
+  "/verify",
   "/privacy",
   "/terms",
   "/support",

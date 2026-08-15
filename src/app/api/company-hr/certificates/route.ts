@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
+import { buildVerificationUrlFromRequest } from "@/lib/site-url";
 
 /**
  * /api/company-hr/certificates
@@ -23,11 +24,14 @@ import { cookies } from "next/headers";
  * verified or added to LinkedIn. This new route does both.
  */
 
-const APP_PUBLIC_URL =
-  process.env.NEXT_PUBLIC_APP_URL ||
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-
+/**
+ * Resolved inside each request so we can use the request origin as a
+ * fallback when NEXT_PUBLIC_APP_URL is unset (local dev, fresh preview).
+ * NEVER falls back to VERCEL_URL — that was the source of the
+ * rotting-preview-URL bug where certificate verification URLs like
+ * `https://internhub-ommxwuglg-intern-hub1.vercel.app/verify/...`
+ * were baked into the DB and broke on every new deployment.
+ */
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME = new Set([
   "application/pdf",
@@ -272,6 +276,11 @@ export async function POST(request: NextRequest) {
 
     let lastError: any = null;
 
+    // Resolve the canonical origin from the incoming request so we can
+    // build absolute verification URLs even when NEXT_PUBLIC_APP_URL is
+    // unset (local dev, fresh preview). NEVER falls back to VERCEL_URL.
+    const requestOrigin = new URL(request.url).origin;
+
     for (let attempt = 0; attempt < 5; attempt++) {
       const part = () =>
         Array.from(crypto.getRandomValues(new Uint8Array(4)))
@@ -279,9 +288,10 @@ export async function POST(request: NextRequest) {
           .join("")
           .slice(0, 4);
       const verification_code = `IH-${part()}-${part()}`;
-      const verification_url = APP_PUBLIC_URL
-        ? `${APP_PUBLIC_URL.replace(/\/$/, "")}/verify/${verification_code}`
-        : `/verify/${verification_code}`;
+      const verification_url = buildVerificationUrlFromRequest(
+        verification_code,
+        requestOrigin
+      );
 
       const { data: inserted, error: insErr } = await supabase
         .from("certificates")

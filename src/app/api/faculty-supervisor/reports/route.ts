@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { buildVerificationUrlFromRequest } from "@/lib/site-url";
 
 // GET: Generate weekly/final/progress reports for students
 export async function GET(request: Request) {
@@ -452,6 +453,16 @@ export async function POST(request: Request) {
       // certificates has student_user_id (not student_id), title (required),
       // certificate_number, issued_at, issued_by, status, metadata. There is
       // no certificate_type / grade / issue_date / data / coordinator_signature.
+      //
+      // VERIFICATION CODE / URL GENERATION (added 2026-08-15):
+      //   Previously this path created a certificate row WITHOUT
+      //   verification_code or verification_url. That meant faculty-supervisor-
+      //   issued certificates were unverifiable via /verify/[code] and the
+      //   student couldn't add them to LinkedIn (the LinkedIn URL builder on
+      //   student/certificates reads cert.verificationUrl and silently
+      //   omitted the certUrl param when null). We now generate a unique
+      //   verification_code (same IH-XXXX-XXXX format as the company-hr path)
+      //   and the verification_url using the canonical site URL helper.
       if (!student_user_id || !report_data) {
         return NextResponse.json(
           { error: "student_user_id and report_data are required" },
@@ -459,26 +470,75 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data: certificate, error } = await supabase
-        .from("certificates")
-        .insert({
-          student_user_id,
-          issued_by: user.id,
-          title: report_data.title || "Internship Completion Certificate",
-          certificate_number: report_data.certificate_id || `CERT-${Date.now()}`,
-          status: "issued",
-          metadata: {
-            ...(report_data || {}),
-            coordinator_signature: coordinator_signature || null,
-          },
-        })
-        .select()
-        .single();
+      // Resolve the request origin once for the verification URL builder.
+      // The helper prefers NEXT_PUBLIC_APP_URL; this fallback is only used
+      // when the env var is unset (local dev / fresh preview). NEVER uses
+      // VERCEL_URL — that was the source of the rotting-preview-URL bug.
+      const requestOrigin = new URL(request.url).origin;
 
-      if (error) {
-        console.error("Error generating certificate:", error);
+      // Retry loop handles the (very unlikely) case of a verification_code
+      // unique-index collision. Mirrors the company-hr certificate route.
+      let certificate: any = null;
+      let lastError: any = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const part = () =>
+          Array.from(crypto.getRandomValues(new Uint8Array(4)))
+            .map((b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".charAt(b % 32))
+            .join("")
+            .slice(0, 4);
+        const verification_code = `IH-${part()}-${part()}`;
+        const verification_url = buildVerificationUrlFromRequest(
+          verification_code,
+          requestOrigin
+        );
+
+        const { data, error } = await supabase
+          .from("certificates")
+          .insert({
+            student_user_id,
+            issued_by: user.id,
+            title: report_data.title || "Internship Completion Certificate",
+            certificate_number:
+              report_data.certificate_id || `CERT-${Date.now()}`,
+            status: "issued",
+            verification_code,
+            verification_url,
+            metadata: {
+              ...(report_data || {}),
+              coordinator_signature: coordinator_signature || null,
+              issued_via: "faculty_supervisor_report",
+            },
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === "23505") {
+            // unique-constraint collision on verification_code — retry
+            lastError = error;
+            continue;
+          }
+          console.error("Error generating certificate:", error);
+          return NextResponse.json(
+            {
+              error:
+                "Failed to generate certificate (check RLS — faculty_supervisor may not be in cert_insert)",
+            },
+            { status: 500 }
+          );
+        }
+
+        certificate = data;
+        break;
+      }
+
+      if (!certificate) {
+        console.error(
+          "[/api/faculty-supervisor/reports] verification_code collision after 5 attempts:",
+          lastError
+        );
         return NextResponse.json(
-          { error: "Failed to generate certificate (check RLS — faculty_supervisor may not be in cert_insert)" },
+          { error: "Failed to generate a unique verification code" },
           { status: 500 }
         );
       }

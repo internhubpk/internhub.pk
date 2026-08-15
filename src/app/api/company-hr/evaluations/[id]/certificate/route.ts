@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
+import { buildVerificationUrlFromRequest } from "@/lib/site-url";
 
 async function getCompanyProfile(supabase: any, userId: string) {
   const { data: profile, error } = await supabase
@@ -122,29 +123,80 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const certNumber = generateCertificateNumber();
     const title = `Certificate of Completion — ${internship?.title || "Internship"}`;
 
-    const { data: certificate, error: certError } = await supabase
-      .from("certificates")
-      .insert({
-        student_user_id: evaluation.student_user_id,
-        internship_id: evaluation.internship_id,
-        company_id: profile.company_id,
-        title,
-        certificate_number: certNumber,
-        issued_by: user.id,
-        status: "issued",
-        metadata: {
-          evaluation_id: evaluation.id,
-          rating: evaluation.rating,
-          issued_by_company: profile.company_id,
-        },
-      })
-      .select()
-      .single();
+    // VERIFICATION CODE / URL GENERATION (added 2026-08-15):
+    //   Previously this legacy route created a certificate row WITHOUT
+    //   verification_code or verification_url. That meant certificates
+    //   issued via the "Approve & Issue Certificate" button on the
+    //   company-hr evaluations page were unverifiable via /verify/[code]
+    //   and the student couldn't add them to LinkedIn. We now generate
+    //   a unique verification_code (same IH-XXXX-XXXX format as the
+    //   upload-based company-hr certificate route) and the verification_url
+    //   using the canonical site URL helper.
+    //
+    //   This legacy route is still called from the evaluations UI; if it
+    //   is later removed in favour of the upload-based route, this fix
+    //   becomes a no-op.
+    const requestOrigin = new URL(request.url).origin;
 
-    if (certError) {
-      console.error("Error creating certificate:", certError);
+    let certificate: any = null;
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const part = () =>
+        Array.from(crypto.getRandomValues(new Uint8Array(4)))
+          .map((b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".charAt(b % 32))
+          .join("")
+          .slice(0, 4);
+      const verification_code = `IH-${part()}-${part()}`;
+      const verification_url = buildVerificationUrlFromRequest(
+        verification_code,
+        requestOrigin
+      );
+
+      const { data, error: certError } = await supabase
+        .from("certificates")
+        .insert({
+          student_user_id: evaluation.student_user_id,
+          internship_id: evaluation.internship_id,
+          company_id: profile.company_id,
+          title,
+          certificate_number: certNumber,
+          issued_by: user.id,
+          status: "issued",
+          verification_code,
+          verification_url,
+          metadata: {
+            evaluation_id: evaluation.id,
+            rating: evaluation.rating,
+            issued_by_company: profile.company_id,
+            issued_via: "company_hr_evaluations_legacy",
+          },
+        })
+        .select()
+        .single();
+
+      if (certError) {
+        if (certError.code === "23505") {
+          lastError = certError;
+          continue;
+        }
+        console.error("Error creating certificate:", certError);
+        return NextResponse.json(
+          { error: { code: "DATABASE_ERROR", message: "Failed to issue certificate" } },
+          { status: 500 }
+        );
+      }
+
+      certificate = data;
+      break;
+    }
+
+    if (!certificate) {
+      console.error(
+        "[/api/company-hr/evaluations/[id]/certificate] verification_code collision after 5 attempts:",
+        lastError
+      );
       return NextResponse.json(
-        { error: { code: "DATABASE_ERROR", message: "Failed to issue certificate" } },
+        { error: { code: "CODE_COLLISION", message: "Failed to generate a unique verification code" } },
         { status: 500 }
       );
     }
