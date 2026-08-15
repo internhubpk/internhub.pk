@@ -46,6 +46,7 @@ export interface Profile {
   // The key names match the FK column alias used in the select query.
   universities?: Pick<University, "id" | "name" | "slug" | "logo_url" | "domain"> | null;
   departments?: Pick<Department, "id" | "name" | "code"> | null;
+  programs?: { id: string; name: string; code: string } | null;
 }
 
 export interface User {

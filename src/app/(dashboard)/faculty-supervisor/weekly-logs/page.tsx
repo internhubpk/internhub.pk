@@ -11,6 +11,8 @@ import {
   Clock,
   Loader2,
   Calendar,
+  PenTool,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { SignaturePad } from "@/components/supervisors/signature-pad";
 
 interface WeeklyLog {
   id: string;
@@ -56,13 +59,29 @@ interface WeeklyLog {
   week_start_date: string;
   week_end_date: string;
   hours_worked: number;
-  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
+  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required" | "site_signed" | "faculty_signed";
   submitted_at?: string;
   // Review-only fields (populated when a log is opened in the dialog)
   tasks_completed?: string[];
   challenges?: string;
   learnings?: string;
   supervisor_feedback?: string;
+  // New signature / evidence / program fields (migration 0058)
+  program_name?: string | null;
+  department_name?: string | null;
+  university_logo_url?: string | null;
+  weekly_activities?: any[] | null;
+  learning_outcomes?: string | null;
+  challenges_solutions?: string | null;
+  supporting_evidence?: any[] | null;
+  student_signature_url?: string | null;
+  student_signed_at?: string | null;
+  site_supervisor_signature_url?: string | null;
+  site_supervisor_remarks?: string | null;
+  site_supervisor_signed_at?: string | null;
+  faculty_supervisor_signature_url?: string | null;
+  faculty_supervisor_remarks?: string | null;
+  faculty_supervisor_signed_at?: string | null;
 }
 
 export default function FacultySupervisorWeeklyLogsPage() {
@@ -78,6 +97,13 @@ export default function FacultySupervisorWeeklyLogsPage() {
   const [selectedLog, setSelectedLog] = useState<WeeklyLog | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sign dialog state (new signature-based approval flow)
+  const [signDialogOpen, setSignDialogOpen] = useState(false);
+  const [signLog, setSignLog] = useState<WeeklyLog | null>(null);
+  const [signRemarks, setSignRemarks] = useState("");
+  const [signSignatureData, setSignSignatureData] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
 
   useEffect(() => {
     async function fetchLogs() {
@@ -118,9 +144,25 @@ export default function FacultySupervisorWeeklyLogsPage() {
             student_user_id,
             tasks_completed,
             challenges,
+            challenges_solutions,
             learnings,
+            learning_outcomes,
+            next_week_goals,
             supervisor_feedback,
-            profiles:student_user_id(first_name, last_name)
+            program_name,
+            department_name,
+            university_logo_url,
+            weekly_activities,
+            supporting_evidence,
+            student_signature_url,
+            student_signed_at,
+            site_supervisor_signature_url,
+            site_supervisor_remarks,
+            site_supervisor_signed_at,
+            faculty_supervisor_signature_url,
+            faculty_supervisor_remarks,
+            faculty_supervisor_signed_at,
+            profiles:student_user_id(first_name, last_name, email, student_id_number)
           `)
           .in("student_user_id", studentIds)
           .order("week_start_date", { ascending: false });
@@ -143,6 +185,21 @@ export default function FacultySupervisorWeeklyLogsPage() {
           challenges: log.challenges,
           learnings: log.learnings,
           supervisor_feedback: log.supervisor_feedback,
+          program_name: log.program_name ?? null,
+          department_name: log.department_name ?? null,
+          university_logo_url: log.university_logo_url ?? null,
+          weekly_activities: log.weekly_activities ?? null,
+          learning_outcomes: log.learning_outcomes ?? null,
+          challenges_solutions: log.challenges_solutions ?? null,
+          supporting_evidence: log.supporting_evidence ?? null,
+          student_signature_url: log.student_signature_url ?? null,
+          student_signed_at: log.student_signed_at ?? null,
+          site_supervisor_signature_url: log.site_supervisor_signature_url ?? null,
+          site_supervisor_remarks: log.site_supervisor_remarks ?? null,
+          site_supervisor_signed_at: log.site_supervisor_signed_at ?? null,
+          faculty_supervisor_signature_url: log.faculty_supervisor_signature_url ?? null,
+          faculty_supervisor_remarks: log.faculty_supervisor_remarks ?? null,
+          faculty_supervisor_signed_at: log.faculty_supervisor_signed_at ?? null,
         }));
 
         setLogs(logList);
@@ -167,9 +224,82 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
   const openReviewDialog = (log: WeeklyLog) => {
     setSelectedLog(log);
-    setReviewFeedback(log.supervisor_feedback || "");
+    setReviewFeedback(log.supervisor_feedback || log.faculty_supervisor_remarks || "");
     setIsReviewOpen(true);
   };
+
+  // ----- Sign & Approve flow (new) -----
+  function openSignDialog(log: WeeklyLog) {
+    setSignLog(log);
+    setSignRemarks(log.faculty_supervisor_remarks || log.supervisor_feedback || reviewFeedback || "");
+    setSignSignatureData(null);
+    setSignDialogOpen(true);
+  }
+
+  function closeSignDialog() {
+    setSignDialogOpen(false);
+    setSignLog(null);
+    setSignRemarks("");
+    setSignSignatureData(null);
+  }
+
+  function dataUrlToFile(dataUrl: string, filename: string): File {
+    const [meta, b64] = dataUrl.split(",");
+    const mime = meta.match(/data:([^;]+)/)?.[1] || "image/png";
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new File([arr], filename, { type: mime });
+  }
+
+  async function handleSign() {
+    if (!signLog) return;
+    if (!signSignatureData) {
+      toast({ title: "Signature required", description: "Please draw or type your signature before signing.", variant: "destructive" });
+      return;
+    }
+    setIsSigning(true);
+    try {
+      const sigFile = dataUrlToFile(signSignatureData, `faculty_signature_${signLog.id}.png`);
+      const fd = new FormData();
+      fd.append("file", sigFile);
+      fd.append("remarks", signRemarks);
+      const res = await fetch(`/api/faculty-supervisor/weekly-logs/${signLog.id}/sign`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      const updated = json.data;
+      toast({
+        title: json.message?.includes("fully") ? "Fully Approved" : "Signed",
+        description: json.message || "Weekly log signed successfully.",
+      });
+      setLogs((prev) =>
+        prev.map((l) =>
+          l.id === signLog.id
+            ? {
+                ...l,
+                status: updated.status,
+                faculty_supervisor_signature_url: updated.faculty_supervisor_signature_url,
+                faculty_supervisor_remarks: updated.faculty_supervisor_remarks,
+                faculty_supervisor_signed_at: updated.faculty_supervisor_signed_at,
+                supervisor_feedback: updated.faculty_supervisor_remarks || l.supervisor_feedback,
+              }
+            : l
+        )
+      );
+      closeSignDialog();
+      setIsReviewOpen(false);
+    } catch (err: any) {
+      toast({ title: "Failed to sign", description: err.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setIsSigning(false);
+    }
+  }
 
   const handleReview = async (action: "approve" | "reject" | "request_revision") => {
     if (!user || !selectedLog) return;
@@ -428,20 +558,145 @@ export default function FacultySupervisorWeeklyLogsPage() {
                   <XCircle className="h-4 w-4" /> Reject
                 </Button>
                 <Button
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => handleReview("approve")}
-                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                  className="gap-2"
+                  onClick={() => openSignDialog(selectedLog)}
+                  disabled={isSubmitting || isSigning}
                 >
-                  {isSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle className="h-4 w-4" />
-                  )}
-                  Approve
+                  <PenTool className="h-4 w-4" />
+                  Sign & Approve
                 </Button>
               </DialogFooter>
+
+              {/* Already-signed status banners */}
+              {selectedLog.site_supervisor_signature_url && (
+                <div className="mt-2 p-3 rounded-md border bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-3">
+                  <img
+                    src={selectedLog.site_supervisor_signature_url}
+                    alt="Site supervisor signature"
+                    className="h-12 w-auto object-contain bg-white rounded p-1 border"
+                  />
+                  <div className="text-xs">
+                    <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                      Site supervisor signed on {selectedLog.site_supervisor_signed_at
+                        ? new Date(selectedLog.site_supervisor_signed_at).toLocaleDateString()
+                        : "—"}
+                    </p>
+                    {selectedLog.site_supervisor_remarks && (
+                      <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.site_supervisor_remarks}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {selectedLog.faculty_supervisor_signature_url && (
+                <div className="mt-2 p-3 rounded-md border bg-purple-50/40 dark:bg-purple-950/20 flex items-center gap-3">
+                  <img
+                    src={selectedLog.faculty_supervisor_signature_url}
+                    alt="Faculty signature"
+                    className="h-12 w-auto object-contain bg-white rounded p-1 border"
+                  />
+                  <div className="text-xs">
+                    <p className="font-medium text-purple-800 dark:text-purple-300">
+                      You signed this report on {selectedLog.faculty_supervisor_signed_at
+                        ? new Date(selectedLog.faculty_supervisor_signed_at).toLocaleDateString()
+                        : "—"}
+                    </p>
+                    {selectedLog.faculty_supervisor_remarks && (
+                      <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.faculty_supervisor_remarks}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* SIGN DIALOG (new)                                            */}
+      {/* ============================================================ */}
+      <Dialog open={signDialogOpen} onOpenChange={(o) => !o && closeSignDialog()}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Sign & Approve Weekly Report</DialogTitle>
+            <DialogDescription>
+              {signLog && (
+                <>
+                  Week {signLog.week_number} for {signLog.student_name}
+                  {" — "}
+                  {new Date(signLog.week_start_date).toLocaleDateString()} → {new Date(signLog.week_end_date).toLocaleDateString()}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {signLog && (
+              <div className="p-3 rounded-md border bg-muted/30 text-xs space-y-1">
+                <p><span className="font-medium">Student:</span> {signLog.student_name}</p>
+                <p><span className="font-medium">Program:</span> {signLog.program_name || "—"}</p>
+                <p><span className="font-medium">Department:</span> {signLog.department_name || "—"}</p>
+                <p><span className="font-medium">Hours:</span> {signLog.hours_worked ?? "—"}</p>
+                {signLog.student_signature_url && (
+                  <p className="flex items-center gap-2">
+                    <span className="font-medium">Student signed:</span>
+                    <img src={signLog.student_signature_url} alt="Student signature" className="h-8 w-auto bg-white border rounded p-0.5" />
+                  </p>
+                )}
+                {signLog.site_supervisor_signature_url && (
+                  <p className="flex items-center gap-2">
+                    <span className="font-medium">Site supervisor signed:</span>
+                    <img src={signLog.site_supervisor_signature_url} alt="Site supervisor signature" className="h-8 w-auto bg-white border rounded p-0.5" />
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sign-remarks">Faculty Supervisor Remarks (optional)</Label>
+              <Textarea
+                id="sign-remarks"
+                rows={4}
+                value={signRemarks}
+                onChange={(e) => setSignRemarks(e.target.value)}
+                placeholder="Add remarks about the student's performance this week..."
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Signature</Label>
+              <SignaturePad
+                onSignatureChange={setSignSignatureData}
+                value={signSignatureData}
+                label=""
+                showDownload={false}
+              />
+              {!signSignatureData && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Please draw or type your signature to sign off.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={closeSignDialog} disabled={isSigning}>
+              Cancel
+            </Button>
+            <Button onClick={handleSign} disabled={isSigning || !signSignatureData}>
+              {isSigning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Signing...
+                </>
+              ) : (
+                <>
+                  <PenTool className="h-4 w-4 mr-2" />
+                  Sign & Submit
+                </>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

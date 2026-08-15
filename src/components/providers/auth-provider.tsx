@@ -128,7 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select(
           `*,
           departments:department_id ( id, name, code ),
-          universities:university_id ( id, name, slug, logo_url, domain )`
+          universities:university_id ( id, name, slug, logo_url, domain ),
+          programs:program_id ( id, name, code )`
         )
         .eq("user_id", userId)
         .single();
