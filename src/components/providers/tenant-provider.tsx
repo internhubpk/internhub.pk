@@ -202,25 +202,20 @@ export function TenantProvider({ children, initialTenant }: TenantProviderProps)
     [tenant, isLoading, hasFeature]
   );
 
+  // NOTE: A tenant-data <meta> tag used to be rendered here as
+  // `{typeof window !== "undefined" && <meta .../>}`. That pattern was the
+  // ROOT CAUSE of React hydration error #418 on every page: the server
+  // rendered no meta tag (window is undefined during SSR), and the client
+  // rendered one during hydration — a textbook hydration mismatch.
+  //
+  // The same meta tag is already injected by the root layout
+  // (src/app/layout.tsx, inside <head>) using the server-side tenant
+  // config, so the client can read it via parseTenantFromHeaders()
+  // without needing a second copy in the React tree. We deliberately do
+  // NOT re-render it here.
   return (
     <TenantContext.Provider value={value}>
       {children}
-      
-      {/* Hidden meta tag for passing tenant data to client */}
-      {typeof window !== "undefined" && (
-        <meta
-          name="x-tenant-data"
-          content={JSON.stringify({
-            id: tenant.id,
-            name: tenant.name,
-            slug: tenant.slug,
-            logo: tenant.logo,
-            primaryColor: tenant.primaryColor,
-            secondaryColor: tenant.secondaryColor,
-            domain: tenant.domain,
-          })}
-        />
-      )}
     </TenantContext.Provider>
   );
 }

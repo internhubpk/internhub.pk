@@ -255,7 +255,12 @@ function AnimatedSection({
     <section 
       ref={ref} 
       id={id}
-      className={`py-12 sm:py-16 md:py-20 lg:py-28 relative ${className}`}
+      // `overflow-hidden` here is the proper source-level fix for the
+      // horizontal scroll that previously came from decorative blurred
+      // orbs (translate-x-1/2 / -translate-x-1/2) in the "How it works"
+      // section pushing outside their parent. Clipping at the section
+      // level keeps them contained without hiding overflow globally.
+      className={`py-12 sm:py-16 md:py-20 lg:py-28 relative overflow-hidden ${className}`}
       style={{ position: 'relative', zIndex: 1 }}
     >
       <motion.div

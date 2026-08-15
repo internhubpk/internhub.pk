@@ -54,7 +54,7 @@ export function SiteNav() {
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between gap-2 px-4 md:px-6">
+      <div className="container mx-auto flex h-16 items-center justify-between gap-2 px-4 lg:px-6">
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <GraduationCap className="h-5 w-5 text-primary-foreground" />
@@ -62,10 +62,12 @@ export function SiteNav() {
           <span className="text-xl font-bold tracking-tight">InternHub</span>
         </Link>
 
-        {/* Desktop search bar (inline) */}
+        {/* Desktop search bar (inline) — hidden below lg because at
+            768-1023px the nav would overflow (logo + search + 3 links +
+            theme toggle + Sign In + Get Started = ~1240px > 768px). */}
         <form
           onSubmit={submitSearch}
-          className="hidden md:flex items-center flex-1 max-w-md mx-4"
+          className="hidden lg:flex items-center flex-1 max-w-md mx-4"
           role="search"
         >
           <div className="relative w-full">
@@ -81,8 +83,8 @@ export function SiteNav() {
           </div>
         </form>
 
-        {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-6 shrink-0">
+        {/* Desktop links — hidden below lg (see search bar comment above) */}
+        <div className="hidden lg:flex items-center gap-6 shrink-0">
           {navLinks.map((link) => (
             <Link
               key={link.href}
@@ -97,11 +99,11 @@ export function SiteNav() {
 
         {/* Right side */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Mobile search toggle */}
+          {/* Mobile search toggle — visible below lg */}
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 md:hidden"
+            className="h-9 w-9 lg:hidden"
             aria-label={searchOpen ? "Close search" : "Open search"}
             aria-expanded={searchOpen}
             onClick={() => {
@@ -133,7 +135,7 @@ export function SiteNav() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 md:hidden"
+                className="h-9 w-9 lg:hidden"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
@@ -188,9 +190,9 @@ export function SiteNav() {
         </div>
       </div>
 
-      {/* Mobile search panel (expand below nav) */}
+      {/* Mobile search panel (expand below nav) — visible below lg */}
       {searchOpen && (
-        <div className="md:hidden border-t bg-background/95 backdrop-blur">
+        <div className="lg:hidden border-t bg-background/95 backdrop-blur">
           <form
             onSubmit={submitSearch}
             className="container mx-auto flex items-center gap-2 px-4 py-3"

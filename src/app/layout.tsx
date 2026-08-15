@@ -75,9 +75,17 @@ export async function generateMetadata(): Promise<Metadata> {
       canonical: "/",
     },
     icons: {
+      // Always advertise /favicon.ico first so browsers that auto-request
+      // it (and crawlers that look for <link rel="icon">) find a real
+      // file instead of a 404. src/app/favicon.ico is served by Next.js
+      // automatically.
       icon: tenantConfig.favicon
-        ? [{ url: tenantConfig.favicon, sizes: "32x32" }]
+        ? [
+            { url: "/favicon.ico", sizes: "any" },
+            { url: tenantConfig.favicon, sizes: "32x32" },
+          ]
         : [
+            { url: "/favicon.ico", sizes: "any" },
             { url: "/icon.svg", sizes: "32x32" },
             { url: "/icon.svg", type: "image/svg+xml" },
           ],
