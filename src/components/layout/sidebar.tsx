@@ -90,7 +90,7 @@ interface SidebarContentProps {
 // wrong. The skeleton makes "loading" visually distinct from "resolved".
 function SidebarSkeleton() {
   return (
-    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground text-sidebar">
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
       <div className="flex items-center h-18 px-4 border-b border-sidebar-border">
         <div className="h-10 w-10 rounded-xl bg-sidebar-accent animate-pulse" />
         <div className="ml-3 flex flex-col gap-1.5">
@@ -316,7 +316,7 @@ function SidebarContent({
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground text-sidebar">
+    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
       {/* Custom scrollbar styles */}
       {/* Custom scrollbar styles. Uses currentColor so the thumb
           automatically adapts to the sidebar's foreground color in

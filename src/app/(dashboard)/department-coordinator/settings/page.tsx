@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -88,8 +88,6 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 export default function CoordinatorSettingsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
-
   const [profile, setProfile] = useState<CoordinatorProfile | null>(null);
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [university, setUniversity] = useState<UniversityInfo | null>(null);
@@ -196,11 +194,7 @@ export default function CoordinatorSettingsPage() {
       }
     } catch (err) {
       console.error("Error loading coordinator settings:", err);
-      toast({
-        title: "Failed to load settings",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to load settings", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -238,17 +232,10 @@ export default function CoordinatorSettingsPage() {
       if (error) throw error;
 
       setProfile(profileForm);
-      toast({
-        title: "Profile saved",
-        description: "Your coordinator profile has been updated.",
-      });
+      toast.success("Profile saved", { description: "Your coordinator profile has been updated." });
     } catch (err) {
       console.error("Error saving profile:", err);
-      toast({
-        title: "Failed to save profile",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to save profile", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setIsSavingProfile(false);
     }
@@ -273,16 +260,9 @@ export default function CoordinatorSettingsPage() {
         })
         .eq("user_id", user.id);
       if (prefsErr) throw prefsErr;
-      toast({
-        title: "Preferences saved",
-        description: "Your notification preferences have been updated.",
-      });
+      toast.success("Preferences saved", { description: "Your notification preferences have been updated." });
     } catch (err) {
-      toast({
-        title: "Failed to save preferences",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to save preferences", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setIsSavingPrefs(false);
     }
@@ -291,27 +271,15 @@ export default function CoordinatorSettingsPage() {
   const handleChangePassword = async () => {
     if (!user) return;
     if (passwordForm.newPassword.length < 8) {
-      toast({
-        title: "Password too short",
-        description: "New password must be at least 8 characters.",
-        variant: "destructive",
-      });
+      toast.error("Password too short", { description: "New password must be at least 8 characters." });
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast({
-        title: "Passwords don't match",
-        description: "New password and confirm password must match.",
-        variant: "destructive",
-      });
+      toast.error("Passwords don't match", { description: "New password and confirm password must match." });
       return;
     }
     if (!passwordForm.currentPassword) {
-      toast({
-        title: "Current password required",
-        description: "Please enter your current password to confirm the change.",
-        variant: "destructive",
-      });
+      toast.error("Current password required", { description: "Please enter your current password to confirm the change." });
       return;
     }
 
@@ -335,20 +303,12 @@ export default function CoordinatorSettingsPage() {
         newPassword: "",
         confirmPassword: "",
       });
-      toast({
-        title: "Password updated",
-        description: "Your password has been changed successfully.",
-      });
+      toast.success("Password updated", { description: "Your password has been changed successfully." });
     } catch (err) {
       console.error("Error changing password:", err);
-      toast({
-        title: "Failed to change password",
-        description:
-          err instanceof Error
+      toast.error("Failed to change password", { description: err instanceof Error
             ? err.message
-            : "Please make sure your new password meets the requirements.",
-        variant: "destructive",
-      });
+            : "Please make sure your new password meets the requirements." });
     } finally {
       setIsChangingPassword(false);
     }

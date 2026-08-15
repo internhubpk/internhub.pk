@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+// Roles permitted to look up arbitrary users (staff who need this for
+// sending notifications, assigning supervisors, etc.). Students may
+// only look up their own username — see auth check below.
+const ALLOWED_LOOKUP_ROLES = new Set([
+  "faculty_supervisor",
+  "department_coordinator",
+  "university_admin",
+  "super_admin",
+  "company_hr",
+  "site_supervisor",
+]);
+
 /**
  * POST /api/auth/lookup-user
- * 
+ *
  * Looks up a username in the profiles table and returns the associated email.
  * Used for username-based login for staff accounts (university_admin, department_coordinator,
  * faculty_supervisor, company_hr, site_supervisor).
+ *
+ * Auth: caller must be signed in. Students may only look up their own
+ * username/email — all other lookups return 403 to prevent enumeration.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -22,16 +37,67 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Look up user by username in profiles table
-    // Username is stored differently depending on role:
-    // - For email-based accounts: username might be null or same as email prefix
-    // - For username-based accounts: stored in a custom field or derived
-    
-    // First, try to find by exact username match (if there's a username field)
+    // Require authentication — prevents anonymous enumeration.
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Not authenticated", found: false },
+        { status: 401 }
+      );
+    }
+
+    // Fetch the caller's profile so we can enforce role-based access.
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("role, username, email")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const callerRole = callerProfile?.role;
+    const trimmedUsername = username.trim();
+    const requestedLower = trimmedUsername.toLowerCase();
+
+    // Students may only look up their own username/email (no enumeration).
+    if (callerRole === "student") {
+      const ownUsername = callerProfile?.username;
+      const ownEmail = callerProfile?.email;
+      const isOwn =
+        (typeof ownUsername === "string" && ownUsername.toLowerCase() === requestedLower) ||
+        (typeof ownEmail === "string" && ownEmail.toLowerCase() === requestedLower);
+
+      if (!isOwn) {
+        return NextResponse.json(
+          { error: "Forbidden: students may only look up their own username", found: false },
+          { status: 403 }
+        );
+      }
+
+      return NextResponse.json({
+        email: ownEmail,
+        userId: user.id,
+        role: callerRole,
+        found: true,
+      });
+    }
+
+    // Staff roles (and super_admin) are allowed to look up arbitrary users.
+    if (!callerRole || !ALLOWED_LOOKUP_ROLES.has(callerRole)) {
+      return NextResponse.json(
+        { error: "Forbidden: insufficient permissions to look up users", found: false },
+        { status: 403 }
+      );
+    }
+
+    // Look up user by username in profiles table using a structured filter
+    // (no string interpolation → no PostgREST filter-injection vector).
     let { data: profile, error } = await supabase
       .from("profiles")
       .select("email, user_id, role")
-      .or(`username.eq.${username.trim()}`)
+      .eq("username", trimmedUsername)
       .maybeSingle();
 
     // If not found, try looking up by email (in case they entered their email)

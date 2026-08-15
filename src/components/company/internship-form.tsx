@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -550,7 +551,7 @@ export function InternshipForm({
           Post New Internship
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[650px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Briefcase className="h-5 w-5 text-primary" />
@@ -561,6 +562,7 @@ export function InternshipForm({
           </DialogDescription>
         </DialogHeader>
 
+        <DialogBody className="p-0">
         {/* Step Indicator */}
         <div className="flex items-center justify-between px-4 py-2 bg-muted/50 rounded-lg">
           {STEPS.map((step, index) => (
@@ -593,12 +595,13 @@ export function InternshipForm({
         </div>
 
         {/* Form Content */}
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="px-6 py-4">
           <AnimatePresence mode="wait">{renderStepContent()}</AnimatePresence>
         </div>
+        </DialogBody>
 
         {/* Navigation Buttons */}
-        <DialogFooter className="flex-col sm:flex-row gap-2 border-t pt-4">
+        <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={handleBack}

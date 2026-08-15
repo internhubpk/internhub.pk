@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -41,17 +42,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import {
   Tabs,
   TabsContent,
@@ -63,7 +53,6 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { ScrollableDialog } from "@/components/shared/scrollable-dialog";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { MarkdownEditor } from "@/components/shared/markdown-editor";
 import { toast } from "@/components/shared/toast";
@@ -831,7 +820,7 @@ export default function FacultySupervisorTasksPage() {
 
       {/* View Task Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           {selectedTask && (
             <>
               <DialogHeader>
@@ -849,7 +838,7 @@ export default function FacultySupervisorTasksPage() {
                 </div>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Description */}
                 {selectedTask.description && (
                   <Card>
@@ -948,7 +937,7 @@ export default function FacultySupervisorTasksPage() {
                     evaluate site-supervisor tasks only; they do not modify
                     them. The site supervisor who owns the task can edit it
                     from their own dashboard. */}
-              </div>
+              </DialogBody>
             </>
           )}
         </DialogContent>

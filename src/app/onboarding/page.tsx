@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion"; 
 import { 
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 
 // Role to dashboard path mapping
@@ -38,63 +39,26 @@ const ROLE_LABELS: Record<string, string> = {
   external_evaluator: "External Evaluator",
 };
 
-// Safe auth hook that works with/without provider
-function useSafeAuth() {
-  const [authState, setAuthState] = useState({
-    user: null as any,
-    profile: null as any,
-    isLoading: true,
-    logout: async () => {},
-  });
-
-  useEffect(() => {
-    async function getAuth() {
-      try {
-        const supabase = createClient();
-        if (!supabase) {
-          setAuthState(prev => ({ ...prev, isLoading: false }));
-          return;
-        }
-
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        let profile = null;
-        if (user) {
-          // Try to get profile from profiles table
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("user_id", user.id)
-            .single();
-          
-          profile = profileData;
-        }
-
-        setAuthState({
-          user,
-          profile,
-          isLoading: false,
-          logout: async () => {
-            await supabase.auth.signOut();
-          },
-        });
-      } catch (error) {
-        console.error("Auth error:", error);
-        setAuthState(prev => ({ ...prev, isLoading: false }));
-      }
-    }
-    
-    getAuth();
-  }, []);
-
-  return authState;
-}
-
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, profile, isLoading: authLoading, logout } = useSafeAuth();
+  const { user, profile, isLoading: authLoading, logout } = useAuth();
   const [status, setStatus] = useState<"loading" | "redirecting" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  // Hold the redirect timeout id so we can clear it on unmount and avoid
+  // calling router.push after the component has been torn down (which
+  // throws a "Can't perform a React state update on an unmounted component"
+  // warning and can cause navigation to fire on a stale route).
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancel any pending redirect when the page unmounts.
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+        redirectTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Try to detect role and redirect
@@ -142,8 +106,11 @@ export default function OnboardingPage() {
         const path = ROLE_DASHBOARD_PATHS[foundRole];
         console.log(`Redirecting to ${path} for role: ${foundRole}`);
         
-        // Brief delay so user sees the success state
-        setTimeout(() => {
+        // Brief delay so user sees the success state. Store the timer id
+        // so the unmount cleanup can cancel it if the user navigates away
+        // (or the component is torn down for any other reason) before the
+        // timeout fires.
+        redirectTimerRef.current = setTimeout(() => {
           router.push(path);
         }, 800);
       } else {

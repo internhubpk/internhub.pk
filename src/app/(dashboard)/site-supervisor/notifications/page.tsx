@@ -41,18 +41,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -88,7 +81,6 @@ interface NotificationTemplate {
 
 export default function SiteSupervisorNotificationsPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"compose" | "sent" | "templates">("compose");
   
   // Compose state
@@ -190,11 +182,7 @@ export default function SiteSupervisorNotificationsPage() {
 
   async function handleSendNotification() {
     if (!notificationTitle.trim() || !notificationContent.trim()) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in both the subject and message.",
-        variant: "destructive",
-      });
+      toast.error("Missing fields", { description: "Please fill in both the subject and message." });
       return;
     }
 
@@ -214,22 +202,14 @@ export default function SiteSupervisorNotificationsPage() {
       (t) => t !== "{student_name}" && t !== "{supervisor_name}"
     );
     if (unfilledTokens.length > 0) {
-      toast({
-        title: "Please fill in all template fields",
-        description: `These placeholders still need values: ${unfilledTokens.join(
+      toast.error("Please fill in all template fields", { description: `These placeholders still need values: ${unfilledTokens.join(
           ", "
-        )}. Replace them with actual content before sending.`,
-        variant: "destructive",
-      });
+        )}. Replace them with actual content before sending.` });
       return;
     }
 
     if (recipientType === "individual" && selectedStudentIds.length === 0) {
-      toast({
-        title: "No recipients selected",
-        description: "Please select at least one recipient.",
-        variant: "destructive",
-      });
+      toast.error("No recipients selected", { description: "Please select at least one recipient." });
       return;
     }
 
@@ -251,10 +231,7 @@ export default function SiteSupervisorNotificationsPage() {
       if (response.ok) {
         const data = await response.json();
         const count = data?.data?.recipientCount ?? 0;
-        toast({
-          title: "Notification sent",
-          description: `Successfully delivered to ${count} student${count === 1 ? "" : "s"}.`,
-        });
+        toast.success("Notification sent", { description: `Successfully delivered to ${count} student${count === 1 ? "" : "s"}.` });
 
         // Reset form
         setNotificationTitle("");
@@ -266,19 +243,11 @@ export default function SiteSupervisorNotificationsPage() {
         setActiveTab("sent");
       } else {
         const error = await response.json();
-        toast({
-          title: "Failed to send",
-          description: error?.error?.message || "Failed to send notification.",
-          variant: "destructive",
-        });
+        toast.error("Failed to send", { description: error?.error?.message || "Failed to send notification." });
       }
     } catch (error) {
       console.error("Error sending notification:", error);
-      toast({
-        title: "Network error",
-        description: "An error occurred while sending the notification.",
-        variant: "destructive",
-      });
+      toast.error("Network error", { description: "An error occurred while sending the notification." });
     } finally {
       setIsSending(false);
     }

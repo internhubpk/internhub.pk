@@ -81,7 +81,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -138,7 +138,6 @@ const ADDITIONAL_ANSWER_LABELS: Record<
 
 export default function CompanyHRApplicationsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [applications, setApplications] = useState<Application[]>(DEFAULT_APPLICATIONS);
   const [availablePrograms, setAvailablePrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [isLoading, setIsLoading] = useState(true);
@@ -254,7 +253,7 @@ export default function CompanyHRApplicationsPage() {
       return true;
     } catch (e: any) {
       console.error("Error updating application status:", e);
-      toast({ title: "Error", description: e.message || "Failed to update application. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to update application. Please try again." });
       return false;
     } finally {
       setUpdating(false);
@@ -263,6 +262,7 @@ export default function CompanyHRApplicationsPage() {
 
   const handleAccept = async (appId: string) => {
     if (await updateApplicationStatus([appId], "accepted")) {
+      toast.success("Application accepted", { description: "The student has been notified." });
       setIsDetailOpen(false);
     }
   };
@@ -271,6 +271,7 @@ export default function CompanyHRApplicationsPage() {
     if (!rejectingAppId) return;
 
     if (await updateApplicationStatus([rejectingAppId], "rejected", rejectReason || undefined)) {
+      toast.success("Application rejected", { description: "The student has been notified." });
       setIsRejectDialogOpen(false);
       setRejectReason("");
       setRejectingAppId(null);
@@ -279,7 +280,9 @@ export default function CompanyHRApplicationsPage() {
   };
 
   const handleMarkForReview = async (appId: string) => {
-    await updateApplicationStatus([appId], "reviewing");
+    if (await updateApplicationStatus([appId], "reviewing")) {
+      toast.success("Marked for review");
+    }
   };
 
   const openRejectDialog = (appId: string) => {
@@ -289,12 +292,14 @@ export default function CompanyHRApplicationsPage() {
 
   const handleBatchAccept = async () => {
     if (await updateApplicationStatus(selectedForBatch, "accepted")) {
+      toast.success("Applications accepted", { description: `${selectedForBatch.length} applicant${selectedForBatch.length !== 1 ? "s" : ""} notified.` });
       setSelectedForBatch([]);
     }
   };
 
   const handleBatchReject = async () => {
     if (await updateApplicationStatus(selectedForBatch, "rejected", rejectReason || undefined)) {
+      toast.success("Applications rejected", { description: `${selectedForBatch.length} applicant${selectedForBatch.length !== 1 ? "s" : ""} notified.` });
       setSelectedForBatch([]);
       setRejectReason("");
       setIsBatchRejectDialogOpen(false);
@@ -410,11 +415,11 @@ export default function CompanyHRApplicationsPage() {
               <span className="text-sm text-muted-foreground">
                 {selectedForBatch.length} selected
               </span>
-              <Button size="sm" onClick={handleBatchAccept} className="gap-1">
+              <Button size="sm" onClick={handleBatchAccept} disabled={updating} className="gap-1">
                 <CheckCircle2 className="h-4 w-4" />
-                Accept All Selected
+                {updating ? "Updating..." : "Accept All Selected"}
               </Button>
-              <Button size="sm" variant="outline" className="gap-1 text-destructive hover:text-destructive" onClick={() => setIsBatchRejectDialogOpen(true)}>
+              <Button size="sm" variant="outline" className="gap-1 text-destructive hover:text-destructive" onClick={() => setIsBatchRejectDialogOpen(true)} disabled={updating}>
                 <XCircle className="h-4 w-4" />
                 Reject All Selected
               </Button>
@@ -804,9 +809,10 @@ export default function CompanyHRApplicationsPage() {
             <AlertDialogCancel onClick={() => setRejectReason("")}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleBatchReject}
+              disabled={updating}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Reject {selectedForBatch.length} Application{selectedForBatch.length !== 1 ? "s" : ""}
+              {updating ? "Rejecting..." : `Reject ${selectedForBatch.length} Application${selectedForBatch.length !== 1 ? "s" : ""}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1028,7 +1034,7 @@ function ApplicationTable({
                     </TableCell>
                     <TableCell>{new Date(app.applied_at).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         {(app.status === "pending" || app.status === "reviewing") && (
                           <>
                             <Button

@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -63,8 +63,6 @@ const defaultNotifications: NotificationPrefs = {
 
 export default function UniversityAdminSettingsPage() {
   const { user, profile, university, refreshProfile } = useAuth();
-  const { toast } = useToast();
-
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<UniversitySettings>({
@@ -132,11 +130,7 @@ export default function UniversityAdminSettingsPage() {
       }
     } catch (error) {
       console.error("Error loading settings:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load university settings",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load university settings" });
     } finally {
       setIsLoading(false);
     }
@@ -179,20 +173,12 @@ export default function UniversityAdminSettingsPage() {
     if (!universityId) return;
 
     if (!formData.name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "University name is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "University name is required" });
       return;
     }
 
     if (!formData.contact_email.trim() || !formData.contact_email.includes("@")) {
-      toast({
-        title: "Validation Error",
-        description: "A valid contact email is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "A valid contact email is required" });
       return;
     }
 
@@ -218,20 +204,13 @@ export default function UniversityAdminSettingsPage() {
 
       if (error) throw error;
 
-      toast({
-        title: "Saved",
-        description: "University information updated successfully",
-      });
+      toast.success("Saved", { description: "University information updated successfully" });
 
       // Refresh the auth context so the sidebar / header reflect the new name
       await refreshProfile();
     } catch (error) {
       console.error("Error saving settings:", error);
-      toast({
-        title: "Error",
-        description: "Failed to save settings. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to save settings. Please try again." });
     } finally {
       setIsSaving(false);
     }
@@ -258,17 +237,10 @@ export default function UniversityAdminSettingsPage() {
         })
         .eq("user_id", user.id);
       if (prefsErr) throw prefsErr;
-      toast({
-        title: "Saved",
-        description: "Notification preferences updated",
-      });
+      toast.success("Saved", { description: "Notification preferences updated" });
     } catch (error) {
       console.error("Error saving notifications:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save notification preferences",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to save notification preferences" });
     } finally {
       setIsSaving(false);
     }
@@ -282,35 +254,19 @@ export default function UniversityAdminSettingsPage() {
   // it fails, the current password was wrong.)
   const handleChangePassword = async () => {
     if (!passwordForm.next) {
-      toast({
-        title: "Validation Error",
-        description: "New password is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "New password is required" });
       return;
     }
     if (passwordForm.next.length < 8) {
-      toast({
-        title: "Validation Error",
-        description: "New password must be at least 8 characters",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "New password must be at least 8 characters" });
       return;
     }
     if (passwordForm.next !== passwordForm.confirm) {
-      toast({
-        title: "Validation Error",
-        description: "New password and confirmation don't match",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "New password and confirmation don't match" });
       return;
     }
     if (passwordForm.next === passwordForm.current) {
-      toast({
-        title: "Validation Error",
-        description: "New password must be different from the current one",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "New password must be different from the current one" });
       return;
     }
 
@@ -328,11 +284,7 @@ export default function UniversityAdminSettingsPage() {
           password: passwordForm.current,
         });
         if (verifyErr) {
-          toast({
-            title: "Current password incorrect",
-            description: "The current password you entered doesn't match.",
-            variant: "destructive",
-          });
+          toast.error("Current password incorrect", { description: "The current password you entered doesn't match." });
           return;
         }
       }
@@ -344,20 +296,13 @@ export default function UniversityAdminSettingsPage() {
 
       if (updateErr) throw updateErr;
 
-      toast({
-        title: "Password updated",
-        description: "Your account password has been changed successfully.",
-      });
+      toast.success("Password updated", { description: "Your account password has been changed successfully." });
 
       setPasswordForm({ current: "", next: "", confirm: "" });
     } catch (error) {
       console.error("Error changing password:", error);
       const err = error as { message?: string } | null;
-      toast({
-        title: "Error",
-        description: err?.message || "Failed to change password. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: err?.message || "Failed to change password. Please try again." });
     } finally {
       setIsSavingPassword(false);
     }

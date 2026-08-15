@@ -48,15 +48,17 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -112,7 +114,6 @@ interface LogStats {
 
 export default function SiteSupervisorWeeklyLogsPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
   const [logs, setLogs] = useState<WeeklyLogEntry[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -328,7 +329,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
   async function handleReview(action: "approve" | "reject" | "request_revision") {
     if (!selectedLog || !reviewFeedback.trim()) {
       if (action !== "approve") {
-        toast({ title: "Action required", description: "Please provide feedback before rejecting or requesting revision.", variant: "destructive" });
+        toast.error("Action required", { description: "Please provide feedback before rejecting or requesting revision." });
         return;
       }
     }
@@ -348,7 +349,15 @@ export default function SiteSupervisorWeeklyLogsPage() {
       });
 
       if (response.ok) {
-        toast({ title: "Success", description: `Log ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision"} successfully!` });
+        const actionLabel =
+          action === "approve" ? "Log approved"
+          : action === "reject" ? "Log rejected"
+          : "Log flagged for revision";
+        const actionDesc =
+          action === "approve" ? "The student has been notified."
+          : action === "reject" ? "The student has been notified."
+          : "The student has been asked to revise and resubmit.";
+        toast.success(actionLabel, { description: actionDesc });
         
         // Update local state
         setLogs(prev => prev.map(log =>
@@ -361,11 +370,11 @@ export default function SiteSupervisorWeeklyLogsPage() {
         setReviewFeedback("");
         fetchWeeklyLogs();
       } else {
-        toast({ title: "Failed", description: "Error processing review. Please try again.", variant: "destructive" });
+        toast.error("Failed", { description: "Error processing review. Please try again." });
       }
     } catch (error) {
       console.error("Error submitting review:", error);
-      toast({ title: "Failed", description: "An error occurred. Please try again.", variant: "destructive" });
+      toast.error("Failed", { description: "An error occurred. Please try again." });
     } finally {
       setIsSubmittingReview(false);
     }
@@ -410,7 +419,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
   async function handleSign() {
     if (!signLog) return;
     if (!signSignatureData) {
-      toast({ title: "Signature required", description: "Please draw or type your signature before signing.", variant: "destructive" });
+      toast.error("Signature required", { description: "Please draw or type your signature before signing." });
       return;
     }
     setIsSigning(true);
@@ -429,10 +438,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
       }
       const json = await res.json();
       const updated = json.data;
-      toast({
-        title: json.message?.includes("fully") ? "Fully Approved" : "Signed",
-        description: json.message || "Weekly log signed successfully.",
-      });
+      toast.success(json.message?.includes("fully") ? "Fully Approved" : "Signed", { description: json.message || "Weekly log signed successfully." });
       // Update local state
       setLogs((prev) =>
         prev.map((l) =>
@@ -452,7 +458,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
       closeSignDialog();
       fetchWeeklyLogs();
     } catch (err: any) {
-      toast({ title: "Failed to sign", description: err.message || "Please try again.", variant: "destructive" });
+      toast.error("Failed to sign", { description: err.message || "Please try again." });
     } finally {
       setIsSigning(false);
     }
@@ -642,7 +648,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
 
       {/* Review Dialog */}
       <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           {selectedLog && (
             <>
               <DialogHeader>
@@ -655,6 +661,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
+              <DialogBody className="p-0">
               <Tabs defaultValue="content" className="mt-4">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="content">Log Content</TabsTrigger>
@@ -831,40 +838,6 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         </CardContent>
                       </Card>
 
-                      <div className="flex flex-col sm:flex-row gap-3 justify-end">
-                        <Button
-                          variant="default"
-                          onClick={() => {
-                            // Pre-fill remarks with the typed feedback so the
-                            // sign dialog picks it up.
-                            setSignRemarks(reviewFeedback);
-                            if (selectedLog) openSignDialog(selectedLog);
-                          }}
-                          disabled={isSubmittingReview || isSigning}
-                        >
-                          <PenTool className="h-4 w-4 mr-2" />
-                          Sign & Approve
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-orange-300 text-orange-700 hover:bg-orange-50"
-                          onClick={() => handleReview("request_revision")}
-                          disabled={isSubmittingReview || !reviewFeedback.trim()}
-                        >
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Request Revision
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-red-300 text-red-700 hover:bg-red-50"
-                          onClick={() => handleReview("reject")}
-                          disabled={isSubmittingReview || !reviewFeedback.trim()}
-                        >
-                          <ThumbsDown className="h-4 w-4 mr-2" />
-                          Reject
-                        </Button>
-                      </div>
-
                       {/* Already-signed status banner */}
                       {selectedLog.site_supervisor_signature_url && (
                         <div className="mt-4 p-3 rounded-md border bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-3">
@@ -912,6 +885,42 @@ export default function SiteSupervisorWeeklyLogsPage() {
                   )}
                 </TabsContent>
               </Tabs>
+              </DialogBody>
+              {selectedLog.status === "submitted" && (
+                <DialogFooter>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      // Pre-fill remarks with the typed feedback so the
+                      // sign dialog picks it up.
+                      setSignRemarks(reviewFeedback);
+                      if (selectedLog) openSignDialog(selectedLog);
+                    }}
+                    disabled={isSubmittingReview || isSigning}
+                  >
+                    <PenTool className="h-4 w-4 mr-2" />
+                    Sign & Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                    onClick={() => handleReview("request_revision")}
+                    disabled={isSubmittingReview || !reviewFeedback.trim()}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Request Revision
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
+                    onClick={() => handleReview("reject")}
+                    disabled={isSubmittingReview || !reviewFeedback.trim()}
+                  >
+                    <ThumbsDown className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
+                </DialogFooter>
+              )}
             </>
           )}
         </DialogContent>
@@ -921,7 +930,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
       {/* SIGN DIALOG (new)                                            */}
       {/* ============================================================ */}
       <Dialog open={signDialogOpen} onOpenChange={(o) => !o && closeSignDialog()}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sign & Approve Weekly Report</DialogTitle>
             <DialogDescription>
@@ -935,7 +944,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <DialogBody className="space-y-4">
             {/* Summary preview */}
             {signLog && (
               <div className="p-3 rounded-md border bg-muted/30 text-xs space-y-1">
@@ -980,9 +989,9 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 </p>
               )}
             </div>
-          </div>
+          </DialogBody>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t">
+          <DialogFooter>
             <Button variant="outline" onClick={closeSignDialog} disabled={isSigning}>
               Cancel
             </Button>
@@ -999,7 +1008,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 </>
               )}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

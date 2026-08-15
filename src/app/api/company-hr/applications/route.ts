@@ -335,9 +335,14 @@ export async function PATCH(request: NextRequest) {
       });
 
       if (newSIs.length > 0) {
+        // ignoreDuplicates: false (the default) so that re-accepting an
+        // application after a withdraw updates the existing row's status
+        // back to 'assigned'. With ignoreDuplicates: true the upsert
+        // silently no-op'd on conflict, leaving the row stuck at its
+        // previous status (e.g. 'withdrawn').
         await supabase
           .from("student_internships")
-          .upsert(newSIs, { onConflict: "student_user_id,internship_id", ignoreDuplicates: true });
+          .upsert(newSIs, { onConflict: "student_user_id,internship_id", ignoreDuplicates: false });
       }
     }
 

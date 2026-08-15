@@ -17,7 +17,8 @@ export async function GET() {
       );
     }
 
-    // Get full profile with related data
+    // Get full profile with related data. Use maybeSingle() so a missing
+    // profile (new user) returns null instead of throwing PGRST116.
     const { data: profile, error } = await supabase
       .from("profiles")
       .select(`
@@ -34,7 +35,7 @@ export async function GET() {
         )
       `)
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -160,10 +161,16 @@ export async function PUT(request: NextRequest) {
     if (enrollment_year !== undefined) studentFields.enrollment_year = enrollment_year !== null ? parseInt(enrollment_year) : null;
     if (Object.keys(studentFields).length > 0) {
       studentFields.updated_at = new Date().toISOString();
+      // Specify onConflict so PostgREST knows which unique constraint to
+      // upsert against (without this it errors when multiple unique
+      // constraints exist). The trailing .eq() filter has no effect on
+      // INSERT and was misleading, so it's removed.
       const { error: studentErr } = await supabase
         .from("students")
-        .upsert({ user_id: user.id, ...studentFields })
-        .eq("user_id", user.id);
+        .upsert(
+          { user_id: user.id, ...studentFields },
+          { onConflict: "user_id" }
+        );
       if (studentErr) {
         // Non-fatal — log and continue.
         console.warn("Could not update students row:", studentErr);

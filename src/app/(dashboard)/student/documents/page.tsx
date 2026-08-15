@@ -10,8 +10,10 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -62,7 +64,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -141,7 +143,6 @@ const getDocumentCategory = (type: string): string => {
 
 export default function StudentDocumentsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -153,6 +154,7 @@ export default function StudentDocumentsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentType, setDocumentType] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
   // View dialog state
@@ -255,10 +257,12 @@ export default function StudentDocumentsPage() {
     try {
       const supabase = createClient();
 
-      // Generate unique filename
+      // Generate unique filename. The first path segment MUST be the
+      // uploader's user_id — the documents_insert RLS policy enforces
+      // `(storage.foldername(name))[1] = auth.uid()::text`.
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${documentType}_${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = `documents/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
       // Simulate progress
       const progressInterval = setInterval(() => {
@@ -277,10 +281,16 @@ export default function StudentDocumentsPage() {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // The `documents` bucket is private — a public URL won't resolve.
+      // Generate a signed URL (7-day TTL) for the stored row + download link.
+      const { data: urlData, error: signedUrlError } = await supabase.storage
         .from('documents')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+
+      if (signedUrlError || !urlData?.signedUrl) {
+        throw signedUrlError || new Error("Failed to create signed URL for document");
+      }
+      const docUrl = urlData.signedUrl;
 
       // Insert record in database
       const { error: dbError } = await supabase
@@ -288,7 +298,7 @@ export default function StudentDocumentsPage() {
         .insert({
           name: selectedFile.name,
           type: documentType as DocumentType,
-          url: urlData.publicUrl,
+          url: docUrl,
           size: selectedFile.size,
           mime_type: selectedFile.type,
           uploaded_by: user.id,
@@ -300,6 +310,7 @@ export default function StudentDocumentsPage() {
       if (dbError) throw dbError;
 
       setUploadProgress(100);
+      toast.success("Document uploaded", { description: selectedFile.name });
 
       setTimeout(() => {
         setUploadDialogOpen(false);
@@ -313,7 +324,7 @@ export default function StudentDocumentsPage() {
 
     } catch (error) {
       console.error("Error uploading document:", error);
-      toast({ title: "Failed", description: "Failed to upload document. Please try again.", variant: "destructive" });
+      toast.error("Failed", { description: "Failed to upload document. Please try again." });
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -328,17 +339,26 @@ export default function StudentDocumentsPage() {
   const confirmDelete = async () => {
     const doc = deleteDialog.doc;
     if (!doc) return;
-    setDeleteDialog({ open: false, doc: null });
-
+    setIsDeleting(true);
     try {
       const supabase = createClient();
 
-      // Delete from storage
-      const urlParts = doc.url.split('/');
-      const fileName = urlParts[urlParts.length - 1];
+      // Extract the storage object path from the stored URL. The bucket
+      // name (`documents`) appears in the URL path; everything after it
+      // (up to any query string) is the object path. This works for both
+      // legacy `documents/<name>` uploads and the new `<user_id>/<name>` paths.
+      const marker = "/documents/";
+      const idx = doc.url.indexOf(marker);
+      let filePath: string;
+      if (idx !== -1) {
+        filePath = decodeURIComponent(doc.url.substring(idx + marker.length).split("?")[0]);
+      } else {
+        const urlParts = doc.url.split('/');
+        filePath = `documents/${urlParts[urlParts.length - 1].split("?")[0]}`;
+      }
 
       try {
-        await supabase.storage.from('documents').remove([`documents/${fileName}`]);
+        await supabase.storage.from('documents').remove([filePath]);
       } catch (e) {
         console.log("Storage deletion skipped or failed:", e);
       }
@@ -353,9 +373,13 @@ export default function StudentDocumentsPage() {
 
       // Update local state
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
+      toast.success("Document deleted", { description: doc.name });
+      setDeleteDialog({ open: false, doc: null });
     } catch (error) {
       console.error("Error deleting document:", error);
-      toast({ title: "Failed", description: "Failed to delete document.", variant: "destructive" });
+      toast.error("Failed", { description: "Failed to delete document." });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -426,7 +450,7 @@ export default function StudentDocumentsPage() {
                     </DialogDescription>
                   </DialogHeader>
 
-              <div className="space-y-4 mt-4">
+              <DialogBody className="space-y-4">
                 {/* Document Type */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Document Type *</label>
@@ -457,7 +481,7 @@ export default function StudentDocumentsPage() {
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 25 * 1024 * 1024) {
-                            toast({ title: "Failed", description: "File must be less than 25MB", variant: "destructive" });
+                            toast.error("Failed", { description: "File must be less than 25MB" });
                             return;
                           }
                           setSelectedFile(file);
@@ -498,9 +522,8 @@ export default function StudentDocumentsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Actions */}
-                <div className="flex justify-end gap-2 pt-4">
+              </DialogBody>
+                <DialogFooter>
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -524,8 +547,7 @@ export default function StudentDocumentsPage() {
                     )}
                     {isUploading ? "Uploading..." : "Upload"}
                   </Button>
-                </div>
-              </div>
+                </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
@@ -832,7 +854,7 @@ export default function StudentDocumentsPage() {
 
       {/* View Document Dialog */}
       <Dialog open={!!viewDocument} onOpenChange={() => setViewDocument(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {getFileIcon(viewDocument?.mime_type || "", viewDocument?.type)}
@@ -844,7 +866,7 @@ export default function StudentDocumentsPage() {
           </DialogHeader>
 
           {viewDocument && (
-            <div className="space-y-6 mt-4">
+            <DialogBody className="space-y-6">
               {/* Document Info */}
               <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-muted/50">
                 <div>
@@ -931,21 +953,19 @@ export default function StudentDocumentsPage() {
                   </div>
                 )}
               </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setViewDocument(null)}>
-                  Close
-                </Button>
-                <a href={viewDocument.url} target="_blank" rel="noopener noreferrer">
-                  <Button className="gap-2">
-                    <Download className="h-4 w-4" />
-                    Download
-                  </Button>
-                </a>
-              </div>
-            </div>
+            </DialogBody>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewDocument(null)}>
+              Close
+            </Button>
+            <a href={viewDocument?.url} target="_blank" rel="noopener noreferrer">
+              <Button className="gap-2">
+                <Download className="h-4 w-4" />
+                Download
+              </Button>
+            </a>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -964,12 +984,13 @@ export default function StudentDocumentsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

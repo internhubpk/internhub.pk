@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -627,13 +628,13 @@ export default function InternshipsPage() {
                                 Quick View
                               </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+                            <DialogContent className="max-w-md">
                               <DialogHeader>
                                 <DialogTitle className="text-lg">
                                   {internship.title}
                                 </DialogTitle>
                               </DialogHeader>
-                              <div className="space-y-4 mt-4">
+                              <DialogBody className="space-y-4">
                                 <div className="flex items-center gap-2">
                                   <Building2 className="h-5 w-5 text-primary" />
                                   <span className="font-medium">
@@ -711,7 +712,8 @@ export default function InternshipsPage() {
                                     Apply by {formatDate(internship.deadline)}
                                   </div>
                                 )}
-
+                              </DialogBody>
+                              <div className="px-6 pb-6">
                                 <Button className="w-full" asChild>
                                   <Link href={`/marketplace/${internship.id}`}>
                                     Apply Now

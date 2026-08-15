@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -656,7 +657,7 @@ export default function SiteSupervisorStudentsPage() {
 
       {/* Student Detail Modal */}
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -679,6 +680,7 @@ export default function SiteSupervisorStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
+              <DialogBody className="p-0">
               <Tabs defaultValue="overview" className="mt-4">
                 <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1019,6 +1021,7 @@ export default function SiteSupervisorStudentsPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
+              </DialogBody>
             </>
           )}
         </DialogContent>

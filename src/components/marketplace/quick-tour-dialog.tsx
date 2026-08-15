@@ -4,7 +4,9 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -65,7 +67,7 @@ export function QuickTourDialog({ buttonClassName }: { buttonClassName?: string 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 py-2">
+        <DialogBody className="grid gap-3 py-2">
           {tourSteps.map((step, i) => (
             <motion.div
               key={step.title}
@@ -87,14 +89,16 @@ export function QuickTourDialog({ buttonClassName }: { buttonClassName?: string 
               </div>
             </motion.div>
           ))}
-        </div>
+        </DialogBody>
 
-        <Button asChild className="w-full mt-2">
+        <DialogFooter>
+        <Button asChild className="w-full">
           <Link href="/register">
             Get Started Free
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

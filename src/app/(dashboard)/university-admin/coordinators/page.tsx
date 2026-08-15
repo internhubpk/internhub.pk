@@ -51,7 +51,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -78,8 +78,6 @@ const emptyForm: CoordinatorFormData = {
 
 export default function CoordinatorsPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-  
   const [coordinators, setCoordinators] = useState<CoordinatorWithDetails[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -158,11 +156,7 @@ export default function CoordinatorsPage() {
       setCoordinators(filtered);
     } catch (error) {
       console.error("Error fetching coordinators:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load coordinators",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load coordinators" });
     } finally {
       setIsLoading(false);
     }
@@ -197,38 +191,22 @@ export default function CoordinatorsPage() {
   const handleCreateCoordinator = async () => {
     // Validate form
     if (!formData.email.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Email is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Email is required" });
       return;
     }
 
     if (!formData.email.includes("@")) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Please enter a valid email address" });
       return;
     }
 
     if (!formData.full_name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Full name is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Full name is required" });
       return;
     }
 
     if (formData.password.length < 8) {
-      toast({
-        title: "Validation Error",
-        description: "Password must be at least 8 characters",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Password must be at least 8 characters" });
       return;
     }
 
@@ -257,17 +235,9 @@ export default function CoordinatorsPage() {
 
       if (!res.ok || !json?.success) {
         if (json?.error?.toLowerCase?.().includes("already")) {
-          toast({
-            title: "Email Already Exists",
-            description: "An account with this email already exists",
-            variant: "destructive",
-          });
+          toast.error("Email Already Exists", { description: "An account with this email already exists" });
         } else {
-          toast({
-            title: "Error",
-            description: json?.error || `Request failed (${res.status})`,
-            variant: "destructive",
-          });
+          toast.error("Error", { description: json?.error || `Request failed (${res.status})` });
         }
         return;
       }
@@ -276,16 +246,9 @@ export default function CoordinatorsPage() {
       // (e.g. university_id not saved). Show it so the admin knows the
       // coordinator might not appear in lists until the profile is fixed.
       if (json?.warning) {
-        toast({
-          title: "Account created (with warning)",
-          description: json.warning,
-          variant: "destructive",
-        });
+        toast.error("Account created (with warning)", { description: json.warning });
       } else {
-        toast({
-          title: "Coordinator Created",
-          description: `${formData.full_name}'s account has been created successfully`,
-        });
+        toast.success("Coordinator Created", { description: `${formData.full_name}'s account has been created successfully` });
       }
 
       setIsDialogOpen(false);
@@ -293,11 +256,7 @@ export default function CoordinatorsPage() {
       fetchCoordinators();
     } catch (error) {
       console.error("Error creating coordinator:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create coordinator account. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to create coordinator account. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -323,27 +282,16 @@ export default function CoordinatorsPage() {
       console.log("[coordinators.handleToggleStatus] response", { status: res.status, json });
 
       if (!res.ok || !json?.success) {
-        toast({
-          title: "Status change failed",
-          description: json?.error || `Request failed (${res.status})`,
-          variant: "destructive",
-        });
+        toast.error("Status change failed", { description: json?.error || `Request failed (${res.status})` });
         return;
       }
 
-      toast({
-        title: "Status Updated",
-        description: `${coordinator.full_name || coordinator.email} has been ${nextActive ? "activated" : "deactivated"}`,
-      });
+      toast.success("Status Updated", { description: `${coordinator.full_name || coordinator.email} has been ${nextActive ? "activated" : "deactivated"}` });
 
       fetchCoordinators();
     } catch (error) {
       console.error("[coordinators.handleToggleStatus] unhandled", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update status",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update status" });
     }
   };
 
@@ -366,29 +314,18 @@ export default function CoordinatorsPage() {
       console.log("[coordinators.handleUpdateDepartment] response", { status: res.status, json });
 
       if (!res.ok || !json?.success) {
-        toast({
-          title: "Assignment failed",
-          description: json?.error || `Request failed (${res.status})`,
-          variant: "destructive",
-        });
+        toast.error("Assignment failed", { description: json?.error || `Request failed (${res.status})` });
         return;
       }
 
-      toast({
-        title: "Department Updated",
-        description: departmentId
+      toast.success("Department Updated", { description: departmentId
           ? `Coordinator assigned to ${departments.find((d) => d.id === departmentId)?.name || "department"}`
-          : "Coordinator unassigned from department",
-      });
+          : "Coordinator unassigned from department" });
 
       fetchCoordinators();
     } catch (error) {
       console.error("[coordinators.handleUpdateDepartment] unhandled", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update department assignment",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update department assignment" });
     }
   };
 

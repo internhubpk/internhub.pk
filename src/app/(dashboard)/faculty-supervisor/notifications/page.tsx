@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -116,7 +117,6 @@ const DEFAULT_NOTIFICATIONS: Notification[] = [];
 
 export default function FacultySupervisorNotificationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   // State
   const [notifications, setNotifications] = useState<Notification[]>(DEFAULT_NOTIFICATIONS);
   const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
@@ -485,7 +485,7 @@ export default function FacultySupervisorNotificationsPage() {
       }
 
       if (recipientIds.length === 0) {
-        toast({ title: "Action required", description: "Please select at least one recipient.", variant: "destructive" });
+        toast.error("Action required", { description: "Please select at least one recipient." });
         setIsSending(false);
         return;
       }
@@ -536,11 +536,14 @@ export default function FacultySupervisorNotificationsPage() {
       };
 
       setNotifications(prev => [newNotification, ...prev]);
+      toast.success(`Notification sent to ${recipientIds.length} recipient${recipientIds.length !== 1 ? "s" : ""}`, {
+        description: `"${composeForm.title}" has been delivered.`,
+      });
       setIsComposeDialogOpen(false);
       resetComposeForm();
     } catch (error) {
       console.error("Error sending notification:", error);
-      toast({ title: "Failed", description: "Failed to send notification. Please try again.", variant: "destructive" });
+      toast.error("Failed to send notification", { description: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setIsSending(false);
     }
@@ -596,7 +599,7 @@ export default function FacultySupervisorNotificationsPage() {
                 <Plus className="h-4 w-4" /> New Notification
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Compose Notification</DialogTitle>
                 <DialogDescription>
@@ -604,7 +607,7 @@ export default function FacultySupervisorNotificationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-            <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
+            <DialogBody className="space-y-4">
               {/* Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">Title *</Label>
@@ -746,7 +749,7 @@ export default function FacultySupervisorNotificationsPage() {
                   </CardContent>
                 </Card>
               )}
-            </div>
+            </DialogBody>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsComposeDialogOpen(false)}>
@@ -983,7 +986,7 @@ export default function FacultySupervisorNotificationsPage() {
                 </div>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Message Content */}
                 <Card>
                   <CardHeader className="pb-3">
@@ -1050,63 +1053,59 @@ export default function FacultySupervisorNotificationsPage() {
                     </div>
                   </CardContent>
                 </Card>
+              </DialogBody>
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2 pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => {
-                      if (!selectedNotification) return;
-                      // Pre-fill the compose form with this notification's
-                      // content so the user can quickly send a similar one.
-                      setComposeForm({
-                        title: selectedNotification.title,
-                        message: selectedNotification.message,
-                        priority: selectedNotification.priority,
-                        target: "all",
-                        selectedStudentId: "",
-                        selectedProgramId: "",
-                      });
-                      setIsViewDialogOpen(false);
-                      setIsComposeDialogOpen(true);
-                    }}
-                  >
-                    <Copy className="h-4 w-4" /> Duplicate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => {
-                      if (!selectedNotification) return;
-                      setComposeForm({
-                        title: selectedNotification.title,
-                        message: selectedNotification.message,
-                        priority: selectedNotification.priority,
-                        target: "all",
-                        selectedStudentId: "",
-                        selectedProgramId: "",
-                      });
-                      setIsViewDialogOpen(false);
-                      setIsComposeDialogOpen(true);
-                    }}
-                  >
-                    <Forward className="h-4 w-4" /> Resend
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => window.print()}
-                  >
-                    <Printer className="h-4 w-4" /> Print
-                  </Button>
-                </div>
-              </div>
-
-              <DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    if (!selectedNotification) return;
+                    // Pre-fill the compose form with this notification's
+                    // content so the user can quickly send a similar one.
+                    setComposeForm({
+                      title: selectedNotification.title,
+                      message: selectedNotification.message,
+                      priority: selectedNotification.priority,
+                      target: "all",
+                      selectedStudentId: "",
+                      selectedProgramId: "",
+                    });
+                    setIsViewDialogOpen(false);
+                    setIsComposeDialogOpen(true);
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Duplicate
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    if (!selectedNotification) return;
+                    setComposeForm({
+                      title: selectedNotification.title,
+                      message: selectedNotification.message,
+                      priority: selectedNotification.priority,
+                      target: "all",
+                      selectedStudentId: "",
+                      selectedProgramId: "",
+                    });
+                    setIsViewDialogOpen(false);
+                    setIsComposeDialogOpen(true);
+                  }}
+                >
+                  <Forward className="h-4 w-4" /> Resend
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => window.print()}
+                >
+                  <Printer className="h-4 w-4" /> Print
+                </Button>
                 <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                   Close
                 </Button>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -186,7 +187,7 @@ export function ApplicationCard({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
+            <DialogBody className="space-y-4">
               <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-muted-foreground" />
@@ -212,7 +213,7 @@ export function ApplicationCard({
                   rows={3}
                 />
               </div>
-            </div>
+            </DialogBody>
 
             <DialogFooter>
               <Button
@@ -361,7 +362,7 @@ export function ApplicationCard({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
+          <DialogBody className="space-y-4">
             <div className="p-3 rounded-lg bg-muted/50 space-y-2">
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
@@ -387,7 +388,7 @@ export function ApplicationCard({
                 rows={3}
               />
             </div>
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsActionDialogOpen(false)}>
@@ -452,7 +453,7 @@ export function ApplicationDetail({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Application Details</DialogTitle>
           <DialogDescription>
@@ -460,7 +461,7 @@ export function ApplicationDetail({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4 px-6 overflow-y-auto max-h-[60vh]">
+        <DialogBody className="space-y-6">
           {/* Student Profile Header */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -582,7 +583,7 @@ export function ApplicationDetail({
               </div>
             </div>
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

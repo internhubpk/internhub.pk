@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -73,7 +74,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -111,7 +112,6 @@ const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHREvaluationsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [internsForEvaluation, setInternsForEvaluation] = useState<Array<{
@@ -203,7 +203,7 @@ export default function CompanyHREvaluationsPage() {
 
   const handleSubmitEvaluation = async (status: "submitted" | "in_progress") => {
     if (!evaluateTarget) {
-      toast({ title: "Action required", description: "Please select an intern to evaluate.", variant: "destructive" });
+      toast.error("Action required", { description: "Please select an intern to evaluate." });
       return;
     }
     setSubmitting(true);
@@ -234,6 +234,10 @@ export default function CompanyHREvaluationsPage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      toast.success(
+        status === "submitted" ? "Evaluation submitted" : "Draft saved",
+        { description: status === "submitted" ? "The evaluation has been finalized." : "You can continue editing later." }
+      );
       setIsEvaluateOpen(false);
       setFormState({
         overall_rating: 0, skills_rating: 0, attitude_rating: 0,
@@ -244,7 +248,7 @@ export default function CompanyHREvaluationsPage() {
       setEvaluateTarget(null);
       await fetchEvaluations();
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Failed to save evaluation", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to save evaluation" });
     } finally {
       setSubmitting(false);
     }
@@ -258,9 +262,10 @@ export default function CompanyHREvaluationsPage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      toast.success("Certificate issued", { description: "The intern can now download it from their dashboard." });
       await fetchEvaluations();
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Failed to issue certificate", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to issue certificate" });
     } finally {
       setIssuingCert(false);
     }
@@ -613,7 +618,7 @@ export default function CompanyHREvaluationsPage() {
                                   const res = await fetch(`/api/company-hr/evaluations/${evaluation.id}/certificate`);
                                   if (!res.ok) {
                                     const err = await res.json().catch(() => ({}));
-                                    toast({ title: "Error", description: err.error || "Failed to generate certificate. The evaluation may not be approved yet.", variant: "destructive" });
+                                    toast.error("Error", { description: err.error || "Failed to generate certificate. The evaluation may not be approved yet." });
                                     return;
                                   }
                                   const blob = await res.blob();
@@ -626,7 +631,7 @@ export default function CompanyHREvaluationsPage() {
                                   document.body.removeChild(a);
                                   URL.revokeObjectURL(url);
                                 } catch (e) {
-                                  toast({ title: "Failed", description: "Network error while generating certificate.", variant: "destructive" });
+                                  toast.error("Failed", { description: "Network error while generating certificate." });
                                 }
                               }}
                             >
@@ -669,7 +674,7 @@ export default function CompanyHREvaluationsPage() {
 
       {/* View Detail Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -690,7 +695,7 @@ export default function CompanyHREvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Ratings */}
                 <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
                   <h4 className="font-semibold flex items-center gap-2">
@@ -767,25 +772,25 @@ export default function CompanyHREvaluationsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-4 border-t gap-2">
-                  <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
-                  {!selectedEvaluation.certificate_issued && (selectedEvaluation.status === "approved" || selectedEvaluation.status === "submitted") && (
-                    <Button
-                      className="bg-purple-600 hover:bg-purple-700"
-                      onClick={() => handleIssueCertificate(selectedEvaluation.id)}
-                      disabled={issuingCert}
-                    >
-                      <Award className="h-4 w-4 mr-2" />
-                      {issuingCert ? "Issuing..." : "Issue Certificate"}
-                    </Button>
-                  )}
-                  {selectedEvaluation.certificate_issued && (
-                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                      <CheckCircle2 className="mr-1 h-3 w-3" /> Certificate issued
-                    </Badge>
-                  )}
-                </div>
-              </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
+                {!selectedEvaluation.certificate_issued && (selectedEvaluation.status === "approved" || selectedEvaluation.status === "submitted") && (
+                  <Button
+                    className="bg-purple-600 hover:bg-purple-700"
+                    onClick={() => handleIssueCertificate(selectedEvaluation.id)}
+                    disabled={issuingCert}
+                  >
+                    <Award className="h-4 w-4 mr-2" />
+                    {issuingCert ? "Issuing..." : "Issue Certificate"}
+                  </Button>
+                )}
+                {selectedEvaluation.certificate_issued && (
+                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                    <CheckCircle2 className="mr-1 h-3 w-3" /> Certificate issued
+                  </Badge>
+                )}
+              </DialogFooter>
             </>
           )}
         </DialogContent>
@@ -793,7 +798,7 @@ export default function CompanyHREvaluationsPage() {
 
       {/* Evaluate Dialog */}
       <Dialog open={isEvaluateOpen} onOpenChange={setIsEvaluateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Complete Final Evaluation</DialogTitle>
             <DialogDescription>
@@ -802,7 +807,7 @@ export default function CompanyHREvaluationsPage() {
           </DialogHeader>
 
           {selectedEvaluation && (
-            <div className="mt-4 space-y-6">
+            <DialogBody className="space-y-6">
               <div className="p-3 bg-muted/30 rounded-lg flex items-center gap-3">
                 <Avatar className="h-10 w-10">
                   <AvatarFallback>{getInitials(selectedEvaluation.intern_name)}</AvatarFallback>
@@ -895,7 +900,10 @@ export default function CompanyHREvaluationsPage() {
                 </Select>
               </div>
 
-              <DialogFooter className="pt-4 border-t">
+              </DialogBody>
+          )}
+          {selectedEvaluation && (
+              <DialogFooter>
                 <Button variant="outline" onClick={() => setIsEvaluateOpen(false)} disabled={submitting}>
                   Cancel
                 </Button>
@@ -913,7 +921,6 @@ export default function CompanyHREvaluationsPage() {
                   {submitting ? "Submitting..." : "Submit Evaluation"}
                 </Button>
               </DialogFooter>
-            </div>
           )}
         </DialogContent>
       </Dialog>

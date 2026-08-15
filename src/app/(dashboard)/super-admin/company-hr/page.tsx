@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -52,7 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -117,8 +118,6 @@ export default function SuperAdminCompanyHrPage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HrProfile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { toast } = useToast();
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -159,11 +158,7 @@ export default function SuperAdminCompanyHrPage() {
       setCompanies(companiesRes.data || []);
     } catch (error: any) {
       console.error("Error fetching data:", error);
-      toast({
-        title: "Failed to load company HR accounts",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to load company HR accounts", { description: error.message });
     } finally {
       setIsLoading(false);
     }
@@ -171,19 +166,19 @@ export default function SuperAdminCompanyHrPage() {
 
   async function handleCreate() {
     if (!createForm.full_name.trim()) {
-      toast({ title: "Full name is required", variant: "destructive" });
+      toast.error("Full name is required");
       return;
     }
     if (!createForm.email.trim() || !createForm.email.includes("@")) {
-      toast({ title: "Valid email is required", variant: "destructive" });
+      toast.error("Valid email is required");
       return;
     }
     if (createForm.password.length < 8) {
-      toast({ title: "Password must be at least 8 characters", variant: "destructive" });
+      toast.error("Password must be at least 8 characters");
       return;
     }
     if (!createForm.company_id) {
-      toast({ title: "Please select a company", variant: "destructive" });
+      toast.error("Please select a company");
       return;
     }
 
@@ -215,20 +210,13 @@ export default function SuperAdminCompanyHrPage() {
         throw new Error(json?.error || `Request failed (${res.status})`);
       }
 
-      toast({
-        title: "Company HR account created",
-        description: `${createForm.email} can now sign in.`,
-      });
+      toast.success("Company HR account created", { description: `${createForm.email} can now sign in.` });
       setCreateForm(emptyCreateForm);
       setIsDialogOpen(false);
       fetchData();
     } catch (error: any) {
       console.error("Error creating HR:", error);
-      toast({
-        title: "Failed to create HR account",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to create HR account", { description: error.message });
     } finally {
       setIsCreating(false);
     }
@@ -266,16 +254,12 @@ export default function SuperAdminCompanyHrPage() {
         .eq("user_id", editingHr.user_id);
 
       if (error) throw error;
-      toast({ title: "HR account updated" });
+      toast.success("HR account updated");
       setIsEditDialogOpen(false);
       setEditingHr(null);
       fetchData();
     } catch (error: any) {
-      toast({
-        title: "Failed to update",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to update", { description: error.message });
     } finally {
       setIsSavingEdit(false);
     }
@@ -298,15 +282,11 @@ export default function SuperAdminCompanyHrPage() {
         .eq("user_id", deleteTarget.user_id);
 
       if (error) throw error;
-      toast({ title: "HR account deactivated" });
+      toast.success("HR account deactivated");
       setDeleteTarget(null);
       fetchData();
     } catch (error: any) {
-      toast({
-        title: "Failed to deactivate",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to deactivate", { description: error.message });
     } finally {
       setIsDeleting(false);
     }
@@ -500,7 +480,7 @@ export default function SuperAdminCompanyHrPage() {
 
       {/* Create HR Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
@@ -512,7 +492,7 @@ export default function SuperAdminCompanyHrPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <DialogBody className="space-y-4">
             <div>
               <Label htmlFor="hr-full-name">Full Name *</Label>
               <Input
@@ -590,7 +570,7 @@ export default function SuperAdminCompanyHrPage() {
                 />
               </div>
             </div>
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -619,7 +599,7 @@ export default function SuperAdminCompanyHrPage() {
               Update {editingHr?.email}&apos;s information.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <DialogBody className="space-y-4">
             <div>
               <Label htmlFor="edit-full-name">Full Name</Label>
               <Input
@@ -673,7 +653,7 @@ export default function SuperAdminCompanyHrPage() {
               />
               <span className="text-sm">Active</span>
             </label>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel

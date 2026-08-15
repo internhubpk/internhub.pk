@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -66,7 +67,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -91,7 +92,6 @@ const DEFAULT_INTERNS: Array<{id: string; name: string; email: string; program: 
 
 export default function CompanyHRDocumentsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [documents, setDocuments] = useState<InternDocument[]>(DEFAULT_DOCUMENTS);
   const [interns, setInterns] = useState(DEFAULT_INTERNS);
   const [uploading, setUploading] = useState(false);
@@ -182,13 +182,14 @@ export default function CompanyHRDocumentsPage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      toast.success("Document uploaded", { description: selectedFile.name });
       await fetchDocuments();
       await fetchInterns();
       setIsUploadOpen(false);
       setSelectedFile(null);
       setSelectedInternForUpload("");
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Failed to upload document", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to upload document" });
     } finally {
       setUploading(false);
     }
@@ -265,7 +266,7 @@ export default function CompanyHRDocumentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4">
+              <DialogBody className="space-y-4">
                 <div className="space-y-2">
                   <Label>Document Type</Label>
                   <Select value={uploadDocumentType} onValueChange={(v) => setUploadDocumentType(v as any)}>
@@ -290,7 +291,7 @@ export default function CompanyHRDocumentsPage() {
                     <FileText className="h-12 w-12 text-muted-foreground/40" />
                   </div>
                 </div>
-
+              </DialogBody>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsBulkOpen(false)}>Cancel</Button>
                   <Button
@@ -301,11 +302,12 @@ export default function CompanyHRDocumentsPage() {
                           (uploadDocumentType === "certificate" && !i.has_certificate)
                       );
                       if (targets.length === 0) {
-                        toast({ title: "Notice", description: "All interns already have this document type. Nothing to generate." });
+                        toast.success("Notice", { description: "All interns already have this document type. Nothing to generate." });
                         return;
                       }
                       setUploading(true);
                       let success = 0;
+                      const failures: string[] = [];
                       for (const i of targets) {
                         try {
                           const res = await fetch("/api/company-hr/documents", {
@@ -317,23 +319,30 @@ export default function CompanyHRDocumentsPage() {
                               name: `${uploadDocumentType === "offer_letter" ? "Offer Letter" : "Certificate"} — ${i.name}`,
                             }),
                           });
-                          if (res.ok) success += 1;
+                          if (res.ok) {
+                            success += 1;
+                          } else {
+                            failures.push(i.name);
+                          }
                         } catch {
-                          // continue
+                          failures.push(i.name);
                         }
                       }
                       setUploading(false);
                       setIsBulkOpen(false);
                       await fetchDocuments();
                       await fetchInterns();
-                      toast({ title: "Success", description: `Generated ${success} of ${targets.length} document(s).` });
+                      if (failures.length === 0) {
+                        toast.success("Documents generated", { description: `Generated ${success} of ${targets.length} document(s).` });
+                      } else {
+                        toast.warning("Generation completed with errors", { description: `Generated ${success} of ${targets.length}. Failed for: ${failures.slice(0, 5).join(", ")}${failures.length > 5 ? ` and ${failures.length - 5} more.` : ""}` });
+                      }
                     }}
                     disabled={uploading || interns.length === 0}
                   >
                     {uploading ? "Generating..." : "Generate Documents"}
                   </Button>
                 </DialogFooter>
-              </div>
             </DialogContent>
           </Dialog>
 
@@ -352,7 +361,7 @@ export default function CompanyHRDocumentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4">
+              <DialogBody className="space-y-4">
                 <div className="space-y-2">
                   <Label>Select Intern</Label>
                   <Select value={selectedInternForUpload} onValueChange={setSelectedInternForUpload}>
@@ -405,7 +414,7 @@ export default function CompanyHRDocumentsPage() {
                     </label>
                   </div>
                 </div>
-
+              </DialogBody>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => { setIsUploadOpen(false); setSelectedFile(null); }} disabled={uploading}>
                     Cancel
@@ -417,7 +426,6 @@ export default function CompanyHRDocumentsPage() {
                     {uploading ? "Uploading..." : "Upload Document"}
                   </Button>
                 </DialogFooter>
-              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -562,13 +570,14 @@ export default function CompanyHRDocumentsPage() {
                                   });
                                   if (res.ok) {
                                     // Refresh the documents list on success.
+                                    toast.success("Document deleted", { description: doc.file_name });
                                     window.location.reload();
                                   } else {
                                     const err = await res.json().catch(() => ({}));
-                                    toast({ title: "Error", description: err.error || "Failed to delete document.", variant: "destructive" });
+                                    toast.error("Error", { description: err.error || "Failed to delete document." });
                                   }
                                 } catch (e) {
-                                  toast({ title: "Failed", description: "Network error while deleting document.", variant: "destructive" });
+                                  toast.error("Failed", { description: "Network error while deleting document." });
                                 }
                               }}
                             >

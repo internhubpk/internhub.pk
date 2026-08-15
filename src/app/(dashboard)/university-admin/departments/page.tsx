@@ -47,7 +47,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -88,8 +88,6 @@ const emptyForm: DepartmentFormData = {
 
 export default function DepartmentsPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-  
   const [departments, setDepartments] = useState<DepartmentWithCounts[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -178,11 +176,7 @@ export default function DepartmentsPage() {
       setDepartments(filtered);
     } catch (error) {
       console.error("Error fetching departments:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load departments",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load departments" });
     } finally {
       setIsLoading(false);
     }
@@ -223,20 +217,12 @@ export default function DepartmentsPage() {
   const handleCreateOrUpdate = async () => {
     // Validate form
     if (!formData.name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Department name is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Department name is required" });
       return;
     }
 
     if (!formData.code.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Department code is required",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Department code is required" });
       return;
     }
 
@@ -245,27 +231,15 @@ export default function DepartmentsPage() {
     // and the existing Department Head dropdown is used instead.
     if (!editingDepartment) {
       if (!formData.coordinatorEmail.trim() || !formData.coordinatorEmail.includes("@")) {
-        toast({
-          title: "Validation Error",
-          description: "A valid coordinator email is required",
-          variant: "destructive",
-        });
+        toast.error("Validation Error", { description: "A valid coordinator email is required" });
         return;
       }
       if (!formData.coordinatorPassword || formData.coordinatorPassword.length < 8) {
-        toast({
-          title: "Validation Error",
-          description: "Coordinator password must be at least 8 characters",
-          variant: "destructive",
-        });
+        toast.error("Validation Error", { description: "Coordinator password must be at least 8 characters" });
         return;
       }
       if (!formData.coordinatorName.trim()) {
-        toast({
-          title: "Validation Error",
-          description: "Coordinator name is required",
-          variant: "destructive",
-        });
+        toast.error("Validation Error", { description: "Coordinator name is required" });
         return;
       }
     }
@@ -290,10 +264,7 @@ export default function DepartmentsPage() {
 
         if (error) throw error;
 
-        toast({
-          title: "Success",
-          description: `Department "${formData.name}" updated successfully`,
-        });
+        toast.success("Success", { description: `Department "${formData.name}" updated successfully` });
       } else {
         // Create new department — initially without head_id (the
         // coordinator account doesn't exist yet). We'll set head_id
@@ -313,11 +284,7 @@ export default function DepartmentsPage() {
 
         if (error) {
           if (error.code === "23505") {
-            toast({
-              title: "Duplicate Entry",
-              description: "A department with this code already exists in your university",
-              variant: "destructive",
-            });
+            toast.error("Duplicate Entry", { description: "A department with this code already exists in your university" });
             return;
           }
           throw error;
@@ -386,16 +353,9 @@ export default function DepartmentsPage() {
         }
 
         if (coordinatorWarning) {
-          toast({
-            title: "Department created (with warnings)",
-            description: `Department "${formData.name}" was created, but: ${coordinatorWarning}`,
-            variant: "destructive",
-          });
+          toast.error("Department created (with warnings)", { description: `Department "${formData.name}" was created, but: ${coordinatorWarning}` });
         } else {
-          toast({
-            title: "Success",
-            description: `Department "${formData.name}" created with coordinator account for ${formData.coordinatorEmail}. Default password: ${formData.coordinatorPassword}`,
-          });
+          toast.success("Success", { description: `Department "${formData.name}" created with coordinator account for ${formData.coordinatorEmail}. Default password: ${formData.coordinatorPassword}` });
         }
       }
 
@@ -404,11 +364,7 @@ export default function DepartmentsPage() {
       fetchDepartments();
     } catch (error) {
       console.error("Error saving department:", error);
-      toast({
-        title: "Error",
-        description: "Failed to save department. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to save department. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -423,11 +379,7 @@ export default function DepartmentsPage() {
 
       // Check if department has students or coordinators
       if ((deletingDepartment.studentCount || 0) > 0 || (deletingDepartment.coordinatorCount || 0) > 0) {
-        toast({
-          title: "Cannot Delete",
-          description: "Please reassign all students and coordinators before deleting this department.",
-          variant: "destructive",
-        });
+        toast.error("Cannot Delete", { description: "Please reassign all students and coordinators before deleting this department." });
         setIsDeleteDialogOpen(false);
         return;
       }
@@ -439,21 +391,14 @@ export default function DepartmentsPage() {
 
       if (error) throw error;
 
-      toast({
-        title: "Deleted",
-        description: `Department "${deletingDepartment.name}" has been deleted`,
-      });
+      toast.success("Deleted", { description: `Department "${deletingDepartment.name}" has been deleted` });
 
       setIsDeleteDialogOpen(false);
       setDeletingDepartment(null);
       fetchDepartments();
     } catch (error) {
       console.error("Error deleting department:", error);
-      toast({
-        title: "Error",
-        description: "Failed to delete department",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to delete department" });
     } finally {
       setIsSubmitting(false);
     }

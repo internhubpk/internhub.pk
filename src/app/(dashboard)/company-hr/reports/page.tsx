@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 interface ReportData {
@@ -114,7 +114,6 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export default function CompanyHRReportsPage() {
-  const { toast } = useToast();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -129,7 +128,7 @@ export default function CompanyHRReportsPage() {
       const j = await res.json();
       setData(j.data);
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast.error("Error", { description: e.message });
     } finally {
       setLoading(false);
     }

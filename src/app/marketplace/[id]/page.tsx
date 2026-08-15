@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -135,6 +136,32 @@ export default function InternshipDetailPage() {
   const [similarInternships, setSimilarInternships] = useState<(Internship & { company_name: string })[]>(DEFAULT_SIMILAR);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
+  // ----- Saved-internships persistence (localStorage) -----
+  // The "Save" button is purely a client-side favorite marker — there's
+  // no backend endpoint to persist it. Without localStorage the saved
+  // state is lost on refresh. We store a JSON array of internship IDs
+  // under `savedInternships` so the heart state survives navigation and
+  // reloads within the same browser.
+  const SAVED_KEY = "savedInternships";
+  const readSavedIds = useCallback((): string[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(SAVED_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const writeSavedIds = useCallback((ids: string[]) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(SAVED_KEY, JSON.stringify(ids));
+    } catch {
+      // Swallow quota / privacy-mode errors — saving is best-effort.
+    }
+  }, []);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [hasExistingApplication, setHasExistingApplication] = useState(false);
   // ID of an existing (possibly withdrawn) application row for this
@@ -301,9 +328,26 @@ export default function InternshipDetailPage() {
     fetchInternship();
   }, [internshipId]);
 
+  // Sync the local `isSaved` flag with localStorage whenever the user
+  // navigates to a different internship detail page. Without this, the
+  // heart button would show "Save" on every fresh page load even if the
+  // user had previously saved the internship.
+  useEffect(() => {
+    if (!internshipId) return;
+    const saved = readSavedIds();
+    setIsSaved(saved.includes(internshipId));
+  }, [internshipId, readSavedIds]);
+
   const handleSave = useCallback(() => {
-    setIsSaved((prev) => !prev);
-  }, []);
+    if (!internshipId) return;
+    const saved = readSavedIds();
+    const alreadySaved = saved.includes(internshipId);
+    const next = alreadySaved
+      ? saved.filter((id) => id !== internshipId)
+      : [...saved, internshipId];
+    writeSavedIds(next);
+    setIsSaved(!alreadySaved);
+  }, [internshipId, readSavedIds, writeSavedIds]);
 
   const handleShare = useCallback(() => {
     if (navigator.share) {
@@ -1000,7 +1044,7 @@ export default function InternshipDetailPage() {
                         </Button>
                       </DialogTrigger>
 
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogContent className="max-w-2xl">
                         <DialogHeader>
                           <DialogTitle>Apply for {internship.title}</DialogTitle>
                           <DialogDescription>
@@ -1014,7 +1058,8 @@ export default function InternshipDetailPage() {
                             to Apply" when there's no user, so this is a
                             defensive double-check. */}
                         {!user ? (
-                          <div className="py-8 text-center space-y-4">
+                          <DialogBody className="py-8">
+                          <div className="text-center space-y-4">
                             <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
                               <User className="h-7 w-7 text-primary" />
                             </div>
@@ -1031,8 +1076,10 @@ export default function InternshipDetailPage() {
                               </Link>
                             </Button>
                           </div>
+                          </DialogBody>
                         ) : profile?.role && profile.role !== "student" ? (
-                          <div className="py-8 text-center space-y-3">
+                          <DialogBody className="py-8">
+                          <div className="text-center space-y-3">
                             <div className="w-14 h-14 mx-auto rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
                               <AlertCircle className="h-7 w-7 text-amber-600" />
                             </div>
@@ -1043,8 +1090,9 @@ export default function InternshipDetailPage() {
                               </p>
                             </div>
                           </div>
+                          </DialogBody>
                         ) : (
-                          <div className="py-4 px-6 space-y-6 overflow-y-auto max-h-[60vh]">
+                          <DialogBody className="space-y-6">
                             {/* Resume Upload — REAL upload to Supabase Storage `cvs` bucket. */}
                             <div className="space-y-2">
                               <Label htmlFor="resume-upload" className="font-medium flex items-center gap-2">
@@ -1230,7 +1278,7 @@ export default function InternshipDetailPage() {
                                 </Select>
                               </div>
                             </div>
-                          </div>
+                          </DialogBody>
                         )}
 
                         <DialogFooter className="gap-2 sm:gap-0">

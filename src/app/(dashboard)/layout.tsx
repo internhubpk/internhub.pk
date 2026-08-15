@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header, HeaderSkeleton } from "@/components/layout/header";
@@ -22,7 +22,7 @@ function DashboardLoading() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar skeleton */}
-      <div className="hidden lg:block w-[280px] h-full border-r border-border bg-[#0a0f1c] animate-pulse" />
+      <div className="hidden lg:block w-[280px] h-full border-r border-border bg-sidebar-background animate-pulse" />
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -40,14 +40,9 @@ function DashboardLoading() {
 // ============================================
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const [pathname, setPathname] = useState("dashboard");
   const [redirecting, setRedirecting] = useState(false);
-
-  // Get pathname only on client side to avoid hydration mismatch
-  useEffect(() => {
-    setPathname(window.location.pathname);
-  }, []);
 
   // Once we know for sure there's no signed-in user, send them to /login
   // instead of ever rendering the dashboard shell or its children.

@@ -27,7 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -102,7 +102,6 @@ const defaultNotifs: NotificationPrefs = {
 
 export default function CompanyHRSettingsPage() {
   const { user, refreshProfile } = useAuth();
-  const { toast } = useToast();
   const [companyForm, setCompanyForm] = useState<CompanyForm>(defaultCompany);
   const [profileForm, setProfileForm] = useState<ProfileForm>(defaultProfile);
   const [notifs, setNotifs] = useState<NotificationPrefs>(defaultNotifs);
@@ -157,11 +156,7 @@ export default function CompanyHRSettingsPage() {
         });
       }
     } catch (e: any) {
-      toast({
-        title: "Error loading settings",
-        description: e.message || "Failed to load settings",
-        variant: "destructive",
-      });
+      toast.error("Error loading settings", { description: e.message || "Failed to load settings" });
     } finally {
       setLoading(false);
     }
@@ -198,11 +193,11 @@ export default function CompanyHRSettingsPage() {
 
   const handleSaveCompany = async () => {
     if (!companyForm.name.trim()) {
-      toast({ title: "Validation error", description: "Company name is required", variant: "destructive" });
+      toast.error("Validation error", { description: "Company name is required" });
       return;
     }
     if (!companyForm.contact_email.trim() || !companyForm.contact_email.includes("@")) {
-      toast({ title: "Validation error", description: "A valid contact email is required", variant: "destructive" });
+      toast.error("Validation error", { description: "A valid contact email is required" });
       return;
     }
     setSavingCompany(true);
@@ -216,9 +211,9 @@ export default function CompanyHRSettingsPage() {
         const j = await res.json().catch(() => null);
         throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
-      toast({ title: "Saved", description: "Company profile updated successfully" });
+      toast.success("Saved", { description: "Company profile updated successfully" });
     } catch (e: any) {
-      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+      toast.error("Save failed", { description: e.message });
     } finally {
       setSavingCompany(false);
     }
@@ -236,10 +231,10 @@ export default function CompanyHRSettingsPage() {
         const j = await res.json().catch(() => null);
         throw new Error(j?.error?.message || `Failed (${res.status})`);
       }
-      toast({ title: "Saved", description: "Your profile was updated" });
+      toast.success("Saved", { description: "Your profile was updated" });
       refreshProfile?.();
     } catch (e: any) {
-      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+      toast.error("Save failed", { description: e.message });
     } finally {
       setSavingProfile(false);
     }
@@ -265,13 +260,9 @@ export default function CompanyHRSettingsPage() {
         })
         .eq("user_id", user.id);
       if (prefsErr) throw prefsErr;
-      toast({ title: "Saved", description: "Notification preferences updated" });
+      toast.success("Saved", { description: "Notification preferences updated" });
     } catch (e) {
-      toast({
-        title: "Save failed",
-        description: e instanceof Error ? e.message : "Failed to save",
-        variant: "destructive",
-      });
+      toast.error("Save failed", { description: e instanceof Error ? e.message : "Failed to save" });
     } finally {
       setSavingNotifs(false);
     }
@@ -279,11 +270,11 @@ export default function CompanyHRSettingsPage() {
 
   const handleChangePassword = async () => {
     if (newPwd.length < 8) {
-      toast({ title: "Validation error", description: "New password must be at least 8 characters", variant: "destructive" });
+      toast.error("Validation error", { description: "New password must be at least 8 characters" });
       return;
     }
     if (newPwd !== confirmPwd) {
-      toast({ title: "Validation error", description: "New passwords do not match", variant: "destructive" });
+      toast.error("Validation error", { description: "New passwords do not match" });
       return;
     }
     setChangingPassword(true);
@@ -295,12 +286,12 @@ export default function CompanyHRSettingsPage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
-      toast({ title: "Password changed", description: "Your password was updated successfully" });
+      toast.success("Password changed", { description: "Your password was updated successfully" });
       setCurrentPwd("");
       setNewPwd("");
       setConfirmPwd("");
     } catch (e: any) {
-      toast({ title: "Password change failed", description: e.message, variant: "destructive" });
+      toast.error("Password change failed", { description: e.message });
     } finally {
       setChangingPassword(false);
     }

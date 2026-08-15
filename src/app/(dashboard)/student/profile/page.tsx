@@ -21,8 +21,10 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -52,7 +54,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { AvatarUploader } from "@/components/shared/avatar-uploader";
@@ -114,7 +116,6 @@ const DEFAULT_NOTIF_PREFS: NotificationPrefs = {
 
 export default function StudentProfilePage() {
   const { user, profile, refreshProfile } = useAuth();
-  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -127,6 +128,7 @@ export default function StudentProfilePage() {
   // CV Upload state
   const [cvInfo, setCvInfo] = useState<CVInfo | null>(null);
   const [cvUploading, setCvUploading] = useState(false);
+  const [cvDeleting, setCvDeleting] = useState(false);
   const [cvUploadProgress, setCvUploadProgress] = useState(0);
   const [cvDialogOpen, setCvDialogOpen] = useState(false);
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -238,16 +240,9 @@ export default function StudentProfilePage() {
       localStorage.setItem(`student_prefs_${user.id}`, JSON.stringify(prefs));
       // Small artificial delay so the spinner is visible — purely cosmetic.
       await new Promise((r) => setTimeout(r, 200));
-      toast({
-        title: "Preferences saved",
-        description: "Your notification preferences have been updated.",
-      });
+      toast.success("Preferences saved", { description: "Your notification preferences have been updated." });
     } catch (err) {
-      toast({
-        title: "Failed to save preferences",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to save preferences", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setIsSavingPrefs(false);
     }
@@ -494,10 +489,12 @@ export default function StudentProfilePage() {
     try {
       const supabase = createClient();
       
-      // Generate unique file name
+      // Generate unique file name. The first path segment MUST be the
+      // uploader's user_id — the documents_insert RLS policy enforces
+      // `(storage.foldername(name))[1] = auth.uid()::text`.
       const fileExt = cvFile.name.split('.').pop();
-      const fileName = `cv_${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = `cvs/${fileName}`;
+      const fileName = `cv_${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
       // Simulate progress for UX
       const progressInterval = setInterval(() => {
@@ -516,10 +513,17 @@ export default function StudentProfilePage() {
       
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // The `documents` bucket is private, so a public URL won't resolve.
+      // Generate a signed URL (7-day TTL) — this is what we store on the
+      // documents row and hand to the download link.
+      const { data: urlData, error: signedUrlError } = await supabase.storage
         .from('documents')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+
+      if (signedUrlError || !urlData?.signedUrl) {
+        throw signedUrlError || new Error("Failed to create signed URL for CV");
+      }
+      const cvUrl = urlData.signedUrl;
 
       // Record in documents table
       const { error: dbError } = await supabase
@@ -527,7 +531,7 @@ export default function StudentProfilePage() {
         .insert({
           name: cvFile.name,
           type: 'resume',
-          url: urlData.publicUrl,
+          url: cvUrl,
           size: cvFile.size,
           mime_type: cvFile.type,
           uploaded_by: user.id,
@@ -539,10 +543,11 @@ export default function StudentProfilePage() {
       if (dbError) throw dbError;
 
       setCvUploadProgress(100);
+      toast.success("CV uploaded", { description: cvFile.name });
       
       // Update local state
       setCvInfo({
-        url: urlData.publicUrl,
+        url: cvUrl,
         name: cvFile.name,
         size: cvFile.size,
         uploadedAt: new Date().toISOString(),
@@ -557,7 +562,7 @@ export default function StudentProfilePage() {
 
     } catch (error) {
       console.error("Error uploading CV:", error);
-      toast({ title: "Failed", description: "Failed to upload CV. Please try again.", variant: "destructive" });
+      toast.error("Failed", { description: "Failed to upload CV. Please try again." });
       setCvUploading(false);
       setCvUploadProgress(0);
     }
@@ -572,25 +577,39 @@ export default function StudentProfilePage() {
   // Actually perform the delete after the user confirms.
   const confirmCVDelete = async () => {
     if (!cvInfo || !user) return;
-    setCvDeleteDialogOpen(false);
-
+    setCvDeleting(true);
     try {
       const supabase = createClient();
 
-      // Delete from storage (extract path from URL)
-      const urlParts = cvInfo.url.split('/');
-      const filePath = `cvs/${urlParts[urlParts.length - 1]}`;
+      // Extract the storage object path from the stored URL. The bucket
+      // name (`documents`) appears in the URL path; everything after it
+      // (up to any query string) is the object path. This works for both
+      // legacy `cvs/<name>` uploads and the new `<user_id>/<name>` paths.
+      const marker = "/documents/";
+      const idx = cvInfo.url.indexOf(marker);
+      let filePath: string;
+      if (idx !== -1) {
+        filePath = decodeURIComponent(
+          cvInfo.url.substring(idx + marker.length).split("?")[0]
+        );
+      } else {
+        const urlParts = cvInfo.url.split('/');
+        filePath = `cvs/${urlParts[urlParts.length - 1].split("?")[0]}`;
+      }
 
       await supabase.storage.from('documents').remove([filePath]);
 
       // Delete the matching row from `documents` (entity_type='student',
-      // entity_id=user.id, type='cv') so the UI doesn't keep showing it.
+      // entity_id=user.id, type='resume') so the UI doesn't keep showing it.
+      // NOTE: type must match the INSERT path (handleCVUpload inserts with
+      // type='resume'); querying for type='cv' finds 0 rows and leaves the
+      // stale document record behind.
       const { error: docDeleteError } = await supabase
         .from("documents")
         .delete()
         .eq("entity_type", "student")
         .eq("entity_id", user.id)
-        .eq("type", "cv");
+        .eq("type", "resume");
 
       if (docDeleteError) {
         // Non-fatal: file is already gone from storage; just log it.
@@ -598,9 +617,13 @@ export default function StudentProfilePage() {
       }
 
       setCvInfo(null);
+      toast.success("CV deleted");
+      setCvDeleteDialogOpen(false);
     } catch (error) {
       console.error("Error deleting CV:", error);
-      toast({ title: "Failed", description: "Failed to delete CV.", variant: "destructive" });
+      toast.error("Failed", { description: "Failed to delete CV." });
+    } finally {
+      setCvDeleting(false);
     }
   };
 
@@ -795,7 +818,7 @@ export default function StudentProfilePage() {
                         </DialogDescription>
                       </DialogHeader>
                       
-                      <div className="space-y-4 mt-4">
+                      <DialogBody className="space-y-4">
                         <div className="border-2 border-dashed rounded-lg p-6 text-center">
                           <input
                             ref={fileInputRef}
@@ -804,11 +827,11 @@ export default function StudentProfilePage() {
                               const file = e.target.files?.[0];
                               if (file) {
                                 if (file.type !== 'application/pdf') {
-                                  toast({ title: "Action required", description: "Please upload a PDF file", variant: "destructive" });
+                                  toast.error("Action required", { description: "Please upload a PDF file" });
                                   return;
                                 }
                                 if (file.size > 10 * 1024 * 1024) {
-                                  toast({ title: "Failed", description: "File must be less than 10MB", variant: "destructive" });
+                                  toast.error("Failed", { description: "File must be less than 10MB" });
                                   return;
                                 }
                                 setCvFile(file);
@@ -838,8 +861,8 @@ export default function StudentProfilePage() {
                             <Progress value={cvUploadProgress} className="h-2" />
                           </div>
                         )}
-
-                        <div className="flex justify-end gap-2 pt-4">
+                      </DialogBody>
+                        <DialogFooter>
                           <Button 
                             variant="outline" 
                             onClick={() => {
@@ -862,8 +885,7 @@ export default function StudentProfilePage() {
                             )}
                             {cvUploading ? "Uploading..." : "Upload CV"}
                           </Button>
-                        </div>
-                      </div>
+                        </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 </div>
@@ -1234,12 +1256,13 @@ export default function StudentProfilePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={cvDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCVDelete}
+              disabled={cvDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {cvDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

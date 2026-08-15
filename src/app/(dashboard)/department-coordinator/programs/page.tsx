@@ -63,7 +63,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { createClient } from "@/utils/supabase/client";
 import type { Profile } from "@/types";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 
 interface Program {
   id: string;
@@ -120,7 +120,6 @@ const emptyForm: ProgramFormData = {
 
 export default function ProgramsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -195,17 +194,17 @@ export default function ProgramsPage() {
     // and the existing supervisor dropdown is used instead.
     if (!editingProgram) {
       if (!formData.supervisorEmail.trim() || !formData.supervisorEmail.includes("@")) {
-        toast({ title: "Validation error", description: "A valid supervisor email is required.", variant: "destructive" });
+        toast.error("Validation error", { description: "A valid supervisor email is required." });
         setIsSubmitting(false);
         return;
       }
       if (!formData.supervisorPassword || formData.supervisorPassword.length < 8) {
-        toast({ title: "Validation error", description: "Supervisor password must be at least 8 characters.", variant: "destructive" });
+        toast.error("Validation error", { description: "Supervisor password must be at least 8 characters." });
         setIsSubmitting(false);
         return;
       }
       if (!formData.supervisorName.trim()) {
-        toast({ title: "Validation error", description: "Supervisor name is required.", variant: "destructive" });
+        toast.error("Validation error", { description: "Supervisor name is required." });
         setIsSubmitting(false);
         return;
       }
@@ -248,7 +247,7 @@ export default function ProgramsPage() {
       const data = await res.json();
 
       if (!data.success) {
-        toast({ title: "Failed to save program", description: data.error || data.message || "Unknown error", variant: "destructive" });
+        toast.error("Failed to save program", { description: data.error || data.message || "Unknown error" });
         setIsSubmitting(false);
         return;
       }
@@ -334,16 +333,9 @@ export default function ProgramsPage() {
         }
 
         if (supervisorWarning) {
-          toast({
-            title: "Program created (with warning)",
-            description: supervisorWarning,
-            variant: "destructive",
-          });
+          toast.error("Program created (with warning)", { description: supervisorWarning });
         } else {
-          toast({
-            title: "Program created",
-            description: `\"${formData.name}\" and its supervisor account were created successfully.`,
-          });
+          toast.success("Program created", { description: `\"${formData.name}\" and its supervisor account were created successfully.` });
         }
       }
 
@@ -356,7 +348,7 @@ export default function ProgramsPage() {
       resetForm();
     } catch (error) {
       console.error("Error saving program:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to save program", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to save program" });
     } finally {
       setIsSubmitting(false);
     }
@@ -371,13 +363,13 @@ export default function ProgramsPage() {
       if (data.success) {
         setPrograms(programs.filter((p) => p.id !== id));
         setDeleteConfirmId(null);
-        toast({ title: "Program deleted" });
+        toast.success("Program deleted");
       } else {
-        toast({ title: "Failed to delete program", description: data.error || "Unknown error", variant: "destructive" });
+        toast.error("Failed to delete program", { description: data.error || "Unknown error" });
       }
     } catch (error) {
       console.error("Error deleting program:", error);
-      toast({ title: "Error", description: "Failed to delete program", variant: "destructive" });
+      toast.error("Error", { description: "Failed to delete program" });
     }
   };
 

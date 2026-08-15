@@ -69,12 +69,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch user profile to get role
+    // Fetch user profile to get role. Use maybeSingle() so a missing
+    // profile (e.g. brand-new account awaiting role assignment) returns
+    // null instead of throwing PGRST116.
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("user_id", authData.user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       // User exists but no profile - redirect to default dashboard
@@ -158,12 +160,13 @@ export async function GET() {
       );
     }
 
-    // Get user profile
+    // Get user profile. Use maybeSingle() so a missing profile returns
+    // null instead of throwing PGRST116 (handled via profileError below).
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     return NextResponse.json<ApiResponse<{
       user: typeof user;

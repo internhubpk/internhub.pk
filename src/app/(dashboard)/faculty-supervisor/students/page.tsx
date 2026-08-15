@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -152,7 +153,6 @@ const DEFAULT_ATTENDANCE: Record<string, AttendanceSummary> = {};
 
 export default function FacultySupervisorStudentsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>(DEFAULT_STUDENTS);
@@ -174,7 +174,7 @@ export default function FacultySupervisorStudentsPage() {
   // company-hr/attendance/page.tsx.
   const handleExport = useCallback(() => {
     if (!students || students.length === 0) {
-      toast({ title: "Notice", description: "No students to export." });
+      toast.success("Notice", { description: "No students to export." });
       return;
     }
     const headers = [
@@ -915,7 +915,7 @@ export default function FacultySupervisorStudentsPage() {
 
       {/* Student Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -938,6 +938,7 @@ export default function FacultySupervisorStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
+              <DialogBody className="p-0">
               <Tabs defaultValue="overview" className="mt-4">
                 <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1286,6 +1287,7 @@ export default function FacultySupervisorStudentsPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
+              </DialogBody>
             </>
           )}
         </DialogContent>

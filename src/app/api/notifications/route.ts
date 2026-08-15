@@ -1,11 +1,20 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
-// GET: List sent notifications with read receipts
+// GET: List notifications related to the current user (sent by OR addressed to them).
+//
+// Schema note (migration 0001 + 0055): the `notifications` table is the
+// single source of truth — every recipient gets their own row keyed by
+// `user_id`, with `sender_id` pointing back to the sender's profile.
+// `notifications_sent` and `notification_recipients` are *views* over this
+// table (no FK relationship), so they cannot be joined as nested PostgREST
+// resources. The previous implementation tried to do exactly that and
+// PostgREST returned HTTP 400 on every request. Query `notifications`
+// directly instead.
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -30,40 +39,29 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
-    const status = searchParams.get("status"); // sent, delivered, read, failed
     const priority = searchParams.get("priority");
+    const category = searchParams.get("category"); // system, announcement, task, ...
     const search = searchParams.get("search");
 
-    // Build query for notifications sent by this user (or system notifications for supervisors)
+    // Query `notifications` directly. A row relates to the caller if they
+    // are the recipient (`user_id`) OR the sender (`sender_id`). System
+    // broadcasts (sender_id IS NULL) are visible only to their recipients,
+    // which is already captured by `user_id.eq.<uid>`.
     let query = supabase
       .from("notifications")
-      .select(`
-        *,
-        notification_recipients (
-          id,
-          user_id,
-          is_read,
-          read_at,
-          delivered_at,
-          profiles:user_id (
-            full_name,
-            email
-          )
-        )
-      `, { count: "exact" })
-      .or(`sender_id.eq.${user.id},and(sender_id.is.null,type.eq.system)`)
+      .select("*", { count: "exact" })
+      .or(`user_id.eq.${user.id},sender_id.eq.${user.id}`)
       .order("created_at", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
 
-    if (status && status !== "all") {
-      // For status filtering, we need to check recipient status
-      // This is a simplified version - in production you'd use a more complex query
-    }
-    
     if (priority && priority !== "all") {
       query = query.eq("priority", priority);
     }
-    
+
+    if (category && category !== "all") {
+      query = query.eq("category", category);
+    }
+
     if (search) {
       query = query.or(`title.ilike.%${search}%,message.ilike.%${search}%`);
     }
@@ -75,20 +73,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 });
     }
 
-    // Calculate statistics for each notification
-    const enrichedNotifications = (notifications || []).map(notification => {
-      const recipients = notification.notification_recipients || [];
-      return {
-        ...notification,
-        recipient_count: recipients.length,
-        read_count: recipients.filter(r => r.is_read).length,
-        delivered_count: recipients.filter(r => r.delivered_at).length,
-      };
-    });
-
     return NextResponse.json({
       success: true,
-      data: enrichedNotifications,
+      data: notifications || [],
       meta: {
         page,
         limit,
@@ -102,11 +89,19 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Send notification to students
+// POST: Send a notification to one or more recipients.
+//
+// Schema note: there is NO `notifications_sent` or `notification_recipients`
+// *table* — they are views over `notifications`. The previous implementation
+// tried to `insert` into both views using columns that don't exist
+// (`target_type`, `target_id`, `recipient_count`, `notification_id`,
+// `is_read`, `delivered_at`), which PostgREST rejects. The correct write
+// path is a direct batched `insert` into the `notifications` table: one row
+// per recipient, with `sender_id` set to the caller.
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -116,7 +111,7 @@ export async function POST(request: Request) {
     // Get sender's profile (user_id, not id — profiles has no `id` column)
     const { data: profile } = await supabase
       .from("profiles")
-      .select("user_id, role, full_name, university_id, department_id")
+      .select("user_id, role, full_name, university_id, department_id, company_id")
       .eq("user_id", user.id)
       .single();
 
@@ -124,8 +119,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    // Only faculty supervisors and above can send notifications
-    if (!["faculty_supervisor", "department_coordinator", "university_admin", "super_admin"].includes(profile.role)) {
+    // Only staff/faculty roles can send notifications. Students cannot.
+    const allowedRoles = [
+      "faculty_supervisor",
+      "department_coordinator",
+      "university_admin",
+      "super_admin",
+      "company_hr",
+      "site_supervisor",
+    ];
+    if (!allowedRoles.includes(profile.role)) {
       return NextResponse.json(
         { error: "Forbidden: Insufficient permissions to send notifications" },
         { status: 403 }
@@ -137,9 +140,12 @@ export async function POST(request: Request) {
     const {
       title,
       message,
+      category = "announcement",
       priority = "medium",
-      target_type, // 'individual', 'program', 'department', 'all'
-      target_id, // Student ID or Program ID or Department ID
+      recipient_user_ids, // explicit list of user_ids
+      target_role, // e.g. 'student' — broadcast to every user with this role (tenant-scoped)
+      target_department_id, // broadcast to every user in this department
+      target_university_id, // broadcast to every user in this university (super_admin only)
       action_url,
       metadata = {},
     } = body;
@@ -152,21 +158,26 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!target_type) {
+    const validCategories = [
+      "auth",
+      "application",
+      "evaluation",
+      "deadline",
+      "system",
+      "announcement",
+      "task",
+      "attendance",
+      "certificate",
+    ];
+    if (!validCategories.includes(category)) {
       return NextResponse.json(
-        { error: "Target type is required" },
+        { error: `Invalid category. Must be one of: ${validCategories.join(", ")}` },
         { status: 400 }
       );
     }
 
-    const validTargetTypes = ["individual", "program", "department", "all"];
-    if (!validTargetTypes.includes(target_type)) {
-      return NextResponse.json(
-        { error: `Invalid target_type. Must be one of: ${validTargetTypes.join(", ")}` },
-        { status: 400 }
-      );
-    }
-
+    // notification_priority enum is ('low','medium','high','urgent') — there
+    // is no 'normal' value despite the task description; use 'medium'.
     const validPriorities = ["low", "medium", "high", "urgent"];
     if (!validPriorities.includes(priority)) {
       return NextResponse.json(
@@ -175,116 +186,122 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine recipients based on target type
+    // Determine recipients based on the supplied targeting parameter.
     let recipientUserIds: string[] = [];
 
-    if (target_type === "all") {
-      // For faculty supervisors, get all students in their supervised programs
-      if (profile.role === "faculty_supervisor") {
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("program_ids")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
+    if (Array.isArray(recipient_user_ids) && recipient_user_ids.length > 0) {
+      // Explicit recipient list — caller already knows who to notify.
+      recipientUserIds = recipient_user_ids.filter(Boolean);
+    } else if (target_role) {
+      // Broadcast to every user with the given role, scoped to the caller's
+      // tenant for non-super_admins.
+      let roleQuery = supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("role", target_role);
 
-        const programIds = supervisor?.program_ids || [];
-        
-        if (programIds.length > 0) {
-          const { data: students } = await supabase
-            .from("students")
-            .select("user_id")
-            .in("program_id", programIds);
-          
-          recipientUserIds = students?.map(s => s.user_id) || [];
+      // Tenant isolation: university-scoped roles can only target users in
+      // their own university; company-scoped roles can only target users in
+      // their own company. super_admin and faculty_supervisor are not
+      // tenant-scoped here (faculty supervisors typically target students
+      // in their own programs via `recipient_user_ids`).
+      if (profile.role === "university_admin" || profile.role === "department_coordinator") {
+        if (!profile.university_id) {
+          return NextResponse.json(
+            { error: "Your profile is not associated with a university" },
+            { status: 403 }
+          );
         }
-      } else {
-        // For admins/coordinators, get all students in their scope
-        const { data: students } = await supabase
-          .from("students")
-          .select("user_id");
-        
-        recipientUserIds = students?.map(s => s.user_id) || [];
+        roleQuery = roleQuery.eq("university_id", profile.university_id);
+      } else if (profile.role === "company_hr" || profile.role === "site_supervisor") {
+        if (!profile.company_id) {
+          return NextResponse.json(
+            { error: "Your profile is not associated with a company" },
+            { status: 403 }
+          );
+        }
+        roleQuery = roleQuery.eq("company_id", profile.company_id);
       }
-    } else if (target_type === "individual") {
-      if (!target_id) {
+
+      const { data: targets, error: targetErr } = await roleQuery;
+      if (targetErr) {
+        console.error("Error fetching recipients by role:", targetErr);
+        return NextResponse.json({ error: "Failed to resolve recipients" }, { status: 500 });
+      }
+      recipientUserIds = (targets || []).map((r: { user_id: string }) => r.user_id);
+    } else if (target_department_id) {
+      // Department-targeted broadcast. Company users are not allowed to
+      // target by department. University roles must target a department
+      // inside their own university.
+      if (profile.role === "company_hr" || profile.role === "site_supervisor") {
         return NextResponse.json(
-          { error: "Target ID (student ID) is required for individual targeting" },
-          { status: 400 }
+          { error: "Forbidden: company users cannot target by department" },
+          { status: 403 }
         );
       }
 
-      // Verify student exists and is accessible
-      const { data: student } = await supabase
-        .from("students")
-        .select("user_id, program_id")
-        .eq("id", target_id)
-        .single();
-
-      if (!student) {
-        return NextResponse.json({ error: "Student not found" }, { status: 404 });
-      }
-
-      // If faculty supervisor, verify student is in supervised programs
-      if (profile.role === "faculty_supervisor") {
-        const { data: supervisor } = await supabase
-          .from("supervisors")
-          .select("program_ids")
-          .eq("user_id", user.id)
-          .eq("type", "faculty")
-          .single();
-
-        const programIds = supervisor?.program_ids || [];
-        
-        if (!programIds.includes(student.program_id)) {
+      if (profile.role === "university_admin" || profile.role === "department_coordinator") {
+        if (!profile.university_id) {
           return NextResponse.json(
-            { error: "Student is not in your supervised programs" },
+            { error: "Your profile is not associated with a university" },
+            { status: 403 }
+          );
+        }
+        // Verify the department belongs to the caller's university.
+        const { data: dept } = await supabase
+          .from("departments")
+          .select("id")
+          .eq("id", target_department_id)
+          .eq("university_id", profile.university_id)
+          .maybeSingle();
+        if (!dept) {
+          return NextResponse.json(
+            { error: "Department not found in your university" },
             { status: 403 }
           );
         }
       }
 
-      recipientUserIds = [student.user_id];
-    } else if (target_type === "program") {
-      if (!target_id) {
-        return NextResponse.json(
-          { error: "Program ID is required for program targeting" },
-          { status: 400 }
-        );
-      }
-
-      // Get all students in this program
-      const { data: students } = await supabase
-        .from("students")
+      const { data: members, error: mErr } = await supabase
+        .from("profiles")
         .select("user_id")
-        .eq("program_id", target_id);
-
-      recipientUserIds = students?.map(s => s.user_id) || [];
-    } else if (target_type === "department") {
-      if (!target_id) {
+        .eq("department_id", target_department_id);
+      if (mErr) {
+        console.error("Error fetching department members:", mErr);
+        return NextResponse.json({ error: "Failed to resolve recipients" }, { status: 500 });
+      }
+      recipientUserIds = (members || []).map((m: { user_id: string }) => m.user_id);
+    } else if (target_university_id) {
+      // Whole-university broadcast. Restrict to super_admin to avoid
+      // cross-tenant leakage.
+      if (profile.role !== "super_admin") {
         return NextResponse.json(
-          { error: "Department ID is required for department targeting" },
-          { status: 400 }
+          { error: "Forbidden: only super admins can broadcast to an entire university" },
+          { status: 403 }
         );
       }
 
-      // Get all programs in this department, then all students in those programs
-      const { data: programs } = await supabase
-        .from("programs")
-        .select("id")
-        .eq("department_id", target_id);
-
-      const programIds = programs?.map(p => p.id) || [];
-      
-      if (programIds.length > 0) {
-        const { data: students } = await supabase
-          .from("students")
-          .select("user_id")
-          .in("program_id", programIds);
-        
-        recipientUserIds = students?.map(s => s.user_id) || [];
+      const { data: members, error: mErr } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("university_id", target_university_id);
+      if (mErr) {
+        console.error("Error fetching university members:", mErr);
+        return NextResponse.json({ error: "Failed to resolve recipients" }, { status: 500 });
       }
+      recipientUserIds = (members || []).map((m: { user_id: string }) => m.user_id);
+    } else {
+      return NextResponse.json(
+        {
+          error:
+            "Specify at least one of: recipient_user_ids, target_role, target_department_id, or target_university_id",
+        },
+        { status: 400 }
+      );
     }
+
+    // Don't notify yourself.
+    recipientUserIds = recipientUserIds.filter((id) => id !== user.id);
 
     if (recipientUserIds.length === 0) {
       return NextResponse.json(
@@ -293,77 +310,49 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create the notification record
-    const { data: notification, error: notifError } = await supabase
-      .from("notifications_sent")
-      .insert({
-        sender_id: user.id,
-        title,
-        message,
-        category: "announcement",
-        priority,
-        target_type,
-        target_id: target_id || null,
-        recipient_count: recipientUserIds.length,
-        action_url: action_url || null,
-        metadata,
-      })
-      .select()
-      .single();
+    // Build one `notifications` row per recipient and batch-insert directly
+    // into the table. The `notifications_sent` / `notification_recipients`
+    // views are read-only projections and must NOT be written to.
+    const payloadMetadata = {
+      ...metadata,
+      sender_name: profile.full_name || null,
+      sender_role: profile.role,
+    };
 
-    if (notifError) {
-      console.error("Error creating notification:", notifError);
-      return NextResponse.json({ error: "Failed to create notification" }, { status: 500 });
-    }
-
-    // Create notification records for each recipient
-    const recipientRecords = recipientUserIds.map(userId => ({
-      notification_id: notification.id,
+    const notificationRecords = recipientUserIds.map((userId) => ({
       user_id: userId,
-      is_read: false,
-    }));
-
-    const { error: recipError } = await supabase
-      .from("notification_recipients")
-      .insert(recipientRecords);
-
-    if (recipError) {
-      console.error("Error creating recipient records:", recipError);
-      // Non-fatal - notification was created but some recipients may not receive it
-    }
-
-    // Also insert into main notifications table for real-time delivery
-    const notificationRecords = recipientUserIds.map(userId => ({
-      user_id: userId,
+      sender_id: user.id,
       title,
       message,
-      type: "announcement",
-      category: "notification",
+      category,
       priority,
       is_read: false,
       action_url: action_url || null,
-      metadata: {
-        ...metadata,
-        notification_id: notification.id,
-        sender_name: profile.full_name,
-        sender_role: profile.role,
-      },
+      metadata: payloadMetadata,
     }));
 
-    // Insert in batches to avoid payload limits
+    // Insert in batches to avoid PostgREST payload limits.
     const batchSize = 100;
+    let insertedCount = 0;
     for (let i = 0; i < notificationRecords.length; i += batchSize) {
       const batch = notificationRecords.slice(i, i + batchSize);
-      await supabase.from("notifications").insert(batch);
+      const { error: insertErr } = await supabase
+        .from("notifications")
+        .insert(batch);
+      if (insertErr) {
+        console.error("Error inserting notification batch:", insertErr);
+        return NextResponse.json(
+          { error: "Failed to send notifications", details: insertErr.message },
+          { status: 500 }
+        );
+      }
+      insertedCount += batch.length;
     }
 
     return NextResponse.json({
       success: true,
-      data: {
-        ...notification,
-        actual_recipient_count: recipientUserIds.length,
-      },
-      message: `Notification sent to ${recipientUserIds.length} recipient(s)`,
+      data: { sent_count: insertedCount },
+      message: `Notification sent to ${insertedCount} recipient(s)`,
     });
   } catch (error) {
     console.error("Send notification error:", error);

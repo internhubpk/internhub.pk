@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -36,7 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -80,8 +81,6 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
 
 export default function UniversityAdminInternshipsPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-
   const [internships, setInternships] = useState<InternshipWithRelations[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,11 +172,7 @@ export default function UniversityAdminInternshipsPage() {
       setInternships(filtered);
     } catch (error) {
       console.error("Error fetching internships:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load internships",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load internships" });
     } finally {
       setIsLoading(false);
     }
@@ -381,7 +376,7 @@ export default function UniversityAdminInternshipsPage() {
 
       {/* Detail Dialog (view only) */}
       <Dialog open={!!detailInternship} onOpenChange={(open) => !open && setDetailInternship(null)}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[640px]">
           {detailInternship && (
             <>
               <DialogHeader>
@@ -392,7 +387,7 @@ export default function UniversityAdminInternshipsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
+              <DialogBody className="space-y-4">
                 {/* Status + meta */}
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={STATUS_LABELS[detailInternship.status]?.variant || "outline"}>
@@ -530,7 +525,7 @@ export default function UniversityAdminInternshipsPage() {
                     </ul>
                   </div>
                 )}
-              </div>
+              </DialogBody>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDetailInternship(null)}>

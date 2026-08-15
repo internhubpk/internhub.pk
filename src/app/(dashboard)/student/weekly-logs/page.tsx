@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -32,6 +33,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/shared/toast";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -321,6 +323,11 @@ export default function StudentWeeklyLogsPage() {
 
     setIsSubmitting(true);
 
+    // Track partial-failure warnings so we can surface them to the user
+    // without failing the whole submit (the log row is already created by
+    // step 1, so steps 2-5 are best-effort).
+    const partialWarnings: string[] = [];
+
     try {
       // Step 1: Insert the log first so we have an ID.
       const createRes = await fetch("/api/student/weekly-logs", {
@@ -328,6 +335,13 @@ export default function StudentWeeklyLogsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          // Coerce the string state to a number (or null) — the DB column
+          // is numeric and the `WeeklyLog.week_number: number | null` type
+          // expects a number. Sending "" would either fail validation or
+          // be stored as 0, both of which are wrong.
+          week_number: formData.week_number
+            ? parseInt(formData.week_number, 10)
+            : null,
           tasks_completed: formData.weekly_activities
             .map((r) => r.tasks)
             .filter(Boolean)
@@ -364,6 +378,7 @@ export default function StudentWeeklyLogsPage() {
         });
         if (!sigRes.ok) {
           console.warn("Signature upload failed — proceeding anyway");
+          partialWarnings.push("signature upload");
         } else {
           const sigJson = await sigRes.json();
           signatureUrl = sigJson.data?.signature_url || null;
@@ -381,6 +396,7 @@ export default function StudentWeeklyLogsPage() {
         });
         if (!logoRes.ok) {
           console.warn("Logo upload failed — proceeding anyway");
+          partialWarnings.push("university logo upload");
         } else {
           const logoJson = await logoRes.json();
           logoUrl = logoJson.data?.logo_url || null;
@@ -389,6 +405,7 @@ export default function StudentWeeklyLogsPage() {
 
       // Step 4: Upload each evidence file.
       const uploadedEvidence: EvidenceFile[] = [];
+      let evidenceFailures = 0;
       for (const f of evidenceFiles) {
         const evForm = new FormData();
         evForm.append("file", f);
@@ -399,7 +416,12 @@ export default function StudentWeeklyLogsPage() {
         if (evRes.ok) {
           const evJson = await evRes.json();
           if (evJson.data) uploadedEvidence.push(evJson.data);
+        } else {
+          evidenceFailures += 1;
         }
+      }
+      if (evidenceFailures > 0) {
+        partialWarnings.push(`${evidenceFailures} evidence file${evidenceFailures !== 1 ? "s" : ""}`);
       }
 
       // Step 5: Patch the log with the uploaded URLs (signature is already
@@ -417,14 +439,29 @@ export default function StudentWeeklyLogsPage() {
 
       if (!patchRes.ok) {
         console.warn("Final patch failed — log was still created.");
+        partialWarnings.push("final metadata save");
       }
 
       // Close + refresh
       setIsDialogOpen(false);
       resetForm();
       await fetchAll();
+
+      // Surface success / partial-failure feedback.
+      if (partialWarnings.length === 0) {
+        toast.success("Weekly log submitted", {
+          description: "Your report has been sent for supervisor review.",
+        });
+      } else {
+        toast.warning("Weekly log submitted with warnings", {
+          description: `Log created, but these steps failed: ${partialWarnings.join(", ")}. You can edit the log later to retry.`,
+        });
+      }
     } catch (err: any) {
       setSubmitError(err.message || "Failed to submit weekly log.");
+      toast.error("Failed to submit weekly log", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -580,7 +617,7 @@ export default function StudentWeeklyLogsPage() {
       {/* SUBMIT DIALOG                                                */}
       {/* ============================================================ */}
       <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
-        <DialogContent className="max-w-4xl w-[95vw] p-0 gap-0 flex flex-col max-h-[94vh]">
+        <DialogContent className="max-w-4xl w-[95vw] p-0 gap-0 flex flex-col">
           {/* Header — fixed */}
           <div className="px-6 py-4 border-b shrink-0">
             <DialogTitle className="text-base font-semibold">Weekly Internship Activity Report</DialogTitle>
@@ -740,6 +777,7 @@ export default function StudentWeeklyLogsPage() {
                     id="wn"
                     type="number"
                     min={1}
+                    max={52}
                     value={formData.week_number}
                     onChange={(e) => setFormData((p) => ({ ...p, week_number: e.target.value }))}
                     placeholder="Auto"
@@ -953,11 +991,11 @@ export default function StudentWeeklyLogsPage() {
       {/* VIEW LOG DIALOG                                              */}
       {/* ============================================================ */}
       <Dialog open={!!viewLog} onOpenChange={(o) => !o && setViewLog(null)}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Weekly Activity Report — Week {viewLog?.week_number || "—"}</DialogTitle>
           </DialogHeader>
-          {viewLog && <ReportView log={viewLog} />}
+          {viewLog && <DialogBody><ReportView log={viewLog} /></DialogBody>}
         </DialogContent>
       </Dialog>
     </div>

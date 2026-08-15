@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -115,7 +116,6 @@ interface CompanyIntern {
 
 export default function CompanyHRSupervisorsPage() {
   const [supervisors, setSupervisors] = useState<SiteSupervisor[]>([]);
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -159,6 +159,9 @@ export default function CompanyHRSupervisorsPage() {
   const [selectedSupervisor, setSelectedSupervisor] = useState<SiteSupervisor | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -191,6 +194,7 @@ export default function CompanyHRSupervisorsPage() {
   };
 
   const handleCreateSupervisor = async () => {
+    setIsSaving(true);
     try {
       const response = await fetch("/api/company-hr/supervisors", {
         method: "POST",
@@ -209,12 +213,15 @@ export default function CompanyHRSupervisorsPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || "Failed to create supervisor");
 
+      toast.success("Supervisor created", { description: `${formData.first_name} ${formData.last_name}` });
       setIsCreateOpen(false);
       resetForm();
       fetchSupervisors();
     } catch (error) {
       console.error("Error creating supervisor:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create supervisor. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to create supervisor. Please try again." });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -235,6 +242,7 @@ export default function CompanyHRSupervisorsPage() {
   const handleEditSupervisor = async () => {
     if (!selectedSupervisor) return;
 
+    setIsSaving(true);
     try {
       const response = await fetch(`/api/company-hr/supervisors/${selectedSupervisor.id}`, {
         method: "PUT",
@@ -252,17 +260,21 @@ export default function CompanyHRSupervisorsPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || "Failed to update supervisor");
 
+      toast.success("Supervisor updated", { description: `${formData.first_name} ${formData.last_name}` });
       setIsEditOpen(false);
       setSelectedSupervisor(null);
       resetForm();
       fetchSupervisors();
     } catch (error) {
       console.error("Error updating supervisor:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update supervisor. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update supervisor. Please try again." });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const toggleSupervisorStatus = async (id: string, currentStatus: boolean) => {
+    setIsToggling(true);
     try {
       const response = await fetch(`/api/company-hr/supervisors/${id}`, {
         method: "PUT",
@@ -271,22 +283,29 @@ export default function CompanyHRSupervisorsPage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || "Failed to update status");
+      toast.success("Status updated", { description: !currentStatus ? "Supervisor activated" : "Supervisor deactivated" });
       fetchSupervisors();
     } catch (error) {
       console.error("Error updating supervisor status:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update status. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update status. Please try again." });
+    } finally {
+      setIsToggling(false);
     }
   };
 
   const handleDeleteSupervisor = async (id: string) => {
+    setIsDeleting(true);
     try {
       const response = await fetch(`/api/company-hr/supervisors/${id}`, { method: "DELETE" });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || "Failed to remove supervisor");
+      toast.success("Supervisor deleted");
       fetchSupervisors();
     } catch (error) {
       console.error("Error removing supervisor:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to remove supervisor. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to remove supervisor. Please try again." });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -384,7 +403,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (e) {
       console.error("Error saving assignments:", e);
-      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to save assignments", variant: "destructive" });
+      toast.error("Error", { description: e instanceof Error ? e.message : "Failed to save assignments" });
     } finally {
       setIsSavingAssignments(false);
     }
@@ -414,7 +433,7 @@ export default function CompanyHRSupervisorsPage() {
       fetchSupervisors();
     } catch (e) {
       console.error("Error unassigning intern:", e);
-      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to unassign intern", variant: "destructive" });
+      toast.error("Error", { description: e instanceof Error ? e.message : "Failed to unassign intern" });
     }
   };
 
@@ -474,7 +493,7 @@ export default function CompanyHRSupervisorsPage() {
                 Add Supervisor
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Create Supervisor Account</DialogTitle>
                 <DialogDescription>
@@ -482,7 +501,7 @@ export default function CompanyHRSupervisorsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-            <div className="space-y-4 mt-4">
+            <DialogBody className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="first_name">First Name *</Label>
@@ -558,18 +577,18 @@ export default function CompanyHRSupervisorsPage() {
                 />
               </div>
 
-              <DialogFooter className="pt-4 border-t">
+              <DialogFooter>
                 <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
                   Cancel
                 </Button>
                 <Button
                   onClick={handleCreateSupervisor}
-                  disabled={!formData.first_name || !formData.last_name || !formData.email || !formData.password}
+                  disabled={!formData.first_name || !formData.last_name || !formData.email || !formData.password || isSaving}
                 >
-                  Create Account
+                  {isSaving ? "Creating..." : "Create Account"}
                 </Button>
               </DialogFooter>
-            </div>
+            </DialogBody>
           </DialogContent>
         </Dialog>
         }
@@ -688,7 +707,10 @@ export default function CompanyHRSupervisorsPage() {
                         <DropdownMenuItem onClick={() => openEditDialog(supervisor)}>
                           <Edit className="mr-2 h-4 w-4" /> Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toggleSupervisorStatus(supervisor.id, supervisor.is_active)}>
+                        <DropdownMenuItem
+                          onClick={() => toggleSupervisorStatus(supervisor.id, supervisor.is_active)}
+                          disabled={isToggling}
+                        >
                           {supervisor.is_active ? (
                             <>
                               <UserX className="mr-2 h-4 w-4" /> Deactivate
@@ -725,9 +747,10 @@ export default function CompanyHRSupervisorsPage() {
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => handleDeleteSupervisor(supervisor.id)}
+                                disabled={isDeleting}
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                               >
-                                Delete Permanently
+                                {isDeleting ? "Deleting..." : "Delete Permanently"}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -761,7 +784,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* View Details Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg">
           {selectedSupervisor && (
             <>
               <DialogHeader>
@@ -780,7 +803,7 @@ export default function CompanyHRSupervisorsPage() {
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Contact Info */}
                 <div className="space-y-3">
                   <h4 className="font-semibold flex items-center gap-2">
@@ -818,19 +841,19 @@ export default function CompanyHRSupervisorsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsViewOpen(false);
-                      openAssignDialog(selectedSupervisor);
-                    }}
-                  >
-                    <Link2 className="h-4 w-4 mr-2" /> Manage Interns
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
-                </div>
-              </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsViewOpen(false);
+                    openAssignDialog(selectedSupervisor);
+                  }}
+                >
+                  <Link2 className="h-4 w-4 mr-2" /> Manage Interns
+                </Button>
+                <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
@@ -838,7 +861,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Supervisor</DialogTitle>
             <DialogDescription>
@@ -846,7 +869,7 @@ export default function CompanyHRSupervisorsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-4">
+          <DialogBody className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>First Name</Label>
@@ -900,19 +923,21 @@ export default function CompanyHRSupervisorsPage() {
               />
             </div>
 
-            <DialogFooter className="pt-4 border-t">
-              <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }}>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button onClick={handleEditSupervisor}>Save Changes</Button>
+              <Button onClick={handleEditSupervisor} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             </DialogFooter>
-          </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
 
       {/* Assign Interns Dialog */}
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Assign Interns to {selectedSupervisor?.first_name} {selectedSupervisor?.last_name}</DialogTitle>
             <DialogDescription>
@@ -921,7 +946,7 @@ export default function CompanyHRSupervisorsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
+          <DialogBody className="space-y-4">
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1003,8 +1028,8 @@ export default function CompanyHRSupervisorsPage() {
                 })
               )}
             </div>
-
-            <DialogFooter className="pt-4 border-t">
+          </DialogBody>
+            <DialogFooter>
               <Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancel</Button>
               <Button
                 onClick={handleSaveAssignments}
@@ -1013,7 +1038,6 @@ export default function CompanyHRSupervisorsPage() {
                 {isSavingAssignments ? "Saving..." : `Save Assignments (${selectedInternIds.size})`}
               </Button>
             </DialogFooter>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

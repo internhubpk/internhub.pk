@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -52,8 +52,6 @@ interface Program {
 
 export default function UniversityAdminProgramsPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-
   const [programs, setPrograms] = useState<Program[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,11 +144,7 @@ export default function UniversityAdminProgramsPage() {
       setPrograms(enriched);
     } catch (error) {
       console.error("Error fetching programs:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load programs",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load programs" });
     } finally {
       setIsLoading(false);
     }

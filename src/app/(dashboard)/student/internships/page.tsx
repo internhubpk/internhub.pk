@@ -17,8 +17,10 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -47,7 +49,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -84,7 +86,6 @@ interface Internship {
 
 export default function StudentInternshipsPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
   const [internships, setInternships] = useState<Internship[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -330,10 +331,10 @@ export default function StudentInternshipsPage() {
       setSelectedInternship(null);
       setCoverLetter("");
       
-      toast({ title: "Success", description: "Application submitted successfully!" });
+      toast.success("Application submitted", { description: `You applied to ${selectedInternship.title}.` });
     } catch (error) {
       console.error("Error applying:", error);
-      toast({ title: "Failed", description: "Failed to submit application. Please try again.", variant: "destructive" });
+      toast.error("Failed to submit application", { description: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setIsApplying(false);
     }
@@ -675,7 +676,7 @@ export default function StudentInternshipsPage() {
 
       {/* Apply Dialog */}
       <Dialog open={applyDialogOpen} onOpenChange={setApplyDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Briefcase className="h-5 w-5" />
@@ -687,7 +688,7 @@ export default function StudentInternshipsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 mt-4">
+          <DialogBody className="space-y-6">
             {/* Position Summary */}
             {selectedInternship && (
               <div className="p-4 rounded-lg bg-muted/50 space-y-3">
@@ -758,40 +759,38 @@ export default function StudentInternshipsPage() {
                 </div>
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setApplyDialogOpen(false);
-                  setSelectedInternship(null);
-                  setCoverLetter("");
-                }}
-                disabled={isApplying}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleApply}
-                disabled={isApplying}
-                className="gap-2"
-              >
-                {isApplying ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SendIcon className="h-4 w-4" />
-                )}
-                {isApplying ? "Submitting..." : "Submit Application"}
-              </Button>
-            </div>
-          </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setApplyDialogOpen(false);
+                setSelectedInternship(null);
+                setCoverLetter("");
+              }}
+              disabled={isApplying}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleApply}
+              disabled={isApplying}
+              className="gap-2"
+            >
+              {isApplying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SendIcon className="h-4 w-4" />
+              )}
+              {isApplying ? "Submitting..." : "Submit Application"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Detail Dialog */}
       <Dialog open={!!detailInternship} onOpenChange={() => setDetailInternship(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           {detailInternship && (
             <>
               <DialogHeader>
@@ -802,7 +801,7 @@ export default function StudentInternshipsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-6 mt-4">
+              <DialogBody className="space-y-6">
                 {/* Quick Info */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="p-3 rounded-lg bg-muted/50 text-center">
@@ -890,35 +889,33 @@ export default function StudentInternshipsPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                  <Button variant="outline" onClick={() => setDetailInternship(null)}>
-                    Close
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDetailInternship(null)}>
+                  Close
+                </Button>
+                {detailInternship.hasApplied ? (
+                  <Badge 
+                    variant={detailInternship.applicationStatus === "accepted" ? "default" : "secondary"} 
+                    className="py-2 px-4"
+                  >
+                    {detailInternship.applicationStatus === "pending" && "Application Pending"}
+                    {detailInternship.applicationStatus === "accepted" && "✓ Accepted!"}
+                    {detailInternship.applicationStatus === "rejected" && "Application Rejected"}
+                  </Badge>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setDetailInternship(null);
+                      setSelectedInternship(detailInternship);
+                      setApplyDialogOpen(true);
+                    }}
+                    disabled={detailInternship.max_applicants !== null && detailInternship.current_applicants >= detailInternship.max_applicants}
+                  >
+                    Apply Now
                   </Button>
-                  {detailInternship.hasApplied ? (
-                    <Badge 
-                      variant={detailInternship.applicationStatus === "accepted" ? "default" : "secondary"} 
-                      className="py-2 px-4"
-                    >
-                      {detailInternship.applicationStatus === "pending" && "Application Pending"}
-                      {detailInternship.applicationStatus === "accepted" && "✓ Accepted!"}
-                      {detailInternship.applicationStatus === "rejected" && "Application Rejected"}
-                    </Badge>
-                  ) : (
-                    <Button
-                      onClick={() => {
-                        setDetailInternship(null);
-                        setSelectedInternship(detailInternship);
-                        setApplyDialogOpen(true);
-                      }}
-                      disabled={detailInternship.max_applicants !== null && detailInternship.current_applicants >= detailInternship.max_applicants}
-                    >
-                      Apply Now
-                    </Button>
-                  )}
-                </div>
-              </div>
+                )}
+              </DialogFooter>
             </>
           )}
         </DialogContent>

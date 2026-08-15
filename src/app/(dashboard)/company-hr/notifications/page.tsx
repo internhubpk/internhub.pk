@@ -27,7 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 interface Notification {
@@ -78,7 +78,6 @@ function timeAgo(iso: string): string {
 }
 
 export default function CompanyHRNotificationsPage() {
-  const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
@@ -98,7 +97,7 @@ export default function CompanyHRNotificationsPage() {
       setUnreadCount(j.meta?.unread || 0);
       setTotal(j.meta?.total || 0);
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast.error("Error", { description: e.message });
     } finally {
       setLoading(false);
     }
@@ -126,7 +125,7 @@ export default function CompanyHRNotificationsPage() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read } : n))
       );
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
+      toast.error("Failed", { description: e.message });
     }
   };
 
@@ -140,9 +139,9 @@ export default function CompanyHRNotificationsPage() {
       if (!res.ok) throw new Error("Failed");
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
-      toast({ title: "All marked as read" });
+      toast.success("All marked as read");
     } catch (e: any) {
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
+      toast.error("Failed", { description: e.message });
     }
   };
 
@@ -155,7 +154,7 @@ export default function CompanyHRNotificationsPage() {
       setTotal((t) => Math.max(0, t - 1));
     } catch (e: any) {
       setNotifications(prev);
-      toast({ title: "Failed", description: e.message, variant: "destructive" });
+      toast.error("Failed", { description: e.message });
     }
   };
 

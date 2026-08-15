@@ -69,7 +69,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -124,7 +124,6 @@ interface SupervisorOption {
 
 export default function StudentsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
@@ -224,22 +223,14 @@ export default function StudentsPage() {
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudent.first_name.trim() || !newStudent.last_name.trim() || !newStudent.email.trim() || !newStudent.student_id_number.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      });
+      toast.error("Validation Error", { description: "Please fill in all required fields." });
       return;
     }
     // Require a password (min 6 chars) for single student creation.
     // Coordinator must know the password they're assigning so they can
     // tell the student how to sign in.
     if (!newStudent.password || newStudent.password.length < 6) {
-      toast({
-        title: "Password required",
-        description: "Please enter a password of at least 6 characters.",
-        variant: "destructive",
-      });
+      toast.error("Password required", { description: "Please enter a password of at least 6 characters." });
       return;
     }
 
@@ -259,11 +250,7 @@ export default function StudentsPage() {
       const data = await res.json();
 
       if (!data.success) {
-        toast({
-          title: "Failed to create student",
-          description: data.error || data.message || "Unknown error",
-          variant: "destructive",
-        });
+        toast.error("Failed to create student", { description: data.error || data.message || "Unknown error" });
         return;
       }
 
@@ -271,21 +258,13 @@ export default function StudentsPage() {
       // The student's `user_id` is the auth user's id (returned as `id`).
       const userId = data.data?.id || data.data?.user_id || data.user_id;
       if (!userId) {
-        toast({
-          title: "Account created with warning",
-          description: "Auth account was created but the user ID could not be retrieved. The student record was not created. Please contact support.",
-          variant: "destructive",
-        });
+        toast.error("Account created with warning", { description: "Auth account was created but the user ID could not be retrieved. The student record was not created. Please contact support." });
         return;
       }
 
       // Show warning if profile creation had issues
       if (data.warning) {
-        toast({
-          title: "Account created (with warning)",
-          description: data.warning,
-          variant: "destructive",
-        });
+        toast.error("Account created (with warning)", { description: data.warning });
       }
 
       const studentRes = await fetch("/api/students", {
@@ -303,11 +282,7 @@ export default function StudentsPage() {
       const studentData = await studentRes.json();
 
       if (!studentData.success) {
-        toast({
-          title: "Student record failed",
-          description: `Auth + profile created, but student record failed: ${studentData.error || studentData.message || "Unknown error"}`,
-          variant: "destructive",
-        });
+        toast.error("Student record failed", { description: `Auth + profile created, but student record failed: ${studentData.error || studentData.message || "Unknown error"}` });
         return;
       }
 
@@ -315,17 +290,10 @@ export default function StudentsPage() {
       setIsAddStudentDialogOpen(false);
       setNewStudent({ first_name: "", last_name: "", email: "", student_id_number: "", program_id: "", password: "" });
       await fetchStudents();
-      toast({
-        title: "Student Created",
-        description: `${newStudent.first_name} ${newStudent.last_name} can sign in with ${newStudent.email}.`,
-      });
+      toast.success("Student Created", { description: `${newStudent.first_name} ${newStudent.last_name} can sign in with ${newStudent.email}.` });
     } catch (error) {
       console.error("Error creating student:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create student",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to create student" });
     } finally {
       setIsCreatingStudent(false);
     }
@@ -347,19 +315,11 @@ export default function StudentsPage() {
   // Handle CSV import
   const handleImportCsv = async () => {
     if (!csvText.trim()) {
-      toast({
-        title: "No CSV file",
-        description: "Please select a CSV file first.",
-        variant: "destructive",
-      });
+      toast.error("No CSV file", { description: "Please select a CSV file first." });
       return;
     }
     if (!importPassword.trim() || importPassword.trim().length < 6) {
-      toast({
-        title: "Password required",
-        description: "Please enter a password of at least 6 characters. It will be used for ALL accounts created from this CSV.",
-        variant: "destructive",
-      });
+      toast.error("Password required", { description: "Please enter a password of at least 6 characters. It will be used for ALL accounts created from this CSV." });
       return;
     }
     setIsImporting(true);
@@ -378,24 +338,13 @@ export default function StudentsPage() {
       if (data.success) {
         setImportResult(data.data);
         await fetchStudents();
-        toast({
-          title: "Import Complete",
-          description: `Imported ${data.data.created} student(s), ${data.data.errors} error(s). All accounts use the password you entered.`,
-        });
+        toast.success("Import Complete", { description: `Imported ${data.data.created} student(s), ${data.data.errors} error(s). All accounts use the password you entered.` });
       } else {
-        toast({
-          title: "Import failed",
-          description: data.error || data.message || "Unknown error",
-          variant: "destructive",
-        });
+        toast.error("Import failed", { description: data.error || data.message || "Unknown error" });
       }
     } catch (error) {
       console.error("Error importing CSV:", error);
-      toast({
-        title: "Import failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Import failed", { description: error instanceof Error ? error.message : "Unknown error" });
     } finally {
       setIsImporting(false);
     }
@@ -569,11 +518,7 @@ export default function StudentsPage() {
   const handleBulkAssign = async () => {
     if (selectedStudents.size === 0) return;
     if (!selectedSupervisorId && !selectedProgramId) {
-      toast({
-        title: "Nothing to assign",
-        description: "Pick a supervisor, a program, or both.",
-        variant: "destructive",
-      });
+      toast.error("Nothing to assign", { description: "Pick a supervisor, a program, or both." });
       return;
     }
 
@@ -592,10 +537,7 @@ export default function StudentsPage() {
 
       if (data.success) {
         const { updated, skipped } = data.data || {};
-        toast({
-          title: "Assignment Complete",
-          description: `Updated ${updated} student(s)${skipped ? `, ${skipped} skipped` : ""}.`,
-        });
+        toast.success("Assignment Complete", { description: `Updated ${updated} student(s)${skipped ? `, ${skipped} skipped` : ""}.` });
         await fetchStudents();
         setIsAssignDialogOpen(false);
         setSelectedSupervisorId("");
@@ -603,19 +545,11 @@ export default function StudentsPage() {
         setSelectedStudents(new Set());
         setIsSelectAll(false);
       } else {
-        toast({
-          title: "Assignment failed",
-          description: data.error || `HTTP ${res.status}`,
-          variant: "destructive",
-        });
+        toast.error("Assignment failed", { description: data.error || `HTTP ${res.status}` });
       }
     } catch (error) {
       console.error("Error assigning students:", error);
-      toast({
-        title: "Assignment failed",
-        description: error instanceof Error ? error.message : "Failed to assign some students",
-        variant: "destructive",
-      });
+      toast.error("Assignment failed", { description: error instanceof Error ? error.message : "Failed to assign some students" });
     } finally {
       setIsAssigning(false);
     }
@@ -635,25 +569,14 @@ export default function StudentsPage() {
 
       if (res.ok) {
         await fetchStudents();
-        toast({
-          title: "Assigned",
-          description: "Student has been assigned to the selected supervisor.",
-        });
+        toast.success("Assigned", { description: "Student has been assigned to the selected supervisor." });
       } else {
         const data = await res.json().catch(() => ({}));
-        toast({
-          title: "Assignment failed",
-          description: data.error || `HTTP ${res.status}`,
-          variant: "destructive",
-        });
+        toast.error("Assignment failed", { description: data.error || `HTTP ${res.status}` });
       }
     } catch (error) {
       console.error("Error assigning student:", error);
-      toast({
-        title: "Assignment failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Assignment failed", { description: error instanceof Error ? error.message : "Unknown error" });
     }
   };
 
@@ -1116,21 +1039,13 @@ export default function StudentsPage() {
                                     if (res.ok) {
                                       await fetchStudents();
                                       await fetchAssignedSupervisors();
-                                      toast({ title: "Unassigned", description: "Supervisor was removed from this student." });
+                                      toast.success("Unassigned", { description: "Supervisor was removed from this student." });
                                     } else {
                                       const data = await res.json().catch(() => ({}));
-                                      toast({
-                                        title: "Failed to unassign",
-                                        description: data.error || `HTTP ${res.status}`,
-                                        variant: "destructive",
-                                      });
+                                      toast.error("Failed to unassign", { description: data.error || `HTTP ${res.status}` });
                                     }
                                   } catch (e) {
-                                    toast({
-                                      title: "Failed to unassign",
-                                      description: e instanceof Error ? e.message : "Unknown error",
-                                      variant: "destructive",
-                                    });
+                                    toast.error("Failed to unassign", { description: e instanceof Error ? e.message : "Unknown error" });
                                   }
                                 }}
                               >

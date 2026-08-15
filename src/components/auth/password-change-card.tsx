@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 
 /**
  * Reusable password-change card.
@@ -27,7 +27,6 @@ import { useToast } from "@/hooks/use-toast";
  *     leaked).
  */
 export function PasswordChangeCard() {
-  const { toast } = useToast();
   const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
@@ -41,35 +40,19 @@ export function PasswordChangeCard() {
 
     // Client-side validation — server still re-validates.
     if (!currentPwd || !newPwd || !confirmPwd) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all three password fields.",
-        variant: "destructive",
-      });
+      toast.error("Missing fields", { description: "Please fill in all three password fields." });
       return;
     }
     if (newPwd.length < 8) {
-      toast({
-        title: "Password too short",
-        description: "New password must be at least 8 characters.",
-        variant: "destructive",
-      });
+      toast.error("Password too short", { description: "New password must be at least 8 characters." });
       return;
     }
     if (newPwd !== confirmPwd) {
-      toast({
-        title: "Passwords don't match",
-        description: "New password and confirmation must be identical.",
-        variant: "destructive",
-      });
+      toast.error("Passwords don't match", { description: "New password and confirmation must be identical." });
       return;
     }
     if (currentPwd === newPwd) {
-      toast({
-        title: "Choose a different password",
-        description: "New password must be different from your current password.",
-        variant: "destructive",
-      });
+      toast.error("Choose a different password", { description: "New password must be different from your current password." });
       return;
     }
 
@@ -90,25 +73,18 @@ export function PasswordChangeCard() {
           json?.error?.message ||
           json?.error ||
           `Password change failed (${res.status})`;
-        toast({ title: "Password change failed", description: msg, variant: "destructive" });
+        toast.error("Password change failed", { description: msg });
         return;
       }
 
-      toast({
-        title: "Password changed",
-        description: "Use your new password the next time you sign in.",
-      });
+      toast.success("Password changed", { description: "Use your new password the next time you sign in." });
 
       // Clear sensitive fields immediately.
       setCurrentPwd("");
       setNewPwd("");
       setConfirmPwd("");
     } catch (err: any) {
-      toast({
-        title: "Network error",
-        description: err?.message || "Could not reach the server. Try again.",
-        variant: "destructive",
-      });
+      toast.error("Network error", { description: err?.message || "Could not reach the server. Try again." });
     } finally {
       setSaving(false);
     }

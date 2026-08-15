@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -39,7 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -124,7 +125,6 @@ function escapeCsv(value: unknown): string {
 
 export default function ExternalEvaluatorEvaluationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -171,11 +171,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
 
         if (error) {
           console.error("Error fetching evaluations:", error);
-          toast({
-            title: "Failed to load evaluations",
-            description: error.message,
-            variant: "destructive",
-          });
+          toast.error("Failed to load evaluations", { description: error.message });
           setEvaluations([]);
         } else {
           const mapped: Evaluation[] = (data ?? []).map((row: any) => {
@@ -209,11 +205,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
       } catch (err) {
         console.error("Unexpected error fetching evaluations:", err);
         if (!cancelled) {
-          toast({
-            title: "Failed to load evaluations",
-            description: err instanceof Error ? err.message : "Unknown error",
-            variant: "destructive",
-          });
+          toast.error("Failed to load evaluations", { description: err instanceof Error ? err.message : "Unknown error" });
         }
       } finally {
         if (!cancelled) {
@@ -262,11 +254,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
 
   const handleExport = () => {
     if (filteredEvaluations.length === 0) {
-      toast({
-        title: "No data to export",
-        description: "There are no evaluations matching the current filters.",
-        variant: "destructive",
-      });
+      toast.error("No data to export", { description: "There are no evaluations matching the current filters." });
       return;
     }
 
@@ -315,10 +303,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    toast({
-      title: "Export complete",
-      description: `${filteredEvaluations.length} evaluation(s) exported to CSV.`,
-    });
+    toast.success("Export complete", { description: `${filteredEvaluations.length} evaluation(s) exported to CSV.` });
   };
 
   const totalScore = (evaluation: Evaluation): number => {
@@ -509,7 +494,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
           </DialogHeader>
 
           {detailEvaluation && (
-            <div className="space-y-4">
+            <DialogBody className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground">Student</p>
@@ -581,7 +566,7 @@ export default function ExternalEvaluatorEvaluationsPage() {
                   </p>
                 </div>
               ) : null}
-            </div>
+            </DialogBody>
           )}
 
           <DialogFooter>

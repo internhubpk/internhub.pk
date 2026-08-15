@@ -18,9 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -128,7 +129,6 @@ function toDateInputValue(value?: string | null): string {
 
 export default function CompanyHRInternshipsPage() {
   const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -179,6 +179,9 @@ export default function CompanyHRInternshipsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingInternship, setEditingInternship] = useState<InternshipProgram | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -225,6 +228,7 @@ export default function CompanyHRInternshipsPage() {
   };
 
   const handleCreateInternship = async () => {
+    setIsSaving(true);
     try {
       const response = await fetch('/api/company-hr/internships', {
         method: 'POST',
@@ -252,18 +256,22 @@ export default function CompanyHRInternshipsPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || 'Failed to create internship');
 
+      toast.success("Internship created", { description: formData.title });
       setIsCreateOpen(false);
       resetForm();
       fetchInternships();
     } catch (error) {
       console.error("Error creating internship:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to create internship. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to create internship. Please try again." });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleEditInternship = async () => {
     if (!editingInternship) return;
 
+    setIsSaving(true);
     try {
       const response = await fetch(`/api/company-hr/internships/${editingInternship.id}`, {
         method: 'PUT',
@@ -291,13 +299,16 @@ export default function CompanyHRInternshipsPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || 'Failed to update internship');
 
+      toast.success("Internship updated", { description: formData.title });
       setIsEditOpen(false);
       setEditingInternship(null);
       resetForm();
       fetchInternships();
     } catch (error) {
       console.error("Error updating internship:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update internship. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update internship. Please try again." });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -325,14 +336,18 @@ export default function CompanyHRInternshipsPage() {
   };
 
   const handleDeleteInternship = async (id: string) => {
+    setIsDeleting(true);
     try {
       const response = await fetch(`/api/company-hr/internships/${id}`, { method: 'DELETE' });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || 'Failed to delete internship');
+      toast.success("Internship deleted");
       fetchInternships();
     } catch (error) {
       console.error("Error deleting internship:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete internship. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to delete internship. Please try again." });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -370,6 +385,7 @@ export default function CompanyHRInternshipsPage() {
       : currentStatus === 'open' ? 'cancelled'
       : currentStatus === 'cancelled' ? 'open'
       : 'open';
+    setIsToggling(true);
     try {
       const response = await fetch(`/api/company-hr/internships/${id}`, {
         method: 'PUT',
@@ -378,10 +394,13 @@ export default function CompanyHRInternshipsPage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || 'Failed to update status');
+      toast.success("Status updated", { description: `Internship is now ${nextStatus}` });
       fetchInternships();
     } catch (error) {
       console.error("Error updating status:", error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update status. Please try again.", variant: "destructive" });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update status. Please try again." });
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -443,7 +462,7 @@ export default function CompanyHRInternshipsPage() {
                 New Program
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Create New Internship Program</DialogTitle>
                 <DialogDescription>
@@ -451,7 +470,7 @@ export default function CompanyHRInternshipsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-            <div className="space-y-6 mt-4">
+            <DialogBody className="space-y-6">
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold flex items-center gap-2">
@@ -644,18 +663,18 @@ export default function CompanyHRInternshipsPage() {
                 </div>
               </div>
 
-              <DialogFooter className="pt-4 border-t">
+              <DialogFooter>
                 <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleCreateInternship}
-                  disabled={!formData.title || !formData.description}
+                  disabled={!formData.title || !formData.description || isSaving}
                 >
-                  Create Program
+                  {isSaving ? "Creating..." : "Create Program"}
                 </Button>
               </DialogFooter>
-            </div>
+            </DialogBody>
           </DialogContent>
         </Dialog>
         }
@@ -873,7 +892,10 @@ export default function CompanyHRInternshipsPage() {
                           <DropdownMenuItem onClick={() => handleDuplicateInternship(internship)}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => togglePublishStatus(internship.id, internship.status)}>
+                          <DropdownMenuItem
+                            onClick={() => togglePublishStatus(internship.id, internship.status)}
+                            disabled={isToggling}
+                          >
                             {internship.status === 'draft' ? (
                               <>
                                 <Send className="mr-2 h-4 w-4" /> Publish
@@ -905,9 +927,10 @@ export default function CompanyHRInternshipsPage() {
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction 
                                   onClick={() => handleDeleteInternship(internship.id)}
+                                  disabled={isDeleting}
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 >
-                                  Delete
+                                  {isDeleting ? "Deleting..." : "Delete"}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -925,7 +948,7 @@ export default function CompanyHRInternshipsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Edit Internship Program</DialogTitle>
             <DialogDescription>
@@ -933,7 +956,7 @@ export default function CompanyHRInternshipsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 mt-4">
+          <DialogBody className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Program Title *</Label>
               <Input
@@ -1067,15 +1090,15 @@ export default function CompanyHRInternshipsPage() {
               </p>
             </div>
 
-            <DialogFooter className="pt-4 border-t">
-              <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }}>
+          </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setIsEditOpen(false); resetForm(); }} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button onClick={handleEditInternship}>
-                Save Changes
+              <Button onClick={handleEditInternship} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

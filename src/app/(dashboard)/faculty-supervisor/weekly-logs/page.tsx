@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -45,7 +46,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -86,7 +87,6 @@ interface WeeklyLog {
 
 export default function FacultySupervisorWeeklyLogsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [logs, setLogs] = useState<WeeklyLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -278,7 +278,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
   async function handleSign() {
     if (!signLog) return;
     if (!signSignatureData) {
-      toast({ title: "Signature required", description: "Please draw or type your signature before signing.", variant: "destructive" });
+      toast.error("Signature required", { description: "Please draw or type your signature before signing." });
       return;
     }
     setIsSigning(true);
@@ -297,10 +297,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       }
       const json = await res.json();
       const updated = json.data;
-      toast({
-        title: json.message?.includes("fully") ? "Fully Approved" : "Signed",
-        description: json.message || "Weekly log signed successfully.",
-      });
+      toast.success(json.message?.includes("fully") ? "Fully Approved" : "Signed", { description: json.message || "Weekly log signed successfully." });
       setLogs((prev) =>
         prev.map((l) =>
           l.id === signLog.id
@@ -318,7 +315,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       closeSignDialog();
       setIsReviewOpen(false);
     } catch (err: any) {
-      toast({ title: "Failed to sign", description: err.message || "Please try again.", variant: "destructive" });
+      toast.error("Failed to sign", { description: err.message || "Please try again." });
     } finally {
       setIsSigning(false);
     }
@@ -349,6 +346,16 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
       if (error) throw error;
 
+      const actionLabel =
+        action === "approve" ? "Log approved"
+        : action === "reject" ? "Log rejected"
+        : "Log flagged for revision";
+      const actionDesc =
+        action === "approve" ? "The student has been notified."
+        : action === "reject" ? "The student has been notified."
+        : "The student has been asked to revise and resubmit.";
+      toast.success(actionLabel, { description: actionDesc });
+
       setLogs((prev) =>
         prev.map((l) =>
           l.id === selectedLog.id
@@ -361,7 +368,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       setReviewFeedback("");
     } catch (error) {
       console.error("Error reviewing weekly log:", error);
-      toast({ title: "Failed", description: "Failed to update weekly log. Please try again.", variant: "destructive" });
+      toast.error("Failed to review weekly log", { description: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -484,7 +491,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
       {/* Review Dialog */}
       <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           {selectedLog && (
             <>
               <DialogHeader>
@@ -497,7 +504,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4">
+              <DialogBody className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <Card>
                     <CardContent className="p-4 text-center">
@@ -554,7 +561,47 @@ export default function FacultySupervisorWeeklyLogsPage() {
                     rows={4}
                   />
                 </div>
-              </div>
+
+                {/* Already-signed status banners */}
+                {selectedLog.site_supervisor_signature_url && (
+                  <div className="mt-2 p-3 rounded-md border bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-3">
+                    <img
+                      src={selectedLog.site_supervisor_signature_url}
+                      alt="Site supervisor signature"
+                      className="h-12 w-auto object-contain bg-white rounded p-1 border"
+                    />
+                    <div className="text-xs">
+                      <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                        Site supervisor signed on {selectedLog.site_supervisor_signed_at
+                          ? new Date(selectedLog.site_supervisor_signed_at).toLocaleDateString()
+                          : "—"}
+                      </p>
+                      {selectedLog.site_supervisor_remarks && (
+                        <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.site_supervisor_remarks}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {selectedLog.faculty_supervisor_signature_url && (
+                  <div className="mt-2 p-3 rounded-md border bg-purple-50/40 dark:bg-purple-950/20 flex items-center gap-3">
+                    <img
+                      src={selectedLog.faculty_supervisor_signature_url}
+                      alt="Faculty signature"
+                      className="h-12 w-auto object-contain bg-white rounded p-1 border"
+                    />
+                    <div className="text-xs">
+                      <p className="font-medium text-purple-800 dark:text-purple-300">
+                        You signed this report on {selectedLog.faculty_supervisor_signed_at
+                          ? new Date(selectedLog.faculty_supervisor_signed_at).toLocaleDateString()
+                          : "—"}
+                      </p>
+                      {selectedLog.faculty_supervisor_remarks && (
+                        <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.faculty_supervisor_remarks}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </DialogBody>
 
               <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
                 <Button
@@ -589,46 +636,6 @@ export default function FacultySupervisorWeeklyLogsPage() {
                   Sign & Approve
                 </Button>
               </DialogFooter>
-
-              {/* Already-signed status banners */}
-              {selectedLog.site_supervisor_signature_url && (
-                <div className="mt-2 p-3 rounded-md border bg-emerald-50/40 dark:bg-emerald-950/20 flex items-center gap-3">
-                  <img
-                    src={selectedLog.site_supervisor_signature_url}
-                    alt="Site supervisor signature"
-                    className="h-12 w-auto object-contain bg-white rounded p-1 border"
-                  />
-                  <div className="text-xs">
-                    <p className="font-medium text-emerald-800 dark:text-emerald-300">
-                      Site supervisor signed on {selectedLog.site_supervisor_signed_at
-                        ? new Date(selectedLog.site_supervisor_signed_at).toLocaleDateString()
-                        : "—"}
-                    </p>
-                    {selectedLog.site_supervisor_remarks && (
-                      <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.site_supervisor_remarks}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-              {selectedLog.faculty_supervisor_signature_url && (
-                <div className="mt-2 p-3 rounded-md border bg-purple-50/40 dark:bg-purple-950/20 flex items-center gap-3">
-                  <img
-                    src={selectedLog.faculty_supervisor_signature_url}
-                    alt="Faculty signature"
-                    className="h-12 w-auto object-contain bg-white rounded p-1 border"
-                  />
-                  <div className="text-xs">
-                    <p className="font-medium text-purple-800 dark:text-purple-300">
-                      You signed this report on {selectedLog.faculty_supervisor_signed_at
-                        ? new Date(selectedLog.faculty_supervisor_signed_at).toLocaleDateString()
-                        : "—"}
-                    </p>
-                    {selectedLog.faculty_supervisor_remarks && (
-                      <p className="text-muted-foreground mt-0.5">Remarks: {selectedLog.faculty_supervisor_remarks}</p>
-                    )}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </DialogContent>
@@ -638,7 +645,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       {/* SIGN DIALOG (new)                                            */}
       {/* ============================================================ */}
       <Dialog open={signDialogOpen} onOpenChange={(o) => !o && closeSignDialog()}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sign & Approve Weekly Report</DialogTitle>
             <DialogDescription>
@@ -652,7 +659,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <DialogBody className="space-y-4">
             {signLog && (
               <div className="p-3 rounded-md border bg-muted/30 text-xs space-y-1">
                 <p><span className="font-medium">Student:</span> {signLog.student_name}</p>
@@ -700,9 +707,9 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </p>
               )}
             </div>
-          </div>
+          </DialogBody>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t">
+          <DialogFooter>
             <Button variant="outline" onClick={closeSignDialog} disabled={isSigning}>
               Cancel
             </Button>
@@ -719,7 +726,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </>
               )}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

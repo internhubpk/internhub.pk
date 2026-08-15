@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -681,7 +682,7 @@ export default function SuperAdminUsersPage() {
         setIsCreateDialogOpen(open);
         if (!open) resetCreateForm();
       }}>
-        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
@@ -692,7 +693,7 @@ export default function SuperAdminUsersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
+          <DialogBody className="space-y-4">
             {/* Account Information */}
             <div className="space-y-3 p-4 rounded-lg bg-muted/50">
               <h4 className="font-medium text-sm flex items-center gap-2">
@@ -836,7 +837,7 @@ export default function SuperAdminUsersPage() {
                 </Select>
               </div>
             )}
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
@@ -871,7 +872,7 @@ export default function SuperAdminUsersPage() {
           </DialogHeader>
           
           {selectedUser && (
-            <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
+            <DialogBody className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                   <span className="text-2xl font-bold text-primary">
@@ -917,7 +918,7 @@ export default function SuperAdminUsersPage() {
                   />
                 )}
               </div>
-            </div>
+            </DialogBody>
           )}
 
           <DialogFooter>

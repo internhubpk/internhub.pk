@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         student_profile:student_user_id(full_name, first_name, last_name, email, avatar_url)
       `, { count: "exact" })
-      .eq("supervisor_id", supervisorUserId)
+      .eq("site_supervisor_id", supervisorUserId)
       .in("student_user_id", studentIds);
 
     if (status) {
@@ -229,14 +229,15 @@ export async function PUT(request: NextRequest) {
     const newStatus = statusMap[action as keyof typeof statusMap];
 
     // Update the log — all columns below exist on weekly_logs.
-    // `supervisor_id` references profiles.user_id, so write the supervisor's
-    // user_id (not the supervisors table PK).
+    // `site_supervisor_id` (migration 0058) references profiles.user_id,
+    // so write the supervisor's user_id (not the supervisors table PK).
+    // (Legacy `supervisor_id` column is left untouched.)
     const { data: updatedLog, error: updateError } = await supabase
       .from("weekly_logs")
       .update({
         status: newStatus,
         supervisor_feedback: feedback || null,
-        supervisor_id: supervisorUserId,
+        site_supervisor_id: supervisorUserId,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -70,7 +71,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -131,7 +132,6 @@ function shiftDate(iso: string, days: number): string {
 
 export default function CompanyHRAttendancePage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [records, setRecords] = useState<AttendanceRecord[]>(DEFAULT_RECORDS);
   const [summaries, setSummaries] = useState<AttendanceSummary[]>(DEFAULT_SUMMARIES);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
@@ -284,6 +284,7 @@ export default function CompanyHRAttendancePage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      toast.success("Correction saved", { description: `Status updated to "${newStatus}".` });
       setRecords(recs =>
         recs.map(r => (r.id === selectedRecord.id ? { ...r, status: newStatus, notes: correctionReason, verified: true } : r))
       );
@@ -291,7 +292,7 @@ export default function CompanyHRAttendancePage() {
       setCorrectionReason("");
       setSelectedRecord(null);
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Failed to save correction", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to save correction" });
     } finally {
       setSavingCorrection(false);
     }
@@ -556,7 +557,7 @@ export default function CompanyHRAttendancePage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
-                                toast({ title: "Notice", description: `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}` });
+                                toast.success("Notice", { description: `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}` });
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" /> View Details
@@ -689,7 +690,7 @@ export default function CompanyHRAttendancePage() {
           </DialogHeader>
 
           {selectedRecord && (
-            <div className="mt-4 space-y-4">
+            <DialogBody className="space-y-4">
               <div className="p-3 bg-muted/30 rounded-lg space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Intern</span>
@@ -729,20 +730,19 @@ export default function CompanyHRAttendancePage() {
                   rows={3}
                 />
               </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setIsCorrectionOpen(false); setCorrectionReason(""); }}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={!correctionReason.trim() || savingCorrection}
-                  onClick={handleSaveCorrection}
-                >
-                  {savingCorrection ? "Saving..." : "Save Correction"}
-                </Button>
-              </DialogFooter>
-            </div>
+            </DialogBody>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsCorrectionOpen(false); setCorrectionReason(""); }}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!correctionReason.trim() || savingCorrection}
+              onClick={handleSaveCorrection}
+            >
+              {savingCorrection ? "Saving..." : "Save Correction"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

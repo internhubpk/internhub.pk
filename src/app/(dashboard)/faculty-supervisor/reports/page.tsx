@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -77,7 +78,7 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 
 // Types
 interface StudentForReport {
@@ -129,7 +130,6 @@ const DEFAULT_MARKSHEET: MarksheetEntry[] = [];
 
 export default function FacultySupervisorReportsPage() {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
   // State
   const [students, setStudents] = useState<StudentForReport[]>(DEFAULT_STUDENTS);
   const [marksheet, setMarksheet] = useState<MarksheetEntry[]>(DEFAULT_MARKSHEET);
@@ -148,10 +148,7 @@ export default function FacultySupervisorReportsPage() {
   // other faculty-supervisor pages.
   const handleExportAll = () => {
     if (!students || students.length === 0) {
-      toast({
-        title: "Nothing to export",
-        description: "There are no students to export yet.",
-      });
+      toast.success("Nothing to export", { description: "There are no students to export yet." });
       return;
     }
     const headers = [
@@ -245,17 +242,10 @@ export default function FacultySupervisorReportsPage() {
         const errBody = await res.json().catch(() => null);
         throw new Error(errBody?.error?.message || `Failed to save certificate (HTTP ${res.status})`);
       }
-      toast({
-        title: "Certificate saved",
-        description: "The certificate has been saved to the student's record.",
-      });
+      toast.success("Certificate saved", { description: "The certificate has been saved to the student's record." });
     } catch (err) {
       console.error("Error saving certificate:", err);
-      toast({
-        title: "Failed to save certificate",
-        description: err instanceof Error ? err.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Failed to save certificate", { description: err instanceof Error ? err.message : "Unknown error" });
     } finally {
       setIsSavingCertificate(false);
     }
@@ -1023,7 +1013,7 @@ export default function FacultySupervisorReportsPage() {
 
       {/* Marksheet View Dialog */}
       <Dialog open={isMarksheetDialogOpen} onOpenChange={setIsMarksheetDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -1036,7 +1026,7 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Student Info Header */}
                 <Card>
                   <CardContent className="p-4">
@@ -1187,9 +1177,24 @@ export default function FacultySupervisorReportsPage() {
                     <Award className="h-4 w-4" /> Generate Certificate
                   </Button>
                 </div>
-              </div>
+              </DialogBody>
 
-              <DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-2">
+                {/* Single button that opens the browser's print dialog —
+                    the user can pick "Save as PDF" as the destination
+                    from there. Previously we had two duplicate buttons
+                    ("Print Marksheet" and "Download PDF") that both
+                    called window.print() — confusing. */}
+                <Button variant="outline" className="gap-2" onClick={() => window.print()}>
+                  <Printer className="h-4 w-4" /> Print / Save as PDF
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="gap-2"
+                  onClick={() => openCertificateDialog(selectedStudent)}
+                >
+                  <Award className="h-4 w-4" /> Generate Certificate
+                </Button>
                 <Button variant="outline" onClick={() => setIsMarksheetDialogOpen(false)}>
                   Close
                 </Button>
@@ -1201,7 +1206,7 @@ export default function FacultySupervisorReportsPage() {
 
       {/* Certificate Generation Dialog */}
       <Dialog open={isCertificateDialogOpen} onOpenChange={setIsCertificateDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -1214,6 +1219,7 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
+              <DialogBody className="p-0">
               <Tabs defaultValue="preview" className="mt-4">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="preview">Preview</TabsTrigger>
@@ -1333,6 +1339,7 @@ export default function FacultySupervisorReportsPage() {
                   </div>
                 </TabsContent>
               </Tabs>
+              </DialogBody>
 
               <DialogFooter className="print:hidden">
                 <Button variant="outline" onClick={() => setIsCertificateDialogOpen(false)}>

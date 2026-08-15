@@ -266,9 +266,14 @@ export async function POST(request: NextRequest) {
     let fileName: string = name || `${type}_${internshipTitle || intern_id}.pdf`;
 
     if (file) {
-      // Upload file to storage
+      // Upload file to storage. The first path segment MUST be the intern's
+      // user_id — the documents_insert RLS policy allows HR uploads via
+      // `is_hr_for_student(NULLIF((storage.foldername(name))[1], '')::uuid)`,
+      // which checks the HR is authorized for the student whose user_id
+      // is the first folder. (`intern_id` IS the student's user_id — see
+      // the student_internships lookup above filtering by student_user_id.)
       const fileExt = file.name.split(".").pop() || "pdf";
-      const filePath = `${profile.company_id}/${intern_id}/${type}_${Date.now()}.${fileExt}`;
+      const filePath = `${intern_id}/${type}_${Date.now()}.${fileExt}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("documents")
@@ -282,12 +287,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
+      // The `documents` bucket is private — generate a signed URL (7-day TTL)
+      // instead of a public URL so the stored row remains usable.
+      const { data: urlData, error: signedUrlError } = await supabase.storage
         .from("documents")
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 60 * 60 * 24 * 7);
 
-      fileUrl = urlData.publicUrl;
+      if (signedUrlError || !urlData?.signedUrl) {
+        console.error("Error creating signed URL:", signedUrlError);
+        return NextResponse.json(
+          { error: { code: "STORAGE_ERROR", message: "Failed to create signed URL" } },
+          { status: 500 }
+        );
+      }
+
+      fileUrl = urlData.signedUrl;
       fileSize = file.size;
       fileName = file.name;
     } else {

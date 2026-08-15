@@ -40,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -113,7 +113,6 @@ const DEFAULT_STATS: CompanyStats = {
 
 export default function CompanyHRDashboard() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,11 +130,7 @@ export default function CompanyHRDashboard() {
       setData(j.data);
     } catch (e: any) {
       setError(e.message || "Failed to load dashboard");
-      toast({
-        title: "Dashboard error",
-        description: e.message || "Failed to load dashboard",
-        variant: "destructive",
-      });
+      toast.error("Dashboard error", { description: e.message || "Failed to load dashboard" });
     } finally {
       setLoading(false);
     }

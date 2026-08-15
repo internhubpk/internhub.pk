@@ -104,15 +104,27 @@ export async function POST(
       );
     }
 
-    const { data: urlData } = supabase.storage
+    // The `documents` bucket is private — generate a signed URL (7-day TTL)
+    // so the returned URL is fetchable by the client without a storage
+    // session. (`getPublicUrl` would return a URL that 400s on a private
+    // bucket.)
+    const { data: urlData, error: signedUrlError } = await supabase.storage
       .from("documents")
-      .getPublicUrl(filePath);
+      .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+
+    if (signedUrlError || !urlData?.signedUrl) {
+      console.error("[evidence upload] signed URL error:", signedUrlError);
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "STORAGE_ERROR", message: "Failed to create signed URL" } },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json<ApiResponse<{ name: string; url: string; size: number; type: string }>>({
       success: true,
       data: {
         name: file.name,
-        url: urlData?.publicUrl || "",
+        url: urlData.signedUrl,
         size: file.size,
         type: file.type,
       },

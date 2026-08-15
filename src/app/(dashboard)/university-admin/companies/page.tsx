@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -31,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -58,8 +59,6 @@ interface CompanyWithStats {
 
 export default function UniversityAdminCompaniesPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-
   const [companies, setCompanies] = useState<CompanyWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -129,11 +128,7 @@ export default function UniversityAdminCompaniesPage() {
       setCompanies(filtered);
     } catch (error) {
       console.error("Error fetching companies:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load companies",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load companies" });
     } finally {
       setIsLoading(false);
     }
@@ -321,7 +316,7 @@ export default function UniversityAdminCompaniesPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
+              <DialogBody className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {detailCompany.is_verified ? (
                     <Badge className="bg-green-600 hover:bg-green-600 gap-1">
@@ -416,7 +411,7 @@ export default function UniversityAdminCompaniesPage() {
                     </p>
                   </div>
                 </div>
-              </div>
+              </DialogBody>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDetailCompany(null)}>

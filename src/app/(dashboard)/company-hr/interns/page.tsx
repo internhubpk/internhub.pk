@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -71,7 +72,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 
 // Types
@@ -106,7 +107,6 @@ const DEFAULT_PROGRAMS = ["All Programs"];
 
 export default function CompanyHRInternsPage() {
   const { profile } = useAuth();
-  const { toast } = useToast();
   const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
   const [supervisors, setSupervisors] = useState<Array<{ user_id: string; name: string; email: string }>>([]);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
@@ -201,6 +201,9 @@ export default function CompanyHRInternsPage() {
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
       const supervisor = supervisors.find((s) => s.user_id === selectedSupervisorForAssignment);
+      toast.success("Supervisor assigned", {
+        description: supervisor ? `${supervisor.name} is now supervising this intern.` : undefined,
+      });
       setInterns(
         interns.map((i) =>
           i.id === assigningInternId
@@ -216,7 +219,7 @@ export default function CompanyHRInternsPage() {
       setAssigningInternId(null);
       setSelectedSupervisorForAssignment("");
     } catch (e: any) {
-      toast({ title: "Error", description: e.message || "Failed to assign supervisor", variant: "destructive" });
+      toast.error("Error", { description: e.message || "Failed to assign supervisor" });
     } finally {
       setAssigning(false);
     }
@@ -544,7 +547,7 @@ export default function CompanyHRInternsPage() {
 
       {/* View Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           {selectedIntern && (
             <>
               <DialogHeader>
@@ -564,7 +567,7 @@ export default function CompanyHRInternsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <DialogBody className="space-y-6">
                 {/* Contact Info */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
@@ -671,15 +674,15 @@ export default function CompanyHRInternsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-4 border-t gap-2">
-                  <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
-                  <Button asChild>
-                    <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
-                      <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
-                    </Link>
-                  </Button>
-                </div>
-              </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
+                <Button asChild>
+                  <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
+                    <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
+                  </Link>
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
@@ -695,7 +698,7 @@ export default function CompanyHRInternsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
+          <DialogBody className="space-y-4">
             <div className="space-y-2">
               <Label>Select Supervisor</Label>
               <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>
@@ -730,7 +733,7 @@ export default function CompanyHRInternsPage() {
                 </div>
               );
             })()}
-
+          </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }} disabled={assigning}>
                 Cancel
@@ -742,7 +745,6 @@ export default function CompanyHRInternsPage() {
                 {assigning ? "Assigning..." : "Assign Supervisor"}
               </Button>
             </DialogFooter>
-          </div>
         </DialogContent>
       </Dialog>
     </div>

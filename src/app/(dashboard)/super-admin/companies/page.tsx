@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -42,7 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -109,8 +110,6 @@ export default function SuperAdminCompaniesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { toast } = useToast();
-
   useEffect(() => {
     fetchCompanies();
   }, []);
@@ -145,11 +144,7 @@ export default function SuperAdminCompaniesPage() {
       setCompanies(withHrCounts);
     } catch (error: any) {
       console.error("Error fetching companies:", error);
-      toast({
-        title: "Failed to load companies",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to load companies", { description: error.message });
     } finally {
       setIsLoading(false);
     }
@@ -191,11 +186,11 @@ export default function SuperAdminCompaniesPage() {
 
   async function handleSave() {
     if (!formData.name.trim()) {
-      toast({ title: "Name is required", variant: "destructive" });
+      toast.error("Name is required");
       return;
     }
     if (!formData.contact_email.trim()) {
-      toast({ title: "Contact email is required", variant: "destructive" });
+      toast.error("Contact email is required");
       return;
     }
 
@@ -227,7 +222,7 @@ export default function SuperAdminCompaniesPage() {
           .eq("id", editingCompany.id);
 
         if (error) throw error;
-        toast({ title: "Company updated" });
+        toast.success("Company updated");
       } else {
         const { error } = await supabase.from("companies").insert({
           name: formData.name.trim(),
@@ -247,18 +242,14 @@ export default function SuperAdminCompaniesPage() {
         });
 
         if (error) throw error;
-        toast({ title: "Company created" });
+        toast.success("Company created");
       }
 
       setIsDialogOpen(false);
       fetchCompanies();
     } catch (error: any) {
       console.error("Error saving company:", error);
-      toast({
-        title: "Failed to save company",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to save company", { description: error.message });
     } finally {
       setIsSaving(false);
     }
@@ -274,15 +265,11 @@ export default function SuperAdminCompaniesPage() {
         .delete()
         .eq("id", deleteTarget.id);
       if (error) throw error;
-      toast({ title: "Company deleted" });
+      toast.success("Company deleted");
       setDeleteTarget(null);
       fetchCompanies();
     } catch (error: any) {
-      toast({
-        title: "Failed to delete company",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to delete company", { description: error.message });
     } finally {
       setIsDeleting(false);
     }
@@ -464,7 +451,7 @@ export default function SuperAdminCompaniesPage() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>
               {editingCompany ? "Edit Company" : "Add New Company"}
@@ -476,6 +463,7 @@ export default function SuperAdminCompaniesPage() {
             </DialogDescription>
           </DialogHeader>
 
+          <DialogBody className="p-0">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
             <div className="sm:col-span-2">
               <Label htmlFor="name">Company Name *</Label>
@@ -599,6 +587,7 @@ export default function SuperAdminCompaniesPage() {
               </label>
             </div>
           </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>

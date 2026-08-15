@@ -47,7 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -79,8 +79,6 @@ const emptyFilters: StudentFilters = {
 
 export default function UniversityAdminStudentsPage() {
   const { profile, university } = useAuth();
-  const { toast } = useToast();
-  
   const [students, setStudents] = useState<StudentWithDetails[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -228,11 +226,7 @@ export default function UniversityAdminStudentsPage() {
       setTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching students:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load students",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load students" });
     } finally {
       setIsLoading(false);
     }
@@ -266,11 +260,7 @@ export default function UniversityAdminStudentsPage() {
 
   const exportToCSV = () => {
     if (students.length === 0) {
-      toast({
-        title: "No Data",
-        description: "There are no students to export",
-        variant: "destructive",
-      });
+      toast.error("No Data", { description: "There are no students to export" });
       return;
     }
 
@@ -302,10 +292,7 @@ export default function UniversityAdminStudentsPage() {
     link.click();
     document.body.removeChild(link);
 
-    toast({
-      title: "Export Complete",
-      description: `${students.length} students exported to CSV`,
-    });
+    toast.success("Export Complete", { description: `${students.length} students exported to CSV` });
   };
 
   const openStudentDetail = (student: StudentWithDetails) => {

@@ -25,8 +25,10 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -51,7 +53,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -104,7 +106,6 @@ const STUDENT_ANSWER_LABELS: Record<string, Record<string, string>> = {
 
 export default function StudentApplicationsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -303,12 +304,14 @@ export default function StudentApplicationsPage() {
           : app
       ));
 
+      toast.success("Application withdrawn", { description: `Your application for "${selectedApplication.internship_title}" has been withdrawn.` });
+
       // Close dialog
       setWithdrawDialogOpen(false);
       setSelectedApplication(null);
     } catch (error) {
       console.error("Error withdrawing application:", error);
-      toast({ title: "Failed", description: "Failed to withdraw application. Please try again.", variant: "destructive" });
+      toast.error("Failed to withdraw application", { description: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setIsWithdrawing(false);
     }
@@ -644,7 +647,7 @@ export default function StudentApplicationsPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!detailApplication} onOpenChange={() => setDetailApplication(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           {detailApplication && (
             <>
               <DialogHeader>
@@ -655,7 +658,7 @@ export default function StudentApplicationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-6 mt-4">
+              <DialogBody className="space-y-6">
                 {/* Status Banner */}
                 <div className={`p-4 rounded-lg ${
                   detailApplication.status === "accepted" 
@@ -830,22 +833,20 @@ export default function StudentApplicationsPage() {
                     ))}
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="flex justify-end pt-4 border-t">
-                  <Button variant="outline" onClick={() => setDetailApplication(null)}>
-                    Close
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDetailApplication(null)}>
+                  Close
+                </Button>
+                
+                {detailApplication.status === "accepted" && (
+                  <Button asChild>
+                    <Link href="/student">
+                      Go to Dashboard
+                    </Link>
                   </Button>
-                  
-                  {detailApplication.status === "accepted" && (
-                    <Button className="ml-2" asChild>
-                      <Link href="/student">
-                        Go to Dashboard
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              </div>
+                )}
+              </DialogFooter>
             </>
           )}
         </DialogContent>
@@ -865,7 +866,7 @@ export default function StudentApplicationsPage() {
           </DialogHeader>
 
           {selectedApplication && (
-            <div className="space-y-4 mt-4">
+            <DialogBody className="space-y-4">
               <div className="p-4 rounded-lg bg-muted/50 space-y-2">
                 <p className="font-semibold">{selectedApplication.internship_title}</p>
                 <p className="text-sm text-muted-foreground">{selectedApplication.company_name}</p>
@@ -878,34 +879,33 @@ export default function StudentApplicationsPage() {
                   internship&apos;s marketplace page if you change your mind.
                 </p>
               </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setWithdrawDialogOpen(false);
-                    setSelectedApplication(null);
-                  }}
-                  disabled={isWithdrawing}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleWithdraw}
-                  disabled={isWithdrawing}
-                  className="gap-2"
-                >
-                  {isWithdrawing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowRightLeft className="h-4 w-4" />
-                  )}
-                  {isWithdrawing ? "Withdrawing..." : "Yes, Withdraw"}
-                </Button>
-              </div>
-            </div>
+            </DialogBody>
           )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWithdrawDialogOpen(false);
+                setSelectedApplication(null);
+              }}
+              disabled={isWithdrawing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleWithdraw}
+              disabled={isWithdrawing}
+              className="gap-2"
+            >
+              {isWithdrawing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRightLeft className="h-4 w-4" />
+              )}
+              {isWithdrawing ? "Withdrawing..." : "Yes, Withdraw"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
