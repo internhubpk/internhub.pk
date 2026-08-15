@@ -274,6 +274,15 @@ export default function StudentDashboard() {
         const ss = (studentInternship as any).site_supervisor;
         const fsObj = Array.isArray(fs) ? fs[0] : fs;
         const ssObj = Array.isArray(ss) ? ss[0] : ss;
+        // If the same user is assigned as BOTH faculty and site supervisor,
+        // suppress the duplicate faculty card — render them only as the
+        // site supervisor (since that's the on-site role). This fixes the
+        // "two site supervisors" UX confusion where both cards showed the
+        // same person.
+        const facultyId = (studentInternship as any).faculty_supervisor_id;
+        const siteId = (studentInternship as any).site_supervisor_id;
+        const sameSupervisor =
+          facultyId && siteId && facultyId === siteId;
         internshipData = {
           id: internshipRow?.id || studentInternship.internship_id,
           title: internshipRow?.title || "Active Internship",
@@ -283,10 +292,10 @@ export default function StudentDashboard() {
           end_date: end,
           status: studentInternship.status || internshipRow?.status || "active",
           progress,
-          faculty_supervisor_name: fsObj?.full_name || null,
-          faculty_supervisor_email: fsObj?.email || null,
-          site_supervisor_name: ssObj?.full_name || null,
-          site_supervisor_email: ssObj?.email || null,
+          faculty_supervisor_name: sameSupervisor ? null : (fsObj?.full_name || null),
+          faculty_supervisor_email: sameSupervisor ? null : (fsObj?.email || null),
+          site_supervisor_name: ssObj?.full_name || (sameSupervisor ? fsObj?.full_name : null),
+          site_supervisor_email: ssObj?.email || (sameSupervisor ? fsObj?.email : null),
         };
       }
 

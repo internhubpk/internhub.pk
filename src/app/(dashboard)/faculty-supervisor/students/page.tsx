@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
-import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -39,7 +38,6 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
-  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -174,7 +172,7 @@ export default function FacultySupervisorStudentsPage() {
   // company-hr/attendance/page.tsx.
   const handleExport = useCallback(() => {
     if (!students || students.length === 0) {
-      toast.success("Notice", { description: "No students to export." });
+      alert("No students to export.");
       return;
     }
     const headers = [
@@ -227,12 +225,22 @@ export default function FacultySupervisorStudentsPage() {
       try {
         const supabase = createClient();
 
-        // Fetch supervised students with their internship details.
-        // THREE-PATH UNION — see faculty-supervisor/page.tsx for full rationale.
-        //   Path 1: student_internships.faculty_supervisor_id
-        //   Path 2: students.faculty_supervisor_id             (migration 0041)
-        //   Path 3: programs.default_faculty_supervisor_id     (migration 0015)
-        const { data: directData } = await supabase
+        // Fetch supervised students from BOTH sources:
+        //   1. student_internships.faculty_supervisor_id (internship-time)
+        //   2. students.faculty_supervisor_id (pre-internship, migration 0041)
+        // Without both, students the coordinator pre-assigned without an
+        // internship placement are invisible to the supervisor.
+        const { fetchSupervisedStudents } = await import("@/lib/supervised-students");
+        const supervisedStudents = await fetchSupervisedStudents(supabase, user.id);
+        const studentUserIds = supervisedStudents.map((s) => s.user_id);
+
+        if (studentUserIds.length === 0) {
+          setStudents([]);
+          return;
+        }
+
+        // Fetch internship-shaped rows for these students.
+        const { data: studentData } = await supabase
           .from("student_internships")
           .select(`
             id,
@@ -246,82 +254,20 @@ export default function FacultySupervisorStudentsPage() {
             internship:internships(id, title, location, remote),
             company:company_id(name)
           `)
-          .eq("faculty_supervisor_id", user.id);
+          .in("student_user_id", studentUserIds);
 
-        const { data: preInternshipStudents } = await supabase
-          .from("students")
-          .select("user_id, program_id")
-          .eq("faculty_supervisor_id", user.id);
-
-        const { data: defaultPrograms } = await supabase
-          .from("programs")
-          .select("id, name")
-          .eq("default_faculty_supervisor_id", user.id);
-        const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
-        let programStudentIds: string[] = [];
-        if (defaultProgramIds.length > 0) {
-          const { data: programStudents } = await supabase
-            .from("students")
-            .select("user_id")
-            .in("program_id", defaultProgramIds);
-          programStudentIds = (programStudents || []).map((s) => s.user_id);
+        // For students without an internship row, fetch their profile so
+        // they still appear in the list.
+        const seenIds = new Set((studentData || []).map((s: any) => s.student_user_id));
+        const missingIds = studentUserIds.filter((id) => !seenIds.has(id));
+        let missingProfiles: any[] = [];
+        if (missingIds.length > 0) {
+          const { data: mp } = await supabase
+            .from("profiles")
+            .select("user_id, full_name, first_name, last_name, email, phone, avatar_url")
+            .in("user_id", missingIds);
+          missingProfiles = mp || [];
         }
-
-        const directStudentIds = new Set((directData || []).map((s: any) => s.student_user_id));
-        const preInternshipOnlyIds = (preInternshipStudents || [])
-          .map((s) => s.user_id)
-          .filter((id) => !directStudentIds.has(id));
-        const programOnlyIds = programStudentIds.filter(
-          (id) => !directStudentIds.has(id) && !preInternshipOnlyIds.includes(id)
-        );
-        const additionalStudentIds = Array.from(new Set([...preInternshipOnlyIds, ...programOnlyIds]));
-
-        let additionalRows: any[] = [];
-        if (additionalStudentIds.length > 0) {
-          const { data: extraInternships } = await supabase
-            .from("student_internships")
-            .select(`
-              id,
-              status,
-              start_date,
-              end_date,
-              student_user_id,
-              internship_id,
-              company_id,
-              student_profile:student_user_id(full_name, first_name, last_name, email, phone, avatar_url),
-              internship:internships(id, title, location, remote),
-              company:company_id(name)
-            `)
-            .in("student_user_id", additionalStudentIds);
-          const seenIds = new Set((extraInternships || []).map((r: any) => r.student_user_id));
-          const missingIds = additionalStudentIds.filter((id) => !seenIds.has(id));
-          let missingProfiles: any[] = [];
-          if (missingIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("user_id, full_name, first_name, last_name, email, phone, avatar_url")
-              .in("user_id", missingIds);
-            missingProfiles = (profiles || []).map((p) => ({
-              id: null,
-              status: "no_internship",
-              start_date: null,
-              end_date: null,
-              student_user_id: p.user_id,
-              internship_id: null,
-              company_id: null,
-              student_profile: p,
-              internship: null,
-              company: null,
-            }));
-          }
-          additionalRows = [...(extraInternships || []), ...missingProfiles];
-        }
-
-        const studentData: any[] = [...(directData || []), ...additionalRows];
-
-        const studentUserIds = Array.from(
-          new Set((studentData || []).map((s: any) => s.student_user_id))
-        );
 
         // Fetch the `students` rows (program_id, cgpa, student_id_number) for
         // these users in a separate query — PostgREST can't traverse
@@ -415,6 +361,36 @@ export default function FacultySupervisorStudentsPage() {
             avatarUrl: s.student_profile?.avatar_url,
           };
         });
+
+        // Append pre-internship students (no student_internships row yet)
+        // so they're visible in the supervisor's student list.
+        for (const p of missingProfiles) {
+          const record = recordByUser.get(p.user_id);
+          const programName = record?.program_id ? programMap[record.program_id] || "Unknown Program" : "Unknown Program";
+          studentList.push({
+            id: p.user_id,
+            name:
+              p.full_name ||
+              `${p.first_name || ""} ${p.last_name || ""}`.trim() ||
+              `Student ${p.user_id?.slice(0, 6)}`,
+            email: p.email || "",
+            phone: p.phone,
+            university: "",
+            program: programName,
+            major: "",
+            semester: 0,
+            internshipTitle: "Not yet placed",
+            company: "N/A",
+            companyLocation: "N/A",
+            status: "active",
+            weeklyLogStatus: "not_submitted",
+            overallProgress: 0,
+            lastActivity: "",
+            startDate: "",
+            endDate: "",
+            avatarUrl: p.avatar_url,
+          });
+        }
 
         setStudents(studentList);
       } catch (error) {
@@ -629,9 +605,7 @@ export default function FacultySupervisorStudentsPage() {
     active: students.filter((s) => s.status === "active").length,
     onLeave: students.filter((s) => s.status === "on_leave").length,
     logsPending: students.filter((s) => s.weeklyLogStatus === "pending" || s.weeklyLogStatus === "not_submitted").length,
-    avgProgress: students.length > 0
-      ? Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length)
-      : 0,
+    avgProgress: Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length),
     onTrack: students.filter((s) => s.overallProgress >= 70).length,
     atRisk: students.filter((s) => s.overallProgress < 40).length,
   };
@@ -917,7 +891,7 @@ export default function FacultySupervisorStudentsPage() {
 
       {/* Student Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -940,7 +914,6 @@ export default function FacultySupervisorStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <DialogBody className="p-0">
               <Tabs defaultValue="overview" className="mt-4">
                 <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1289,7 +1262,6 @@ export default function FacultySupervisorStudentsPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
-              </DialogBody>
             </>
           )}
         </DialogContent>

@@ -38,6 +38,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { fetchSupervisedStudents } from "@/lib/supervised-students";
 
 // Types
 interface FacultyStats {
@@ -77,8 +78,8 @@ interface TaskNeedingAttention {
   title: string;
   assignedTo: string;
   dueDate: string;
-  status: "overdue" | "pending_review" | "in_progress" | "completed" | "not_started";
-  priority: "high" | "medium" | "low" | "urgent";
+  status: "overdue" | "pending_review" | "not_started";
+  priority: "high" | "medium" | "low";
 }
 
 // Default empty states - data will be fetched from database
@@ -114,67 +115,19 @@ export default function FacultySupervisorDashboard() {
     try {
       const supabase = createClient();
 
-      // THREE-PATH UNION — gather student_user_ids from all valid faculty
-      // supervisor assignment paths so the dashboard reflects every student
-      // this supervisor is responsible for (not just those with an
-      // internship row pointing at them).
-      //
-      //   Path 1: student_internships.faculty_supervisor_id  (internship-time)
-      //   Path 2: students.faculty_supervisor_id             (pre-internship, migration 0041)
-      //   Path 3: programs.default_faculty_supervisor_id     (program default, migration 0015)
+      // Fetch supervised students from BOTH sources (student_internships
+      // for internship-time assignments + students.faculty_supervisor_id
+      // for pre-internship assignments made by the coordinator). Without
+      // both, the dashboard shows 0 students whenever a coordinator assigns
+      // a supervisor to a student who hasn't started an internship yet.
+      const supervisedStudents = await fetchSupervisedStudents(supabase, user.id);
+      const supervisedStudentIds = supervisedStudents.map((s) => s.user_id);
 
-      // Path 1 — fetch internships directly assigned to this supervisor.
-      const { data: directInternships } = await supabase
-        .from("student_internships")
-        .select(`
-          id,
-          student_user_id,
-          status,
-          start_date,
-          end_date,
-          student_profile:student_user_id(full_name, email, avatar_url),
-          internship:internships(id, title, location, remote, company_id),
-          company:company_id(name)
-        `)
-        .eq("faculty_supervisor_id", user.id)
-        .order("created_at", { ascending: false });
-
-      // Path 2 — students assigned directly via students.faculty_supervisor_id.
-      const { data: preInternshipStudents } = await supabase
-        .from("students")
-        .select("user_id, program_id")
-        .eq("faculty_supervisor_id", user.id);
-
-      // Path 3 — programs whose default faculty supervisor is this user.
-      const { data: defaultPrograms } = await supabase
-        .from("programs")
-        .select("id, name")
-        .eq("default_faculty_supervisor_id", user.id);
-      const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
-      let programStudentIds: string[] = [];
-      if (defaultProgramIds.length > 0) {
-        const { data: programStudents } = await supabase
-          .from("students")
-          .select("user_id")
-          .in("program_id", defaultProgramIds);
-        programStudentIds = (programStudents || []).map((s) => s.user_id);
-      }
-
-      // Pre-internship students who don't already appear in directInternships.
-      const directStudentIds = new Set((directInternships || []).map((a) => a.student_user_id));
-      const preInternshipOnlyIds = (preInternshipStudents || [])
-        .map((s) => s.user_id)
-        .filter((id) => !directStudentIds.has(id));
-      const programOnlyIds = programStudentIds.filter(
-        (id) => !directStudentIds.has(id) && !preInternshipOnlyIds.includes(id)
-      );
-      const additionalStudentIds = Array.from(new Set([...preInternshipOnlyIds, ...programOnlyIds]));
-
-      // For students only known via Path 2 or Path 3, fetch their profile +
-      // (if available) any internship rows so they still appear in the list.
-      let additionalRows: any[] = [];
-      if (additionalStudentIds.length > 0) {
-        const { data: extraInternships } = await supabase
+      // Fetch internship-shaped rows for the students we found above.
+      // This is what powers the StudentOverview list and activeInternships count.
+      let assignedInternships: any[] = [];
+      if (supervisedStudentIds.length > 0) {
+        const { data: internshipRows } = await supabase
           .from("student_internships")
           .select(`
             id,
@@ -186,38 +139,41 @@ export default function FacultySupervisorDashboard() {
             internship:internships(id, title, location, remote, company_id),
             company:company_id(name)
           `)
-          .in("student_user_id", additionalStudentIds)
+          .eq("faculty_supervisor_id", user.id)
+          .in("status", ["assigned", "active", "paused", "completed"])
           .order("created_at", { ascending: false });
-        const seenIds = new Set((extraInternships || []).map((r: any) => r.student_user_id));
-        // For any student with no internship row yet, fetch their profile directly.
-        const missingIds = additionalStudentIds.filter((id) => !seenIds.has(id));
-        let missingProfiles: any[] = [];
-        if (missingIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("user_id, full_name, email, avatar_url")
-            .in("user_id", missingIds);
-          missingProfiles = (profiles || []).map((p) => ({
-            id: null,
-            student_user_id: p.user_id,
-            status: "no_internship",
-            start_date: null,
-            end_date: null,
-            student_profile: p,
-            internship: null,
-            company: null,
-          }));
-        }
-        additionalRows = [...(extraInternships || []), ...missingProfiles];
+        assignedInternships = internshipRows || [];
       }
 
-      // Merge into a single "assignedInternships" view.
-      const assignedInternships: any[] = [...(directInternships || []), ...additionalRows];
+      // For students that don't yet have an internship row (pre-internship
+      // assignment via students.faculty_supervisor_id), synthesize a minimal
+      // student-internship-shaped object so they still appear in the list.
+      const seenIds = new Set(assignedInternships.map((a) => a.student_user_id));
+      const missingIds = supervisedStudentIds.filter((id) => !seenIds.has(id));
+      if (missingIds.length > 0) {
+        const { data: missingProfiles } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, email, avatar_url")
+          .in("user_id", missingIds);
+        for (const p of missingProfiles || []) {
+          assignedInternships.push({
+            id: `pre-${p.user_id}`,
+            student_user_id: p.user_id,
+            status: "assigned",
+            start_date: null,
+            end_date: null,
+            student_profile: {
+              full_name: p.full_name,
+              email: p.email,
+              avatar_url: p.avatar_url,
+            },
+            internship: null,
+            company: null,
+          });
+        }
+      }
 
-      const supervisedStudentIds = Array.from(
-        new Set((assignedInternships || []).map((a) => a.student_user_id))
-      );
-      const activeInternshipsCount = (assignedInternships || []).filter(
+      const activeInternshipsCount = assignedInternships.filter(
         (a) => a.status === "active"
       ).length;
 
@@ -228,14 +184,7 @@ export default function FacultySupervisorDashboard() {
             ? supabase
                 .from("weekly_logs")
                 .select("id", { count: "exact" })
-                // "Pending review" = logs the faculty supervisor still
-                // needs to act on. The weekly_log_status workflow is:
-                //   draft → submitted → site_signed → faculty_signed → approved
-                //   (or rejected / revision_required at any review step)
-                // A log is "pending faculty review" if it's:
-                //   - 'submitted'    (student submitted, neither supervisor signed)
-                //   - 'site_signed'  (site supervisor signed, waiting for faculty)
-                .in("status", ["submitted", "site_signed"])
+                .eq("status", "submitted")
                 .in("student_user_id", supervisedStudentIds)
             : Promise.resolve({ count: 0 }),
           // evaluation_status enum has no "completed" value; use
@@ -262,45 +211,19 @@ export default function FacultySupervisorDashboard() {
                 .order("submitted_at", { ascending: false })
                 .limit(5)
             : Promise.resolve({ data: [] }),
-          // Tasks assigned to this supervisor's students (for the
-          // "Tasks Needing Attention" card). Previously this query
-          // filtered `tasks WHERE created_by = user.id`, which only
-          // returned tasks the faculty supervisor created — but per
-          // the production brief, faculty supervisors do NOT create
-          // tasks (site supervisors do). The card was therefore
-          // always empty. We now fetch tasks via task_assignments
-          // joined to the supervised student_user_ids, which returns
-          // the real site-supervisor-created tasks the faculty
-          // supervisor needs to review/evaluate.
-          supervisedStudentIds.length > 0
-            ? supabase
-                .from("task_assignments")
-                .select(`
-                  status,
-                  due_date,
-                  task:tasks(
-                    id,
-                    title,
-                    description,
-                    due_date,
-                    status,
-                    priority,
-                    created_at,
-                    created_by,
-                    creator:profiles!tasks_created_by_fkey(full_name)
-                  ),
-                  student:profiles!task_assignments_student_user_id_fkey(full_name),
-                  latest_submission:task_submissions(
-                    id,
-                    status,
-                    submitted_at,
-                    reviewed_at
-                  )
-                `)
-                .in("student_user_id", supervisedStudentIds)
-                .order("due_date", { ascending: true, nullsFirst: false })
-                .limit(10)
-            : Promise.resolve({ data: [] }),
+          // Tasks created by this supervisor (for "Tasks Needing Attention").
+          supabase
+            .from("tasks")
+            .select(`
+              id,
+              title,
+              due_date,
+              status,
+              created_at
+            `)
+            .eq("created_by", user.id)
+            .order("due_date", { ascending: true, nullsFirst: false })
+            .limit(10),
           // All weekly_logs for supervised students (used to compute progress).
           supervisedStudentIds.length > 0
             ? supabase
@@ -387,83 +310,22 @@ export default function FacultySupervisorDashboard() {
       }));
       setRecentSubmissions(recentSubs);
 
-      // Map task_assignments → TaskNeedingAttention.
-      // The query returns one row per (task, student) assignment with the
-      // nested task + student + latest_submission. We flatten this into
-      // the dashboard's TaskNeedingAttention shape, prioritising tasks
-      // that actually need the faculty supervisor's attention:
-      //   1. submissions waiting for review (status "submitted"/"resubmitted")
-      //   2. overdue tasks (due_date in the past, not completed)
-      //   3. in-progress tasks (status "in_progress" or "assigned")
+      // Map tasks → TaskNeedingAttention
       const now = new Date();
       const taskItems: TaskNeedingAttention[] = (tasksRes.data || [])
-        .map((row: any) => {
-          const task = row.task || {};
-          const studentName = row.student?.full_name || "Student";
-          const assignmentStatus = (row.status || "").toLowerCase();
-          const latestSub = Array.isArray(row.latest_submission)
-            ? row.latest_submission[0]
-            : row.latest_submission;
-          const submissionStatus = (latestSub?.status || "").toLowerCase();
-          const due = task.due_date ? new Date(task.due_date) : null;
-          const isOverdue = due
-            ? due.getTime() < now.getTime() &&
-              !["completed", "closed", "cancelled"].includes(
-                (task.status || "").toLowerCase(),
-              )
-            : false;
-
-          let status: TaskNeedingAttention["status"] = "pending_review";
-          let priority: TaskNeedingAttention["priority"] = (task.priority as any) || "medium";
-          if (isOverdue) {
-            status = "overdue";
-            priority = "high";
-          } else if (
-            submissionStatus === "submitted" ||
-            submissionStatus === "resubmitted"
-          ) {
-            status = "pending_review";
-          } else if (
-            assignmentStatus === "submitted" ||
-            assignmentStatus === "resubmitted"
-          ) {
-            status = "pending_review";
-          } else if (
-            (task.status || "").toLowerCase() === "in_progress" ||
-            assignmentStatus === "pending"
-          ) {
-            status = "in_progress";
-          } else if (
-            ["completed", "closed", "approved"].includes(
-              (task.status || "").toLowerCase(),
-            ) ||
-            assignmentStatus === "approved"
-          ) {
-            status = "completed";
-          }
-
+        .map((t: any) => {
+          const due = t.due_date ? new Date(t.due_date) : null;
+          const isOverdue = due ? due.getTime() < now.getTime() && t.status !== "closed" : false;
           return {
-            id: task.id || row.id || Math.random().toString(36),
-            title: task.title || "Untitled task",
-            assignedTo: studentName,
-            dueDate: task.due_date || row.due_date || new Date().toISOString(),
-            status,
-            priority,
+            id: t.id,
+            title: t.title,
+            assignedTo: "Assigned students",
+            dueDate: t.due_date || new Date().toISOString(),
+            status: isOverdue ? "overdue" : "pending_review",
+            priority: isOverdue ? "high" : "medium",
           } as TaskNeedingAttention;
         })
-        // Show tasks that actually need attention — drop completed ones
-        // unless we have spare slots. Order: overdue > pending_review >
-        // in_progress > completed.
-        .sort((a, b) => {
-          const order: Record<string, number> = {
-            overdue: 0,
-            pending_review: 1,
-            in_progress: 2,
-            completed: 3,
-          };
-          return (order[a.status] ?? 9) - (order[b.status] ?? 9);
-        })
-        .filter((t) => t.status !== "completed")
+        .filter((t) => t.status === "overdue")
         .slice(0, 5);
       setTasksNeedingAttention(taskItems);
 
@@ -617,13 +479,10 @@ export default function FacultySupervisorDashboard() {
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            {/* "New Task" button removed — faculty supervisors do not create
-                tasks per the production brief. They view and evaluate
-                site-supervisor-created tasks from /faculty-supervisor/tasks. */}
             <Button asChild>
               <Link href="/faculty-supervisor/tasks">
-                <Eye className="h-4 w-4 mr-2" />
-                View Student Tasks
+                <Plus className="h-4 w-4 mr-2" />
+                New Task
               </Link>
             </Button>
             <Button variant="outline" asChild>
@@ -872,14 +731,10 @@ export default function FacultySupervisorDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-2">
-                {/* "Create Task" quick action removed — faculty supervisors
-                    do not create tasks. Replaced with "View Tasks" which
-                    links to the read-only task list (site-supervisor-created
-                    tasks assigned to this supervisor's students). */}
                 <Link href="/faculty-supervisor/tasks">
                   <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-                    <Eye className="h-5 w-5" />
-                    <span className="text-xs">View Tasks</span>
+                    <Plus className="h-5 w-5" />
+                    <span className="text-xs">Create Task</span>
                   </Button>
                 </Link>
                 <Link href="/faculty-supervisor/evaluations">

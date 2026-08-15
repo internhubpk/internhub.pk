@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
-  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -62,6 +61,8 @@ import {
   TrendingUp,
   ArrowRightLeft,
   Filter,
+  FileDown,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -72,8 +73,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
-import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { createClient } from "@/utils/supabase/client";
+import { generatePdf } from "@/lib/export-helpers";
 
 // Types
 interface ActiveIntern {
@@ -168,6 +170,10 @@ export default function CompanyHRInternsPage() {
   const [assigningInternId, setAssigningInternId] = useState<string | null>(null);
   const [selectedSupervisorForAssignment, setSelectedSupervisorForAssignment] = useState<string>("");
   const [activeTab, setActiveTab] = useState("all");
+  // Per-intern PDF download state. Holds a string key like "weekly:<internId>"
+  // or "final:<internId>" while a download is in flight so the menu item can
+  // show a spinner and prevent duplicate clicks.
+  const [downloadingFor, setDownloadingFor] = useState<string | null>(null);
 
   const filteredInterns = interns.filter((intern) => {
     const matchesSearch = 
@@ -201,9 +207,6 @@ export default function CompanyHRInternsPage() {
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
       const supervisor = supervisors.find((s) => s.user_id === selectedSupervisorForAssignment);
-      toast.success("Supervisor assigned", {
-        description: supervisor ? `${supervisor.name} is now supervising this intern.` : undefined,
-      });
       setInterns(
         interns.map((i) =>
           i.id === assigningInternId
@@ -219,7 +222,7 @@ export default function CompanyHRInternsPage() {
       setAssigningInternId(null);
       setSelectedSupervisorForAssignment("");
     } catch (e: any) {
-      toast.error("Error", { description: e.message || "Failed to assign supervisor" });
+      alert(e.message || "Failed to assign supervisor");
     } finally {
       setAssigning(false);
     }
@@ -228,6 +231,259 @@ export default function CompanyHRInternsPage() {
   const openAssignDialog = (internId: string) => {
     setAssigningInternId(internId);
     setIsAssignOpen(true);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Per-intern PDF downloads.
+  //
+  // Company HR can read weekly_logs / evaluations / attendance for any
+  // internship at their company (RLS policies `wl_select`, `eval_select`,
+  // `att_select` in supabase/migrations/0002_rls_policies.sql). We fetch the
+  // rows directly from Supabase and render them with `generatePdf()` — same
+  // pattern as the faculty-supervisor weekly-logs page.
+  // ---------------------------------------------------------------------------
+
+  // Download every weekly log for one intern as a single PDF.
+  const handleDownloadWeeklyLogsPdf = async (intern: ActiveIntern) => {
+    const studentUserId = intern.student_id;
+    const key = `weekly:${intern.id}`;
+    if (downloadingFor === key) return;
+    setDownloadingFor(key);
+    try {
+      const supabase = createClient();
+      const { data: logs, error } = await supabase
+        .from("weekly_logs")
+        .select(
+          "id, week_number, week_start_date, week_end_date, hours_worked, status, submitted_at, tasks_completed, challenges, learnings, supervisor_feedback"
+        )
+        .eq("student_user_id", studentUserId)
+        .order("week_start_date", { ascending: true });
+
+      if (error) throw error;
+
+      const logList = (logs || []) as Array<{
+        week_number: number;
+        week_start_date: string;
+        week_end_date: string;
+        hours_worked: number | null;
+        status: string;
+        submitted_at: string | null;
+        tasks_completed: string[] | null;
+        challenges: string | null;
+        learnings: string | null;
+        supervisor_feedback: string | null;
+      }>;
+
+      const totalHours = logList.reduce((sum, l) => sum + (Number(l.hours_worked) || 0), 0);
+
+      const sections = logList.length === 0
+        ? [{ title: "Weekly Logs", lines: ["No weekly logs have been submitted yet."] }]
+        : logList.map((l) => ({
+            title: `Week ${l.week_number} — ${l.week_start_date} to ${l.week_end_date}`,
+            lines: [
+              { label: "Status", value: l.status || "—" },
+              { label: "Hours Worked", value: String(l.hours_worked ?? "—") },
+              {
+                label: "Submitted At",
+                value: l.submitted_at ? new Date(l.submitted_at).toLocaleString() : "—",
+              },
+            ],
+            bullets:
+              Array.isArray(l.tasks_completed) && l.tasks_completed.length > 0
+                ? l.tasks_completed
+                : ["(no tasks recorded)"],
+          }));
+
+      generatePdf(
+        {
+          title: `Weekly Logs — ${intern.student_name}`,
+          subtitle: `${intern.internship_title}`,
+          metadata: [
+            { label: "Intern", value: intern.student_name },
+            { label: "Email", value: intern.student_email || "—" },
+            { label: "Internship", value: intern.internship_title || "—" },
+            { label: "Total Weeks", value: String(logList.length) },
+            { label: "Total Hours", value: String(totalHours) },
+          ],
+          sections,
+          footer: `InternHub.pk — Weekly Logs export for ${intern.student_name} on ${new Date().toLocaleString()}`,
+        },
+        `weekly-logs-${intern.student_name.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating weekly logs PDF:", error);
+      alert(error instanceof Error ? error.message : "Could not generate the weekly logs PDF.");
+    } finally {
+      setDownloadingFor(null);
+    }
+  };
+
+  // Download a combined final-report PDF for one intern: weekly logs +
+  // evaluations + attendance, plus a simple summary block.
+  const handleDownloadFinalReportPdf = async (intern: ActiveIntern) => {
+    const studentUserId = intern.student_id;
+    const key = `final:${intern.id}`;
+    if (downloadingFor === key) return;
+    setDownloadingFor(key);
+    try {
+      const supabase = createClient();
+
+      // Fetch the three data sources in parallel — RLS allows the HR to read
+      // any student/internship at their company.
+      const [logsRes, evalsRes, attRes] = await Promise.all([
+        supabase
+          .from("weekly_logs")
+          .select("id, week_number, week_start_date, week_end_date, hours_worked, status, submitted_at, tasks_completed, challenges, learnings")
+          .eq("student_user_id", studentUserId)
+          .order("week_start_date", { ascending: true }),
+        supabase
+          .from("evaluations")
+          .select("id, type, status, rating, comments, evaluator_role, submitted_at")
+          .eq("student_user_id", studentUserId)
+          .order("submitted_at", { ascending: false, nullsFirst: false }),
+        supabase
+          .from("attendance")
+          .select("id, date, status, check_in, check_out, notes")
+          .eq("student_user_id", studentUserId)
+          .order("date", { ascending: true }),
+      ]);
+
+      if (logsRes.error) throw logsRes.error;
+      if (evalsRes.error) throw evalsRes.error;
+      if (attRes.error) throw attRes.error;
+
+      const logs = (logsRes.data || []) as Array<{
+        week_number: number;
+        week_start_date: string;
+        week_end_date: string;
+        hours_worked: number | null;
+        status: string;
+        submitted_at: string | null;
+        tasks_completed: string[] | null;
+        challenges: string | null;
+        learnings: string | null;
+      }>;
+      const evals = (evalsRes.data || []) as Array<{
+        type: string;
+        status: string;
+        rating: number | null;
+        comments: string | null;
+        evaluator_role: string;
+        submitted_at: string | null;
+      }>;
+      const att = (attRes.data || []) as Array<{
+        date: string;
+        status: string;
+        check_in: string | null;
+        check_out: string | null;
+        notes: string | null;
+      }>;
+
+      // --- Summary computations ---
+      const totalWeeks = logs.length;
+      const totalHours = logs.reduce((s, l) => s + (Number(l.hours_worked) || 0), 0);
+      const ratings = evals
+        .map((e) => Number(e.rating))
+        .filter((r) => Number.isFinite(r));
+      const averageScore =
+        ratings.length > 0
+          ? (ratings.reduce((s, r) => s + r, 0) / ratings.length).toFixed(2)
+          : "—";
+      const presentCount = att.filter((a) => a.status === "present").length;
+      const attendanceRate =
+        att.length > 0
+          ? `${Math.round((presentCount / att.length) * 100)}%`
+          : "—";
+
+      // --- Build sections ---
+      const sections: Array<{
+        title?: string;
+        lines?: Array<string | { label: string; value: string }>;
+        bullets?: string[];
+      }> = [];
+
+      if (logs.length === 0) {
+        sections.push({ title: "Weekly Logs", lines: ["No weekly logs submitted."] });
+      } else {
+        logs.forEach((l) => {
+          sections.push({
+            title: `Week ${l.week_number} — ${l.week_start_date} → ${l.week_end_date}`,
+            lines: [
+              { label: "Status", value: l.status || "—" },
+              { label: "Hours", value: String(l.hours_worked ?? "—") },
+              {
+                label: "Submitted",
+                value: l.submitted_at ? new Date(l.submitted_at).toLocaleDateString() : "—",
+              },
+            ],
+            bullets:
+              Array.isArray(l.tasks_completed) && l.tasks_completed.length > 0
+                ? l.tasks_completed
+                : ["(no tasks recorded)"],
+          });
+        });
+      }
+
+      if (evals.length === 0) {
+        sections.push({ title: "Evaluations", lines: ["No evaluations recorded."] });
+      } else {
+        sections.push({
+          title: "Evaluations",
+          lines: evals.map((e) => ({
+            label: e.type || e.evaluator_role || "Evaluation",
+            value: `Rating: ${e.rating ?? "—"} / 5 · Status: ${e.status}${
+              e.comments ? ` · ${e.comments}` : ""
+            }${e.submitted_at ? ` · ${new Date(e.submitted_at).toLocaleDateString()}` : ""}`,
+          })),
+        });
+      }
+
+      if (att.length === 0) {
+        sections.push({ title: "Attendance", lines: ["No attendance records."] });
+      } else {
+        sections.push({
+          title: `Attendance (${att.length} records, ${attendanceRate} present)`,
+          lines: att.slice(0, 50).map((a) => ({
+            label: a.date,
+            value: `${a.status}${a.check_in ? ` · in ${new Date(a.check_in).toLocaleTimeString()}` : ""}${
+              a.check_out ? ` · out ${new Date(a.check_out).toLocaleTimeString()}` : ""
+            }${a.notes ? ` · ${a.notes}` : ""}`,
+          })),
+        });
+        if (att.length > 50) {
+          sections.push({
+            lines: [`... and ${att.length - 50} more attendance records not shown.`],
+          });
+        }
+      }
+
+      generatePdf(
+        {
+          title: `Final Internship Report — ${intern.student_name}`,
+          subtitle: `${intern.internship_title}`,
+          metadata: [
+            { label: "Intern", value: intern.student_name },
+            { label: "Email", value: intern.student_email || "—" },
+            { label: "Internship", value: intern.internship_title || "—" },
+            { label: "University", value: intern.university || "—" },
+            { label: "Department", value: intern.department || "—" },
+            { label: "Total Weeks Logged", value: String(totalWeeks) },
+            { label: "Total Hours Logged", value: String(totalHours) },
+            { label: "Average Evaluation Score", value: `${averageScore} / 5` },
+            { label: "Attendance Rate", value: attendanceRate },
+            { label: "Evaluations Count", value: String(evals.length) },
+          ],
+          sections,
+          footer: `InternHub.pk — Final Report export for ${intern.student_name} on ${new Date().toLocaleString()}`,
+        },
+        `final-report-${intern.student_name.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating final report PDF:", error);
+      alert(error instanceof Error ? error.message : "Could not generate the final report PDF.");
+    } finally {
+      setDownloadingFor(null);
+    }
   };
 
   // Stats
@@ -509,6 +765,29 @@ export default function CompanyHRInternsPage() {
                               <DropdownMenuItem onClick={() => { setSelectedIntern(intern); setIsDetailOpen(true); }}>
                                 <Eye className="mr-2 h-4 w-4" /> View Details
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={downloadingFor === `weekly:${intern.id}`}
+                                onClick={() => handleDownloadWeeklyLogsPdf(intern)}
+                              >
+                                {downloadingFor === `weekly:${intern.id}` ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileDown className="mr-2 h-4 w-4" />
+                                )}
+                                Download Weekly Logs (PDF)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={downloadingFor === `final:${intern.id}`}
+                                onClick={() => handleDownloadFinalReportPdf(intern)}
+                              >
+                                {downloadingFor === `final:${intern.id}` ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileDown className="mr-2 h-4 w-4" />
+                                )}
+                                Download Final Report (PDF)
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => openAssignDialog(intern.id)} disabled={!intern.status.includes('active')}>
                                 <ArrowRightLeft className="mr-2 h-4 w-4" /> Reassign Supervisor
                               </DropdownMenuItem>
@@ -547,7 +826,7 @@ export default function CompanyHRInternsPage() {
 
       {/* View Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedIntern && (
             <>
               <DialogHeader>
@@ -567,7 +846,7 @@ export default function CompanyHRInternsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <DialogBody className="space-y-6">
+              <div className="mt-4 space-y-6">
                 {/* Contact Info */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
@@ -674,15 +953,41 @@ export default function CompanyHRInternsPage() {
                   </div>
                 </div>
 
-              </DialogBody>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
-                <Button asChild>
-                  <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
-                    <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
-                  </Link>
-                </Button>
-              </DialogFooter>
+                <div className="flex flex-wrap justify-end pt-4 border-t gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={downloadingFor === `weekly:${selectedIntern.id}`}
+                    onClick={() => handleDownloadWeeklyLogsPdf(selectedIntern)}
+                  >
+                    {downloadingFor === `weekly:${selectedIntern.id}` ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Weekly Logs (PDF)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={downloadingFor === `final:${selectedIntern.id}`}
+                    onClick={() => handleDownloadFinalReportPdf(selectedIntern)}
+                  >
+                    {downloadingFor === `final:${selectedIntern.id}` ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Final Report (PDF)
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
+                  <Button asChild>
+                    <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
+                      <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             </>
           )}
         </DialogContent>
@@ -698,7 +1003,7 @@ export default function CompanyHRInternsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-4">
+          <div className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label>Select Supervisor</Label>
               <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>
@@ -733,7 +1038,7 @@ export default function CompanyHRInternsPage() {
                 </div>
               );
             })()}
-          </DialogBody>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }} disabled={assigning}>
                 Cancel
@@ -745,6 +1050,7 @@ export default function CompanyHRInternsPage() {
                 {assigning ? "Assigning..." : "Assign Supervisor"}
               </Button>
             </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

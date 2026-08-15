@@ -1,9 +1,126 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-import {
-  buildVerificationUrl,
-  buildVerificationUrlFromRequest,
-} from "@/lib/site-url";
+import { fetchSupervisedStudentIds } from "@/lib/supervised-students";
+import { randomBytes } from "crypto";
+
+// ---------------------------------------------------------------------------
+// Helpers — verification code + server-side PDF generation.
+// ---------------------------------------------------------------------------
+// 12-char alphanumeric code with ambiguous characters removed (no 0/O/1/I/L).
+// Uses crypto.randomBytes for entropy.
+const VERIFY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function generateVerificationCode(length = 12): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += VERIFY_ALPHABET[bytes[i] % VERIFY_ALPHABET.length];
+  }
+  return out;
+}
+
+// Decode a base64 string into a Uint8Array for Supabase Storage upload.
+// Supabase's `upload()` accepts Blob | ArrayBuffer | FormData | string —
+// a Uint8Array works because it's a Uint8Array<ArrayBufferLike> view.
+function decode(b64: string): Uint8Array {
+  const buf = Buffer.from(b64, "base64");
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+// Minimal server-side PDF generator for internship completion certificates.
+// Uses pure string concatenation against the PDF spec — no external deps.
+// This produces a single-page A4 PDF with the certificate text.
+interface CertificatePdfInput {
+  student_name: string;
+  program_name: string;
+  company_name: string;
+  internship_title: string;
+  supervisor_name: string;
+  coordinator_name: string;
+  additional_remarks: string;
+  certificate_id: string;
+  verification_code: string;
+  verification_url: string;
+  issue_date: string;
+}
+function generateCertificatePdf(input: CertificatePdfInput): Buffer {
+  // Build a simple single-page PDF with text content. The structure is:
+  //   %PDF-1.4
+  //   1 0 obj << /Type /Catalog /Pages 2 0 R >>
+  //   2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >>
+  //   3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842]
+  //             /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+  //   4 0 obj << /Length N >> stream BT ... ET endstream
+  //   5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+  // We escape parentheses and backslashes in the text content.
+  const esc = (s: string) => (s || "").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const issueDateStr = input.issue_date
+    ? new Date(input.issue_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  // Lines to render on the PDF. The PDF content stream uses BT/ET (Begin/End Text)
+  // and Td for positioning. We use a simple top-to-bottom layout.
+  const lines: Array<{ text: string; size: number; bold?: boolean; y: number }> = [
+    { text: "INTERNSHIP COMPLETION CERTIFICATE", size: 20, bold: true, y: 720 },
+    { text: "This is to certify that", size: 12, y: 660 },
+    { text: input.student_name, size: 22, bold: true, y: 620 },
+    { text: "has successfully completed the internship program", size: 12, y: 580 },
+    { text: input.program_name, size: 14, bold: true, y: 545 },
+    { text: `Internship Title: ${input.internship_title || "—"}`, size: 11, y: 500 },
+    { text: `Host Company: ${input.company_name || "—"}`, size: 11, y: 478 },
+    { text: `Faculty Supervisor: ${input.supervisor_name || "—"}`, size: 11, y: 456 },
+    ...(input.coordinator_name
+      ? [{ text: `Coordinator: ${input.coordinator_name}`, size: 11, y: 434 }]
+      : []),
+    { text: `Issue Date: ${issueDateStr}`, size: 11, y: 400 },
+    ...(input.additional_remarks
+      ? [
+          { text: "Remarks:", size: 11, bold: true, y: 360 },
+          { text: input.additional_remarks.slice(0, 400), size: 10, y: 340 },
+        ]
+      : []),
+    { text: `Certificate ID: ${input.certificate_id}`, size: 10, y: 240 },
+    { text: `Verification Code: ${input.verification_code}`, size: 10, y: 222 },
+    { text: `Verify online: ${input.verification_url}`, size: 9, y: 204 },
+  ];
+
+  // Build the content stream.
+  let content = "BT\n";
+  for (const line of lines) {
+    content += `/F${line.bold ? "2" : "1"} ${line.size} Tf\n`;
+    content += `1 0 0 1 60 ${line.y} Tm\n`;
+    content += `(${esc(line.text)}) Tj\n`;
+  }
+  content += "ET\n";
+
+  const contentBytes = Buffer.from(content, "utf-8");
+
+  // Build the PDF objects.
+  const objects: string[] = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  objects.push(
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>"
+  );
+  objects.push(`<< /Length ${contentBytes.length} >>\nstream\n${content}\nendstream`);
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+
+  // Assemble the PDF file.
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(Buffer.byteLength(pdf, "utf-8"));
+    pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdf, "utf-8");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (const off of offsets) {
+    pdf += `${off.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "utf-8");
+}
 
 // GET: Generate weekly/final/progress reports for students
 export async function GET(request: Request) {
@@ -36,16 +153,18 @@ export async function GET(request: Request) {
     const studentUserIdParam = searchParams.get("student_id") || searchParams.get("student_user_id");
     const weekNumber = searchParams.get("week_number");
 
-    // Fetch all supervised student_user_ids via student_internships
-    // (faculty_supervisor_id references profiles.user_id).
+    // Fetch all supervised student_user_ids via BOTH sources:
+    //   1. student_internships.faculty_supervisor_id (internship-time)
+    //   2. students.faculty_supervisor_id (pre-internship, migration 0041)
+    // Without both, supervisors whose assignments live in source #2 see 0
+    // students in the reports page.
+    const supervisedStudentIds = await fetchSupervisedStudentIds(supabase, user.id);
+
+    // For metadata (company_id, start/end dates), keep the internship rows.
     const { data: assignedInternships } = await supabase
       .from("student_internships")
       .select("student_user_id, internship_id, company_id, start_date, end_date, status")
       .eq("faculty_supervisor_id", user.id);
-
-    const supervisedStudentIds = Array.from(
-      new Set((assignedInternships || []).map((a) => a.student_user_id))
-    );
 
     if (reportType === "weekly") {
       // Generate weekly progress report
@@ -454,18 +573,13 @@ export async function POST(request: Request) {
       });
     } else if (action === "generate_certificate") {
       // certificates has student_user_id (not student_id), title (required),
-      // certificate_number, issued_at, issued_by, status, metadata. There is
-      // no certificate_type / grade / issue_date / data / coordinator_signature.
+      // certificate_number, issued_at, issued_by, status, metadata, file_url,
+      // verification_code, verification_url, linkedin_added_at.
       //
-      // VERIFICATION CODE / URL GENERATION (added 2026-08-15):
-      //   Previously this path created a certificate row WITHOUT
-      //   verification_code or verification_url. That meant faculty-supervisor-
-      //   issued certificates were unverifiable via /verify/[code] and the
-      //   student couldn't add them to LinkedIn (the LinkedIn URL builder on
-      //   student/certificates reads cert.verificationUrl and silently
-      //   omitted the certUrl param when null). We now generate a unique
-      //   verification_code (same IH-XXXX-XXXX format as the company-hr path)
-      //   and the verification_url using the canonical site URL helper.
+      // Generate a verification code + URL so the student can verify/share
+      // the certificate. Previously this route created a certificate row
+      // with file_url=NULL, verification_code=NULL, verification_url=NULL,
+      // which left the student unable to view/download/verify it.
       if (!student_user_id || !report_data) {
         return NextResponse.json(
           { error: "student_user_id and report_data are required" },
@@ -473,94 +587,118 @@ export async function POST(request: Request) {
         );
       }
 
-      // Resolve the request origin once for the verification URL builder.
-      // The helper prefers NEXT_PUBLIC_APP_URL; this fallback is only used
-      // when the env var is unset (local dev / fresh preview). NEVER uses
-      // VERCEL_URL — that was the source of the rotting-preview-URL bug.
-      const requestOrigin = new URL(request.url).origin;
+      // Generate a verification code (12-char alphanumeric, no ambiguous chars).
+      // Use crypto.randomBytes for entropy — Math.random is not cryptographically
+      // secure and would let attackers guess certificate codes.
+      const verificationCode = generateVerificationCode();
+      const verifyBaseUrl = process.env.NEXT_PUBLIC_SITE_URL
+        || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\.supabase\.co$/, "")
+        || "https://internhub.pk";
+      const verificationUrl = `${verifyBaseUrl}/verify/${verificationCode}`;
 
-      // Retry loop handles the (very unlikely) case of a verification_code
-      // unique-index collision. Mirrors the company-hr certificate route.
-      let certificate: any = null;
-      let lastError: any = null;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const part = () =>
-          Array.from(crypto.getRandomValues(new Uint8Array(4)))
-            .map((b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".charAt(b % 32))
-            .join("")
-            .slice(0, 4);
-        const verification_code = `IH-${part()}-${part()}`;
-        const verification_url = buildVerificationUrlFromRequest(
-          verification_code,
-          requestOrigin
-        );
+      // Generate a real PDF on the server using the report_data so the
+      // student has something to download immediately. The PDF is a simple
+      // structured document — the visual certificate template lives on the
+      // faculty-supervisor UI for printing.
+      const pdfBuffer = generateCertificatePdf({
+        student_name: report_data.student_name || "Student",
+        program_name: report_data.program_name || "Internship Program",
+        company_name: report_data.company_name || "",
+        internship_title: report_data.internship_title || "",
+        supervisor_name: report_data.supervisor_name || profile.full_name || "",
+        coordinator_name: report_data.coordinator_name || "",
+        additional_remarks: report_data.additional_remarks || "",
+        certificate_id: report_data.certificate_id || `CERT-${Date.now()}`,
+        verification_code: verificationCode,
+        verification_url: verificationUrl,
+        issue_date: report_data.issue_date || new Date().toISOString(),
+      });
+      const pdfBase64 = pdfBuffer.toString("base64");
+      const fileName = `certificate-${verificationCode}.pdf`;
+      const filePath = `certificates/${student_user_id}/${fileName}`;
+      const fileMimeType = "application/pdf";
 
-        const { data, error } = await supabase
+      // Upload the PDF to Supabase Storage (public-read bucket 'certificates').
+      // If the upload fails for any reason (bucket missing, RLS, etc.) we still
+      // insert the certificate row — the supervisor can still print it from
+      // the UI, and the verification URL still works.
+      let fileUrl: string | null = null;
+      try {
+        const { error: uploadErr } = await supabase
+          .storage
           .from("certificates")
-          .insert({
-            student_user_id,
-            issued_by: user.id,
-            title: report_data.title || "Internship Completion Certificate",
-            certificate_number:
-              report_data.certificate_id || `CERT-${Date.now()}`,
-            status: "issued",
-            verification_code,
-            verification_url,
-            metadata: {
-              ...(report_data || {}),
-              coordinator_signature: coordinator_signature || null,
-              issued_via: "faculty_supervisor_report",
-            },
-          })
-          .select()
-          .single();
+          .upload(filePath, decode(pdfBase64), {
+            contentType: fileMimeType,
+            cacheControl: "3600",
+            upsert: true,
+          });
 
-        if (error) {
-          if (error.code === "23505") {
-            // unique-constraint collision on verification_code — retry
-            lastError = error;
-            continue;
-          }
-          console.error("Error generating certificate:", error);
-          return NextResponse.json(
-            {
-              error:
-                "Failed to generate certificate (check RLS — faculty_supervisor may not be in cert_insert)",
-            },
-            { status: 500 }
-          );
+        if (uploadErr) {
+          console.warn("[/api/faculty-supervisor/reports] certificate PDF upload failed (non-fatal):", uploadErr);
+        } else {
+          const { data: pub } = supabase
+            .storage
+            .from("certificates")
+            .getPublicUrl(filePath);
+          fileUrl = pub?.publicUrl || null;
         }
-
-        certificate = data;
-        break;
+      } catch (uploadErr) {
+        console.warn("[/api/faculty-supervisor/reports] certificate PDF upload exception (non-fatal):", uploadErr);
       }
 
-      if (!certificate) {
-        console.error(
-          "[/api/faculty-supervisor/reports] verification_code collision after 5 attempts:",
-          lastError
-        );
+      const { data: certificate, error } = await supabase
+        .from("certificates")
+        .insert({
+          student_user_id,
+          issued_by: user.id,
+          title: report_data.title || "Internship Completion Certificate",
+          certificate_number: report_data.certificate_id || `CERT-${Date.now()}`,
+          status: "issued",
+          file_url: fileUrl,
+          verification_code: verificationCode,
+          verification_url: verificationUrl,
+          metadata: {
+            ...(report_data || {}),
+            coordinator_signature: coordinator_signature || null,
+            generated_by: "faculty_supervisor",
+            generated_at: new Date().toISOString(),
+          },
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error generating certificate:", error);
         return NextResponse.json(
-          { error: "Failed to generate a unique verification code" },
+          { error: "Failed to generate certificate (check RLS — faculty_supervisor may not be in cert_insert)" },
           { status: 500 }
         );
       }
 
+      // Notify the student that a certificate has been issued.
+      try {
+        await supabase.from("notifications").insert({
+          user_id: student_user_id,
+          sender_id: user.id,
+          title: "Certificate issued",
+          message: `Your internship completion certificate has been issued. Verification code: ${verificationCode}`,
+          category: "certificate",
+          priority: "high",
+          is_read: false,
+          metadata: {
+            certificate_id: certificate.id,
+            verification_code: verificationCode,
+            verification_url: verificationUrl,
+            file_url: fileUrl,
+          },
+        });
+      } catch (notifErr) {
+        console.warn("[/api/faculty-supervisor/reports] student notification failed (non-fatal):", notifErr);
+      }
+
       return NextResponse.json({
         success: true,
-        // Always regenerate the verification URL from the code via
-        // the canonical site-URL helper. The DB-stored
-        // `verification_url` may be stale (rows issued before this
-        // fix contain Vercel deployment URLs that point to a
-        // protected deployment and break public verification).
-        data: certificate
-          ? {
-              ...certificate,
-              verification_url: certificate.verification_code
-                ? buildVerificationUrl(certificate.verification_code)
-                : certificate.verification_url,
-            }
-          : certificate,
+        data: certificate,
         message: "Certificate generated successfully",
       });
     } else if (action === "create_report_template") {

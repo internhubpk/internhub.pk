@@ -18,6 +18,7 @@ import {
   ChevronUp,
   MoreVertical,
   FileSpreadsheet,
+  FileDown,
   UserPlus,
   Upload,
   CheckSquare,
@@ -72,6 +73,8 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { createClient } from "@/utils/supabase/client";
+import { generatePdf } from "@/lib/export-helpers";
 
 interface Student {
   // `students` table has no `id` column — `user_id` is the PK.
@@ -152,6 +155,11 @@ export default function StudentsPage() {
   // Student detail view
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+
+  // Per-student PDF download state. Holds a string key like "weekly:<userId>"
+  // or "final:<userId>" while a download is in flight so the menu item can
+  // show a spinner and prevent duplicate clicks.
+  const [downloadingFor, setDownloadingFor] = useState<string | null>(null);
 
   // Add Student dialog
   const [isAddStudentDialogOpen, setIsAddStudentDialogOpen] = useState(false);
@@ -577,6 +585,269 @@ export default function StudentsPage() {
     } catch (error) {
       console.error("Error assigning student:", error);
       toast.error("Assignment failed", { description: error instanceof Error ? error.message : "Unknown error" });
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Per-student PDF downloads.
+  //
+  // Coordinators can read weekly_logs / evaluations / attendance for any
+  // student in their department (RLS policies `wl_select`, `eval_select`,
+  // `att_select` in supabase/migrations/0002_rls_policies.sql). We fetch the
+  // rows directly from Supabase and render them with `generatePdf()` — same
+  // pattern as the faculty-supervisor weekly-logs page.
+  // ---------------------------------------------------------------------------
+
+  // Download every weekly log for one student as a single PDF.
+  const handleDownloadWeeklyLogsPdf = async (student: Student) => {
+    const studentUserId = student.user_id || student.id;
+    const studentName = getFullName(student);
+    const key = `weekly:${studentUserId}`;
+    if (downloadingFor === key) return;
+    setDownloadingFor(key);
+    try {
+      const supabase = createClient();
+      const { data: logs, error } = await supabase
+        .from("weekly_logs")
+        .select(
+          "id, week_number, week_start_date, week_end_date, hours_worked, status, submitted_at, tasks_completed, challenges, learnings, supervisor_feedback"
+        )
+        .eq("student_user_id", studentUserId)
+        .order("week_start_date", { ascending: true });
+
+      if (error) throw error;
+
+      const logList = (logs || []) as Array<{
+        week_number: number;
+        week_start_date: string;
+        week_end_date: string;
+        hours_worked: number | null;
+        status: string;
+        submitted_at: string | null;
+        tasks_completed: string[] | null;
+        challenges: string | null;
+        learnings: string | null;
+        supervisor_feedback: string | null;
+      }>;
+
+      const totalHours = logList.reduce((sum, l) => sum + (Number(l.hours_worked) || 0), 0);
+
+      const sections = logList.length === 0
+        ? [{ title: "Weekly Logs", lines: ["No weekly logs have been submitted yet."] }]
+        : logList.map((l) => ({
+            title: `Week ${l.week_number} — ${l.week_start_date} to ${l.week_end_date}`,
+            lines: [
+              { label: "Status", value: l.status || "—" },
+              { label: "Hours Worked", value: String(l.hours_worked ?? "—") },
+              {
+                label: "Submitted At",
+                value: l.submitted_at ? new Date(l.submitted_at).toLocaleString() : "—",
+              },
+            ],
+            bullets:
+              Array.isArray(l.tasks_completed) && l.tasks_completed.length > 0
+                ? l.tasks_completed
+                : ["(no tasks recorded)"],
+          }));
+
+      generatePdf(
+        {
+          title: `Weekly Logs — ${studentName}`,
+          subtitle: `Student ID: ${student.student_id_number || student.enrollment_number || "—"}`,
+          metadata: [
+            { label: "Student", value: studentName },
+            { label: "Program", value: student.programs?.name || "—" },
+            { label: "Total Weeks", value: String(logList.length) },
+            { label: "Total Hours", value: String(totalHours) },
+          ],
+          sections,
+          footer: `InternHub.pk — Weekly Logs export for ${studentName} on ${new Date().toLocaleString()}`,
+        },
+        `weekly-logs-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating weekly logs PDF:", error);
+      toast({
+        title: "Download failed",
+        description: error instanceof Error ? error.message : "Could not generate the weekly logs PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingFor(null);
+    }
+  };
+
+  // Download a combined final-report PDF for one student: weekly logs +
+  // evaluations + attendance, plus a simple summary block.
+  const handleDownloadFinalReportPdf = async (student: Student) => {
+    const studentUserId = student.user_id || student.id;
+    const studentName = getFullName(student);
+    const key = `final:${studentUserId}`;
+    if (downloadingFor === key) return;
+    setDownloadingFor(key);
+    try {
+      const supabase = createClient();
+
+      // Fetch the three data sources in parallel — RLS allows the coordinator
+      // to read any student in their department.
+      const [logsRes, evalsRes, attRes] = await Promise.all([
+        supabase
+          .from("weekly_logs")
+          .select("id, week_number, week_start_date, week_end_date, hours_worked, status, submitted_at, tasks_completed, challenges, learnings")
+          .eq("student_user_id", studentUserId)
+          .order("week_start_date", { ascending: true }),
+        supabase
+          .from("evaluations")
+          .select("id, type, status, rating, comments, evaluator_role, submitted_at")
+          .eq("student_user_id", studentUserId)
+          .order("submitted_at", { ascending: false, nullsFirst: false }),
+        supabase
+          .from("attendance")
+          .select("id, date, status, check_in, check_out, notes")
+          .eq("student_user_id", studentUserId)
+          .order("date", { ascending: true }),
+      ]);
+
+      if (logsRes.error) throw logsRes.error;
+      if (evalsRes.error) throw evalsRes.error;
+      if (attRes.error) throw attRes.error;
+
+      const logs = (logsRes.data || []) as Array<{
+        week_number: number;
+        week_start_date: string;
+        week_end_date: string;
+        hours_worked: number | null;
+        status: string;
+        submitted_at: string | null;
+        tasks_completed: string[] | null;
+        challenges: string | null;
+        learnings: string | null;
+      }>;
+      const evals = (evalsRes.data || []) as Array<{
+        type: string;
+        status: string;
+        rating: number | null;
+        comments: string | null;
+        evaluator_role: string;
+        submitted_at: string | null;
+      }>;
+      const att = (attRes.data || []) as Array<{
+        date: string;
+        status: string;
+        check_in: string | null;
+        check_out: string | null;
+        notes: string | null;
+      }>;
+
+      // --- Summary computations ---
+      const totalWeeks = logs.length;
+      const totalHours = logs.reduce((s, l) => s + (Number(l.hours_worked) || 0), 0);
+      const ratings = evals
+        .map((e) => Number(e.rating))
+        .filter((r) => Number.isFinite(r));
+      const averageScore =
+        ratings.length > 0
+          ? (ratings.reduce((s, r) => s + r, 0) / ratings.length).toFixed(2)
+          : "—";
+      const presentCount = att.filter((a) => a.status === "present").length;
+      const attendanceRate =
+        att.length > 0
+          ? `${Math.round((presentCount / att.length) * 100)}%`
+          : "—";
+
+      // --- Build sections ---
+      const sections: Array<{
+        title?: string;
+        lines?: Array<string | { label: string; value: string }>;
+        bullets?: string[];
+      }> = [];
+
+      // Weekly logs section
+      if (logs.length === 0) {
+        sections.push({ title: "Weekly Logs", lines: ["No weekly logs submitted."] });
+      } else {
+        logs.forEach((l) => {
+          sections.push({
+            title: `Week ${l.week_number} — ${l.week_start_date} → ${l.week_end_date}`,
+            lines: [
+              { label: "Status", value: l.status || "—" },
+              { label: "Hours", value: String(l.hours_worked ?? "—") },
+              {
+                label: "Submitted",
+                value: l.submitted_at ? new Date(l.submitted_at).toLocaleDateString() : "—",
+              },
+            ],
+            bullets:
+              Array.isArray(l.tasks_completed) && l.tasks_completed.length > 0
+                ? l.tasks_completed
+                : ["(no tasks recorded)"],
+          });
+        });
+      }
+
+      // Evaluations section
+      if (evals.length === 0) {
+        sections.push({ title: "Evaluations", lines: ["No evaluations recorded."] });
+      } else {
+        sections.push({
+          title: "Evaluations",
+          lines: evals.map((e) => ({
+            label: e.type || e.evaluator_role || "Evaluation",
+            value: `Rating: ${e.rating ?? "—"} / 5 · Status: ${e.status}${
+              e.comments ? ` · ${e.comments}` : ""
+            }${e.submitted_at ? ` · ${new Date(e.submitted_at).toLocaleDateString()}` : ""}`,
+          })),
+        });
+      }
+
+      // Attendance section
+      if (att.length === 0) {
+        sections.push({ title: "Attendance", lines: ["No attendance records."] });
+      } else {
+        sections.push({
+          title: `Attendance (${att.length} records, ${attendanceRate} present)`,
+          lines: att.slice(0, 50).map((a) => ({
+            label: a.date,
+            value: `${a.status}${a.check_in ? ` · in ${new Date(a.check_in).toLocaleTimeString()}` : ""}${
+              a.check_out ? ` · out ${new Date(a.check_out).toLocaleTimeString()}` : ""
+            }${a.notes ? ` · ${a.notes}` : ""}`,
+          })),
+        });
+        if (att.length > 50) {
+          sections.push({
+            lines: [`... and ${att.length - 50} more attendance records not shown.`],
+          });
+        }
+      }
+
+      generatePdf(
+        {
+          title: `Final Internship Report — ${studentName}`,
+          subtitle: `Student ID: ${student.student_id_number || student.enrollment_number || "—"}`,
+          metadata: [
+            { label: "Student", value: studentName },
+            { label: "Program", value: student.programs?.name || "—" },
+            { label: "Department", value: student.departments?.name || "—" },
+            { label: "Total Weeks Logged", value: String(totalWeeks) },
+            { label: "Total Hours Logged", value: String(totalHours) },
+            { label: "Average Evaluation Score", value: `${averageScore} / 5` },
+            { label: "Attendance Rate", value: attendanceRate },
+            { label: "Evaluations Count", value: String(evals.length) },
+          ],
+          sections,
+          footer: `InternHub.pk — Final Report export for ${studentName} on ${new Date().toLocaleString()}`,
+        },
+        `final-report-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating final report PDF:", error);
+      toast({
+        title: "Download failed",
+        description: error instanceof Error ? error.message : "Could not generate the final report PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingFor(null);
     }
   };
 
@@ -1019,6 +1290,28 @@ export default function StudentsPage() {
                             <DropdownMenuItem onClick={() => setViewingStudent(student)}>
                               <Eye className="h-4 w-4 mr-2" /> View Profile
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={downloadingFor === `weekly:${student.user_id || student.id}`}
+                              onClick={() => handleDownloadWeeklyLogsPdf(student)}
+                            >
+                              {downloadingFor === `weekly:${student.user_id || student.id}` ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <FileDown className="h-4 w-4 mr-2" />
+                              )}
+                              Download Weekly Logs (PDF)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={downloadingFor === `final:${student.user_id || student.id}`}
+                              onClick={() => handleDownloadFinalReportPdf(student)}
+                            >
+                              {downloadingFor === `final:${student.user_id || student.id}` ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <FileDown className="h-4 w-4 mr-2" />
+                              )}
+                              Download Final Report (PDF)
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => {
@@ -1257,10 +1550,38 @@ export default function StudentsPage() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t space-y-3">
                 <p className="text-xs text-muted-foreground">
                   Enrolled: {new Date(viewingStudent.created_at).toLocaleDateString()}
                 </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={downloadingFor === `weekly:${viewingStudent.user_id || viewingStudent.id}`}
+                    onClick={() => handleDownloadWeeklyLogsPdf(viewingStudent)}
+                  >
+                    {downloadingFor === `weekly:${viewingStudent.user_id || viewingStudent.id}` ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Weekly Logs (PDF)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={downloadingFor === `final:${viewingStudent.user_id || viewingStudent.id}`}
+                    onClick={() => handleDownloadFinalReportPdf(viewingStudent)}
+                  >
+                    {downloadingFor === `final:${viewingStudent.user_id || viewingStudent.id}` ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Final Report (PDF)
+                  </Button>
+                </div>
               </div>
             </div>
           )}

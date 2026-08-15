@@ -35,7 +35,6 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
-  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -77,17 +76,9 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
-import { MarkdownEditor } from "@/components/shared/markdown-editor";
-import { toast } from "@/components/shared/toast";
 
 // Types
-// Includes "draft" and "submitted" so a `WeeklyReport.status` (which can be
-// "draft" | "submitted" | "approved") can be assigned to `EvaluationRecord.status`
-// without a cast. The shared `EvaluationStatus` in `src/types/index.ts` is
-// narrower (no "draft") — this local type is intentionally a superset for
-// the faculty supervisor's evaluation-queue UI.
-type EvaluationStatus = "pending" | "in_progress" | "draft" | "submitted" | "approved" | "rejected" | "revision_required";
+type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
 type SubmissionType = "weekly_log" | "task_submission" | "document" | "midterm" | "final";
 
 interface PendingEvaluation {
@@ -203,40 +194,49 @@ export default function FacultySupervisorEvaluationsPage() {
   // Dialog states
   const [isEvaluateDialogOpen, setIsEvaluateDialogOpen] = useState(false);
 
-  // CSV download of ALL evaluations for the faculty supervisor's assigned
-  // students — including BOTH site-supervisor and faculty-supervisor
-  // evaluations. The server-side endpoint enforces authorization, so a
-  // faculty supervisor can only download evaluations for students actually
-  // assigned to them.
-  const [isDownloading, setIsDownloading] = useState(false);
-  const handleExport = useCallback(async () => {
-    setIsDownloading(true);
-    try {
-      const res = await fetch("/api/faculty-supervisor/evaluations/download", {
-        method: "GET",
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error?.message || `Download failed (${res.status})`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `faculty-supervisor-evaluations-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("Download started", {
-        description: "Evaluations CSV is being downloaded. Includes both Site Supervisor and Faculty Supervisor evaluations.",
-      });
-    } catch (err: any) {
-      toast.fromError(err, "Download failed");
-    } finally {
-      setIsDownloading(false);
+  // CSV export of the evaluation history. Mirrors the pattern at
+  // external-evaluator/evaluations/page.tsx.
+  const handleExport = useCallback(() => {
+    if (!evaluationHistory || evaluationHistory.length === 0) {
+      alert("No evaluations to export.");
+      return;
     }
-  }, []);
+    const headers = [
+      "Student",
+      "Type",
+      "Title",
+      "Submitted At",
+      "Evaluated At",
+      "Status",
+      "Score",
+      "Max Score",
+      "Comments",
+    ];
+    const escape = (v: string) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
+    const rows = evaluationHistory.map((e) =>
+      [
+        escape(e.studentName),
+        escape(e.type),
+        escape(e.title),
+        escape(e.submittedAt || ""),
+        escape(e.evaluatedAt || ""),
+        escape(e.status),
+        escape(String(e.score ?? 0)),
+        escape(String(e.maxScore ?? 0)),
+        escape(e.evaluatorComments || ""),
+      ].join(",")
+    );
+    const csv = [headers.map(escape).join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `faculty-supervisor-evaluations-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [evaluationHistory]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<PendingEvaluation | null>(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<EvaluationRecord | null>(null);
@@ -250,7 +250,6 @@ export default function FacultySupervisorEvaluationsPage() {
     decision: "approve" as "approve" | "reject" | "request_revision",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [approvingReportId, setApprovingReportId] = useState<string | null>(null);
 
   // Fetch data from database
   useEffect(() => {
@@ -260,46 +259,16 @@ export default function FacultySupervisorEvaluationsPage() {
       try {
         const supabase = createClient();
 
-        // Find supervised students via THREE-PATH UNION (see
-        // faculty-supervisor/page.tsx for full rationale):
-        //   Path 1: student_internships.faculty_supervisor_id
-        //   Path 2: students.faculty_supervisor_id             (migration 0041)
-        //   Path 3: programs.default_faculty_supervisor_id     (migration 0015)
-        const { data: directSIs } = await supabase
-          .from("student_internships")
-          .select("student_user_id")
-          .eq("faculty_supervisor_id", user.id);
-
-        const { data: preInternshipStudents } = await supabase
-          .from("students")
-          .select("user_id")
-          .eq("faculty_supervisor_id", user.id);
-
-        const { data: defaultPrograms } = await supabase
-          .from("programs")
-          .select("id")
-          .eq("default_faculty_supervisor_id", user.id);
-        const defaultProgramIds = (defaultPrograms || []).map((p) => p.id);
-        let programStudentIds: string[] = [];
-        if (defaultProgramIds.length > 0) {
-          const { data: programStudents } = await supabase
-            .from("students")
-            .select("user_id")
-            .in("program_id", defaultProgramIds);
-          programStudentIds = (programStudents || []).map((s) => s.user_id);
-        }
-
-        const supervisedStudentIds = Array.from(
-          new Set([
-            ...((directSIs || []).map((a: any) => a.student_user_id)),
-            ...((preInternshipStudents || []).map((s: any) => s.user_id)),
-            ...programStudentIds,
-          ].filter(Boolean))
-        );
+        // Find supervised students from BOTH sources (internship-time +
+        // pre-internship). The dashboard previously only checked
+        // `student_internships.faculty_supervisor_id`, missing any student
+        // the coordinator pre-assigned via `students.faculty_supervisor_id`.
+        const { fetchSupervisedStudentIds } = await import("@/lib/supervised-students");
+        const supervisedStudentIds = await fetchSupervisedStudentIds(supabase, user.id);
 
         // Fetch pending evaluations (evaluations with status pending/in_progress
         // that this supervisor needs to complete).
-        const [pendingRes, historyRes, weeklyReportsRes, taskSubsRes, existingTaskEvalsRes, existingWeeklyEvalsRes] = await Promise.all([
+        const [pendingRes, historyRes, weeklyReportsRes] = await Promise.all([
           supabase
             .from("evaluations")
             .select(`
@@ -359,118 +328,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 .order("submitted_at", { ascending: false })
                 .limit(20)
             : Promise.resolve({ data: [] }),
-          // ---- NEW: fetch submitted task_submissions for supervised students ----
-          // These represent tasks the site supervisor assigned + the student
-          // submitted, but the faculty supervisor hasn't evaluated yet. We
-          // show them as "pending task evaluations" in the queue.
-          supervisedStudentIds.length > 0
-            ? supabase
-                .from("task_submissions")
-                .select(`
-                  id,
-                  task_id,
-                  student_user_id,
-                  status,
-                  submitted_at,
-                  notes,
-                  url,
-                  file_url,
-                  file_name,
-                  student:profiles!task_submissions_student_user_id_fkey(full_name, email, avatar_url),
-                  task:tasks(id, title, week_number, day_number, due_date)
-                `)
-                .in("student_user_id", supervisedStudentIds)
-                .in("status", ["submitted", "resubmitted"])
-                .order("submitted_at", { ascending: false })
-                .limit(50)
-            : Promise.resolve({ data: [] }),
-          // ---- Existing faculty task evaluations (to filter out already-evaluated) ----
-          supervisedStudentIds.length > 0
-            ? supabase
-                .from("evaluations")
-                .select("id, task_id, student_user_id, type, status")
-                .eq("evaluator_id", user.id)
-                .eq("evaluator_role", "faculty_supervisor")
-                .in("type", ["task"])
-                .in("student_user_id", supervisedStudentIds)
-            : Promise.resolve({ data: [] }),
-          // ---- Existing faculty weekly evaluations (to filter out already-evaluated weeks) ----
-          supervisedStudentIds.length > 0
-            ? supabase
-                .from("evaluations")
-                .select("id, week_number, student_user_id, type, status")
-                .eq("evaluator_id", user.id)
-                .eq("evaluator_role", "faculty_supervisor")
-                .in("type", ["weekly"])
-                .in("student_user_id", supervisedStudentIds)
-            : Promise.resolve({ data: [] }),
         ]);
-
-        // Build sets of (task_id, student_user_id) and (week_number, student_user_id)
-        // that already have a faculty evaluation, so we can filter them out
-        // of the "needs attention" list.
-        const evaluatedTaskKeys = new Set<string>();
-        for (const e of (existingTaskEvalsRes.data || []) as any[]) {
-          if (e.task_id && e.student_user_id) {
-            evaluatedTaskKeys.add(`${e.task_id}|${e.student_user_id}`);
-          }
-        }
-        const evaluatedWeekKeys = new Set<string>();
-        for (const e of (existingWeeklyEvalsRes.data || []) as any[]) {
-          if (e.week_number != null && e.student_user_id) {
-            evaluatedWeekKeys.add(`${e.week_number}|${e.student_user_id}`);
-          }
-        }
-
-        // Build "needs attention" pending items from task_submissions that
-        // don't have a faculty evaluation yet.
-        const needsAttention: PendingEvaluation[] = [];
-        for (const sub of (taskSubsRes.data || []) as any[]) {
-          const key = `${sub.task_id}|${sub.student_user_id}`;
-          if (evaluatedTaskKeys.has(key)) continue; // already evaluated
-          const student = sub.student as any;
-          const task = sub.task as any;
-          needsAttention.push({
-            id: `pending-task-${sub.id}`, // synthetic id; submit endpoint will create the real row
-            studentId: sub.student_user_id,
-            studentName: student?.full_name || "Unknown Student",
-            studentEmail: student?.email || "",
-            studentAvatar: student?.avatar_url,
-            submissionType: "task_submission",
-            title: task?.title || "Untitled Task",
-            description: sub.notes || sub.url || "Student submitted this task. Please evaluate.",
-            submittedAt: sub.submitted_at || "",
-            dueDate: task?.due_date || new Date().toISOString(),
-            priority: "medium",
-            contentPreview: sub.notes || undefined,
-            // Stash the task_id on the object so handleSubmitEvaluation
-            // can include it in the submit request body.
-            ...({ taskId: sub.task_id, weekNumber: task?.week_number ?? undefined } as any),
-          });
-        }
-
-        // Also add weekly periods that need eval: any weekly_log with
-        // status='submitted' that doesn't have a corresponding faculty
-        // weekly evaluation yet.
-        for (const log of (weeklyReportsRes.data || []) as any[]) {
-          const wk = log.week_number;
-          if (wk == null) continue;
-          const key = `${wk}|${log.student_user_id}`;
-          if (evaluatedWeekKeys.has(key)) continue; // already evaluated
-          needsAttention.push({
-            id: `pending-weekly-${log.id}`,
-            studentId: log.student_user_id,
-            studentName: log.student_profile?.full_name || "Unknown Student",
-            studentEmail: "",
-            submissionType: "weekly_log",
-            title: `Weekly Evaluation — Week ${wk}`,
-            description: log.challenges || log.learnings || "Student submitted a weekly log. Please provide your faculty evaluation.",
-            submittedAt: log.submitted_at || "",
-            dueDate: log.week_end_date || new Date().toISOString(),
-            priority: "medium",
-            ...({ weekNumber: wk, taskId: undefined } as any),
-          });
-        }
 
         const pending: PendingEvaluation[] = (pendingRes.data || []).map((e: any) => ({
           id: e.id,
@@ -485,17 +343,13 @@ export default function FacultySupervisorEvaluationsPage() {
           dueDate: e.submitted_at || new Date().toISOString(),
           priority: "medium",
         }));
-        // Merge: existing pending rows + auto-discovered "needs attention" items.
-        // Dedupe by id (synthetic ids don't collide with real UUIDs).
-        const mergedPending = [...pending, ...needsAttention];
-        setPendingEvaluations(mergedPending);
+        setPendingEvaluations(pending);
 
         const history: EvaluationRecord[] = (historyRes.data || []).map((e: any) => {
           const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
           const scoreValues = Object.values(scoresObj).filter((v): v is number => typeof v === "number");
           const total = scoreValues.reduce((acc, v) => acc + v, 0);
-          // Max is criteria_count * 5 (the API validates each score 0-5).
-          const max = scoreValues.length * 5 || 30;
+          const max = scoreValues.length * 10 || 100;
           return {
             id: e.id,
             studentName: e.student_profile?.full_name || "Unknown Student",
@@ -700,6 +554,8 @@ export default function FacultySupervisorEvaluationsPage() {
     setIsSubmitting(true);
 
     try {
+      const supabase = createClient();
+
       // Build scores JSONB from criteria scores.
       const scores: Record<string, number> = {};
       evaluationForm.criteria.forEach((c) => {
@@ -719,63 +575,42 @@ export default function FacultySupervisorEvaluationsPage() {
           .filter(Boolean)
           .join("\n\n--- Feedback for student ---\n") || null;
 
-      // Call the new UPSERT endpoint. This fixes the "faculty supervisor
-      // cannot create evaluations" bug (G.4): the previous flow did a
-      // direct UPDATE on `evaluations` filtered by `evaluator_id = user.id`
-      // AND `evaluator_role = 'faculty_supervisor'`, but NOTHING in the
-      // system ever created pending rows with those filters — so the
-      // UPDATE always matched zero rows and the evaluation was silently
-      // dropped. The new /api/faculty-supervisor/evaluations/submit
-      // endpoint INSERTs if no matching row exists (UPSERT) and verifies
-      // the student is actively assigned to this faculty supervisor via
-      // student_internships.faculty_supervisor_id (RLS-enforced).
-      //
-      // The submit endpoint accepts: type, student_user_id, scores,
-      // comments, rating, task_id?, task_submission_id?, week_number?.
-      // The selectedEvaluation object carries studentId + submissionType
-      // (mapped from the eval's `type` field). We reverse-map the
-      // submissionType back to the API's `type` field.
-      const apiType: "task" | "weekly" | "midterm" | "final" =
-        selectedEvaluation.submissionType === "task_submission" ? "task"
-        : selectedEvaluation.submissionType === "weekly_log" ? "weekly"
-        : selectedEvaluation.submissionType === "midterm" ? "midterm"
-        : selectedEvaluation.submissionType === "final" ? "final"
-        : "weekly"; // safe default
+      const { error } = await supabase
+        .from("evaluations")
+        .update({
+          rating: evaluationForm.rating,
+          scores,
+          comments: combinedComments,
+          status: newStatus,
+          submitted_at: new Date().toISOString(),
+        })
+        .eq("id", selectedEvaluation.id)
+        .eq("evaluator_id", user.id); // defense-in-depth: only update own evals
 
-      const submitBody: Record<string, unknown> = {
-        type: apiType,
-        student_user_id: selectedEvaluation.studentId,
-        scores,
-        comments: combinedComments,
-        rating: evaluationForm.rating,
-      };
-      // Include task_id / week_number if present on the selected evaluation.
-      // The PendingEvaluation interface doesn't carry these, but the
-      // underlying evaluation row (if this is an existing pending eval)
-      // may have them. The submit endpoint will look up the task's
-      // week_number if task_id is provided.
-      if (apiType === "task" && (selectedEvaluation as any).taskId) {
-        submitBody.task_id = (selectedEvaluation as any).taskId;
-      }
-      if (apiType === "weekly" && (selectedEvaluation as any).weekNumber) {
-        submitBody.week_number = (selectedEvaluation as any).weekNumber;
-      }
+      if (error) throw error;
 
-      const res = await fetch("/api/faculty-supervisor/evaluations/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submitBody),
+      // Send notification to student.
+      await supabase.from("notifications").insert({
+        user_id: selectedEvaluation.studentId,
+        sender_id: user.id,
+        title:
+          evaluationForm.decision === "approve"
+            ? "Evaluation Approved"
+            : evaluationForm.decision === "reject"
+            ? "Evaluation Rejected"
+            : "Evaluation Submitted — Revision Requested",
+        message: evaluationForm.feedback || evaluationForm.comments || "Your evaluation has been updated.",
+        category: "evaluation",
+        priority: evaluationForm.decision === "reject" ? "high" : "medium",
+        is_read: false,
+        metadata: { evaluation_id: selectedEvaluation.id, decision: evaluationForm.decision },
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.success) {
-        throw new Error(json?.error || `Failed to submit evaluation (HTTP ${res.status})`);
-      }
 
       // Move the item from pending → history locally.
       setPendingEvaluations((prev) => prev.filter((e) => e.id !== selectedEvaluation.id));
       setEvaluationHistory((prev) => [
         {
-          id: json.data?.id || selectedEvaluation.id,
+          id: selectedEvaluation.id,
           studentName: selectedEvaluation.studentName,
           type: selectedEvaluation.submissionType,
           title: selectedEvaluation.title,
@@ -783,7 +618,7 @@ export default function FacultySupervisorEvaluationsPage() {
           evaluatedAt: new Date().toISOString(),
           status: (newStatus === "approved" ? "approved" : newStatus === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
           score: evaluationForm.criteria.reduce((acc, c) => acc + c.score, 0),
-          maxScore: evaluationForm.criteria.length * 5,
+          maxScore: evaluationForm.criteria.length * 10,
           evaluatorComments: combinedComments || "",
         },
         ...prev,
@@ -791,10 +626,9 @@ export default function FacultySupervisorEvaluationsPage() {
 
       setIsEvaluateDialogOpen(false);
       setSelectedEvaluation(null);
-      toast.success("Evaluation submitted");
     } catch (error) {
       console.error("Error submitting evaluation:", error);
-      toast.fromError(error, "Failed to submit evaluation");
+      alert("Failed to submit evaluation. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -802,7 +636,6 @@ export default function FacultySupervisorEvaluationsPage() {
 
   const handleApproveReport = async (reportId: string) => {
     if (!user) return;
-    setApprovingReportId(reportId);
     try {
       const supabase = createClient();
       const { error } = await supabase
@@ -815,12 +648,9 @@ export default function FacultySupervisorEvaluationsPage() {
         .eq("id", reportId);
       if (error) throw error;
       setWeeklyReports((prev) => prev.filter((r) => r.id !== reportId));
-      toast.success("Weekly report approved");
     } catch (error) {
       console.error("Error approving weekly report:", error);
-      toast.fromError(error, "Failed to approve weekly report");
-    } finally {
-      setApprovingReportId(null);
+      alert("Failed to approve weekly report.");
     }
   };
 
@@ -867,10 +697,9 @@ export default function FacultySupervisorEvaluationsPage() {
             variant="outline"
             className="gap-2"
             onClick={handleExport}
-            disabled={isDownloading}
+            disabled={evaluationHistory.length === 0}
           >
-            <Download className="h-4 w-4" />
-            {isDownloading ? "Preparing..." : "Download Evaluations"}
+            <Download className="h-4 w-4" /> Export Data
           </Button>
         }
       />
@@ -1194,9 +1023,8 @@ export default function FacultySupervisorEvaluationsPage() {
                             size="sm"
                             className="gap-1 flex-1"
                             onClick={() => handleApproveReport(report.id)}
-                            disabled={approvingReportId === report.id}
                           >
-                            <CheckCircle2 className="h-3 w-3" /> {approvingReportId === report.id ? "Approving..." : "Approve"}
+                            <CheckCircle2 className="h-3 w-3" /> Approve
                           </Button>
                         )}
                         <Button
@@ -1220,7 +1048,7 @@ export default function FacultySupervisorEvaluationsPage() {
 
       {/* Evaluate Dialog */}
       <Dialog open={isEvaluateDialogOpen} onOpenChange={setIsEvaluateDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -1230,7 +1058,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <DialogBody className="space-y-6">
+              <div className="mt-4 space-y-6">
                 {/* Submission Info */}
                 <Card>
                   <CardHeader className="pb-3">
@@ -1247,7 +1075,7 @@ export default function FacultySupervisorEvaluationsPage() {
                   <CardContent>
                     {selectedEvaluation.contentPreview && (
                       <div className="mb-4 p-4 bg-muted/30 rounded-lg">
-                        <MarkdownRenderer content={selectedEvaluation.contentPreview} compact />
+                        <p className="text-sm italic">&ldquo;{selectedEvaluation.contentPreview}&rdquo;</p>
                       </div>
                     )}
                     
@@ -1308,7 +1136,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Evaluation Criteria</CardTitle>
-                    <CardDescription>Score each criterion (0-5 scale)</CardDescription>
+                    <CardDescription>Score each criterion (0-10 scale)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -1324,15 +1152,15 @@ export default function FacultySupervisorEvaluationsPage() {
                               <Input
                                 type="number"
                                 min="0"
-                                max="5"
+                                max="10"
                                 value={criterion.score || ""}
                                 onChange={(e) => handleCriterionChange(criterion.id, parseInt(e.target.value) || 0)}
                                 className="w-16 text-center"
                               />
-                              <span className="text-sm text-muted-foreground">/5</span>
+                              <span className="text-sm text-muted-foreground">/10</span>
                             </div>
                           </div>
-                          <Progress value={(criterion.score / 5) * 100} className="h-2" />
+                          <Progress value={(criterion.score / 10) * 100} className="h-2" />
                         </div>
                       ))}
                       
@@ -1354,13 +1182,11 @@ export default function FacultySupervisorEvaluationsPage() {
                       <CardDescription>Internal notes (not visible to student)</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <MarkdownEditor
+                      <Textarea
+                        placeholder="Add your internal comments..."
                         value={evaluationForm.comments}
-                        onChange={(v) => setEvaluationForm(prev => ({ ...prev, comments: v }))}
-                        placeholder="Add your internal comments... (Markdown supported)"
+                        onChange={(e) => setEvaluationForm(prev => ({ ...prev, comments: e.target.value }))}
                         rows={4}
-                        hidePreview
-                        ariaLabel="Internal evaluator comments (Markdown)"
                       />
                     </CardContent>
                   </Card>
@@ -1371,12 +1197,11 @@ export default function FacultySupervisorEvaluationsPage() {
                       <CardDescription>This will be visible to the student</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <MarkdownEditor
+                      <Textarea
+                        placeholder="Provide constructive feedback..."
                         value={evaluationForm.feedback}
-                        onChange={(v) => setEvaluationForm(prev => ({ ...prev, feedback: v }))}
-                        placeholder="Provide constructive feedback... (Markdown supported)"
+                        onChange={(e) => setEvaluationForm(prev => ({ ...prev, feedback: e.target.value }))}
                         rows={4}
-                        ariaLabel="Feedback for student (Markdown)"
                       />
                     </CardContent>
                   </Card>
@@ -1421,9 +1246,9 @@ export default function FacultySupervisorEvaluationsPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </DialogBody>
+              </div>
 
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 mt-6">
                 <Button variant="outline" onClick={() => setIsEvaluateDialogOpen(false)}>
                   Cancel
                 </Button>
@@ -1461,7 +1286,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <DialogBody className="space-y-4">
+              <div className="mt-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-muted-foreground">Student</Label>
@@ -1505,7 +1330,7 @@ export default function FacultySupervisorEvaluationsPage() {
                     </p>
                   </div>
                 )}
-              </DialogBody>
+              </div>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>

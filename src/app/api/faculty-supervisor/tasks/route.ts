@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
 import { notifyTaskAssigned } from "@/lib/notifications";
+import { fetchSupervisedStudentIds } from "@/lib/supervised-students";
 
 /**
  * /api/faculty-supervisor/tasks
@@ -440,22 +441,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate the students are under this supervisor's supervision.
-    // Check student_internships for an active link.
-    const { data: internships, error: internErr } = await supabase
-      .from("student_internships")
-      .select("student_user_id, program_id, internship_id, university_id, department_id")
-      .eq("faculty_supervisor_id", user.id)
-      .in("status", ["assigned", "active"]);
+    // Check BOTH student_internships.faculty_supervisor_id (internship-time)
+    // AND students.faculty_supervisor_id (pre-internship, migration 0041).
+    const supervisedUserIds = new Set(
+      await fetchSupervisedStudentIds(supabase, user.id)
+    );
 
-    if (internErr) {
-      console.error("[/api/faculty-supervisor/tasks] supervisor internships fetch error:", internErr);
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Could not verify student supervision" },
-        { status: 500 }
-      );
-    }
-
-    const supervisedUserIds = new Set((internships || []).map((i) => i.student_user_id));
     const invalidIds = student_user_ids.filter((id) => !supervisedUserIds.has(id));
     if (invalidIds.length > 0) {
       return NextResponse.json<ApiResponse<never>>(
@@ -464,6 +455,24 @@ export async function POST(request: NextRequest) {
           error: `Some students are not under your supervision: ${invalidIds.join(", ")}`,
         },
         { status: 400 }
+      );
+    }
+
+    // Fetch internship-shaped rows for these students (used to derive
+    // program_id/internship_id scopes for the new task). Students who only
+    // have a pre-internship assignment (no student_internships row) won't
+    // appear here — we fall back to students-table metadata below.
+    const { data: internships, error: internErr } = await supabase
+      .from("student_internships")
+      .select("student_user_id, program_id, internship_id, university_id, department_id")
+      .eq("faculty_supervisor_id", user.id)
+      .in("status", ["assigned", "active", "paused", "completed"]);
+
+    if (internErr) {
+      console.error("[/api/faculty-supervisor/tasks] supervisor internships fetch error:", internErr);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Could not verify student supervision" },
+        { status: 500 }
       );
     }
 

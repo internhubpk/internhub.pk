@@ -1,1231 +1,682 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
-  DialogBody,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   FileText,
   Plus,
-  Upload,
-  X,
-  Loader2,
-  CheckCircle2,
   Clock,
-  PenTool,
-  Image as ImageIcon,
+  CheckCircle2,
+  Send,
+  Calendar,
+  ListChecks,
+  Lightbulb,
+  Target,
+  Timer,
   AlertCircle,
-  Eye,
+  Download,
+  FileDown,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { SignaturePad } from "@/components/supervisors/signature-pad";
-import { cn } from "@/lib/utils";
-import { toast } from "@/components/shared/toast";
+import { downloadCsv, generatePdf } from "@/lib/export-helpers";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-interface WeeklyActivityResult {
-  day: string;
-  date: string;
-  tasks: string;
-  hours: string;
-}
-
-interface EvidenceFile {
-  name: string;
-  url: string;
-  size: number;
-  type: string;
-}
-
+// Real schema columns on `weekly_logs`:
+//   id, student_user_id, internship_id, student_internship_id,
+//   week_number (nullable w/ default 1 after migration 0042),
+//   week_start_date, week_end_date,
+//   tasks_completed text[] NOT NULL DEFAULT '{}',
+//   challenges text, learnings text, next_week_goals text,
+//   hours_worked numeric(5,2), status weekly_log_status,
+//   supervisor_feedback text, supervisor_id uuid,
+//   reviewed_at timestamptz, submitted_at timestamptz,
+//   created_at timestamptz, updated_at timestamptz
 interface WeeklyLog {
   id: string;
   week_number: number | null;
   week_start_date: string;
   week_end_date: string;
-  status: string;
+  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
   tasks_completed: string[];
   challenges: string | null;
-  challenges_solutions: string | null;
   learnings: string | null;
-  learning_outcomes: string | null;
   next_week_goals: string | null;
   hours_worked: number | null;
   supervisor_feedback: string | null;
-  submitted_at: string | null;
-  reviewed_at: string | null;
-  program_name: string | null;
-  department_name: string | null;
-  student_registration_no: string | null;
-  university_logo_url: string | null;
-  weekly_activities: WeeklyActivityResult[] | null;
-  supporting_evidence: EvidenceFile[] | null;
-  student_signature_url: string | null;
-  student_signed_at: string | null;
-  site_supervisor_signature_url: string | null;
-  site_supervisor_remarks: string | null;
-  site_supervisor_signed_at: string | null;
-  faculty_supervisor_signature_url: string | null;
-  faculty_supervisor_remarks: string | null;
-  faculty_supervisor_signed_at: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
 }
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted — Awaiting Site Supervisor",
-  site_signed: "Site Supervisor Signed — Awaiting Faculty",
-  faculty_signed: "Faculty Signed — Awaiting Site Supervisor",
-  approved: "Fully Approved",
-  rejected: "Rejected",
-  revision_required: "Revision Required",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  submitted: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  site_signed: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  faculty_signed: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  revision_required: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function getCurrentWeekRange() {
-  const now = new Date();
-  const day = now.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
-  const friday = new Date(monday);
-  friday.setDate(monday.getDate() + 4);
-  const toIso = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: toIso(monday), end: toIso(friday) };
-}
-
-function computeInternshipWeek(dateStr: string, startDateStr: string | null): number | null {
-  if (!dateStr || !startDateStr) return null;
-  const date = new Date(dateStr);
-  const start = new Date(startDateStr);
-  if (isNaN(date.getTime()) || isNaN(start.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  start.setHours(0, 0, 0, 0);
-  if (date < start) return null;
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const daysDiff = Math.floor((date.getTime() - start.getTime()) / msPerDay);
-  return Math.floor(daysDiff / 7) + 1;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      timeZone: "UTC",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-// Convert a base64 data URL (from SignaturePad canvas) to a File object.
-function dataUrlToFile(dataUrl: string, filename: string): File {
-  const [meta, b64] = dataUrl.split(",");
-  const mime = meta.match(/data:([^;]+)/)?.[1] || "image/png";
-  const bytes = atob(b64);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new File([arr], filename, { type: mime });
-}
-
-// ===========================================================================
-// PAGE
-// ===========================================================================
 export default function StudentWeeklyLogsPage() {
-  const { user, profile } = useAuth();
-
+  const { user } = useAuth();
   const [logs, setLogs] = useState<WeeklyLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Auto-fetched context
-  const [programs, setPrograms] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [activeInternship, setActiveInternship] = useState<any>(null);
-
-  // View-existing-log dialog
-  const [viewLog, setViewLog] = useState<WeeklyLog | null>(null);
-
-  // ----- Form state -----
-  const initialForm = () => {
-    const { start, end } = getCurrentWeekRange();
-    return {
-      week_number: "",
-      week_start_date: start,
-      week_end_date: end,
-      program_id: profile?.programs?.id || "",
-      // Pre-populate Mon-Fri rows with the right dates for the picked week.
-      weekly_activities: DAYS.map((day, i) => {
-        const monday = new Date(start);
-        monday.setDate(monday.getDate() + i);
-        return {
-          day,
-          date: monday.toISOString().slice(0, 10),
-          tasks: "",
-          hours: "",
-        };
-      }) as WeeklyActivityResult[],
-      learning_outcomes: "",
-      challenges_solutions: "",
-      next_week_goals: "",
-      university_logo_url: "",
-      supporting_evidence: [] as EvidenceFile[],
-      student_signature_url: "",
-    };
+  // Form state — mirrors the REAL `weekly_logs` columns.
+  const emptyForm = {
+    week_start_date: "",
+    week_end_date: "",
+    tasks_completed: "", // textarea; converted to text[] on submit (one per line)
+    challenges: "",
+    learnings: "",
+    next_week_goals: "",
+    hours_worked: "",
   };
-  const [formData, setFormData] = useState(initialForm());
-  const [signatureData, setSignatureData] = useState<string | null>(null);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string>("");
-  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
-  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [formData, setFormData] = useState(emptyForm);
 
-  // -------------------------------------------------------------------------
-  // Fetch logs + auto-fetched context
-  // -------------------------------------------------------------------------
-  const fetchAll = useCallback(async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-    try {
-      const res = await fetch("/api/student/weekly-logs", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.success) {
-        setLogs(json.data.logs || []);
-        setPrograms(json.data.programs || []);
-        setActiveInternship(json.data.activeInternship || null);
-        // Set initial week_number from internship start_date
-        if (json.data.activeInternship?.start_date) {
-          const wn = computeInternshipWeek(
-            formData.week_start_date,
-            json.data.activeInternship.start_date
-          );
-          if (wn) {
-            setFormData((prev) => ({ ...prev, week_number: String(wn) }));
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching weekly logs:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+  // Helper: compute the current week's Monday → Sunday (YYYY-MM-DD).
+  const getCurrentWeekRange = () => {
+    const now = new Date();
+    const day = now.getDay(); // 0 = Sun
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const toIso = (d: Date) => d.toISOString().slice(0, 10);
+    return { start: toIso(monday), end: toIso(sunday) };
+  };
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    fetchWeeklyLogs();
+  }, [user]);
 
-  // When the week_start_date changes, recompute Mon-Fri dates + week number.
-  const onWeekStartChange = (newStart: string) => {
-    const monday = new Date(newStart);
-    monday.setDate(monday.getDate() + 0); // already Monday
-    const friday = new Date(monday);
-    friday.setDate(monday.getDate() + 4);
+  async function fetchWeeklyLogs() {
+    if (!user) { setIsLoading(false); return; }
 
-    setFormData((prev) => ({
-      ...prev,
-      week_start_date: newStart,
-      week_end_date: friday.toISOString().slice(0, 10),
-      weekly_activities: prev.weekly_activities.map((row, i) => {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        return { ...row, date: d.toISOString().slice(0, 10) };
-      }),
-      week_number:
-        activeInternship?.start_date
-          ? String(computeInternshipWeek(newStart, activeInternship.start_date) || "")
-          : prev.week_number,
-    }));
-  };
-
-  // -------------------------------------------------------------------------
-  // File handlers
-  // -------------------------------------------------------------------------
-  const onLogoSelected = (file: File | null) => {
-    if (!file) return;
-    setLogoFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setLogoPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const onEvidenceSelected = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploadingEvidence(true);
     try {
-      // Just stage them — actual upload happens on submit.
-      setEvidenceFiles((prev) => [...prev, ...Array.from(files)]);
+      const supabase = createClient();
+
+      // Fetch weekly logs for current student using REAL columns only.
+      const { data, error } = await supabase
+        .from('weekly_logs')
+        .select(`
+          id,
+          week_number,
+          week_start_date,
+          week_end_date,
+          tasks_completed,
+          challenges,
+          learnings,
+          next_week_goals,
+          hours_worked,
+          status,
+          supervisor_feedback,
+          submitted_at,
+          reviewed_at,
+          created_at
+        `)
+        .eq('student_user_id', user.id)
+        .order('week_start_date', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const logList: WeeklyLog[] = data.map((log: any) => ({
+          id: log.id,
+          week_number: log.week_number ?? null,
+          week_start_date: log.week_start_date || '',
+          week_end_date: log.week_end_date || '',
+          status: log.status || 'draft',
+          tasks_completed: Array.isArray(log.tasks_completed)
+            ? log.tasks_completed
+            : (log.tasks_completed ? [String(log.tasks_completed)] : []),
+          challenges: log.challenges,
+          learnings: log.learnings,
+          next_week_goals: log.next_week_goals,
+          hours_worked: log.hours_worked !== null && log.hours_worked !== undefined
+            ? Number(log.hours_worked) : null,
+          supervisor_feedback: log.supervisor_feedback,
+          submittedAt: log.submitted_at,
+          reviewedAt: log.reviewed_at,
+        }));
+        setLogs(logList);
+      }
+    } catch (error) {
+      console.error("Error fetching weekly logs:", error);
     } finally {
-      setUploadingEvidence(false);
+      setIsLoading(false);
     }
-  };
+  }
 
-  const removeEvidence = (idx: number) => {
-    setEvidenceFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // -------------------------------------------------------------------------
-  // Submit
-  // -------------------------------------------------------------------------
-  const handleSubmit = async () => {
+  const handleSubmitLog = async () => {
+    if (!user) return;
     setSubmitError(null);
 
-    if (!formData.week_start_date || !formData.week_end_date) {
-      setSubmitError("Week start and end dates are required.");
-      return;
-    }
+    // Require at least tasks_completed or challenges/learnings.
+    const tasksArr = formData.tasks_completed
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    // Require at least one task across the week.
-    const anyTask = formData.weekly_activities.some((r) => r.tasks.trim());
-    if (!anyTask) {
-      setSubmitError("Please fill in tasks for at least one day.");
-      return;
-    }
-
-    if (!signatureData) {
-      setSubmitError("Please sign the report at the bottom before submitting.");
+    if (
+      tasksArr.length === 0 &&
+      !formData.challenges.trim() &&
+      !formData.learnings.trim()
+    ) {
+      setSubmitError(
+        "Please describe your work — list tasks completed, challenges, or learnings."
+      );
       return;
     }
 
     setIsSubmitting(true);
-
-    // Track partial-failure warnings so we can surface them to the user
-    // without failing the whole submit (the log row is already created by
-    // step 1, so steps 2-5 are best-effort).
-    const partialWarnings: string[] = [];
-
     try {
-      // Step 1: Insert the log first so we have an ID.
-      const createRes = await fetch("/api/student/weekly-logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          // Coerce the string state to a number (or null) — the DB column
-          // is numeric and the `WeeklyLog.week_number: number | null` type
-          // expects a number. Sending "" would either fail validation or
-          // be stored as 0, both of which are wrong.
-          week_number: formData.week_number
-            ? parseInt(formData.week_number, 10)
-            : null,
-          tasks_completed: formData.weekly_activities
-            .map((r) => r.tasks)
-            .filter(Boolean)
-            .join("\n"),
-          hours_worked: formData.weekly_activities.reduce(
-            (sum, r) => sum + (Number(r.hours) || 0),
-            0
-          ),
-          // supporting_evidence + signature + logo will be uploaded next and
-          // patched in via a second POST call.
-          supporting_evidence: [],
-          student_signature_url: null,
-          university_logo_url: null,
-        }),
-      });
+      const supabase = createClient();
 
-      if (!createRes.ok) {
-        const errJson = await createRes.json().catch(() => ({}));
-        throw new Error(errJson?.error?.message || `HTTP ${createRes.status}`);
+      // Derive supervisor_id + internship_id from the student's active student_internship.
+      // Prefer site_supervisor_id; fall back to faculty_supervisor_id.
+      const { data: si, error: siError } = await supabase
+        .from("student_internships")
+        .select("id, internship_id, site_supervisor_id, faculty_supervisor_id, program_id, company_id, university_id, department_id")
+        .eq("student_user_id", user.id)
+        .in("status", ["active", "assigned"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // It's OK to not have an internship yet — weekly logs can still be created
+      // (week_number has a default now; internship_id is nullable).
+      const supervisorId = si?.site_supervisor_id || si?.faculty_supervisor_id || null;
+
+      const defaultRange = getCurrentWeekRange();
+      const weekStart = formData.week_start_date || defaultRange.start;
+      const weekEnd = formData.week_end_date || defaultRange.end;
+
+      // Compute week_number from week_start_date: weeks since the student's first log
+      // (or just 1 for the first log). Simpler: use 1-based index for the year.
+      const start = new Date(weekStart);
+      const yearStart = new Date(start.getFullYear(), 0, 1);
+      const weekNumber = Math.ceil(
+        ((start.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / 7
+      );
+
+      const payload: any = {
+        student_user_id: user.id,
+        supervisor_id: supervisorId,
+        week_start_date: weekStart,
+        week_end_date: weekEnd,
+        week_number: weekNumber,
+        tasks_completed: tasksArr,
+        challenges: formData.challenges.trim() || null,
+        learnings: formData.learnings.trim() || null,
+        next_week_goals: formData.next_week_goals.trim() || null,
+        hours_worked: formData.hours_worked
+          ? Number(formData.hours_worked)
+          : null,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+      };
+
+      // Link to internship if available (optional, internship_id is nullable).
+      if (si?.internship_id) {
+        payload.internship_id = si.internship_id;
+      }
+      if (si?.id) {
+        payload.student_internship_id = si.id;
       }
 
-      const created = await createRes.json();
-      const logId = created.data.id;
+      const { error: insertError } = await supabase
+        .from("weekly_logs")
+        .insert(payload);
 
-      // Step 2: Upload the signature (if drawn/typed).
-      let signatureUrl: string | null = null;
-      if (signatureData) {
-        const sigFile = dataUrlToFile(signatureData, `student_signature_${logId}.png`);
-        const sigForm = new FormData();
-        sigForm.append("file", sigFile);
-        const sigRes = await fetch(`/api/student/weekly-logs/${logId}/signature`, {
-          method: "POST",
-          body: sigForm,
-        });
-        if (!sigRes.ok) {
-          console.warn("Signature upload failed — proceeding anyway");
-          partialWarnings.push("signature upload");
+      if (insertError) {
+        // If duplicate (student_user_id + week_start_date), update instead.
+        if (insertError.code === "23505") {
+          const { error: updateError } = await supabase
+            .from("weekly_logs")
+            .update({
+              tasks_completed: tasksArr,
+              challenges: payload.challenges,
+              learnings: payload.learnings,
+              next_week_goals: payload.next_week_goals,
+              hours_worked: payload.hours_worked,
+              status: "submitted",
+              submitted_at: new Date().toISOString(),
+              ...(supervisorId ? { supervisor_id: supervisorId } : {}),
+            })
+            .eq("student_user_id", user.id)
+            .eq("week_start_date", weekStart);
+          if (updateError) throw updateError;
         } else {
-          const sigJson = await sigRes.json();
-          signatureUrl = sigJson.data?.signature_url || null;
+          throw insertError;
         }
       }
 
-      // Step 3: Upload the university logo (if selected).
-      let logoUrl: string | null = null;
-      if (logoFile) {
-        const logoForm = new FormData();
-        logoForm.append("file", logoFile);
-        const logoRes = await fetch(`/api/student/weekly-logs/${logId}/logo`, {
-          method: "POST",
-          body: logoForm,
-        });
-        if (!logoRes.ok) {
-          console.warn("Logo upload failed — proceeding anyway");
-          partialWarnings.push("university logo upload");
-        } else {
-          const logoJson = await logoRes.json();
-          logoUrl = logoJson.data?.logo_url || null;
+      // Send a notification to the supervisor (if any) so they know a log
+      // is awaiting review.
+      if (supervisorId) {
+        try {
+          await supabase.from("notifications").insert({
+            user_id: supervisorId,
+            sender_id: user.id,
+            title: "New weekly log submitted",
+            message: `Week of ${weekStart} → ${weekEnd} is awaiting your review.`,
+            category: "task",
+            priority: "medium",
+            is_read: false,
+            metadata: { week_start: weekStart, week_end: weekEnd, kind: "weekly_log" },
+          });
+        } catch (notifErr) {
+          // Non-fatal — don't fail the submit if the notification can't be sent.
+          console.warn("Could not send supervisor notification:", notifErr);
         }
       }
 
-      // Step 4: Upload each evidence file.
-      const uploadedEvidence: EvidenceFile[] = [];
-      let evidenceFailures = 0;
-      for (const f of evidenceFiles) {
-        const evForm = new FormData();
-        evForm.append("file", f);
-        const evRes = await fetch(`/api/student/weekly-logs/${logId}/evidence`, {
-          method: "POST",
-          body: evForm,
-        });
-        if (evRes.ok) {
-          const evJson = await evRes.json();
-          if (evJson.data) uploadedEvidence.push(evJson.data);
-        } else {
-          evidenceFailures += 1;
-        }
-      }
-      if (evidenceFailures > 0) {
-        partialWarnings.push(`${evidenceFailures} evidence file${evidenceFailures !== 1 ? "s" : ""}`);
-      }
-
-      // Step 5: Patch the log with the uploaded URLs (signature is already
-      // saved by the signature route, but we send it again for safety; logo
-      // + evidence need to be persisted).
-      const patchRes = await fetch(`/api/student/weekly-logs/${logId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supporting_evidence: uploadedEvidence,
-          university_logo_url: logoUrl,
-          student_signature_url: signatureUrl,
-        }),
-      });
-
-      if (!patchRes.ok) {
-        console.warn("Final patch failed — log was still created.");
-        partialWarnings.push("final metadata save");
-      }
-
-      // Close + refresh
+      setFormData(emptyForm);
       setIsDialogOpen(false);
-      resetForm();
-      await fetchAll();
-
-      // Surface success / partial-failure feedback.
-      if (partialWarnings.length === 0) {
-        toast.success("Weekly log submitted", {
-          description: "Your report has been sent for supervisor review.",
-        });
-      } else {
-        toast.warning("Weekly log submitted with warnings", {
-          description: `Log created, but these steps failed: ${partialWarnings.join(", ")}. You can edit the log later to retry.`,
-        });
-      }
-    } catch (err: any) {
-      setSubmitError(err.message || "Failed to submit weekly log.");
-      toast.error("Failed to submit weekly log", {
-        description: err instanceof Error ? err.message : "Please try again.",
-      });
+      await fetchWeeklyLogs();
+    } catch (error: any) {
+      console.error("Error submitting log:", error);
+      setSubmitError(error?.message || "Failed to submit log. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const resetForm = () => {
-    setFormData(initialForm());
-    setSignatureData(null);
-    setLogoFile(null);
-    setLogoPreview("");
-    setEvidenceFiles([]);
-    setSubmitError(null);
-  };
+  const pendingWeeks = logs.filter(
+    (log) => log.status === "submitted" || log.status === "draft"
+  );
 
-  // -------------------------------------------------------------------------
-  // Stats
-  // -------------------------------------------------------------------------
-  const stats = useMemo(() => {
-    const total = logs.length;
-    const submitted = logs.filter((l) => ["submitted", "site_signed", "faculty_signed"].includes(l.status)).length;
-    const approved = logs.filter((l) => l.status === "approved").length;
-    const totalHours = logs.reduce((sum, l) => sum + (Number(l.hours_worked) || 0), 0);
-    return { total, submitted, approved, totalHours };
-  }, [logs]);
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Weekly Activity Reports"
-        description="Fill, sign, and submit your weekly internship activity report. Both supervisors must sign for full approval."
-        actions={
-          <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Weekly Report
-          </Button>
-        }
-      />
-
-      {/* Stats */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Reports"
-          value={stats.total}
-          icon={FileText}
-          variant="info"
-        />
-        <StatCard
-          label="Pending Review"
-          value={stats.submitted}
-          icon={Clock}
-          variant="warning"
-        />
-        <StatCard
-          label="Approved"
-          value={stats.approved}
-          icon={CheckCircle2}
-          variant="success"
-        />
-        <StatCard
-          label="Total Hours"
-          value={stats.totalHours}
-          icon={Clock}
-          variant="default"
-        />
-      </div>
-
-      {/* List */}
-      {isLoading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b bg-card">
+          <div className="container mx-auto px-4 py-6 lg:px-8">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </div>
         </div>
-      ) : logs.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="font-medium text-sm">No weekly reports yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Click "New Weekly Report" to submit your first one.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          <AnimatePresence mode="popLayout">
-            {logs.map((log) => (
-              <motion.div
-                key={log.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-              >
-                <Card className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-sm">
-                            Week {log.week_number || "—"}
-                          </h3>
-                          <Badge variant="secondary" className={cn("text-xs", STATUS_COLORS[log.status] || "")}>
-                            {STATUS_LABELS[log.status] || log.status}
-                          </Badge>
+        <div className="container mx-auto px-4 py-6 lg:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <Skeleton className="h-12" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="border-b bg-card">
+        <div className="container mx-auto px-4 py-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <PageHeader
+              title="Weekly Logs"
+              description="Track your weekly internship activities and progress"
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      if (logs.length === 0) {
+                        alert("No weekly logs to export.");
+                        return;
+                      }
+                      downloadCsv(
+                        `weekly-logs-${new Date().toISOString().slice(0, 10)}.csv`,
+                        [
+                          "Week Number",
+                          "Week Start",
+                          "Week End",
+                          "Status",
+                          "Hours Worked",
+                          "Tasks Completed",
+                          "Challenges",
+                          "Learnings",
+                          "Next Week Goals",
+                          "Supervisor Feedback",
+                          "Submitted At",
+                        ],
+                        logs.map((l) => [
+                          l.week_number ?? "",
+                          l.week_start_date,
+                          l.week_end_date,
+                          l.status,
+                          l.hours_worked ?? "",
+                          (l.tasks_completed || []).join("; "),
+                          l.challenges || "",
+                          l.learnings || "",
+                          l.next_week_goals || "",
+                          l.supervisor_feedback || "",
+                          l.submittedAt || "",
+                        ])
+                      );
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export CSV
+                  </Button>
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Submit Log
+                      </Button>
+                    </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Submit Weekly Log</DialogTitle>
+                      <DialogDescription>
+                        Defaults to the current week (Mon–Sun). Adjust the dates if needed.
+                        One task per line.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 mt-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Week Start Date</label>
+                          <Input
+                            type="date"
+                            value={formData.week_start_date || getCurrentWeekRange().start}
+                            onChange={(e) => setFormData({ ...formData, week_start_date: e.target.value })}
+                          />
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(log.week_start_date)} → {formatDate(log.week_end_date)}
-                          {log.hours_worked ? ` · ${log.hours_worked}h` : ""}
-                        </p>
-                        {log.tasks_completed?.[0] && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                            {log.tasks_completed[0]}
-                          </p>
-                        )}
-                        {/* Signature status pills */}
-                        <div className="flex items-center gap-3 mt-2 text-[10px]">
-                          <SigPill
-                            label="Student"
-                            signed={Boolean(log.student_signature_url)}
-                            date={log.student_signed_at}
-                          />
-                          <SigPill
-                            label="Site Sup."
-                            signed={Boolean(log.site_supervisor_signature_url)}
-                            date={log.site_supervisor_signed_at}
-                          />
-                          <SigPill
-                            label="Faculty Sup."
-                            signed={Boolean(log.faculty_supervisor_signature_url)}
-                            date={log.faculty_supervisor_signed_at}
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Week End Date</label>
+                          <Input
+                            type="date"
+                            value={formData.week_end_date || getCurrentWeekRange().end}
+                            onChange={(e) => setFormData({ ...formData, week_end_date: e.target.value })}
                           />
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewLog(log)}
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1.5" />
-                        View
-                      </Button>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <ListChecks className="h-4 w-4" /> Tasks Completed (one per line)
+                        </label>
+                        <Textarea
+                          placeholder={"Built login page\nFixed bug in dashboard\nWrote unit tests"}
+                          value={formData.tasks_completed}
+                          onChange={(e) => setFormData({ ...formData, tasks_completed: e.target.value })}
+                          rows={4}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" /> Challenges Faced
+                        </label>
+                        <Textarea
+                          placeholder="Any obstacles or challenges you encountered..."
+                          value={formData.challenges}
+                          onChange={(e) => setFormData({ ...formData, challenges: e.target.value })}
+                          rows={3}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Lightbulb className="h-4 w-4" /> Learnings
+                        </label>
+                        <Textarea
+                          placeholder="Key takeaways and what you learned this week..."
+                          value={formData.learnings}
+                          onChange={(e) => setFormData({ ...formData, learnings: e.target.value })}
+                          rows={3}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Target className="h-4 w-4" /> Goals for Next Week
+                        </label>
+                        <Textarea
+                          placeholder="What you plan to work on next week..."
+                          value={formData.next_week_goals}
+                          onChange={(e) => setFormData({ ...formData, next_week_goals: e.target.value })}
+                          rows={2}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                          <Timer className="h-4 w-4" /> Hours Worked
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder="40"
+                          value={formData.hours_worked}
+                          onChange={(e) => setFormData({ ...formData, hours_worked: e.target.value })}
+                        />
+                      </div>
+
+                      {submitError && (
+                        <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300">
+                          {submitError}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleSubmitLog} className="gap-2" disabled={isSubmitting}>
+                          {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          {isSubmitting ? "Submitting..." : "Submit Log"}
+                        </Button>
+                      </div>
                     </div>
+                  </DialogContent>
+                </Dialog>
+                </div>
+              }
+            />
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-6 lg:px-8">
+        {/* Stats Cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6"
+        >
+          <StatCard label="Total Submitted" value={logs.filter((l) => l.submittedAt).length} icon={FileText} variant="info" />
+          <StatCard label="Approved" value={logs.filter((l) => l.status === "approved").length} icon={CheckCircle2} variant="success" />
+          <StatCard label="Pending" value={pendingWeeks.length} icon={Clock} variant="warning" />
+          <StatCard
+            label="Hours Logged"
+            value={logs.reduce((acc, l) => acc + (l.hours_worked || 0), 0).toFixed(1)}
+            icon={Timer}
+            variant="default"
+          />
+        </motion.div>
+
+        {/* Weekly Logs List */}
+        <div className="space-y-4">
+          {logs.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="font-medium">No weekly logs yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Click "Submit Log" above to record your first weekly entry.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            logs.map((log, index) => (
+              <motion.div
+                key={log.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05, duration: 0.3 }}
+              >
+                <Card className="transition-all hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {log.week_number ? `Week ${log.week_number} · ` : ""}
+                          {log.week_start_date
+                            ? new Date(log.week_start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                            : "Week"}
+                          {log.week_end_date
+                            ? ` – ${new Date(log.week_end_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                            : ""}
+                        </CardTitle>
+                        <CardDescription className="flex items-center gap-2 mt-1">
+                          <Calendar className="h-3 w-3" />
+                          {log.week_start_date} - {log.week_end_date}
+                          {log.hours_worked !== null && (
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Timer className="h-3 w-3" /> {log.hours_worked}h
+                            </span>
+                          )}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={log.status} />
+                        {log.submittedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(log.submittedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 h-7"
+                          title="Download PDF"
+                          onClick={() => {
+                            generatePdf(
+                              {
+                                title: `Weekly Log — Week ${log.week_number ?? ""}`,
+                                subtitle: `${log.week_start_date} → ${log.week_end_date}`,
+                                metadata: [
+                                  { label: "Status", value: log.status },
+                                  { label: "Hours Worked", value: String(log.hours_worked ?? "—") },
+                                  { label: "Submitted At", value: log.submittedAt ? new Date(log.submittedAt).toLocaleString() : "—" },
+                                  { label: "Reviewed At", value: log.reviewedAt ? new Date(log.reviewedAt).toLocaleString() : "—" },
+                                ],
+                                sections: [
+                                  {
+                                    title: "Tasks Completed",
+                                    bullets: log.tasks_completed && log.tasks_completed.length > 0 ? log.tasks_completed : ["(no tasks recorded)"],
+                                  },
+                                  {
+                                    title: "Challenges Faced",
+                                    lines: [log.challenges || "(none recorded)"],
+                                  },
+                                  {
+                                    title: "Learnings",
+                                    lines: [log.learnings || "(none recorded)"],
+                                  },
+                                  {
+                                    title: "Goals for Next Week",
+                                    lines: [log.next_week_goals || "(none recorded)"],
+                                  },
+                                  {
+                                    title: "Supervisor Feedback",
+                                    lines: [log.supervisor_feedback || "(no feedback yet)"],
+                                  },
+                                ],
+                                footer: `InternHub.pk — Weekly Log exported on ${new Date().toLocaleString()}`,
+                              },
+                              `weekly-log-week-${log.week_number ?? log.week_start_date}.pdf`
+                            );
+                          }}
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          PDF
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="pt-0 space-y-3">
+                    {log.tasks_completed && log.tasks_completed.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <ListChecks className="h-4 w-4" /> Tasks Completed
+                        </h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                          {log.tasks_completed.map((task, i) => (
+                            <li key={i}>{task}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {log.challenges && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" /> Challenges
+                        </h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.challenges}</p>
+                      </div>
+                    )}
+
+                    {log.learnings && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <Lightbulb className="h-4 w-4" /> Learnings
+                        </h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.learnings}</p>
+                      </div>
+                    )}
+
+                    {log.next_week_goals && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+                          <Target className="h-4 w-4" /> Next Week Goals
+                        </h4>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{log.next_week_goals}</p>
+                      </div>
+                    )}
+
+                    {log.supervisor_feedback && (
+                      <div className="pt-2 border-t">
+                        <h4 className="text-sm font-semibold mb-1">Supervisor Feedback:</h4>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400 whitespace-pre-wrap">
+                          {log.supervisor_feedback}
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* SUBMIT DIALOG                                                */}
-      {/* ============================================================ */}
-      <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
-        <DialogContent className="max-w-4xl w-[95vw] p-0 gap-0 flex flex-col">
-          {/* Header — fixed */}
-          <div className="px-6 py-4 border-b shrink-0">
-            <DialogTitle className="text-base font-semibold">Weekly Internship Activity Report</DialogTitle>
-          </div>
-
-          {/* Scrollable body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-            {submitError && (
-              <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/5 border border-destructive/30 text-xs text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{submitError}</span>
-              </div>
-            )}
-
-            {/* ===== Section 1: University logo ===== */}
-            <section className="space-y-2.5">
-              <div className="flex items-baseline justify-between">
-                <Label className="text-sm font-semibold">University Logo</Label>
-                <span className="text-[10px] text-muted-foreground">Optional · appears in report header</span>
-              </div>
-              <p className="text-xs text-muted-foreground -mt-1">
-                The template is universal — upload your own university&apos;s logo.
-              </p>
-              <div className="flex items-center gap-4 p-3 rounded-lg border bg-muted/20">
-                {logoPreview ? (
-                  <div className="relative shrink-0">
-                    <img
-                      src={logoPreview}
-                      alt="University logo preview"
-                      className="h-16 w-16 object-contain rounded-md border bg-white p-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="h-5 w-5 absolute -top-1.5 -right-1.5 rounded-full shadow-sm"
-                      onClick={() => { setLogoFile(null); setLogoPreview(""); }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center h-16 w-16 rounded-md border-2 border-dashed border-muted-foreground/40 cursor-pointer hover:border-primary/60 hover:bg-accent/50 transition-colors shrink-0">
-                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => onLogoSelected(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                )}
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  <p className="font-medium text-foreground">PNG, JPG, or WebP</p>
-                  <p>Max 5MB · appears in the top-right of the report.</p>
-                </div>
-              </div>
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 2: Program + Student info ===== */}
-            <section className="space-y-3">
-              <SectionLabel index="1" title="Program & Student Info" hint="Auto-fetched from your profile" />
-
-              {/* Program checkboxes */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Your program</Label>
-                <div className="flex flex-wrap gap-2">
-                  {programs.length === 0 ? (
-                    <span className="text-xs text-muted-foreground italic px-2 py-1">
-                      No programs found for your department. Contact your coordinator.
-                    </span>
-                  ) : (
-                    programs.map((p) => (
-                      <label
-                        key={p.id}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer text-xs transition-colors",
-                          formData.program_id === p.id
-                            ? "bg-primary/10 border-primary/50 text-primary font-medium"
-                            : "border-border hover:bg-accent/50"
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.program_id === p.id}
-                          onChange={() => setFormData((prev) => ({ ...prev, program_id: p.id }))}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>{p.name} {p.code ? `(${p.code})` : ""}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Auto-fetched student info card */}
-              <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden border border-border">
-                <InfoCell label="Student Name" value={profile?.full_name || `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "—"} />
-                <InfoCell label="Registration No." value={profile?.student_id_number || "—"} />
-                <InfoCell
-                  label="Host Organization"
-                  value={
-                    (activeInternship?.internships as any)?.companies?.name ||
-                    (activeInternship?.internships as any)?.title ||
-                    "—"
-                  }
-                />
-                <InfoCell
-                  label="Site Supervisor"
-                  value={activeInternship?.site_supervisor?.full_name || "—"}
-                  missingHint="assigned"
-                />
-                <InfoCell
-                  label="Faculty Supervisor"
-                  value={activeInternship?.faculty_supervisor?.full_name || "—"}
-                  missingHint="assigned"
-                />
-                <InfoCell
-                  label="Department"
-                  value={profile?.departments?.name || "—"}
-                  className="col-span-2"
-                />
-              </div>
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 3: Week picker ===== */}
-            <section className="space-y-3">
-              <SectionLabel index="2" title="Reporting Period" hint="Mon–Fri work week" />
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ws" className="text-xs font-medium">Week Start (Mon)</Label>
-                  <Input
-                    id="ws"
-                    type="date"
-                    value={formData.week_start_date}
-                    onChange={(e) => onWeekStartChange(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="we" className="text-xs font-medium">Week End (Fri)</Label>
-                  <Input
-                    id="we"
-                    type="date"
-                    value={formData.week_end_date}
-                    onChange={(e) => setFormData((p) => ({ ...p, week_end_date: e.target.value }))}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="wn" className="text-xs font-medium">Week No.</Label>
-                  <Input
-                    id="wn"
-                    type="number"
-                    min={1}
-                    max={52}
-                    value={formData.week_number}
-                    onChange={(e) => setFormData((p) => ({ ...p, week_number: e.target.value }))}
-                    placeholder="Auto"
-                    className="h-9"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 4: Weekly activities table ===== */}
-            <section className="space-y-3">
-              <SectionLabel index="3" title="Weekly Activities" hint="One row per day, Mon–Fri" />
-              <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left font-semibold px-3 py-2 w-20">Day</th>
-                      <th className="text-left font-semibold px-3 py-2 w-28">Date</th>
-                      <th className="text-left font-semibold px-3 py-2">Tasks Performed</th>
-                      <th className="text-right font-semibold px-3 py-2 w-20">Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.weekly_activities.map((row, idx) => (
-                      <tr key={row.day} className="border-t hover:bg-muted/20">
-                        <td className="px-3 py-2 font-medium align-top">{row.day}</td>
-                        <td className="px-3 py-2 text-muted-foreground align-top">{row.date}</td>
-                        <td className="px-3 py-2">
-                          <Textarea
-                            rows={1}
-                            value={row.tasks}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setFormData((prev) => ({
-                                ...prev,
-                                weekly_activities: prev.weekly_activities.map((r, i) =>
-                                  i === idx ? { ...r, tasks: v } : r
-                                ),
-                              }));
-                            }}
-                            placeholder="What did you do today?"
-                            className="text-xs min-h-[34px] resize-y border-0 shadow-none focus-visible:ring-1 focus-visible:ring-primary/30 bg-transparent"
-                          />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            value={row.hours}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setFormData((prev) => ({
-                                ...prev,
-                                weekly_activities: prev.weekly_activities.map((r, i) =>
-                                  i === idx ? { ...r, hours: v } : r
-                                ),
-                              }));
-                            }}
-                            placeholder="0"
-                            className="text-xs h-8 w-16 ml-auto text-right"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted/40 border-t">
-                    <tr>
-                      <td colSpan={3} className="px-3 py-2 text-right font-semibold">Total Hours:</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums">
-                        {formData.weekly_activities.reduce((s, r) => s + (Number(r.hours) || 0), 0)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 5: Learning outcomes + Challenges ===== */}
-            <section className="space-y-3">
-              <SectionLabel index="4" title="Reflections" hint="Skills gained + challenges faced" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="lo" className="text-xs font-medium">Learning Outcomes / Skills Gained</Label>
-                  <Textarea
-                    id="lo"
-                    rows={4}
-                    value={formData.learning_outcomes}
-                    onChange={(e) => setFormData((p) => ({ ...p, learning_outcomes: e.target.value }))}
-                    placeholder="What did you learn this week? What skills did you gain?"
-                    className="text-xs resize-y"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cs" className="text-xs font-medium">Challenges Faced and Solutions</Label>
-                  <Textarea
-                    id="cs"
-                    rows={4}
-                    value={formData.challenges_solutions}
-                    onChange={(e) => setFormData((p) => ({ ...p, challenges_solutions: e.target.value }))}
-                    placeholder="Any challenges? How did you solve them?"
-                    className="text-xs resize-y"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 6: Supporting evidence ===== */}
-            <section className="space-y-2.5">
-              <SectionLabel index="5" title="Supporting Evidence" hint="Required · at least one file" />
-              <p className="text-xs text-muted-foreground -mt-1">
-                Attach attendance records, screenshots, code commits, design docs, meeting minutes, certificates, etc.
-              </p>
-              <label className="flex flex-col items-center justify-center w-full py-6 rounded-lg border-2 border-dashed border-muted-foreground/40 cursor-pointer hover:border-primary/60 hover:bg-accent/40 transition-colors">
-                <Upload className="h-5 w-5 text-muted-foreground mb-1.5" />
-                <span className="text-xs font-medium text-foreground">
-                  {uploadingEvidence ? "Uploading..." : "Click to attach files"}
-                </span>
-                <span className="text-[10px] text-muted-foreground mt-0.5">PDF, PNG, JPG, TXT, DOCX, XLSX · max 10MB each</span>
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.png,.jpg,.jpeg,.txt,.docx,.xlsx,.doc,.xls"
-                  className="hidden"
-                  onChange={(e) => onEvidenceSelected(e.target.files)}
-                  disabled={uploadingEvidence}
-                />
-              </label>
-
-              {evidenceFiles.length > 0 && (
-                <div className="space-y-1.5">
-                  {evidenceFiles.map((f, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-md border bg-muted/30"
-                    >
-                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-xs flex-1 truncate">{f.name}</span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {(f.size / 1024).toFixed(0)} KB
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={() => removeEvidence(idx)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <SectionDivider />
-
-            {/* ===== Section 7: Student signature ===== */}
-            <section className="space-y-2.5">
-              <SectionLabel index="6" title="Student Signature" hint="Required before submit" />
-              <p className="text-xs text-muted-foreground -mt-1">
-                Draw or type your signature. This will be applied to the report.
-              </p>
-              <div className="rounded-lg border p-3 bg-muted/20">
-                <SignaturePad
-                  onSignatureChange={setSignatureData}
-                  value={signatureData}
-                  label=""
-                  showDownload={false}
-                />
-              </div>
-              {!signatureData && (
-                <p className="text-xs text-amber-600 flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Signature is required before submitting.
-                </p>
-              )}
-            </section>
-          </div>
-
-          {/* Footer — fixed */}
-          <div className="flex items-center justify-end gap-2 px-6 py-3.5 border-t bg-background shrink-0">
-            <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitting || !signatureData}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                <>
-                  <PenTool className="h-4 w-4 mr-2" />
-                  Sign & Submit
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ============================================================ */}
-      {/* VIEW LOG DIALOG                                              */}
-      {/* ============================================================ */}
-      <Dialog open={!!viewLog} onOpenChange={(o) => !o && setViewLog(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Weekly Activity Report — Week {viewLog?.week_number || "—"}</DialogTitle>
-          </DialogHeader>
-          {viewLog && <DialogBody><ReportView log={viewLog} /></DialogBody>}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
-// Section header with index chip + title + right-aligned hint
-function SectionLabel({ index, title, hint }: { index?: string; title: string; hint?: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      {index && (
-        <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold tabular-nums">
-          {index}
-        </span>
-      )}
-      <h4 className="text-sm font-semibold">{title}</h4>
-      {hint && <span className="text-[10px] text-muted-foreground ml-auto">{hint}</span>}
-    </div>
-  );
-}
-
-// Hairline divider between sections
-function SectionDivider() {
-  return <div className="h-px bg-border" />;
-}
-
-// Compact label/value cell used in the auto-fetched student info grid.
-// Shows a muted hint pill when the value is missing so the student knows
-// the field hasn't been populated yet.
-// - `missingHint="profile"`  → "Not set in profile" (student-editable field)
-// - `missingHint="assigned"` → "Not assigned yet" (coordinator/HR-assigned field)
-function InfoCell({
-  label,
-  value,
-  className,
-  missingHint = "profile",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-  missingHint?: "profile" | "assigned";
-}) {
-  const missing = !value || value === "—";
-  return (
-    <div className={cn("px-3 py-2 bg-muted/20", className)}>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
-      {missing ? (
-        <p className="text-sm text-muted-foreground italic">
-          {missingHint === "assigned" ? "Not assigned yet" : "Not set in profile"}
-        </p>
-      ) : (
-        <p className="text-sm font-medium truncate">{value}</p>
-      )}
-    </div>
-  );
-}
-
-function SigPill({ label, signed, date }: { label: string; signed: boolean; date: string | null }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px]",
-        signed
-          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-          : "bg-muted text-muted-foreground"
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", signed ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-      {label}
-      {signed && date && <span className="opacity-70">· {formatDate(date)}</span>}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Read-only report view (used in the View dialog)
-// ---------------------------------------------------------------------------
-function ReportView({ log }: { log: WeeklyLog }) {
-  const activities: WeeklyActivityResult[] = log.weekly_activities || [];
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 p-4 rounded-md border bg-muted/20">
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Weekly Internship Activity Report</p>
-          <p className="text-sm font-semibold">
-            {log.program_name || "—"} · {log.department_name || "—"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {log.student_registration_no
-              ? `Reg. No. ${log.student_registration_no} · `
-              : ""}
-            Week {log.week_number || "—"}: {formatDate(log.week_start_date)} → {formatDate(log.week_end_date)}
-          </p>
-        </div>
-        {log.university_logo_url && (
-          <img src={log.university_logo_url} alt="University logo" className="h-16 w-16 object-contain" />
-        )}
-      </div>
-
-      {/* Status badge */}
-      <Badge variant="secondary" className={cn("text-xs", STATUS_COLORS[log.status] || "")}>
-        {STATUS_LABELS[log.status] || log.status}
-      </Badge>
-
-      {/* Activities table */}
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-xs">
-          <thead className="bg-muted/40">
-            <tr>
-              <th className="text-left font-medium p-2">Day</th>
-              <th className="text-left font-medium p-2">Date</th>
-              <th className="text-left font-medium p-2">Tasks</th>
-              <th className="text-right font-medium p-2">Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activities.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="p-4 text-center text-muted-foreground">
-                  {log.tasks_completed?.length
-                    ? log.tasks_completed.map((t, i) => <div key={i}>• {t}</div>)
-                    : "No tasks recorded"}
-                </td>
-              </tr>
-            ) : (
-              activities.map((r, i) => (
-                <tr key={i} className="border-t">
-                  <td className="p-2 font-medium">{r.day}</td>
-                  <td className="p-2 text-muted-foreground">{r.date}</td>
-                  <td className="p-2 whitespace-pre-wrap">{r.tasks || "—"}</td>
-                  <td className="p-2 text-right">{r.hours || "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-          {log.hours_worked != null && (
-            <tfoot className="bg-muted/30 border-t">
-              <tr>
-                <td colSpan={3} className="p-2 text-right font-medium">Total Hours:</td>
-                <td className="p-2 text-right font-semibold">{log.hours_worked}</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-
-      {/* Learning outcomes + challenges */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <p className="text-xs font-medium">Learning Outcomes / Skills Gained</p>
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-            {log.learning_outcomes || log.learnings || "—"}
-          </p>
-        </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium">Challenges Faced and Solutions</p>
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-            {log.challenges_solutions || log.challenges || "—"}
-          </p>
-        </div>
-      </div>
-
-      {/* Supporting evidence */}
-      {log.supporting_evidence && log.supporting_evidence.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium">Supporting Evidence</p>
-          <div className="space-y-1">
-            {log.supporting_evidence.map((f, i) => (
-              <a
-                key={i}
-                href={f.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 hover:bg-accent/40 text-xs"
-              >
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="flex-1 truncate">{f.name}</span>
-                <span className="text-[10px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Supervisor remarks */}
-      {(log.site_supervisor_remarks || log.faculty_supervisor_remarks || log.supervisor_feedback) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {log.site_supervisor_remarks && (
-            <div className="space-y-1 p-3 rounded-md border bg-amber-50/40 dark:bg-amber-950/20">
-              <p className="text-xs font-medium">Site Supervisor Remarks</p>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap">{log.site_supervisor_remarks}</p>
-            </div>
-          )}
-          {log.faculty_supervisor_remarks && (
-            <div className="space-y-1 p-3 rounded-md border bg-purple-50/40 dark:bg-purple-950/20">
-              <p className="text-xs font-medium">Faculty Supervisor Remarks</p>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap">{log.faculty_supervisor_remarks}</p>
-            </div>
+            ))
           )}
         </div>
-      )}
-
-      {/* Signatures */}
-      <div className="grid grid-cols-3 gap-3 pt-4 border-t">
-        <SignatureBox label="Student" url={log.student_signature_url} signedAt={log.student_signed_at} />
-        <SignatureBox label="Industry Supervisor" url={log.site_supervisor_signature_url} signedAt={log.site_supervisor_signed_at} />
-        <SignatureBox label="Faculty Supervisor" url={log.faculty_supervisor_signature_url} signedAt={log.faculty_supervisor_signed_at} />
       </div>
-    </div>
-  );
-}
-
-function SignatureBox({ label, url, signedAt }: { label: string; url: string | null; signedAt: string | null }) {
-  return (
-    <div className="space-y-1 text-center">
-      <div className="h-16 flex items-center justify-center border-b border-dashed border-border">
-        {url ? (
-          <img src={url} alt={`${label} signature`} className="max-h-14 max-w-full object-contain" />
-        ) : (
-          <span className="text-[10px] text-muted-foreground italic">Not signed</span>
-        )}
-      </div>
-      <p className="text-[10px] font-medium">{label}</p>
-      {signedAt && (
-        <p className="text-[10px] text-muted-foreground">{formatDate(signedAt)}</p>
-      )}
     </div>
   );
 }
