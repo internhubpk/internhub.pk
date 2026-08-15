@@ -3,21 +3,23 @@
 /**
  * NotificationsPopover — shared notification center popover.
  *
- * Redesigned with:
- *   - Icon vertically centered against the full content block (items-center)
- *   - Polished hover: left accent bar, smooth multi-property transition, icon scale
- *   - Reliable native scrolling (overflow-y-auto) instead of Radix ScrollArea
- *     which breaks inside flex containers
- *   - Custom slim scrollbar styling
- *   - Read/unread state (subtle background + indicator dot)
- *   - Per-notification mark-as-read + Mark all as read
- *   - Click-to-navigate via action_url
- *   - Responsive (desktop: 420px popover, mobile: full-width)
- *   - Toast feedback for actions
- *   - Polls every 60s for new notifications
+ * Visual design (glassmorphism + layered shadows):
+ *   - Frosted glass container: backdrop-blur-xl + semi-transparent bg
+ *     + saturated colors + layered shadows (outer drop + inner highlight)
+ *   - Light theme: white/translucent with soft blue-tinted shadows
+ *   - Dark theme: deep slate/translucent with vivid blue glow accents
+ *   - Icon tiles: gradient bg + inner top highlight + subtle drop shadow
+ *   - Hover: gradient overlay + lift shadow + animated accent bar
+ *   - Unread dot: glowing pulse ring
  *
- * Usage in header:
- *   <NotificationsPopover role={profile?.role} />
+ * Functionality:
+ *   - Icon vertically centered (flex tile + explicit dimensions)
+ *   - Reliable native scrolling (overflow-y-auto, ~3 items visible)
+ *   - Custom slim scrollbar
+ *   - Read/unread state, per-notification + mark-all-read
+ *   - Click-to-navigate via action_url
+ *   - Polls every 60s
+ *   - Toast feedback
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
@@ -44,7 +46,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
-// Types — matches the notifications table + enriched fields from the API
+// Types
 // ---------------------------------------------------------------------------
 interface Notification {
   id: string;
@@ -63,71 +65,80 @@ interface Notification {
 }
 
 interface NotificationsPopoverProps {
-  /** Current user's role — used to build the "View all" link */
   role?: string;
   className?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Icon mapping — each notification category gets a tinted icon
+// Icon mapping — gradient bg + ring + glow per category
+// Each entry uses bg-gradient-to-br for depth instead of a flat color.
 // ---------------------------------------------------------------------------
 const CATEGORY_ICON: Record<
   string,
-  { icon: React.ElementType; color: string; bg: string; ring: string }
+  { icon: React.ElementType; color: string; bg: string; ring: string; glow: string }
 > = {
   application: {
     icon: Briefcase,
-    color: "text-blue-600 dark:text-blue-400",
-    bg: "bg-blue-50 dark:bg-blue-950/50",
-    ring: "ring-blue-200/60 dark:ring-blue-800/40",
+    color: "text-blue-600 dark:text-blue-300",
+    bg: "bg-gradient-to-br from-blue-50 to-blue-100/80 dark:from-blue-950/80 dark:to-blue-900/60",
+    ring: "ring-blue-200/60 dark:ring-blue-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(37,99,235,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(59,130,246,0.4)]",
   },
   evaluation: {
     icon: ClipboardCheck,
-    color: "text-purple-600 dark:text-purple-400",
-    bg: "bg-purple-50 dark:bg-purple-950/50",
-    ring: "ring-purple-200/60 dark:ring-purple-800/40",
+    color: "text-purple-600 dark:text-purple-300",
+    bg: "bg-gradient-to-br from-purple-50 to-purple-100/80 dark:from-purple-950/80 dark:to-purple-900/60",
+    ring: "ring-purple-200/60 dark:ring-purple-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(124,58,237,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(168,85,247,0.4)]",
   },
   task: {
     icon: FileText,
-    color: "text-amber-600 dark:text-amber-400",
-    bg: "bg-amber-50 dark:bg-amber-950/50",
-    ring: "ring-amber-200/60 dark:ring-amber-800/40",
+    color: "text-amber-600 dark:text-amber-300",
+    bg: "bg-gradient-to-br from-amber-50 to-amber-100/80 dark:from-amber-950/80 dark:to-amber-900/60",
+    ring: "ring-amber-200/60 dark:ring-amber-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(217,119,6,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(245,158,11,0.4)]",
   },
   announcement: {
     icon: Users,
-    color: "text-indigo-600 dark:text-indigo-400",
-    bg: "bg-indigo-50 dark:bg-indigo-950/50",
-    ring: "ring-indigo-200/60 dark:ring-indigo-800/40",
+    color: "text-indigo-600 dark:text-indigo-300",
+    bg: "bg-gradient-to-br from-indigo-50 to-indigo-100/80 dark:from-indigo-950/80 dark:to-indigo-900/60",
+    ring: "ring-indigo-200/60 dark:ring-indigo-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(79,70,229,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(99,102,241,0.4)]",
   },
   message: {
     icon: MessageSquare,
-    color: "text-cyan-600 dark:text-cyan-400",
-    bg: "bg-cyan-50 dark:bg-cyan-950/50",
-    ring: "ring-cyan-200/60 dark:ring-cyan-800/40",
+    color: "text-cyan-600 dark:text-cyan-300",
+    bg: "bg-gradient-to-br from-cyan-50 to-cyan-100/80 dark:from-cyan-950/80 dark:to-cyan-900/60",
+    ring: "ring-cyan-200/60 dark:ring-cyan-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(8,145,178,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(34,211,238,0.4)]",
   },
   certificate: {
     icon: GraduationCap,
-    color: "text-emerald-600 dark:text-emerald-400",
-    bg: "bg-emerald-50 dark:bg-emerald-950/50",
-    ring: "ring-emerald-200/60 dark:ring-emerald-800/40",
+    color: "text-emerald-600 dark:text-emerald-300",
+    bg: "bg-gradient-to-br from-emerald-50 to-emerald-100/80 dark:from-emerald-950/80 dark:to-emerald-900/60",
+    ring: "ring-emerald-200/60 dark:ring-emerald-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(5,150,105,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(16,185,129,0.4)]",
   },
   deadline: {
     icon: Clock,
-    color: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/50",
-    ring: "ring-red-200/60 dark:ring-red-800/40",
+    color: "text-red-600 dark:text-red-300",
+    bg: "bg-gradient-to-br from-red-50 to-red-100/80 dark:from-red-950/80 dark:to-red-900/60",
+    ring: "ring-red-200/60 dark:ring-red-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(220,38,38,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(239,68,68,0.4)]",
   },
   system: {
     icon: Bell,
-    color: "text-slate-600 dark:text-slate-400",
-    bg: "bg-slate-50 dark:bg-slate-900/50",
-    ring: "ring-slate-200/60 dark:ring-slate-700/40",
+    color: "text-slate-600 dark:text-slate-300",
+    bg: "bg-gradient-to-br from-slate-50 to-slate-100/80 dark:from-slate-800/80 dark:to-slate-900/60",
+    ring: "ring-slate-200/60 dark:ring-slate-600/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(100,116,139,0.2)] dark:shadow-[0_2px_8px_-2px_rgba(148,163,184,0.3)]",
   },
   attendance: {
     icon: Clock,
-    color: "text-orange-600 dark:text-orange-400",
-    bg: "bg-orange-50 dark:bg-orange-950/50",
-    ring: "ring-orange-200/60 dark:ring-orange-800/40",
+    color: "text-orange-600 dark:text-orange-300",
+    bg: "bg-gradient-to-br from-orange-50 to-orange-100/80 dark:from-orange-950/80 dark:to-orange-900/60",
+    ring: "ring-orange-200/60 dark:ring-orange-700/40",
+    glow: "shadow-[0_2px_8px_-2px_rgba(234,88,12,0.25)] dark:shadow-[0_2px_8px_-2px_rgba(249,115,22,0.4)]",
   },
 };
 
@@ -135,15 +146,16 @@ function getIcon(category: string) {
   return (
     CATEGORY_ICON[category] || {
       icon: Bell,
-      color: "text-slate-600 dark:text-slate-400",
-      bg: "bg-slate-50 dark:bg-slate-900/50",
-      ring: "ring-slate-200/60 dark:ring-slate-700/40",
+      color: "text-slate-600 dark:text-slate-300",
+      bg: "bg-gradient-to-br from-slate-50 to-slate-100/80 dark:from-slate-800/80 dark:to-slate-900/60",
+      ring: "ring-slate-200/60 dark:ring-slate-600/40",
+      glow: "shadow-[0_2px_8px_-2px_rgba(100,116,139,0.2)] dark:shadow-[0_2px_8px_-2px_rgba(148,163,184,0.3)]",
     }
   );
 }
 
 // ---------------------------------------------------------------------------
-// Time formatting — relative time (e.g. "5m ago", "2h ago")
+// Time formatting
 // ---------------------------------------------------------------------------
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -238,17 +250,13 @@ export function NotificationsPopover({
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
-
-  // Mark a single notification as read (and navigate if it has an action_url)
   const handleNotificationClick = useCallback(
     async (notif: Notification) => {
-      // Navigate if there's an action URL
       if (notif.action_url) {
         router.push(notif.action_url);
         setOpen(false);
       }
 
-      // Mark as read if unread
       if (!notif.is_read) {
         setMarkingId(notif.id);
         try {
@@ -266,7 +274,7 @@ export function NotificationsPopover({
             setUnreadCount((prev) => Math.max(0, prev - 1));
           }
         } catch {
-          // Non-fatal — the notification is still clickable
+          // Non-fatal
         } finally {
           setMarkingId(null);
         }
@@ -275,7 +283,6 @@ export function NotificationsPopover({
     [router]
   );
 
-  // Mark all as read
   const handleMarkAllRead = useCallback(async () => {
     if (unreadCount === 0 || markingAll) return;
     setMarkingAll(true);
@@ -311,7 +318,15 @@ export function NotificationsPopover({
           variant="ghost"
           size="icon"
           className={cn(
-            "relative h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-accent",
+            "relative h-9 w-9 text-muted-foreground",
+            "transition-all duration-200",
+            "hover:text-foreground",
+            // Glassy hover background with subtle ring
+            "hover:bg-accent/40 hover:ring-1 hover:ring-border/60",
+            // When popover is open: stronger glass + primary tint
+            "data-[state=open]:bg-accent/60 data-[state=open]:text-foreground",
+            "data-[state=open]:ring-1 data-[state=open]:ring-primary/30",
+            "data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)_/_0.08)]",
             className
           )}
           aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
@@ -319,7 +334,14 @@ export function NotificationsPopover({
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
             <span
-              className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
+              className={cn(
+                "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center",
+                "rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground",
+                // Glow for the unread count badge
+                "shadow-[0_0_0_2px_background,0_2px_6px_-1px_rgba(239,68,68,0.5)]",
+                // Subtle pulse animation
+                "animate-[pulse_2.5s_ease-in-out_infinite]"
+              )}
               aria-hidden
             >
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -330,23 +352,54 @@ export function NotificationsPopover({
 
       <PopoverContent
         align="end"
-        className="w-[calc(100vw-1.5rem)] max-w-[420px] p-0"
-        // Avoid the popover being cut off on mobile
+        // Override default bg-popover with frosted glass via tailwind-merge.
+        // Layered shadow: outer drop (large + tinted) + inner top highlight
+        // for the "glass" feel. Border is translucent to let blur show.
+        className={cn(
+          "w-[calc(100vw-1.5rem)] max-w-[420px] p-0 overflow-hidden",
+          "rounded-xl border border-border/60",
+          // Frosted glass background — translucent so backdrop-blur shows
+          "bg-white/80 dark:bg-slate-900/75",
+          "backdrop-blur-xl backdrop-saturate-150",
+          // Layered shadows: outer drop (soft, tinted) + subtle inner highlight
+          "shadow-[0_8px_32px_-4px_rgba(15,23,42,0.12),0_4px_12px_-2px_rgba(37,99,235,0.08),inset_0_1px_0_0_rgba(255,255,255,0.6)]",
+          "dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5),0_4px_12px_-2px_rgba(59,130,246,0.15),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+        )}
         collisionPadding={8}
       >
-        {/* No max-h on the outer wrapper — we constrain the LIST directly.
-            Going through flex-1 + min-h-0 + a parent max-h was unreliable
-            inside Radix PopoverContent (the Viewport/transform context
-            broke height propagation, so the list never scrolled). */}
         <div className="flex flex-col">
-          {/* ===== Header ===== */}
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0">
+          {/* ===== Header — gradient glass strip ===== */}
+          <div
+            className={cn(
+              "flex items-center justify-between gap-2 px-4 py-3 shrink-0",
+              "border-b border-border/50",
+              // Subtle gradient: primary tint fading to transparent
+              "bg-gradient-to-b from-primary/[0.04] to-transparent",
+              "dark:from-primary/[0.08]"
+            )}
+          >
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold text-sm">Notifications</h3>
+              {/* Glowing bell icon next to the title */}
+              <span
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-md",
+                  "bg-primary/10 text-primary",
+                  "ring-1 ring-primary/20",
+                  "shadow-[0_0_8px_-2px_hsl(var(--primary)_/_0.5)]"
+                )}
+                aria-hidden
+              >
+                <Bell className="h-3.5 w-3.5" />
+              </span>
+              <h3 className="font-semibold text-sm tracking-tight">Notifications</h3>
               {unreadCount > 0 && (
                 <Badge
                   variant="secondary"
-                  className="text-xs shrink-0 h-5"
+                  className={cn(
+                    "text-xs shrink-0 h-5",
+                    "bg-primary/10 text-primary hover:bg-primary/15",
+                    "ring-1 ring-primary/20"
+                  )}
                 >
                   {unreadCount} unread
                 </Badge>
@@ -357,7 +410,15 @@ export function NotificationsPopover({
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={markingAll}
-                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-50 shrink-0 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 rounded px-1"
+                className={cn(
+                  "flex items-center gap-1 text-xs font-medium",
+                  "text-primary hover:text-primary/80",
+                  "disabled:opacity-50 shrink-0",
+                  "rounded-md px-2 py-1",
+                  "hover:bg-primary/5",
+                  "transition-colors duration-150",
+                  "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                )}
                 aria-label="Mark all notifications as read"
               >
                 {markingAll ? (
@@ -382,7 +443,17 @@ export function NotificationsPopover({
           {/* ===== Empty state ===== */}
           {!loading && notifications.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center shrink-0">
-              <Bell className="h-10 w-10 mb-3 opacity-20" />
+              <div
+                className={cn(
+                  "flex h-14 w-14 items-center justify-center rounded-full mb-3",
+                  "bg-gradient-to-br from-muted/60 to-muted/30",
+                  "ring-1 ring-border/40",
+                  "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                )}
+                aria-hidden
+              >
+                <Bell className="h-6 w-6 opacity-40" />
+              </div>
               <p className="font-medium text-sm">No notifications</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-[260px]">
                 You&apos;ll see updates about applications, tasks, and
@@ -391,26 +462,23 @@ export function NotificationsPopover({
             </div>
           )}
 
-          {/* ===== Scrollable notification list =====
-               Direct fixed max-height (~3 notifications × ~96px each) so the
-               user sees about 3 items at a time and scrolls for the rest.
-               Using a direct max-h instead of flex-derived height because
-               Radix PopoverContent's transform/portal context doesn't
-               reliably propagate flex heights to children. */}
+          {/* ===== Scrollable notification list ===== */}
           {notifications.length > 0 && (
             <div
-              className="max-h-[288px] overflow-y-auto overflow-x-hidden
-                         [scrollbar-width:thin]
-                         [scrollbar-color:hsl(var(--border)_/_0.6)_transparent]
-                         [&::-webkit-scrollbar]:w-2
-                         [&::-webkit-scrollbar-track]:bg-transparent
-                         [&::-webkit-scrollbar-thumb]:rounded-full
-                         [&::-webkit-scrollbar-thumb]:bg-border/60
-                         [&::-webkit-scrollbar-thumb:hover]:bg-border"
+              className={cn(
+                "max-h-[288px] overflow-y-auto overflow-x-hidden",
+                "[scrollbar-width:thin]",
+                "[scrollbar-color:hsl(var(--primary)_/_0.3)_transparent]",
+                "[&::-webkit-scrollbar]:w-2",
+                "[&::-webkit-scrollbar-track]:bg-transparent",
+                "[&::-webkit-scrollbar-thumb]:rounded-full",
+                "[&::-webkit-scrollbar-thumb]:bg-primary/20",
+                "[&::-webkit-scrollbar-thumb:hover]:bg-primary/40"
+              )}
               role="list"
             >
               {notifications.map((notif) => {
-                const { icon: Icon, color, bg, ring } = getIcon(notif.category);
+                const { icon: Icon, color, bg, ring, glow } = getIcon(notif.category);
                 const isUnread = !notif.is_read;
                 const isMarkingThis = markingId === notif.id;
                 return (
@@ -419,53 +487,51 @@ export function NotificationsPopover({
                     type="button"
                     onClick={() => handleNotificationClick(notif)}
                     className={cn(
-                      // Layout: relative for the hover accent bar; items-center
-                      // vertically centers the icon against the full content
-                      // block (title + message + metadata).
                       "relative w-full text-left flex items-center gap-3 px-4 py-3 group",
-                      "transition-[background-color,box-shadow] duration-150 ease-out",
+                      "transition-all duration-200 ease-out",
                       "focus:outline-none focus-visible:bg-accent/60",
-                      // Hover: brighter accent + subtle inset ring + left bar
-                      "hover:bg-accent/70",
-                      "hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.5)]",
+                      // Hover: gradient overlay + lift shadow + inset ring
+                      "hover:bg-gradient-to-r hover:from-accent/60 hover:to-accent/20",
+                      "hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.6),0_4px_12px_-4px_rgba(15,23,42,0.08)]",
+                      "dark:hover:shadow-[inset_0_0_0_1px_hsl(var(--border)_/_0.4),0_4px_12px_-4px_rgba(0,0,0,0.4)]",
                       isUnread
-                        ? "bg-primary/[0.04] hover:bg-primary/[0.08]"
+                        ? "bg-primary/[0.04] hover:bg-gradient-to-r hover:from-primary/[0.1] hover:to-primary/[0.03]"
                         : "",
                       isMarkingThis && "opacity-60 pointer-events-none"
                     )}
                     role="listitem"
                   >
-                    {/* Left accent bar — grows on hover, indicates interactivity */}
+                    {/* Left accent bar — glowing indicator */}
                     <span
                       aria-hidden
                       className={cn(
                         "absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full",
-                        "bg-primary/0 group-hover:bg-primary/70",
-                        "transition-[background-color,transform] duration-200 ease-out",
+                        "bg-primary/0 group-hover:bg-primary/80",
+                        "transition-[background-color,transform,box-shadow] duration-200 ease-out",
                         "origin-center scale-y-0 group-hover:scale-y-100",
-                        // For unread, always show a faint bar
+                        "group-hover:shadow-[0_0_8px_-1px_hsl(var(--primary)_/_0.6)]",
                         isUnread && "bg-primary/40 group-hover:bg-primary"
                       )}
                     />
 
-                    {/* Icon — container is itself a flex/center box so the
-                        SVG is centered within the padded tile. Without this,
-                        the inline SVG sits on the baseline and looks
-                        top-aligned even though the container is centered
-                        against the row via items-center. */}
+                    {/* Icon tile — gradient bg + ring + glow + inner highlight */}
                     <div
                       className={cn(
                         "shrink-0 rounded-xl p-2 ring-1",
                         "flex items-center justify-center",
-                        "h-9 w-9", // explicit tile size so it doesn't depend on SVG metrics
+                        "h-9 w-9",
                         bg,
                         ring,
+                        glow,
+                        // Inner top highlight for glassy depth
+                        "before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-b before:from-white/40 before:to-transparent dark:before:from-white/[0.06] dark:before:to-transparent before:pointer-events-none",
+                        "relative overflow-hidden",
                         "transition-transform duration-200 ease-out",
                         "group-hover:scale-105 group-hover:-translate-y-px"
                       )}
                       aria-hidden
                     >
-                      <Icon className={cn("h-4 w-4", color)} />
+                      <Icon className={cn("h-4 w-4 relative z-10", color)} />
                     </div>
 
                     {/* Content */}
@@ -484,13 +550,18 @@ export function NotificationsPopover({
                         </p>
                         {isUnread && (
                           <span
-                            className="shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5 ring-2 ring-background"
+                            className={cn(
+                              "shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5",
+                              "ring-2 ring-background",
+                              // Glow halo
+                              "shadow-[0_0_6px_-1px_hsl(var(--primary)_/_0.8)]"
+                            )}
                             aria-label="Unread"
                           />
                         )}
                       </div>
 
-                      {/* Message — truncated to 2 lines */}
+                      {/* Message */}
                       <p className="text-xs text-muted-foreground line-clamp-2 break-words">
                         {notif.message}
                       </p>
@@ -525,16 +596,24 @@ export function NotificationsPopover({
             </div>
           )}
 
-          {/* ===== Footer ===== */}
-          <Separator />
+          {/* ===== Footer — gradient hover ===== */}
+          <Separator className="bg-border/50" />
           <div className="shrink-0">
             <Link
               href={getViewAllLink(role)}
               onClick={() => setOpen(false)}
-              className="flex items-center justify-center gap-1.5 w-full py-3 text-sm font-medium text-primary hover:text-primary/80 hover:bg-accent/50 transition-colors focus:outline-none focus:bg-accent/50"
+              className={cn(
+                "flex items-center justify-center gap-1.5 w-full py-3",
+                "text-sm font-medium text-primary",
+                "transition-all duration-200",
+                "hover:text-primary/80",
+                "hover:bg-gradient-to-r hover:from-primary/[0.06] hover:to-transparent",
+                "dark:hover:from-primary/[0.1]",
+                "focus:outline-none focus-visible:bg-primary/[0.06]"
+              )}
             >
               View all notifications
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </div>
         </div>
