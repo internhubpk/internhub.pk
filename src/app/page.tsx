@@ -483,35 +483,33 @@ function MainHero() {
                 className="mb-4 sm:mb-6 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer transition-colors inline-flex"
               >
                 <Sparkles className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                #1 Enterprise Internship Platform
+                Enterprise Internship Platform
               </Badge>
             </motion.div>
 
             {/* Headline — mobile-first smaller, scales up at sm:/lg: */}
             <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight leading-[1.15] sm:leading-[1.1] mb-4 sm:mb-6">
-              <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Enterprise Internship</motion.span>
+              <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Run Internships</motion.span>
               <motion.span className="block mt-1 sm:mt-2 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent" variants={heroLine} custom={1} initial="hidden" animate="show">
-                Management for Modern
+                End-to-End.
               </motion.span>
-              <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Universities</motion.span>
             </h1>
 
             {/* Subtitle — mobile-first smaller, constrained width */}
             <motion.p
               variants={heroLine}
-              custom={3}
+              custom={2}
               initial="hidden"
               animate="show"
               className="text-sm sm:text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-prose sm:max-w-lg mx-auto lg:mx-0"
             >
-              Streamline your entire internship program with our multi-tenant SaaS platform.
-              From student onboarding to certificate generation — all in one place.
+              Onboarding to certificates — all in one place.
             </motion.p>
 
             {/* CTA Buttons — full width on mobile, centered, row on sm+ */}
             <motion.div
               variants={heroLine}
-              custom={4}
+              custom={3}
               initial="hidden"
               animate="show"
               className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8 justify-center lg:justify-start"

@@ -1,6 +1,9 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-import { buildVerificationUrlFromRequest } from "@/lib/site-url";
+import {
+  buildVerificationUrl,
+  buildVerificationUrlFromRequest,
+} from "@/lib/site-url";
 
 // GET: Generate weekly/final/progress reports for students
 export async function GET(request: Request) {
@@ -545,7 +548,19 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        data: certificate,
+        // Always regenerate the verification URL from the code via
+        // the canonical site-URL helper. The DB-stored
+        // `verification_url` may be stale (rows issued before this
+        // fix contain Vercel deployment URLs that point to a
+        // protected deployment and break public verification).
+        data: certificate
+          ? {
+              ...certificate,
+              verification_url: certificate.verification_code
+                ? buildVerificationUrl(certificate.verification_code)
+                : certificate.verification_url,
+            }
+          : certificate,
         message: "Certificate generated successfully",
       });
     } else if (action === "create_report_template") {

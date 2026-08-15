@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
-import { buildVerificationUrlFromRequest } from "@/lib/site-url";
+import { buildVerificationUrl, buildVerificationUrlFromRequest } from "@/lib/site-url";
 
 async function getCompanyProfile(supabase: any, userId: string) {
   const { data: profile, error } = await supabase
@@ -221,7 +221,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     return NextResponse.json(
-      { success: true, data: certificate, message: "Certificate issued" },
+      {
+        success: true,
+        // Always regenerate the verification URL from the code via
+        // the canonical site-URL helper. The DB-stored
+        // `verification_url` may be stale (rows issued before this
+        // fix contain Vercel deployment URLs that point to a
+        // protected deployment and break public verification).
+        data: certificate
+          ? {
+              ...certificate,
+              verification_url: certificate.verification_code
+                ? buildVerificationUrl(certificate.verification_code)
+                : certificate.verification_url,
+            }
+          : certificate,
+        message: "Certificate issued"
+      },
       { status: 201 }
     );
   } catch (error) {

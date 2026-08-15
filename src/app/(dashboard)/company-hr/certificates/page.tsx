@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { buildVerificationUrl } from "@/lib/site-url";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -110,7 +111,20 @@ export default function CompanyHrCertificatesPage() {
       const res = await fetch("/api/company-hr/certificates", { cache: "no-store" });
       const json = await res.json().catch(() => ({ success: false, data: [] }));
       if (res.ok && json.success) {
-        setCertificates(json.data || []);
+        // ALWAYS regenerate the verification URL from the code via
+        // the canonical site-URL helper. The DB-stored
+        // `verification_url` may be stale (rows issued before this
+        // fix contain Vercel deployment URLs that point to a
+        // protected deployment and break public verification).
+        // The verification_code is immutable, so synthesizing the
+        // URL here always produces the correct canonical URL.
+        const rows: CertificateRow[] = (json.data || []).map((c: any) => ({
+          ...c,
+          verification_url: c.verification_code
+            ? buildVerificationUrl(c.verification_code)
+            : null,
+        }));
+        setCertificates(rows);
       } else {
         console.error("[company-hr/certificates] fetch error:", json.error);
         setCertificates([]);

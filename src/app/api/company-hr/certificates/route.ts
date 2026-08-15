@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
-import { buildVerificationUrlFromRequest } from "@/lib/site-url";
+import {
+  buildVerificationUrl,
+  buildVerificationUrlFromRequest,
+} from "@/lib/site-url";
 
 /**
  * /api/company-hr/certificates
@@ -133,7 +136,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    // ALWAYS regenerate the verification URL from the code via the
+    // canonical site-URL helper. The DB-stored `verification_url`
+    // may be stale (rows issued before this fix contain Vercel
+    // deployment URLs that point to a protected deployment and
+    // break public verification). The verification_code is
+    // immutable, so synthesizing the URL here always produces the
+    // correct canonical URL for the current deployment.
+    const sanitized = (data || []).map((row: any) => ({
+      ...row,
+      verification_url: row.verification_code
+        ? buildVerificationUrl(row.verification_code)
+        : row.verification_url ?? null,
+    }));
+
+    return NextResponse.json({ success: true, data: sanitized });
   } catch (err) {
     console.error("[/api/company-hr/certificates] GET unhandled:", err);
     return NextResponse.json(

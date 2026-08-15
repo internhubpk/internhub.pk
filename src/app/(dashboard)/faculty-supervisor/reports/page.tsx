@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { buildVerificationUrl } from "@/lib/site-url";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
@@ -256,11 +257,20 @@ export default function FacultySupervisorReportsPage() {
       // supervisor can copy / share them. The API generates these on
       // insert (see /api/faculty-supervisor/reports route, action=
       // generate_certificate).
-      if (json?.data?.verification_url) {
-        setIssuedVerificationUrl(json.data.verification_url);
-      }
+      //
+      // ALWAYS regenerate the URL from the code via the canonical
+      // site-URL helper — never trust `verification_url` from the API
+      // response. Rows issued on a Vercel preview deployment (where
+      // `NEXT_PUBLIC_APP_URL` was unset) would otherwise carry a
+      // stale Vercel deployment URL that points to a protected
+      // deployment and breaks public verification.
       if (json?.data?.verification_code) {
         setIssuedVerificationCode(json.data.verification_code);
+        setIssuedVerificationUrl(buildVerificationUrl(json.data.verification_code));
+      } else if (json?.data?.verification_url) {
+        // Fallback: API-provided URL (only used when no code was
+        // returned, which shouldn't happen in practice).
+        setIssuedVerificationUrl(json.data.verification_url);
       }
       toast.success("Certificate saved", {
         description:

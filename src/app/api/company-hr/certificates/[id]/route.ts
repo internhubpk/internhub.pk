@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
+import { buildVerificationUrl } from "@/lib/site-url";
 
 /**
  * /api/company-hr/certificates/[id]
@@ -138,7 +139,18 @@ async function changeStatus(request: NextRequest, context: { params: Promise<{ i
 
     return NextResponse.json({
       success: true,
-      data: updated,
+      // Always regenerate the verification URL from the code via the
+      // canonical site-URL helper. The DB-stored `verification_url`
+      // may be stale (rows issued before this fix contain Vercel
+      // deployment URLs that break public verification).
+      data: updated
+        ? {
+            ...updated,
+            verification_url: updated.verification_code
+              ? buildVerificationUrl(updated.verification_code)
+              : updated.verification_url,
+          }
+        : updated,
       message: `Certificate ${newStatus === "revoked" ? "revoked" : "re-issued"}`,
     });
   } catch (err) {

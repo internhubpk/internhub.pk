@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { buildVerificationUrl } from "@/lib/site-url";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { toast } from "sonner";
@@ -87,20 +88,34 @@ export default function StudentCertificatesPage() {
       if (error) throw error;
 
       if (data) {
-        const certList: Certificate[] = data.map((cert: any) => ({
-          id: cert.id,
-          title: cert.title || 'Certificate',
-          company: cert.company?.name || 'Issuing Organization',
-          company_logo_url: cert.company?.logo_url ?? null,
-          issueDate: cert.issued_at || cert.created_at,
-          status: cert.status || 'issued',
-          certificateNumber: cert.certificate_number || `CERT-${(cert.id || '').slice(0, 8)}`,
-          fileUrl: cert.file_url || null,
-          verificationCode: cert.verification_code || null,
-          verificationUrl: cert.verification_url || null,
-          linkedinAddedAt: cert.linkedin_added_at || null,
-          internshipTitle: cert.internship?.title ?? null,
-        }));
+        const certList: Certificate[] = data.map((cert: any) => {
+          // ALWAYS regenerate the verification URL from the code via
+          // the canonical site-URL helper — never trust the
+          // `verification_url` column directly. Rows issued before
+          // the site-url helper existed may contain stale Vercel
+          // deployment URLs that point to a protected deployment
+          // (https://internhub-xxxxx.vercel.app/verify/...), which
+          // breaks public verification and leaks deployment IDs.
+          // The verification_code is immutable, so the URL we
+          // synthesize here is always correct for the current
+          // canonical production domain.
+          const code = cert.verification_code || null;
+          const verificationUrl = code ? buildVerificationUrl(code) : null;
+          return {
+            id: cert.id,
+            title: cert.title || 'Certificate',
+            company: cert.company?.name || 'Issuing Organization',
+            company_logo_url: cert.company?.logo_url ?? null,
+            issueDate: cert.issued_at || cert.created_at,
+            status: cert.status || 'issued',
+            certificateNumber: cert.certificate_number || `CERT-${(cert.id || '').slice(0, 8)}`,
+            fileUrl: cert.file_url || null,
+            verificationCode: code,
+            verificationUrl,
+            linkedinAddedAt: cert.linkedin_added_at || null,
+            internshipTitle: cert.internship?.title ?? null,
+          };
+        });
         setCertificates(certList);
       }
     } catch (error) {
