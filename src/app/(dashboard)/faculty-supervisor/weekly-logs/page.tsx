@@ -390,7 +390,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <StatCard label="Pending Review" value={logs.filter(l => l.status === "submitted").length} icon={Clock} variant="warning" />
+        <StatCard label="Pending Review" value={logs.filter(l => l.status === "submitted" || l.status === "site_signed").length} icon={Clock} variant="warning" />
         <StatCard label="Approved" value={logs.filter(l => l.status === "approved").length} icon={CheckCircle} variant="success" />
         <StatCard label="Rejected" value={logs.filter(l => l.status === "rejected").length} icon={XCircle} variant="danger" />
         <StatCard label="Total Hours" value={logs.reduce((sum, l) => sum + (l.hours_worked || 0), 0)} icon={ScrollText} variant="info" />
@@ -416,6 +416,8 @@ export default function FacultySupervisorWeeklyLogsPage() {
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="submitted">Submitted</SelectItem>
+                <SelectItem value="site_signed">Site Signed</SelectItem>
+                <SelectItem value="faculty_signed">Faculty Signed</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="revision_required">Revision Required</SelectItem>
@@ -615,7 +617,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                   variant="outline"
                   className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
                   onClick={() => handleReview("request_revision")}
-                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                  disabled={isSubmitting || (selectedLog.status !== "submitted" && selectedLog.status !== "site_signed")}
                 >
                   <Clock className="h-4 w-4" /> Request Revision
                 </Button>
@@ -623,7 +625,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                   variant="destructive"
                   className="gap-2"
                   onClick={() => handleReview("reject")}
-                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                  disabled={isSubmitting || (selectedLog.status !== "submitted" && selectedLog.status !== "site_signed")}
                 >
                   <XCircle className="h-4 w-4" /> Reject
                 </Button>

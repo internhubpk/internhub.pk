@@ -228,7 +228,14 @@ export default function FacultySupervisorDashboard() {
             ? supabase
                 .from("weekly_logs")
                 .select("id", { count: "exact" })
-                .eq("status", "submitted")
+                // "Pending review" = logs the faculty supervisor still
+                // needs to act on. The weekly_log_status workflow is:
+                //   draft → submitted → site_signed → faculty_signed → approved
+                //   (or rejected / revision_required at any review step)
+                // A log is "pending faculty review" if it's:
+                //   - 'submitted'    (student submitted, neither supervisor signed)
+                //   - 'site_signed'  (site supervisor signed, waiting for faculty)
+                .in("status", ["submitted", "site_signed"])
                 .in("student_user_id", supervisedStudentIds)
             : Promise.resolve({ count: 0 }),
           // evaluation_status enum has no "completed" value; use

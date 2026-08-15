@@ -629,7 +629,9 @@ export default function FacultySupervisorStudentsPage() {
     active: students.filter((s) => s.status === "active").length,
     onLeave: students.filter((s) => s.status === "on_leave").length,
     logsPending: students.filter((s) => s.weeklyLogStatus === "pending" || s.weeklyLogStatus === "not_submitted").length,
-    avgProgress: Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length),
+    avgProgress: students.length > 0
+      ? Math.round(students.reduce((acc, s) => acc + s.overallProgress, 0) / students.length)
+      : 0,
     onTrack: students.filter((s) => s.overallProgress >= 70).length,
     atRisk: students.filter((s) => s.overallProgress < 40).length,
   };
