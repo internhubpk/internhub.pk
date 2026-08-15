@@ -390,12 +390,23 @@ async function getProgramPerformance(
 
     let activeCount = 0;
     let completedCount = 0;
+    let inProgressCount = 0;
     if (programStudentIds.length > 0) {
-      const [activeInternshipsResult, completedInternshipsResult] = await Promise.all([
+      // "In-progress" matches the dashboard's definition: any internship
+      // that's been assigned but hasn't yet completed or been terminated —
+      // i.e. status IN ('assigned', 'active', 'paused').
+      //
+      // We fetch in-progress and completed as separate counts. `activeCount`
+      // (the column shown as "Active" in the UI) used to be the only metric
+      // and only counted status='active', which made every program look
+      // empty because most internships sit in 'assigned' (the default
+      // status when a student is placed into an internship) until the
+      // start date flips them to 'active'.
+      const [inProgressResult, completedInternshipsResult] = await Promise.all([
         supabase
           .from("student_internships")
           .select("id", { count: "exact" })
-          .eq("status", "active")
+          .in("status", ["assigned", "active", "paused"])
           .in("student_user_id", programStudentIds),
         supabase
           .from("student_internships")
@@ -403,11 +414,16 @@ async function getProgramPerformance(
           .eq("status", "completed")
           .in("student_user_id", programStudentIds),
       ]);
-      activeCount = activeInternshipsResult.count || 0;
+      inProgressCount = inProgressResult.count || 0;
+      activeCount = inProgressCount; // UI "Active" column = in-progress pipeline
       completedCount = completedInternshipsResult.count || 0;
     }
 
-    const completionRate = totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0;
+    // Completion rate = completed / (in-progress + completed).
+    // Denominator matches the dashboard's `totalInternships` so the rate
+    // shown here matches the rate shown in the header StatsCard.
+    const denominator = inProgressCount + completedCount;
+    const completionRate = denominator > 0 ? Math.round((completedCount / denominator) * 100) : 0;
 
     performanceData.push({
       program_id: program.id,
@@ -589,13 +605,19 @@ async function getSupervisorWorkload(
     }
 
     // Direct: student_internships where faculty_supervisor_id = this supervisor.
+    //
+    // "Active" supervisions = internships in the in-progress pipeline
+    // (assigned + active + paused), matching the dashboard's
+    // `inProgressInternships` definition. Previously this only counted
+    // status='active', which made every supervisor look idle when most
+    // of their students were still in 'assigned' (pre-start) status.
     const directStudentIds = new Set<string>();
     let activeCount = 0;
     let completedCount = 0;
     for (const si of supervisorInternships || []) {
       if (si.faculty_supervisor_id !== supervisor.user_id) continue;
       directStudentIds.add(si.student_user_id);
-      if (si.status === "active") activeCount++;
+      if (["assigned", "active", "paused"].includes(si.status)) activeCount++;
       else if (si.status === "completed") completedCount++;
     }
 
@@ -830,13 +852,21 @@ async function getStudentReport(
 
   let supervisorProfileById = new Map<string, any>();
   if (allSupervisorIds.size > 0) {
+    // CRITICAL: `faculty_supervisor_id` (on both `students` and
+    // `student_internships`) REFERENCES `profiles.user_id`, NOT
+    // `profiles.id`. The `profiles` table has NO `id` column at all —
+    // its PRIMARY KEY is `user_id` (it's a 1:1 extension of
+    // `auth.users`). The previous query used `.in("id", ...)` which
+    // hit a non-existent column, returned an empty result set every
+    // time, and silently made every student show "Unassigned" in the
+    // roster — even when the assignment existed in the DB.
     const { data: supervisorProfiles, error: supErr } = await supabase
       .from("profiles")
-      .select("id, first_name, last_name, email")
-      .in("id", Array.from(allSupervisorIds));
+      .select("user_id, first_name, last_name, email")
+      .in("user_id", Array.from(allSupervisorIds));
     if (!supErr && supervisorProfiles) {
       for (const p of supervisorProfiles) {
-        supervisorProfileById.set(p.id, p);
+        supervisorProfileById.set(p.user_id, p);
       }
     }
   }
@@ -920,6 +950,17 @@ async function getInternshipDetail(
   supabase: Awaited<ReturnType<typeof createClient>>,
   filters: Record<string, string | null>
 ): Promise<NextResponse<ApiResponse<any>>> {
+  // NOTE on the embeds:
+  //   - `companies:company_id(name, industry)` — valid: `student_internships.company_id` REFERENCES `companies(id)`.
+  //   - `students:student_user_id(profiles:user_id(...), programs:program_id(...))` — valid: `student_user_id` REFERENCES `students.user_id` (PK), then nested embeds resolve via `students.user_id -> profiles.user_id` and `students.program_id -> programs.id`.
+  //   - `supervisor_profile:faculty_supervisor_id(first_name, last_name, email)` — valid: `student_internships.faculty_supervisor_id` REFERENCES `profiles.user_id` (PK). We use the alias `supervisor_profile` to avoid colliding with `students.profiles`.
+  //
+  // Previous code used `supervisors:faculty_supervisor_id(profiles:user_id(...))`, which
+  // PostgREST REJECTED with a 400 (surfaced as 500 here) because there is NO
+  // foreign key from `student_internships.faculty_supervisor_id` to the
+  // `supervisors` table — the FK target is `profiles.user_id`. The route
+  // then crashed with 500 on every call, which is why the Internships tab
+  // showed nothing and the browser console logged the fetch failure.
   let query = supabase
     .from("student_internships")
     .select(`
@@ -938,9 +979,7 @@ async function getInternshipDetail(
         profiles:user_id(first_name, last_name, email),
         programs:program_id(name, code)
       ),
-      supervisors:faculty_supervisor_id(
-        profiles:user_id(first_name, last_name, email)
-      )
+      supervisor_profile:faculty_supervisor_id(first_name, last_name, email)
     `);
 
   if (filters.department_id) {
@@ -964,7 +1003,10 @@ async function getInternshipDetail(
     const profile = student?.profiles;
     const program = student?.programs;
     const company = si.companies;
-    const supervisor = si.supervisors?.profiles;
+    // The supervisor profile is embedded directly as `supervisor_profile`
+    // (a to-one object, not an array). It's null when the internship row
+    // has no `faculty_supervisor_id` set.
+    const supervisor = si.supervisor_profile;
 
     return {
       internship_id: si.id,

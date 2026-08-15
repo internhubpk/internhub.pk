@@ -78,14 +78,26 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "name";
     const sortOrder = searchParams.get("sort_order") === "asc" ? true : false;
 
-    // Build query with related data
+    // Build query with related data.
+    //
+    // FK disambiguation: `programs` has TWO foreign keys to `departments` —
+    //   1. `programs.department_id REFERENCES departments(id)` (simple FK)
+    //   2. `FOREIGN KEY (department_id, university_id) REFERENCES departments(id, university_id)`
+    //      (composite FK that enforces same-university invariant)
+    // PostgREST can't decide which one to use for the `programs:programs(...)`
+    // embed, returns a 400 (which the route's catch-all then rethrows as
+    // 500). The `!department_id` hint forces PostgREST to use the simple FK.
+    // Same potential ambiguity exists for `universities:university_id(...)`
+    // because `departments` and `programs` both reference `universities(id)`
+    // — but `universities:university_id` is unambiguous because there's only
+    // one FK from `departments` to `universities`.
     let query = supabase
       .from("departments")
       .select(`
         *,
         universities:university_id(name, slug),
         heads:head_id(first_name, last_name),
-        programs:programs(id, name, code)
+        programs:programs!department_id(id, name, code)
       `, { count: "exact" });
 
     // Apply university scope based on role
