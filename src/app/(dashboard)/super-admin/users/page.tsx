@@ -692,7 +692,7 @@ export default function SuperAdminUsersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
             {/* Account Information */}
             <div className="space-y-3 p-4 rounded-lg bg-muted/50">
               <h4 className="font-medium text-sm flex items-center gap-2">
@@ -871,7 +871,7 @@ export default function SuperAdminUsersPage() {
           </DialogHeader>
           
           {selectedUser && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                   <span className="text-2xl font-bold text-primary">

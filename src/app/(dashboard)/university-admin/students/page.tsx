@@ -692,7 +692,7 @@ export default function UniversityAdminStudentsPage() {
           </DialogHeader>
           
           {selectedStudent && (
-            <div className="space-y-6 py-4">
+            <div className="space-y-6 px-6 py-4 overflow-y-auto max-h-[60vh]">
               {/* Header Info */}
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">

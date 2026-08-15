@@ -1186,7 +1186,7 @@ export default function StudentsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-4">
+          <div className="px-6 py-4 space-y-4 overflow-y-auto max-h-[60vh]">
             <div className="space-y-2">
               <Label>Program</Label>
               <Select
@@ -1286,7 +1286,7 @@ export default function StudentsPage() {
           </DialogHeader>
 
           {viewingStudent && (
-            <div className="py-4 space-y-4">
+            <div className="px-6 py-4 space-y-4 overflow-y-auto max-h-[60vh]">
               <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
                 <Avatar className="h-16 w-16">
                   <AvatarFallback className="bg-primary/10 text-primary text-xl">
@@ -1383,7 +1383,7 @@ export default function StudentsPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="student-first-name">First Name *</Label>
@@ -1505,7 +1505,7 @@ export default function StudentsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={downloadCsvTemplate}>
                 <Download className="h-4 w-4 mr-2" />

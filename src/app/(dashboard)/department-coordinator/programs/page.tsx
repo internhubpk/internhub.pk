@@ -453,7 +453,7 @@ export default function ProgramsPage() {
                   </DialogDescription>
                 </DialogHeader>
 
-              <div className="grid gap-4 py-4">
+              <div className="grid gap-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Program Name *</Label>

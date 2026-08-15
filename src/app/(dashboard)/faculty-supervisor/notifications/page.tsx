@@ -548,7 +548,7 @@ export default function FacultySupervisorNotificationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
               {/* Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">Title *</Label>

@@ -681,7 +681,7 @@ export default function DepartmentsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
             <div className="space-y-2">
               <Label htmlFor="name">Department Name *</Label>
               <Input

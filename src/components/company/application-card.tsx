@@ -186,7 +186,7 @@ export function ApplicationCard({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
               <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-muted-foreground" />
@@ -361,7 +361,7 @@ export function ApplicationCard({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
             <div className="p-3 rounded-lg bg-muted/50 space-y-2">
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
@@ -460,7 +460,7 @@ export function ApplicationDetail({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 px-6 overflow-y-auto max-h-[60vh]">
           {/* Student Profile Header */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}

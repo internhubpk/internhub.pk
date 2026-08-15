@@ -1044,7 +1044,7 @@ export default function InternshipDetailPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="py-4 space-y-6">
+                          <div className="py-4 px-6 space-y-6 overflow-y-auto max-h-[60vh]">
                             {/* Resume Upload — REAL upload to Supabase Storage `cvs` bucket. */}
                             <div className="space-y-2">
                               <Label htmlFor="resume-upload" className="font-medium flex items-center gap-2">

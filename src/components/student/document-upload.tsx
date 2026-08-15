@@ -213,7 +213,7 @@ export function DocumentUpload({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 px-6 overflow-y-auto max-h-[60vh]">
           {/* Current File Display */}
           {currentFile && !uploadingFile && (
             <motion.div

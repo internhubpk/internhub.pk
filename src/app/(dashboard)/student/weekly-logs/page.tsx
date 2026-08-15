@@ -68,6 +68,7 @@ interface WeeklyLog {
   reviewed_at: string | null;
   program_name: string | null;
   department_name: string | null;
+  student_registration_no: string | null;
   university_logo_url: string | null;
   weekly_activities: WeeklyActivityResult[] | null;
   supporting_evidence: EvidenceFile[] | null;
@@ -692,10 +693,12 @@ export default function StudentWeeklyLogsPage() {
                 <InfoCell
                   label="Site Supervisor"
                   value={activeInternship?.site_supervisor?.full_name || "—"}
+                  missingHint="assigned"
                 />
                 <InfoCell
                   label="Faculty Supervisor"
                   value={activeInternship?.faculty_supervisor?.full_name || "—"}
+                  missingHint="assigned"
                 />
                 <InfoCell
                   label="Department"
@@ -986,14 +989,28 @@ function SectionDivider() {
 
 // Compact label/value cell used in the auto-fetched student info grid.
 // Shows a muted hint pill when the value is missing so the student knows
-// to update their profile / ask their coordinator.
-function InfoCell({ label, value, className }: { label: string; value: string; className?: string }) {
+// the field hasn't been populated yet.
+// - `missingHint="profile"`  → "Not set in profile" (student-editable field)
+// - `missingHint="assigned"` → "Not assigned yet" (coordinator/HR-assigned field)
+function InfoCell({
+  label,
+  value,
+  className,
+  missingHint = "profile",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+  missingHint?: "profile" | "assigned";
+}) {
   const missing = !value || value === "—";
   return (
     <div className={cn("px-3 py-2 bg-muted/20", className)}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
       {missing ? (
-        <p className="text-sm text-muted-foreground italic">Not set in profile</p>
+        <p className="text-sm text-muted-foreground italic">
+          {missingHint === "assigned" ? "Not assigned yet" : "Not set in profile"}
+        </p>
       ) : (
         <p className="text-sm font-medium truncate">{value}</p>
       )}
@@ -1033,6 +1050,9 @@ function ReportView({ log }: { log: WeeklyLog }) {
             {log.program_name || "—"} · {log.department_name || "—"}
           </p>
           <p className="text-xs text-muted-foreground">
+            {log.student_registration_no
+              ? `Reg. No. ${log.student_registration_no} · `
+              : ""}
             Week {log.week_number || "—"}: {formatDate(log.week_start_date)} → {formatDate(log.week_end_date)}
           </p>
         </div>

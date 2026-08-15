@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         program_name,
         department_name,
+        student_registration_no,
         university_logo_url,
         weekly_activities,
         learning_outcomes,
@@ -99,6 +100,36 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
 
+    // The canonical student_id_number (e.g. "FA21-BSCS-001") lives on the
+    // `students` table — the coordinator sets it via the Add Student dialog.
+    // `profiles.student_id_number` is sometimes NULL for legacy accounts.
+    // Fall back to the students table so the report header always shows the
+    // registration number the coordinator assigned.
+    const { data: studentRow } = await supabase
+      .from("students")
+      .select("student_id_number, program_id, department_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // Merge: prefer profiles.student_id_number, fall back to students.student_id_number.
+    const profileWithRegNo = {
+      ...(profile as any),
+      student_id_number:
+        (profile as any)?.student_id_number ||
+        studentRow?.student_id_number ||
+        null,
+      // If profile.program_id is null but students.program_id is set, use it
+      // so the program checkboxes can still highlight the right one.
+      program_id:
+        (profile as any)?.program_id ||
+        studentRow?.program_id ||
+        null,
+      department_id:
+        (profile as any)?.department_id ||
+        studentRow?.department_id ||
+        null,
+    };
+
     // Active internship — used by the form to derive week_number bounds
     // and the host org / supervisor name.
     const { data: activeInternship } = await supabase
@@ -127,11 +158,11 @@ export async function GET(request: NextRequest) {
     // List all programs in the student's department so the form can render
     // the program checkboxes (matching the PDF layout: CS / SE / AI / Robotics & AI).
     let programs: any[] = [];
-    if (profile?.department_id) {
+    if (profileWithRegNo?.department_id) {
       const { data: programsData } = await supabase
         .from("programs")
         .select("id, name, code, is_active")
-        .eq("department_id", profile.department_id)
+        .eq("department_id", profileWithRegNo.department_id)
         .eq("is_active", true)
         .order("name", { ascending: true });
       programs = programsData || [];
@@ -141,7 +172,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         logs: logs || [],
-        profile,
+        profile: profileWithRegNo,
         activeInternship,
         programs,
       },
@@ -206,6 +237,15 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
 
+    // The canonical student_id_number lives on the `students` table
+    // (set by the coordinator via the Add Student dialog). Fall back to it
+    // when profiles.student_id_number is NULL (legacy accounts).
+    const { data: studentRow } = await supabase
+      .from("students")
+      .select("student_id_number, program_id, department_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
     // PostgREST may return an array for `programs:program_id` if the FK is
     // ambiguous. Normalize to a single object.
     const profileRow = profile as any;
@@ -215,6 +255,10 @@ export async function POST(request: NextRequest) {
     const departmentName = Array.isArray(profileRow?.departments)
       ? profileRow.departments[0]?.name
       : profileRow?.departments?.name;
+    const studentRegistrationNo =
+      profileRow?.student_id_number ||
+      studentRow?.student_id_number ||
+      null;
 
     const { data: activeInternship } = await supabase
       .from("student_internships")
@@ -281,6 +325,7 @@ export async function POST(request: NextRequest) {
       // New columns
       program_name: programName || body.program_name || null,
       department_name: departmentName || body.department_name || null,
+      student_registration_no: studentRegistrationNo || body.student_registration_no || null,
       university_logo_url: body.university_logo_url || null,
       weekly_activities: weeklyActivities,
       supporting_evidence: supportingEvidence,

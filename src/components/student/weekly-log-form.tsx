@@ -186,7 +186,7 @@ export function WeeklyLogForm({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-6 py-4">
+            <div className="space-y-6 py-4 px-6 overflow-y-auto max-h-[60vh]">
               {/* Week Info */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">

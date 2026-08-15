@@ -723,7 +723,7 @@ export default function SuperAdminUniversitiesPage() {
           </DialogHeader>
 
           {/* Scrollable content area */}
-          <div className="grid gap-4 py-4 overflow-y-auto flex-1 pr-1">
+          <div className="grid gap-4 px-6 py-4 overflow-y-auto flex-1">
             {/* University Details Section */}
             <div className="space-y-3">
               <h4 className="font-semibold text-sm text-primary flex items-center gap-2">
