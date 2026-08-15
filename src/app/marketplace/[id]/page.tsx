@@ -826,7 +826,9 @@ export default function InternshipDetailPage() {
                 {internship.is_paid && (
                   <Badge className="bg-green-50 text-green-700 border-green-200">
                     <DollarSign className="h-3 w-3 mr-1" />
-                    Paid • ${internship.stipend}/mo
+                    {internship.stipend
+                      ? `Paid • Rs. ${Number(internship.stipend).toLocaleString()}/mo`
+                      : "Paid • Competitive"}
                   </Badge>
                 )}
                 {!internship.is_paid && (
@@ -930,7 +932,11 @@ export default function InternshipDetailPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Stipend</span>
                       <span className="font-semibold">
-                        {internship.is_paid ? `$${internship.stipend}/month` : "Unpaid"}
+                        {!internship.is_paid
+                          ? "Unpaid"
+                          : internship.stipend
+                            ? `Rs. ${Number(internship.stipend).toLocaleString()}/month`
+                            : "Competitive"}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
