@@ -137,6 +137,9 @@ CREATE POLICY "signatures_read" ON storage.objects
 
 -- 6. Helpful view: weekly_logs_with_signatures — joins profiles to expose
 --    student name, program, department, and supervisor names for reports.
+-- NOTE: `internships` table does NOT have a `host_org_name` column.
+-- The host organization name lives in `companies.name`, joined via
+-- `internships.company_id`. Join through companies to expose host org name.
 DROP VIEW IF EXISTS weekly_logs_detailed;
 CREATE VIEW weekly_logs_detailed AS
 SELECT
@@ -153,14 +156,15 @@ SELECT
   ssp.full_name       AS site_supervisor_name,
   fsp.full_name       AS faculty_supervisor_name,
   i.title             AS internship_title,
-  i.host_org_name     AS internship_host_org
+  c.name              AS internship_host_org
 FROM weekly_logs wl
 LEFT JOIN profiles   sp  ON sp.user_id  = wl.student_user_id
 LEFT JOIN departments d  ON d.id        = sp.department_id
 LEFT JOIN programs    p  ON p.id        = sp.program_id
 LEFT JOIN profiles   ssp ON ssp.user_id = wl.site_supervisor_id
 LEFT JOIN profiles   fsp ON fsp.user_id = wl.faculty_supervisor_id
-LEFT JOIN internships i  ON i.id        = wl.internship_id;
+LEFT JOIN internships i  ON i.id        = wl.internship_id
+LEFT JOIN companies   c  ON c.id        = i.company_id;
 
 COMMENT ON VIEW weekly_logs_detailed IS
   'Convenience view joining weekly_logs with profiles / departments / programs / supervisors for reporting.';

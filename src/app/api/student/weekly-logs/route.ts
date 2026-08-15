@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
         status,
         start_date,
         end_date,
-        internships:internship_id ( id, title, host_org_name, company_id ),
+        internships:internship_id ( id, title, company_id, companies:company_id ( name ) ),
         site_supervisor:site_supervisor_id ( full_name, first_name, last_name, email ),
         faculty_supervisor:faculty_supervisor_id ( full_name, first_name, last_name, email )
         `
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
       .from("student_internships")
       .select(
         `id, internship_id, site_supervisor_id, faculty_supervisor_id, status,
-         internships:internship_id ( title, host_org_name )`
+         internships:internship_id ( title, company_id, companies:company_id ( name ) )`
       )
       .eq("student_user_id", user.id)
       .in("status", ["assigned", "active"])

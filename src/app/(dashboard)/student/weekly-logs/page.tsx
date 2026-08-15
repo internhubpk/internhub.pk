@@ -593,51 +593,55 @@ export default function StudentWeeklyLogsPage() {
       {/* SUBMIT DIALOG                                                */}
       {/* ============================================================ */}
       <Dialog open={isDialogOpen} onOpenChange={(o) => { setIsDialogOpen(o); if (!o) resetForm(); }}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Weekly Internship Activity Report</DialogTitle>
-            <p className="text-xs text-muted-foreground mt-1">
+        <DialogContent className="max-w-4xl w-[95vw] p-0 gap-0 flex flex-col max-h-[94vh]">
+          {/* Header — fixed */}
+          <div className="px-6 py-4 border-b shrink-0">
+            <DialogTitle className="text-base font-semibold">Weekly Internship Activity Report</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
               Fill in all fields, attach supporting evidence, upload your university logo, and sign at the bottom.
               Your site supervisor and faculty supervisor will both need to sign off.
             </p>
-          </DialogHeader>
+          </div>
 
-          {submitError && (
-            <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/5 border border-destructive/30 text-xs text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{submitError}</span>
-            </div>
-          )}
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {submitError && (
+              <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/5 border border-destructive/30 text-xs text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
-          <div className="space-y-6 mt-2">
-            {/* ===== University logo upload ===== */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">University Logo</Label>
-              <p className="text-xs text-muted-foreground">
-                The template is universal — upload your own university&apos;s logo to appear in the report header.
+            {/* ===== Section 1: University logo ===== */}
+            <section className="space-y-2.5">
+              <div className="flex items-baseline justify-between">
+                <Label className="text-sm font-semibold">University Logo</Label>
+                <span className="text-[10px] text-muted-foreground">Optional · appears in report header</span>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-1">
+                The template is universal — upload your own university&apos;s logo.
               </p>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 p-3 rounded-lg border bg-muted/20">
                 {logoPreview ? (
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     <img
                       src={logoPreview}
                       alt="University logo preview"
-                      className="h-20 w-20 object-contain rounded-md border bg-white p-1"
+                      className="h-16 w-16 object-contain rounded-md border bg-white p-1"
                     />
                     <Button
                       type="button"
                       variant="destructive"
                       size="icon"
-                      className="h-5 w-5 absolute -top-1 -right-1"
+                      className="h-5 w-5 absolute -top-1.5 -right-1.5 rounded-full shadow-sm"
                       onClick={() => { setLogoFile(null); setLogoPreview(""); }}
                     >
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center h-20 w-20 rounded-md border-2 border-dashed border-muted-foreground/30 cursor-pointer hover:border-primary/50 hover:bg-accent/40 transition-colors">
+                  <label className="flex flex-col items-center justify-center h-16 w-16 rounded-md border-2 border-dashed border-muted-foreground/40 cursor-pointer hover:border-primary/60 hover:bg-accent/50 transition-colors shrink-0">
                     <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-[10px] text-muted-foreground mt-1">Upload</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -647,124 +651,140 @@ export default function StudentWeeklyLogsPage() {
                   </label>
                 )}
                 <div className="text-xs text-muted-foreground space-y-0.5">
-                  <p>PNG, JPG, or WebP · max 5MB</p>
-                  <p className="text-[10px]">Logo will appear in the top-right of the report.</p>
+                  <p className="font-medium text-foreground">PNG, JPG, or WebP</p>
+                  <p>Max 5MB · appears in the top-right of the report.</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* ===== Program (auto-fetched as checkbox list) ===== */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Program</Label>
-              <p className="text-xs text-muted-foreground">
-                Auto-fetched from your department. Tick your program.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {programs.length === 0 && (
-                  <span className="text-xs text-muted-foreground italic">
-                    No programs found for your department. Contact your coordinator.
-                  </span>
-                )}
-                {programs.map((p) => (
-                  <label
-                    key={p.id}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer text-xs transition-colors",
-                      formData.program_id === p.id
-                        ? "bg-primary/10 border-primary/40 text-primary font-medium"
-                        : "border-border hover:bg-accent/40"
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.program_id === p.id}
-                      onChange={() => setFormData((prev) => ({ ...prev, program_id: p.id }))}
-                      className="h-3 w-3"
-                    />
-                    <span>{p.name} {p.code ? `(${p.code})` : ""}</span>
-                  </label>
-                ))}
-              </div>
-              {/* Auto-fetched department name (read-only display) */}
-              <div className="text-xs text-muted-foreground mt-1">
-                Department: <span className="font-medium text-foreground">{profile?.departments?.name || "—"}</span>
-              </div>
-            </div>
+            <SectionDivider />
 
-            {/* ===== Student info (auto-fetched) ===== */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-md bg-muted/30">
-              <InfoField label="Student Name" value={profile?.full_name || `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "—"} />
-              <InfoField label="Registration No." value={profile?.student_id_number || "—"} />
-              <InfoField
-                label="Host Organization"
-                value={
-                  activeInternship?.internships?.host_org_name ||
-                  activeInternship?.internships?.title ||
-                  "—"
-                }
-              />
-              <InfoField
-                label="Supervisor"
-                value={
-                  activeInternship?.site_supervisor?.full_name ||
-                  activeInternship?.faculty_supervisor?.full_name ||
-                  "—"
-                }
-              />
-            </div>
+            {/* ===== Section 2: Program + Student info ===== */}
+            <section className="space-y-3">
+              <SectionLabel index="1" title="Program & Student Info" hint="Auto-fetched from your profile" />
 
-            {/* ===== Week picker ===== */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Program checkboxes */}
               <div className="space-y-1.5">
-                <Label htmlFor="ws" className="text-xs">Week Start (Mon)</Label>
-                <Input
-                  id="ws"
-                  type="date"
-                  value={formData.week_start_date}
-                  onChange={(e) => onWeekStartChange(e.target.value)}
+                <Label className="text-xs font-medium">Your program</Label>
+                <div className="flex flex-wrap gap-2">
+                  {programs.length === 0 ? (
+                    <span className="text-xs text-muted-foreground italic px-2 py-1">
+                      No programs found for your department. Contact your coordinator.
+                    </span>
+                  ) : (
+                    programs.map((p) => (
+                      <label
+                        key={p.id}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer text-xs transition-colors",
+                          formData.program_id === p.id
+                            ? "bg-primary/10 border-primary/50 text-primary font-medium"
+                            : "border-border hover:bg-accent/50"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.program_id === p.id}
+                          onChange={() => setFormData((prev) => ({ ...prev, program_id: p.id }))}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span>{p.name} {p.code ? `(${p.code})` : ""}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Auto-fetched student info card */}
+              <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden border border-border">
+                <InfoCell label="Student Name" value={profile?.full_name || `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "—"} />
+                <InfoCell label="Registration No." value={profile?.student_id_number || "—"} />
+                <InfoCell
+                  label="Host Organization"
+                  value={
+                    (activeInternship?.internships as any)?.companies?.name ||
+                    (activeInternship?.internships as any)?.title ||
+                    "—"
+                  }
+                />
+                <InfoCell
+                  label="Supervisor"
+                  value={
+                    activeInternship?.site_supervisor?.full_name ||
+                    activeInternship?.faculty_supervisor?.full_name ||
+                    "—"
+                  }
+                />
+                <InfoCell
+                  label="Department"
+                  value={profile?.departments?.name || "—"}
+                  className="col-span-2"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="we" className="text-xs">Week End (Fri)</Label>
-                <Input
-                  id="we"
-                  type="date"
-                  value={formData.week_end_date}
-                  onChange={(e) => setFormData((p) => ({ ...p, week_end_date: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="wn" className="text-xs">Week No.</Label>
-                <Input
-                  id="wn"
-                  type="number"
-                  min={1}
-                  value={formData.week_number}
-                  onChange={(e) => setFormData((p) => ({ ...p, week_number: e.target.value }))}
-                  placeholder="Auto"
-                />
-              </div>
-            </div>
+            </section>
 
-            {/* ===== Weekly activities table (Mon-Fri) ===== */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Weekly Activities</Label>
-              <div className="rounded-md border overflow-hidden">
+            <SectionDivider />
+
+            {/* ===== Section 3: Week picker ===== */}
+            <section className="space-y-3">
+              <SectionLabel index="2" title="Reporting Period" hint="Mon–Fri work week" />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="ws" className="text-xs font-medium">Week Start (Mon)</Label>
+                  <Input
+                    id="ws"
+                    type="date"
+                    value={formData.week_start_date}
+                    onChange={(e) => onWeekStartChange(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="we" className="text-xs font-medium">Week End (Fri)</Label>
+                  <Input
+                    id="we"
+                    type="date"
+                    value={formData.week_end_date}
+                    onChange={(e) => setFormData((p) => ({ ...p, week_end_date: e.target.value }))}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="wn" className="text-xs font-medium">Week No.</Label>
+                  <Input
+                    id="wn"
+                    type="number"
+                    min={1}
+                    value={formData.week_number}
+                    onChange={(e) => setFormData((p) => ({ ...p, week_number: e.target.value }))}
+                    placeholder="Auto"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <SectionDivider />
+
+            {/* ===== Section 4: Weekly activities table ===== */}
+            <section className="space-y-3">
+              <SectionLabel index="3" title="Weekly Activities" hint="One row per day, Mon–Fri" />
+              <div className="rounded-lg border overflow-hidden">
                 <table className="w-full text-xs">
-                  <thead className="bg-muted/40">
+                  <thead className="bg-muted/50">
                     <tr>
-                      <th className="text-left font-medium p-2 w-24">Day</th>
-                      <th className="text-left font-medium p-2 w-28">Date</th>
-                      <th className="text-left font-medium p-2">Tasks Performed</th>
-                      <th className="text-right font-medium p-2 w-20">Hours</th>
+                      <th className="text-left font-semibold px-3 py-2 w-20">Day</th>
+                      <th className="text-left font-semibold px-3 py-2 w-28">Date</th>
+                      <th className="text-left font-semibold px-3 py-2">Tasks Performed</th>
+                      <th className="text-right font-semibold px-3 py-2 w-20">Hours</th>
                     </tr>
                   </thead>
                   <tbody>
                     {formData.weekly_activities.map((row, idx) => (
-                      <tr key={row.day} className="border-t">
-                        <td className="p-2 font-medium">{row.day}</td>
-                        <td className="p-2 text-muted-foreground">{row.date}</td>
-                        <td className="p-2">
+                      <tr key={row.day} className="border-t hover:bg-muted/20">
+                        <td className="px-3 py-2 font-medium align-top">{row.day}</td>
+                        <td className="px-3 py-2 text-muted-foreground align-top">{row.date}</td>
+                        <td className="px-3 py-2">
                           <Textarea
                             rows={1}
                             value={row.tasks}
@@ -778,10 +798,10 @@ export default function StudentWeeklyLogsPage() {
                               }));
                             }}
                             placeholder="What did you do today?"
-                            className="text-xs min-h-[36px] resize-y"
+                            className="text-xs min-h-[34px] resize-y border-0 shadow-none focus-visible:ring-1 focus-visible:ring-primary/30 bg-transparent"
                           />
                         </td>
-                        <td className="p-2">
+                        <td className="px-3 py-2 align-top">
                           <Input
                             type="number"
                             min={0}
@@ -797,58 +817,66 @@ export default function StudentWeeklyLogsPage() {
                               }));
                             }}
                             placeholder="0"
-                            className="text-xs h-8 text-right"
+                            className="text-xs h-8 w-16 ml-auto text-right"
                           />
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-muted/30 border-t">
+                  <tfoot className="bg-muted/40 border-t">
                     <tr>
-                      <td colSpan={3} className="p-2 text-right font-medium">Total Hours:</td>
-                      <td className="p-2 text-right font-semibold">
+                      <td colSpan={3} className="px-3 py-2 text-right font-semibold">Total Hours:</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">
                         {formData.weekly_activities.reduce((s, r) => s + (Number(r.hours) || 0), 0)}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
-            </div>
+            </section>
 
-            {/* ===== Learning outcomes ===== */}
-            <div className="space-y-1.5">
-              <Label htmlFor="lo" className="text-sm font-medium">Learning Outcomes / Skills Gained</Label>
-              <Textarea
-                id="lo"
-                rows={3}
-                value={formData.learning_outcomes}
-                onChange={(e) => setFormData((p) => ({ ...p, learning_outcomes: e.target.value }))}
-                placeholder="What did you learn this week? What skills did you gain?"
-              />
-            </div>
+            <SectionDivider />
 
-            {/* ===== Challenges ===== */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cs" className="text-sm font-medium">Challenges Faced and Solutions</Label>
-              <Textarea
-                id="cs"
-                rows={3}
-                value={formData.challenges_solutions}
-                onChange={(e) => setFormData((p) => ({ ...p, challenges_solutions: e.target.value }))}
-                placeholder="Any challenges? How did you solve them?"
-              />
-            </div>
+            {/* ===== Section 5: Learning outcomes + Challenges ===== */}
+            <section className="space-y-3">
+              <SectionLabel index="4" title="Reflections" hint="Skills gained + challenges faced" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="lo" className="text-xs font-medium">Learning Outcomes / Skills Gained</Label>
+                  <Textarea
+                    id="lo"
+                    rows={4}
+                    value={formData.learning_outcomes}
+                    onChange={(e) => setFormData((p) => ({ ...p, learning_outcomes: e.target.value }))}
+                    placeholder="What did you learn this week? What skills did you gain?"
+                    className="text-xs resize-y"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cs" className="text-xs font-medium">Challenges Faced and Solutions</Label>
+                  <Textarea
+                    id="cs"
+                    rows={4}
+                    value={formData.challenges_solutions}
+                    onChange={(e) => setFormData((p) => ({ ...p, challenges_solutions: e.target.value }))}
+                    placeholder="Any challenges? How did you solve them?"
+                    className="text-xs resize-y"
+                  />
+                </div>
+              </div>
+            </section>
 
-            {/* ===== Supporting evidence (mandatory) ===== */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Supporting Evidence <span className="text-destructive">*</span></Label>
-              <p className="text-xs text-muted-foreground">
-                Attach at least one supporting document: attendance record, screenshots, code commits,
-                design docs, meeting minutes, certificates, etc.
+            <SectionDivider />
+
+            {/* ===== Section 6: Supporting evidence ===== */}
+            <section className="space-y-2.5">
+              <SectionLabel index="5" title="Supporting Evidence" hint="Required · at least one file" />
+              <p className="text-xs text-muted-foreground -mt-1">
+                Attach attendance records, screenshots, code commits, design docs, meeting minutes, certificates, etc.
               </p>
-              <label className="flex flex-col items-center justify-center w-full py-6 rounded-md border-2 border-dashed border-muted-foreground/30 cursor-pointer hover:border-primary/50 hover:bg-accent/40 transition-colors">
-                <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                <span className="text-xs text-muted-foreground">
+              <label className="flex flex-col items-center justify-center w-full py-6 rounded-lg border-2 border-dashed border-muted-foreground/40 cursor-pointer hover:border-primary/60 hover:bg-accent/40 transition-colors">
+                <Upload className="h-5 w-5 text-muted-foreground mb-1.5" />
+                <span className="text-xs font-medium text-foreground">
                   {uploadingEvidence ? "Uploading..." : "Click to attach files"}
                 </span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">PDF, PNG, JPG, TXT, DOCX, XLSX · max 10MB each</span>
@@ -867,18 +895,18 @@ export default function StudentWeeklyLogsPage() {
                   {evidenceFiles.map((f, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center gap-2 p-2 rounded-md border bg-muted/30"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-md border bg-muted/30"
                     >
                       <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="text-xs flex-1 truncate">{f.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
                         {(f.size / 1024).toFixed(0)} KB
                       </span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-6 w-6 shrink-0"
                         onClick={() => removeEvidence(idx)}
                       >
                         <X className="h-3 w-3" />
@@ -887,31 +915,35 @@ export default function StudentWeeklyLogsPage() {
                   ))}
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* ===== Student signature ===== */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Student Signature</Label>
-              <p className="text-xs text-muted-foreground">
+            <SectionDivider />
+
+            {/* ===== Section 7: Student signature ===== */}
+            <section className="space-y-2.5">
+              <SectionLabel index="6" title="Student Signature" hint="Required before submit" />
+              <p className="text-xs text-muted-foreground -mt-1">
                 Draw or type your signature. This will be applied to the report.
               </p>
-              <SignaturePad
-                onSignatureChange={setSignatureData}
-                value={signatureData}
-                label=""
-                showDownload={false}
-              />
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <SignaturePad
+                  onSignatureChange={setSignatureData}
+                  value={signatureData}
+                  label=""
+                  showDownload={false}
+                />
+              </div>
               {!signatureData && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
+                <p className="text-xs text-amber-600 flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5" />
                   Signature is required before submitting.
                 </p>
               )}
-            </div>
+            </section>
           </div>
 
-          {/* ===== Footer ===== */}
-          <div className="flex items-center justify-end gap-2 pt-4 border-t mt-4 sticky bottom-0 bg-background">
+          {/* Footer — fixed */}
+          <div className="flex items-center justify-end gap-2 px-6 py-3.5 border-t bg-background shrink-0">
             <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} disabled={isSubmitting}>
               Cancel
             </Button>
@@ -950,11 +982,32 @@ export default function StudentWeeklyLogsPage() {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-function InfoField({ label, value }: { label: string; value: string }) {
+// Section header with index chip + title + right-aligned hint
+function SectionLabel({ index, title, hint }: { index?: string; title: string; hint?: string }) {
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium">{value}</p>
+    <div className="flex items-center gap-2">
+      {index && (
+        <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold tabular-nums">
+          {index}
+        </span>
+      )}
+      <h4 className="text-sm font-semibold">{title}</h4>
+      {hint && <span className="text-[10px] text-muted-foreground ml-auto">{hint}</span>}
+    </div>
+  );
+}
+
+// Hairline divider between sections
+function SectionDivider() {
+  return <div className="h-px bg-border" />;
+}
+
+// Compact label/value cell used in the auto-fetched student info grid
+function InfoCell({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={cn("px-3 py-2 bg-muted/20", className)}>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
+      <p className="text-sm font-medium truncate">{value}</p>
     </div>
   );
 }
