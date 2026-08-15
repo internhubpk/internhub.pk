@@ -558,9 +558,18 @@ async function getSupervisorWorkload(
 
   // (c) Direct assignments: student_internships rows where
   //     faculty_supervisor_id matches any of our supervisors.
+  //
+  //     NOTE: this ONLY catches internships where the assignment was made
+  //     AFTER the student_internships row was created (the assignments
+  //     route updates the row's faculty_supervisor_id in place). It MISSES
+  //     internships where the supervisor was pre-assigned via
+  //     students.faculty_supervisor_id BEFORE the student was placed into
+  //     an internship — in that case student_internships.faculty_supervisor_id
+  //     stays NULL even though the student is effectively under this
+  //     supervisor's supervision. We patch that gap in step (c'') below.
   let internshipsQuery = supabase
     .from("student_internships")
-    .select("student_user_id, faculty_supervisor_id, status")
+    .select("id, student_user_id, faculty_supervisor_id, status")
     .in("faculty_supervisor_id", supervisorUserIds);
   if (filters.department_id) {
     internshipsQuery = internshipsQuery.eq("department_id", filters.department_id);
@@ -587,6 +596,46 @@ async function getSupervisorWorkload(
   const { data: preInternshipStudents, error: preErr } = await preInternshipStudentsQuery;
   if (preErr) throw preErr;
 
+  // (c'') Internship rows for pre-assigned students.
+  //      When a coordinator pre-assigns a supervisor to a student via the
+  //      Students page (which writes students.faculty_supervisor_id) and
+  //      LATER places the student into an internship (which creates a
+  //      student_internships row), the new internship row is created with
+  //      faculty_supervisor_id = NULL. The assignment is implicit via the
+  //      students table, but the internship row doesn't carry it.
+  //
+  //      Without this lookup, the workload table showed those supervisors
+  //      with Assigned=1, Active=0, Completed=0 even when their student
+  //      had multiple in-progress internship rows — because step (c) only
+  //      matches by student_internships.faculty_supervisor_id.
+  //
+  //      We fetch all internship rows for the pre-assigned students and
+  //      attach them to the supervisor via students.faculty_supervisor_id.
+  //      Deduplicated against (c) by student_user_id+id so a row that has
+  //      BOTH the SI.faculty_supervisor_id set AND a students-table
+  //      assignment isn't double-counted.
+  const preAssignedStudentIds = (preInternshipStudents || []).map((s) => s.user_id);
+  const preAssignedStudentToSupervisor = new Map<string, string>();
+  for (const s of preInternshipStudents || []) {
+    preAssignedStudentToSupervisor.set(s.user_id, s.faculty_supervisor_id);
+  }
+  let implicitInternships: { student_user_id: string; status: string; id?: string }[] = [];
+  if (preAssignedStudentIds.length > 0) {
+    let implicitQuery = supabase
+      .from("student_internships")
+      .select("id, student_user_id, status")
+      .in("student_user_id", preAssignedStudentIds);
+    if (filters.department_id) {
+      implicitQuery = implicitQuery.eq("department_id", filters.department_id);
+    }
+    if (filters.university_id) {
+      implicitQuery = implicitQuery.eq("university_id", filters.university_id);
+    }
+    const { data: implicitData, error: implicitErr } = await implicitQuery;
+    if (implicitErr) throw implicitErr;
+    implicitInternships = implicitData || [];
+  }
+
   // ---------- Aggregate per supervisor ----------
   const workloadData: SupervisorWorkload[] = [];
 
@@ -611,12 +660,18 @@ async function getSupervisorWorkload(
     // `inProgressInternships` definition. Previously this only counted
     // status='active', which made every supervisor look idle when most
     // of their students were still in 'assigned' (pre-start) status.
+    //
+    // Track which (student_user_id, internship_id) pairs we've already
+    // counted via the explicit SI.faculty_supervisor_id path so we don't
+    // double-count them again in the implicit-pre-assignment path below.
     const directStudentIds = new Set<string>();
+    const countedInternshipIds = new Set<string>();
     let activeCount = 0;
     let completedCount = 0;
     for (const si of supervisorInternships || []) {
       if (si.faculty_supervisor_id !== supervisor.user_id) continue;
       directStudentIds.add(si.student_user_id);
+      if (si.id) countedInternshipIds.add(si.id);
       if (["assigned", "active", "paused"].includes(si.status)) activeCount++;
       else if (si.status === "completed") completedCount++;
     }
@@ -627,6 +682,26 @@ async function getSupervisorWorkload(
     for (const s of preInternshipStudents || []) {
       if (s.faculty_supervisor_id !== supervisor.user_id) continue;
       directStudentIds.add(s.user_id);
+    }
+
+    // Implicit: internship rows belonging to students who were pre-assigned
+    // to this supervisor via students.faculty_supervisor_id. The internship
+    // row itself has faculty_supervisor_id = NULL (because it was created
+    // AFTER the pre-assignment and the create-internship flow doesn't
+    // backfill faculty_supervisor_id from the students table). We count
+    // these rows toward this supervisor's active/completed totals so the
+    // workload table reflects reality — the supervisor IS supervising
+    // this student's internship, the linkage just lives one hop away.
+    //
+    // Dedupe by internship id against the explicit-SI set so a row that
+    // has BOTH the SI.faculty_supervisor_id set AND a students-table
+    // assignment isn't counted twice.
+    for (const si of implicitInternships) {
+      if (si.id && countedInternshipIds.has(si.id)) continue;
+      const supUid = preAssignedStudentToSupervisor.get(si.student_user_id);
+      if (supUid !== supervisor.user_id) continue;
+      if (["assigned", "active", "paused"].includes(si.status)) activeCount++;
+      else if (si.status === "completed") completedCount++;
     }
 
     // Union of indirect + direct student ids.
