@@ -369,6 +369,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Per the production brief, faculty supervisors do NOT create tasks —
+    // they only view and evaluate site-supervisor-created tasks. Block the
+    // POST for faculty_supervisor role; only super_admin can bypass for
+    // out-of-band admin work.
+    if (profile.role !== "super_admin") {
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Faculty supervisors cannot create tasks. Tasks are created by the site supervisor; faculty supervisors view and evaluate them.",
+        },
+        { status: 403 }
+      );
+    }
+
     // Parse body
     const body = await request.json().catch(() => ({}));
     const {
@@ -551,6 +566,8 @@ export async function POST(request: NextRequest) {
 
 // ----------------------------------------------------------------------------
 // PUT — update an existing task
+// Per the production brief, faculty supervisors do NOT edit tasks. Only
+// super_admin can use this endpoint for out-of-band admin fixes.
 // ----------------------------------------------------------------------------
 export async function PUT(request: NextRequest) {
   try {
@@ -564,6 +581,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Unauthorized" },
         { status: 401 }
+      );
+    }
+
+    // Block faculty_supervisor from editing tasks. Only super_admin can.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (profile?.role !== "super_admin") {
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Faculty supervisors cannot edit tasks. Tasks are managed by the site supervisor.",
+        },
+        { status: 403 }
       );
     }
 
@@ -707,6 +741,8 @@ export async function PUT(request: NextRequest) {
 
 // ----------------------------------------------------------------------------
 // DELETE — delete a task
+// Per the production brief, faculty supervisors do NOT delete tasks. Only
+// super_admin can use this endpoint for out-of-band admin work.
 // ----------------------------------------------------------------------------
 export async function DELETE(request: NextRequest) {
   try {
@@ -720,6 +756,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Unauthorized" },
         { status: 401 }
+      );
+    }
+
+    // Block faculty_supervisor from deleting tasks. Only super_admin can.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (profile?.role !== "super_admin") {
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Faculty supervisors cannot delete tasks. Tasks are managed by the site supervisor.",
+        },
+        { status: 403 }
       );
     }
 

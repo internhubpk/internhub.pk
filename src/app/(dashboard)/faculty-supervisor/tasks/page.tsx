@@ -324,18 +324,13 @@ export default function FacultySupervisorTasksPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  // Scope: "assigned" (default) = tasks created by the SITE SUPERVISOR for
-  // this faculty supervisor's students. "mine" = tasks created by this
-  // faculty supervisor. Per the production brief, faculty supervisors
-  // should NOT create/assign internship tasks — they view and evaluate
-  // based on the site-supervisor task workflow. The "mine" scope is kept
-  // as a secondary view in case the faculty supervisor has academic
-  // (non-internship) tasks they created.
-  const [scope, setScope] = useState<"assigned" | "mine">("assigned");
-  
+  // Per the production brief, faculty supervisors do NOT create or assign
+  // tasks — they VIEW and EVALUATE the tasks that site supervisors create
+  // for their students. There is no longer a "mine" scope; this page now
+  // always shows site-supervisor-created tasks assigned to this faculty
+  // supervisor's students.
+
   // Dialog states
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
@@ -379,12 +374,11 @@ export default function FacultySupervisorTasksPage() {
       );
       setStudents(dedupedStudents);
 
-      // Fetch tasks via the API. Default scope=assigned returns tasks
-      // created by the SITE SUPERVISOR for this faculty supervisor's
-      // students (the primary view per the production brief). scope=mine
-      // returns tasks created by this faculty supervisor.
+      // Fetch site-supervisor-created tasks assigned to this faculty
+      // supervisor's students. Faculty supervisors do NOT create tasks
+      // anymore — they only view and evaluate site-supervisor tasks.
       try {
-        const res = await fetch(`/api/faculty-supervisor/tasks?scope=${scope}`, { cache: "no-store" });
+        const res = await fetch(`/api/faculty-supervisor/tasks?scope=assigned`, { cache: "no-store" });
         const json = await res.json().catch(() => ({ success: false, data: [] }));
         if (res.ok && json?.success && Array.isArray(json.data)) {
           setTasks((json.data as any[]).map(mapApiTaskToUi));
@@ -407,13 +401,6 @@ export default function FacultySupervisorTasksPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Re-fetch when scope changes (toggle between site-supervisor tasks
-  // and my tasks). fetchData depends on `scope` via useCallback closure.
-  useEffect(() => {
-    setIsLoading(true);
-    fetchData();
-  }, [scope]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -492,124 +479,12 @@ export default function FacultySupervisorTasksPage() {
     });
   };
 
-  const handleCreateTask = async () => {
-    setIsSubmitting(true);
-    try {
-      await toast.fetch(
-        async () => {
-          const res = await fetch("/api/faculty-supervisor/tasks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: formData.title,
-              description: formData.description || undefined,
-              priority: formData.priority,
-              due_date: formData.dueDate,
-              student_user_ids: formData.assignedStudentIds,
-              status: "draft",
-            }),
-          });
-          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-          if (!res.ok || !json?.success) {
-            throw new Error(json?.error || `Failed to create task (HTTP ${res.status})`);
-          }
-          return json;
-        },
-        {
-          loading: "Creating task...",
-          success: "Task created successfully",
-          error: "Failed to create task",
-        }
-      );
-      setIsCreateDialogOpen(false);
-      resetForm();
-      await fetchData();
-    } catch {
-      // toast.fetch already showed the error
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleUpdateTask = async () => {
-    if (!selectedTask) return;
-
-    setIsSubmitting(true);
-    try {
-      await toast.fetch(
-        async () => {
-          const res = await fetch("/api/faculty-supervisor/tasks", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              task_id: selectedTask.id,
-              title: formData.title,
-              description: formData.description || null,
-              priority: formData.priority,
-              due_date: formData.dueDate,
-              student_user_ids: formData.assignedStudentIds,
-            }),
-          });
-          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-          if (!res.ok || !json?.success) {
-            throw new Error(json?.error || `Failed to update task (HTTP ${res.status})`);
-          }
-          return json;
-        },
-        {
-          loading: "Updating task...",
-          success: "Task updated successfully",
-          error: "Failed to update task",
-        }
-      );
-      setIsEditDialogOpen(false);
-      setSelectedTask(null);
-      resetForm();
-      await fetchData();
-    } catch {
-      // toast.fetch already showed the error
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    try {
-      await toast.fetch(
-        async () => {
-          const res = await fetch(
-            `/api/faculty-supervisor/tasks?task_id=${encodeURIComponent(taskId)}`,
-            { method: "DELETE" }
-          );
-          const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-          if (!res.ok || !json?.success) {
-            throw new Error(json?.error || `Failed to delete task (HTTP ${res.status})`);
-          }
-          return json;
-        },
-        {
-          loading: "Deleting task...",
-          success: "Task deleted",
-          error: "Failed to delete task",
-        }
-      );
-      await fetchData();
-    } catch {
-      // toast.fetch already showed the error
-    }
-  };
-
-  const openEditDialog = (task: Task) => {
-    setSelectedTask(task);
-    setFormData({
-      title: task.title,
-      description: task.description || "",
-      priority: task.priority,
-      dueDate: task.dueDate,
-      assignedStudentIds: task.assignedStudents.map(s => s.id),
-    });
-    setIsEditDialogOpen(true);
-  };
+  // NOTE: handleCreateTask, handleUpdateTask, handleDeleteTask, openEditDialog,
+  // and the TaskForm component were removed per the production brief —
+  // faculty supervisors no longer create/edit/delete tasks. They only VIEW
+  // and EVALUATE tasks that site supervisors create. The corresponding
+  // /api/faculty-supervisor/tasks POST/PUT/DELETE endpoints still exist
+  // for backwards compatibility but are no longer called from this page.
 
   const openViewDialog = (task: Task) => {
     setSelectedTask(task);
@@ -676,85 +551,7 @@ export default function FacultySupervisorTasksPage() {
       {/* Header */}
       <PageHeader
         title="Student Tasks"
-        description={scope === "assigned"
-          ? "Tasks assigned by the Site Supervisor to your students. View submissions and evaluate."
-          : "Academic tasks you created for your students."
-        }
-        actions={
-          <div className="flex gap-2">
-            {/* Scope toggle: switch between site-supervisor tasks (default)
-                and my own tasks. Per the production brief, faculty supervisors
-                should NOT create internship tasks — the primary view is
-                site-supervisor-created tasks. */}
-            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-              <button
-                type="button"
-                onClick={() => setScope("assigned")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-colors ${
-                  scope === "assigned"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Site Supervisor Tasks
-              </button>
-              <button
-                type="button"
-                onClick={() => setScope("mine")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-sm transition-colors ${
-                  scope === "mine"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                My Tasks
-              </button>
-            </div>
-            {/* Create Task button — ONLY shown when scope=mine. Per the
-                production brief, faculty supervisors should NOT create
-                internship tasks. The button is hidden in the default
-                (scope=assigned) view. It remains available in the
-                scope=mine view in case the faculty supervisor needs to
-                create academic (non-internship) tasks. */}
-            {scope === "mine" && (
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2" onClick={resetForm}>
-                    <Plus className="h-4 w-4" /> New Task
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create New Academic Task</DialogTitle>
-                    <DialogDescription>
-                      Assign a new academic task to one or more students in your programs.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <TaskForm
-                    formData={formData}
-                    students={students}
-                    onFormDataChange={setFormData}
-                    onSelectAllStudents={selectAllStudents}
-                    onDeselectAllStudents={deselectAllStudents}
-                    onToggleStudentSelection={toggleStudentSelection}
-                  />
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleCreateTask}
-                      disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-                    >
-                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Create Task
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-        }
+        description="Tasks assigned by the Site Supervisor to your students. View submissions and evaluate."
       />
 
       {/* Stats Cards */}
@@ -870,31 +667,9 @@ export default function FacultySupervisorTasksPage() {
                     )}
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)} title="View task">
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(task)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Task?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete &ldquo;{task.title}&rdquo;? This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteTask(task.id)}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
                 </div>
               </CardContent>
@@ -970,31 +745,9 @@ export default function FacultySupervisorTasksPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)} title="View task">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(task)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Task?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete &ldquo;{task.title}&rdquo;? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteTask(task.id)}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1009,56 +762,15 @@ export default function FacultySupervisorTasksPage() {
             <CardContent className="py-12 text-center">
               <ListTodo className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium mb-2">
-                {scope === "assigned"
-                  ? "No site-supervisor tasks found"
-                  : "No tasks found"}
+                No site-supervisor tasks found
               </h3>
               <p className="text-muted-foreground mb-4">
-                {scope === "assigned"
-                  ? "Tasks assigned by the Site Supervisor to your students will appear here. Try adjusting your search or filter criteria."
-                  : "Try adjusting your search or filter criteria, or create a new academic task."}
+                Tasks assigned by the Site Supervisor to your students will appear here. Try adjusting your search or filter criteria.
               </p>
-              {scope === "mine" && (
-                <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-                  <Plus className="h-4 w-4" /> Create New Academic Task
-                </Button>
-              )}
             </CardContent>
           </Card>
         )}
       </motion.div>
-
-      {/* Edit Task Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-            <DialogDescription>
-              Update the task details below.
-            </DialogDescription>
-          </DialogHeader>
-          <TaskForm 
-            formData={formData}
-            students={students}
-            onFormDataChange={setFormData}
-            onSelectAllStudents={selectAllStudents}
-            onDeselectAllStudents={deselectAllStudents}
-            onToggleStudentSelection={toggleStudentSelection}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleUpdateTask}
-              disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Update Task
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* View Task Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
@@ -1175,12 +887,10 @@ export default function FacultySupervisorTasksPage() {
                   </Card>
                 )}
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2 pt-4 border-t">
-                  <Button variant="outline" className="gap-2" onClick={() => openEditDialog(selectedTask)}>
-                    <Edit className="h-4 w-4" /> Edit Task
-                  </Button>
-                </div>
+                {/* No edit/delete actions — faculty supervisors view and
+                    evaluate site-supervisor tasks only; they do not modify
+                    them. The site supervisor who owns the task can edit it
+                    from their own dashboard. */}
               </div>
             </>
           )}

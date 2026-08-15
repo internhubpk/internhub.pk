@@ -69,7 +69,12 @@ export default function StudentWeeklyLogsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form state — mirrors the REAL `weekly_logs` columns.
+  // week_number is now an explicit user input (with a sensible auto-default
+  // computed from the internship start_date) so the student picks which
+  // internship-week they're logging instead of the system silently
+  // assigning calendar-week-of-year (which produced "week 32" in August).
   const emptyForm = {
+    week_number: "", // user-visible; falls back to auto-computed default
     week_start_date: "",
     week_end_date: "",
     tasks_completed: "", // textarea; converted to text[] on submit (one per line)
@@ -79,6 +84,14 @@ export default function StudentWeeklyLogsPage() {
     hours_worked: "",
   };
   const [formData, setFormData] = useState(emptyForm);
+
+  // Internship bounds for the active student_internship row. Used to
+  // (a) auto-suggest week_number, (b) clamp the week picker's min/max.
+  const [internshipBounds, setInternshipBounds] = useState<{
+    startDate: string | null;
+    endDate: string | null;
+    totalWeeks: number | null;
+  }>({ startDate: null, endDate: null, totalWeeks: null });
 
   // Helper: compute the current week's Monday → Sunday (YYYY-MM-DD).
   const getCurrentWeekRange = () => {
@@ -91,6 +104,42 @@ export default function StudentWeeklyLogsPage() {
     sunday.setDate(monday.getDate() + 6);
     const toIso = (d: Date) => d.toISOString().slice(0, 10);
     return { start: toIso(monday), end: toIso(sunday) };
+  };
+
+  // Helper: compute the 1-based internship-week number for a given date,
+  // based on the internship's start_date. Returns null if start_date is
+  // missing or the date is before the internship started.
+  const computeInternshipWeek = (
+    dateStr: string,
+    startDateStr: string | null,
+  ): number | null => {
+    if (!dateStr || !startDateStr) return null;
+    const date = new Date(dateStr);
+    const start = new Date(startDateStr);
+    if (isNaN(date.getTime()) || isNaN(start.getTime())) return null;
+    // Normalize to midnight to avoid DST/timezone edge cases.
+    date.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    if (date < start) return null;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysDiff = Math.floor((date.getTime() - start.getTime()) / msPerDay);
+    return Math.floor(daysDiff / 7) + 1;
+  };
+
+  // Helper: total weeks in the internship (from start_date to end_date, or
+  // a sensible minimum of 12 if end_date is missing).
+  const computeTotalWeeks = (
+    startDateStr: string | null,
+    endDateStr: string | null,
+  ): number | null => {
+    if (!startDateStr) return null;
+    const start = new Date(startDateStr);
+    if (isNaN(start.getTime())) return null;
+    const end = endDateStr ? new Date(endDateStr) : null;
+    if (!end || isNaN(end.getTime())) return 16; // sensible default
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const days = Math.max(7, Math.floor((end.getTime() - start.getTime()) / msPerDay));
+    return Math.max(1, Math.ceil(days / 7));
   };
 
   useEffect(() => {
@@ -180,11 +229,16 @@ export default function StudentWeeklyLogsPage() {
     try {
       const supabase = createClient();
 
-      // Derive supervisor_id + internship_id from the student's active student_internship.
-      // Prefer site_supervisor_id; fall back to faculty_supervisor_id.
+      // Derive supervisor_id + internship_id + start_date from the
+      // student's active student_internship. Prefer site_supervisor_id;
+      // fall back to faculty_supervisor_id.
+      //
+      // start_date / end_date are now fetched so we can compute the
+      // internship-week number (1, 2, 3, …) instead of the calendar
+      // week-of-year that previously produced bogus values like "week 32".
       const { data: si, error: siError } = await supabase
         .from("student_internships")
-        .select("id, internship_id, site_supervisor_id, faculty_supervisor_id, program_id, company_id, university_id, department_id")
+        .select("id, internship_id, site_supervisor_id, faculty_supervisor_id, program_id, company_id, university_id, department_id, start_date, end_date")
         .eq("student_user_id", user.id)
         .in("status", ["active", "assigned"])
         .order("created_at", { ascending: false })
@@ -195,17 +249,37 @@ export default function StudentWeeklyLogsPage() {
       // (week_number has a default now; internship_id is nullable).
       const supervisorId = si?.site_supervisor_id || si?.faculty_supervisor_id || null;
 
+      // Persist internship bounds so the week picker can clamp its min/max
+      // and offer a sensible default the next time the form opens.
+      const siStart = si?.start_date ?? null;
+      const siEnd = si?.end_date ?? null;
+      setInternshipBounds({
+        startDate: siStart,
+        endDate: siEnd,
+        totalWeeks: computeTotalWeeks(siStart, siEnd),
+      });
+
       const defaultRange = getCurrentWeekRange();
       const weekStart = formData.week_start_date || defaultRange.start;
       const weekEnd = formData.week_end_date || defaultRange.end;
 
-      // Compute week_number from week_start_date: weeks since the student's first log
-      // (or just 1 for the first log). Simpler: use 1-based index for the year.
-      const start = new Date(weekStart);
-      const yearStart = new Date(start.getFullYear(), 0, 1);
-      const weekNumber = Math.ceil(
-        ((start.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / 7
-      );
+      // Determine week_number: prefer the user's explicit input (if they
+      // typed one), otherwise auto-compute from the internship start_date
+      // and the chosen week_start_date. If neither is possible, default to
+      // 1 (DB default) rather than failing the submit.
+      let weekNumber: number;
+      const explicitWeek = formData.week_number
+        ? parseInt(formData.week_number, 10)
+        : NaN;
+      if (!isNaN(explicitWeek) && explicitWeek >= 1) {
+        weekNumber = explicitWeek;
+      } else {
+        const computed = computeInternshipWeek(weekStart, siStart);
+        weekNumber = computed ?? 1;
+      }
+      // Clamp to [1, totalWeeks] when totalWeeks is known.
+      const totalWeeks = computeTotalWeeks(siStart, siEnd);
+      if (totalWeeks && weekNumber > totalWeeks) weekNumber = totalWeeks;
 
       const payload: any = {
         student_user_id: user.id,
@@ -343,12 +417,54 @@ export default function StudentWeeklyLogsPage() {
                     <DialogHeader>
                       <DialogTitle>Submit Weekly Log</DialogTitle>
                       <DialogDescription>
-                        Defaults to the current week (Mon–Sun). Adjust the dates if needed.
-                        One task per line.
+                        Pick which internship week this log is for, then set the
+                        date range (defaults to current Mon–Sun). One task per line.
                       </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4 mt-4">
+                      {/* Week number picker — asks the student which
+                          internship-week they're logging instead of silently
+                          using calendar-week-of-year (which produced
+                          "week 32" in August). Default auto-computes from
+                          the internship start_date and the chosen week_start. */}
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Week #
+                          {internshipBounds.startDate && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {internshipBounds.totalWeeks
+                                ? `(internship started ${internshipBounds.startDate}; ${internshipBounds.totalWeeks} weeks total)`
+                                : `(internship started ${internshipBounds.startDate})`}
+                            </span>
+                          )}
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={internshipBounds.totalWeeks ?? undefined}
+                          step={1}
+                          placeholder={
+                            internshipBounds.startDate
+                              ? String(
+                                  computeInternshipWeek(
+                                    formData.week_start_date || getCurrentWeekRange().start,
+                                    internshipBounds.startDate,
+                                  ) ?? 1,
+                                )
+                              : "1"
+                          }
+                          value={formData.week_number}
+                          onChange={(e) =>
+                            setFormData({ ...formData, week_number: e.target.value })
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Leave blank to auto-compute from your internship start date
+                          and the selected week start.
+                        </p>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-sm font-medium mb-2 block">Week Start Date</label>

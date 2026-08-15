@@ -465,7 +465,8 @@ export default function FacultySupervisorEvaluationsPage() {
           const scoresObj = (e.scores && typeof e.scores === "object") ? e.scores : {};
           const scoreValues = Object.values(scoresObj).filter((v): v is number => typeof v === "number");
           const total = scoreValues.reduce((acc, v) => acc + v, 0);
-          const max = scoreValues.length * 10 || 100;
+          // Max is criteria_count * 5 (the API validates each score 0-5).
+          const max = scoreValues.length * 5 || 30;
           return {
             id: e.id,
             studentName: e.student_profile?.full_name || "Unknown Student",
@@ -753,7 +754,7 @@ export default function FacultySupervisorEvaluationsPage() {
           evaluatedAt: new Date().toISOString(),
           status: (newStatus === "approved" ? "approved" : newStatus === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
           score: evaluationForm.criteria.reduce((acc, c) => acc + c.score, 0),
-          maxScore: evaluationForm.criteria.length * 10,
+          maxScore: evaluationForm.criteria.length * 5,
           evaluatorComments: combinedComments || "",
         },
         ...prev,
@@ -1274,7 +1275,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Evaluation Criteria</CardTitle>
-                    <CardDescription>Score each criterion (0-10 scale)</CardDescription>
+                    <CardDescription>Score each criterion (0-5 scale)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -1290,15 +1291,15 @@ export default function FacultySupervisorEvaluationsPage() {
                               <Input
                                 type="number"
                                 min="0"
-                                max="10"
+                                max="5"
                                 value={criterion.score || ""}
                                 onChange={(e) => handleCriterionChange(criterion.id, parseInt(e.target.value) || 0)}
                                 className="w-16 text-center"
                               />
-                              <span className="text-sm text-muted-foreground">/10</span>
+                              <span className="text-sm text-muted-foreground">/5</span>
                             </div>
                           </div>
-                          <Progress value={(criterion.score / 10) * 100} className="h-2" />
+                          <Progress value={(criterion.score / 5) * 100} className="h-2" />
                         </div>
                       ))}
                       

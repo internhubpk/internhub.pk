@@ -111,7 +111,7 @@ const features = [
     icon: ClipboardCheck,
     title: "Evaluation System",
     description:
-      "HEC-compliant evaluations with digital signatures and automated scoring.",
+      "Structured evaluations with digital signatures and automated scoring.",
     color: "text-red-600 dark:text-red-400",
     bgColor: "bg-red-50 dark:bg-red-950/40",
   },
@@ -196,7 +196,7 @@ const audiences = [
     points: [
       "Branded, isolated portal per university (multi-tenant)",
       "Department coordinators and faculty supervisors manage their own students",
-      "HEC-aligned evaluation workflows with digital sign-off",
+      "Structured evaluation workflows with digital sign-off",
       "Program-wide reporting for administrators",
     ],
   },

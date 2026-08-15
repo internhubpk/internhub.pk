@@ -400,7 +400,7 @@ export default function SiteSupervisorEvaluationsPage() {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Evaluations"
-        description="Daily evaluations tied to tasks, and weekly evaluations aggregating the week's work. HEC-aligned criteria."
+        description="Daily evaluations tied to tasks, and weekly evaluations aggregating the week's work."
         actions={
           <Button variant="outline" size="sm" onClick={fetchAll}>
             <RefreshCw className="h-4 w-4 mr-2" /> Refresh
@@ -717,7 +717,7 @@ export default function SiteSupervisorEvaluationsPage() {
         description={
           evalForm?.type === "weekly"
             ? `Week ${evalForm.week_number} — rate the student's overall weekly performance.`
-            : "Rate the student's performance on this task. HEC-aligned criteria."
+            : "Rate the student's performance on this task."
         }
         maxWidthClassName="max-w-2xl"
         footer={

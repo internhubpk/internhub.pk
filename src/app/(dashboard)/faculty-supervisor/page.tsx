@@ -77,8 +77,8 @@ interface TaskNeedingAttention {
   title: string;
   assignedTo: string;
   dueDate: string;
-  status: "overdue" | "pending_review" | "not_started";
-  priority: "high" | "medium" | "low";
+  status: "overdue" | "pending_review" | "in_progress" | "completed" | "not_started";
+  priority: "high" | "medium" | "low" | "urgent";
 }
 
 // Default empty states - data will be fetched from database
@@ -172,19 +172,45 @@ export default function FacultySupervisorDashboard() {
                 .order("submitted_at", { ascending: false })
                 .limit(5)
             : Promise.resolve({ data: [] }),
-          // Tasks created by this supervisor (for "Tasks Needing Attention").
-          supabase
-            .from("tasks")
-            .select(`
-              id,
-              title,
-              due_date,
-              status,
-              created_at
-            `)
-            .eq("created_by", user.id)
-            .order("due_date", { ascending: true, nullsFirst: false })
-            .limit(10),
+          // Tasks assigned to this supervisor's students (for the
+          // "Tasks Needing Attention" card). Previously this query
+          // filtered `tasks WHERE created_by = user.id`, which only
+          // returned tasks the faculty supervisor created — but per
+          // the production brief, faculty supervisors do NOT create
+          // tasks (site supervisors do). The card was therefore
+          // always empty. We now fetch tasks via task_assignments
+          // joined to the supervised student_user_ids, which returns
+          // the real site-supervisor-created tasks the faculty
+          // supervisor needs to review/evaluate.
+          supervisedStudentIds.length > 0
+            ? supabase
+                .from("task_assignments")
+                .select(`
+                  status,
+                  due_date,
+                  task:tasks(
+                    id,
+                    title,
+                    description,
+                    due_date,
+                    status,
+                    priority,
+                    created_at,
+                    created_by,
+                    creator:profiles!tasks_created_by_fkey(full_name)
+                  ),
+                  student:profiles!task_assignments_student_user_id_fkey(full_name),
+                  latest_submission:task_submissions(
+                    id,
+                    status,
+                    submitted_at,
+                    reviewed_at
+                  )
+                `)
+                .in("student_user_id", supervisedStudentIds)
+                .order("due_date", { ascending: true, nullsFirst: false })
+                .limit(10)
+            : Promise.resolve({ data: [] }),
           // All weekly_logs for supervised students (used to compute progress).
           supervisedStudentIds.length > 0
             ? supabase
@@ -271,22 +297,83 @@ export default function FacultySupervisorDashboard() {
       }));
       setRecentSubmissions(recentSubs);
 
-      // Map tasks → TaskNeedingAttention
+      // Map task_assignments → TaskNeedingAttention.
+      // The query returns one row per (task, student) assignment with the
+      // nested task + student + latest_submission. We flatten this into
+      // the dashboard's TaskNeedingAttention shape, prioritising tasks
+      // that actually need the faculty supervisor's attention:
+      //   1. submissions waiting for review (status "submitted"/"resubmitted")
+      //   2. overdue tasks (due_date in the past, not completed)
+      //   3. in-progress tasks (status "in_progress" or "assigned")
       const now = new Date();
       const taskItems: TaskNeedingAttention[] = (tasksRes.data || [])
-        .map((t: any) => {
-          const due = t.due_date ? new Date(t.due_date) : null;
-          const isOverdue = due ? due.getTime() < now.getTime() && t.status !== "closed" : false;
+        .map((row: any) => {
+          const task = row.task || {};
+          const studentName = row.student?.full_name || "Student";
+          const assignmentStatus = (row.status || "").toLowerCase();
+          const latestSub = Array.isArray(row.latest_submission)
+            ? row.latest_submission[0]
+            : row.latest_submission;
+          const submissionStatus = (latestSub?.status || "").toLowerCase();
+          const due = task.due_date ? new Date(task.due_date) : null;
+          const isOverdue = due
+            ? due.getTime() < now.getTime() &&
+              !["completed", "closed", "cancelled"].includes(
+                (task.status || "").toLowerCase(),
+              )
+            : false;
+
+          let status: TaskNeedingAttention["status"] = "pending_review";
+          let priority: TaskNeedingAttention["priority"] = (task.priority as any) || "medium";
+          if (isOverdue) {
+            status = "overdue";
+            priority = "high";
+          } else if (
+            submissionStatus === "submitted" ||
+            submissionStatus === "resubmitted"
+          ) {
+            status = "pending_review";
+          } else if (
+            assignmentStatus === "submitted" ||
+            assignmentStatus === "resubmitted"
+          ) {
+            status = "pending_review";
+          } else if (
+            (task.status || "").toLowerCase() === "in_progress" ||
+            assignmentStatus === "pending"
+          ) {
+            status = "in_progress";
+          } else if (
+            ["completed", "closed", "approved"].includes(
+              (task.status || "").toLowerCase(),
+            ) ||
+            assignmentStatus === "approved"
+          ) {
+            status = "completed";
+          }
+
           return {
-            id: t.id,
-            title: t.title,
-            assignedTo: "Assigned students",
-            dueDate: t.due_date || new Date().toISOString(),
-            status: isOverdue ? "overdue" : "pending_review",
-            priority: isOverdue ? "high" : "medium",
+            id: task.id || row.id || Math.random().toString(36),
+            title: task.title || "Untitled task",
+            assignedTo: studentName,
+            dueDate: task.due_date || row.due_date || new Date().toISOString(),
+            status,
+            priority,
           } as TaskNeedingAttention;
         })
-        .filter((t) => t.status === "overdue")
+        // Show tasks that actually need attention — drop completed ones
+        // unless we have spare slots. Order: overdue > pending_review >
+        // in_progress > completed.
+        .sort((a, b) => {
+          const order: Record<string, number> = {
+            overdue: 0,
+            pending_review: 1,
+            in_progress: 2,
+            completed: 3,
+          };
+          return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+        })
+        .filter((t) => t.status !== "completed")
         .slice(0, 5);
       setTasksNeedingAttention(taskItems);
 
@@ -440,10 +527,13 @@ export default function FacultySupervisorDashboard() {
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
+            {/* "New Task" button removed — faculty supervisors do not create
+                tasks per the production brief. They view and evaluate
+                site-supervisor-created tasks from /faculty-supervisor/tasks. */}
             <Button asChild>
               <Link href="/faculty-supervisor/tasks">
-                <Plus className="h-4 w-4 mr-2" />
-                New Task
+                <Eye className="h-4 w-4 mr-2" />
+                View Student Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>
@@ -692,10 +782,14 @@ export default function FacultySupervisorDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-2">
+                {/* "Create Task" quick action removed — faculty supervisors
+                    do not create tasks. Replaced with "View Tasks" which
+                    links to the read-only task list (site-supervisor-created
+                    tasks assigned to this supervisor's students). */}
                 <Link href="/faculty-supervisor/tasks">
                   <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-                    <Plus className="h-5 w-5" />
-                    <span className="text-xs">Create Task</span>
+                    <Eye className="h-5 w-5" />
+                    <span className="text-xs">View Tasks</span>
                   </Button>
                 </Link>
                 <Link href="/faculty-supervisor/evaluations">

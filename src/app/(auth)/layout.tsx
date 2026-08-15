@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { GraduationCap } from "lucide-react";
 
 /**
  * Auth layout (wraps /login and /register — /register just redirects here
@@ -9,6 +10,11 @@ import type { ReactNode } from "react";
  * wrapper (login/page.tsx) used px-1 py-2 (4px/8px), crushing the form
  * against the card edge. Padding now lives on the card shell here
  * instead, applied generously and consistently at every breakpoint.
+ *
+ * Brand mark: uses the same GraduationCap icon (in a blue rounded box)
+ * that appears in site-nav, public-footer, and the favicon. This unifies
+ * the auth page with the rest of the app's identity — previously it had
+ * a unique "stacked chevrons" SVG that didn't match any other surface.
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -33,55 +39,19 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
       {/* Main content card */}
       <div className="relative z-10 w-full max-w-md">
-        {/* Logo */}
+        {/* Logo — GraduationCap in a blue rounded box, matching site-nav
+            and public-footer. */}
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center mb-3 sm:mb-4">
             <div className="relative group">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-[2px] shadow-xl shadow-blue-500/25">
-                <div className="w-full h-full rounded-2xl bg-white dark:bg-gray-900 flex items-center justify-center">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-8 h-8 sm:w-9 sm:h-9"
-                  >
-                    <defs>
-                      <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#2563eb" />
-                        <stop offset="50%" stopColor="#4f46e5" />
-                        <stop offset="100%" stopColor="#7c3aed" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M12 2L2 7L12 12L22 7L12 2Z"
-                      stroke="url(#logo-gradient)"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
-                    />
-                    <path
-                      d="M2 17L12 22L22 17"
-                      stroke="url(#logo-gradient)"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 12L12 17L22 12"
-                      stroke="url(#logo-gradient)"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-xl shadow-blue-500/25 flex items-center justify-center">
+                <GraduationCap className="w-8 h-8 sm:w-9 sm:h-9 text-white" strokeWidth={2} />
               </div>
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 opacity-0 blur-xl transition-opacity group-hover:opacity-20" />
+              <div className="absolute inset-0 rounded-2xl bg-blue-600 opacity-0 blur-xl transition-opacity group-hover:opacity-20" />
             </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
               InternHub
             </span>
           </h1>

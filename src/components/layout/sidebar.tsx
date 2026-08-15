@@ -140,10 +140,11 @@ function SidebarContent({
   //   1. university.logo_url  — the per-university uploaded logo (DB).
   //      This is the ONLY source of truth for an actual branded logo.
   //   2. tenant.logoUrl/logo  — but ONLY if it differs from the platform
-  //      default `/logo.svg`. The platform default is the InternHub "Z"
-  //      mark — it should NOT be shown on a university's sidebar.
+  //      default `/logo.svg`. The platform default is the InternHub
+  //      graduation-cap mark — it should NOT be shown on a university's
+  //      sidebar (use the university's own logo or the Building2 fallback).
   //   3. No logo at all  →  render the <Building2/> Lucide icon as a
-  //      neutral university-themed fallback (replaces the Z).
+  //      neutral university-themed fallback.
   //
   // Why Building2 instead of GraduationCap: GraduationCap reads as
   // "student/learning"; Building2 reads as "institution/university",
@@ -358,7 +359,7 @@ function SidebarContent({
           >
             {brandLogo ? (
               // Real uploaded logo (university.logo_url or tenant
-              // override). NOT the platform default /logo.svg (Z).
+              // override). NOT the platform default /logo.svg (graduation cap).
               <img
                 src={brandLogo}
                 alt={`${tenantName} logo`}
