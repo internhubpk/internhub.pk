@@ -86,9 +86,12 @@ export default function SupportPage() {
       </section>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16 max-w-5xl">
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Contact */}
-          <Card className="hover:shadow-lg transition-shadow">
+        {/* Contact Us — centered in its own row. Pulled out of the grid so
+            the card sits dead-center horizontally instead of pinned to the
+            left column. Capped at max-w-md so the card stays readable on
+            wide screens instead of stretching across the page. */}
+        <div className="flex justify-center mb-8 sm:mb-10 md:mb-12">
+          <Card className="w-full max-w-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mail className="h-5 w-5 text-primary" />
@@ -126,27 +129,27 @@ export default function SupportPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* FAQ */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Frequently Asked Questions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                {faqs.map((faq, i) => (
-                  <div key={i} className="p-4 rounded-lg border space-y-2">
-                    <h4 className="font-medium text-sm">{faq.q}</h4>
-                    <p className="text-sm text-muted-foreground">{faq.a}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-6">
-                Don&apos;t see your question? Reach out via WhatsApp above and we&apos;ll get back to you.
-              </p>
-            </CardContent>
-          </Card>
         </div>
+
+        {/* FAQ — full width below */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Frequently Asked Questions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              {faqs.map((faq, i) => (
+                <div key={i} className="p-4 rounded-lg border space-y-2">
+                  <h4 className="font-medium text-sm">{faq.q}</h4>
+                  <p className="text-sm text-muted-foreground">{faq.a}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-6">
+              Don&apos;t see your question? Reach out via WhatsApp above and we&apos;ll get back to you.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <PublicFooter isTenant={isTenant} branding={branding} />
