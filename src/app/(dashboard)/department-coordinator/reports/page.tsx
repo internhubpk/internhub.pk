@@ -43,6 +43,9 @@ interface DepartmentStats {
   activeStudents: number;
   completedInternships: number;
   activeInternships: number;
+  /** Internships in the active pipeline (assigned + active + paused) —
+   *  i.e. neither completed nor terminated. */
+  inProgressInternships?: number;
   pendingAssignments: number;
   totalSupervisors: number;
   totalPrograms: number;
@@ -252,7 +255,8 @@ export default function ReportsPage() {
           ["Total Programs", stats.totalPrograms],
           ["Active Programs", stats.activePrograms],
           ["Total Supervisors", stats.totalSupervisors],
-          ["Active Internships", stats.activeInternships],
+          ["In-Progress Internships", stats.inProgressInternships ?? stats.activeInternships],
+          ["Active Internships (status='active')", stats.activeInternships],
           ["Completed Internships", stats.completedInternships],
           ["Pending Assignments", stats.pendingAssignments],
         ].map(row => row.join(",")).join("\n");
@@ -299,13 +303,18 @@ export default function ReportsPage() {
     URL.revokeObjectURL(link.href);
   };
 
-  // Calculate participation rate
+  // Calculate participation rate using in-progress internships
+  // (assigned + active + paused) — this is the real pipeline count
+  // rather than just rows that have flipped to status='active'.
+  const effectiveActive = stats?.inProgressInternships ?? stats?.activeInternships ?? 0;
   const participationRate = stats && stats.totalStudents > 0 
-    ? Math.round(((stats.activeInternships || 0) / stats.totalStudents) * 100)
+    ? Math.round((effectiveActive / stats.totalStudents) * 100)
     : 0;
 
-  // Calculate completion rate
-  const totalInternships = (stats?.activeInternships || 0) + (stats?.completedInternships || 0);
+  // Calculate completion rate.
+  // Use effectiveActive (in-progress) so the denominator reflects all
+  // internships currently or previously in the pipeline.
+  const totalInternships = effectiveActive + (stats?.completedInternships || 0);
   const completionRate = totalInternships > 0
     ? Math.round(((stats?.completedInternships || 0) / totalInternships) * 100)
     : 0;
@@ -355,8 +364,8 @@ export default function ReportsPage() {
           index={0}
         />
         <StatsCard
-          title="Active Internships"
-          value={stats?.activeInternships.toString() || "0"}
+          title="In-Progress Internships"
+          value={(stats?.inProgressInternships ?? stats?.activeInternships ?? 0).toString()}
           icon={BookOpen}
           description={`${participationRate}% participation`}
           index={1}
@@ -508,14 +517,14 @@ export default function ReportsPage() {
                       <div className="flex justify-between text-sm">
                         <span className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-blue-500" />
-                          Active Internships
+                          In-Progress Internships
                         </span>
-                        <span className="font-medium">{stats?.activeInternships || 0}</span>
+                        <span className="font-medium">{effectiveActive}</span>
                       </div>
                       <Progress
                         value={
                           totalInternships > 0
-                            ? ((stats?.activeInternships || 0) / totalInternships) * 100
+                            ? (effectiveActive / totalInternships) * 100
                             : 0
                         }
                       />

@@ -40,6 +40,10 @@ interface DepartmentStats {
   activeStudents: number;
   completedInternships: number;
   activeInternships: number;
+  /** Internships that are in the active pipeline (assigned + active + paused).
+   *  Provided by the API so coordinators see real participation, not just
+   *  rows that have already flipped to status='active'. */
+  inProgressInternships?: number;
   pendingAssignments: number;
   totalSupervisors: number;
   totalPrograms: number;
@@ -208,8 +212,11 @@ export default function DepartmentCoordinatorDashboard() {
       bgColor: "bg-violet-50 dark:bg-violet-950",
     },
     {
-      title: "Active Internships",
-      value: stats?.activeInternships.toString() || "0",
+      // Display the in-progress count (assigned + active + paused) so the
+      // coordinator sees the REAL pipeline — students in 'assigned' status
+      // haven't started the actual internship yet but ARE in the program.
+      title: "In-Progress Internships",
+      value: (stats?.inProgressInternships ?? stats?.activeInternships ?? 0).toString(),
       icon: Briefcase,
       color: "text-orange-600 dark:text-orange-400",
       bgColor: "bg-orange-50 dark:bg-orange-950",
@@ -574,8 +581,8 @@ export default function DepartmentCoordinatorDashboard() {
               </div>
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <Briefcase className="h-8 w-8 mx-auto text-blue-600" />
-                <p className="text-2xl font-bold">{stats?.activeInternships || 0}</p>
-                <p className="text-sm text-muted-foreground">Active Internships</p>
+                <p className="text-2xl font-bold">{stats?.inProgressInternships ?? stats?.activeInternships ?? 0}</p>
+                <p className="text-sm text-muted-foreground">In-Progress Internships</p>
               </div>
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <CheckCircle2 className="h-8 w-8 mx-auto text-violet-600" />
@@ -585,8 +592,8 @@ export default function DepartmentCoordinatorDashboard() {
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <TrendingUp className="h-8 w-8 mx-auto text-orange-600" />
                 <p className="text-2xl font-bold">
-                  {stats?.activeInternships && stats.totalStudents > 0
-                    ? Math.round((stats.activeInternships / stats.totalStudents) * 100)
+                  {(stats?.inProgressInternships ?? stats?.activeInternships ?? 0) > 0 && (stats?.totalStudents ?? 0) > 0
+                    ? Math.round(((stats?.inProgressInternships ?? stats?.activeInternships ?? 0) / (stats?.totalStudents ?? 1) * 100))
                     : 0}%
                 </p>
                 <p className="text-sm text-muted-foreground">Participation Rate</p>

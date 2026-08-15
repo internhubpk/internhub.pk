@@ -74,11 +74,16 @@ interface RawInternshipRow {
     logo_url: string | null;
     industry?: string | null;
   } | null;
-  // applications is an array because of the has-many relationship — the
-  // PostgREST join returns one row per application. We filter out
-  // `withdrawn` rows in JS and use the array length as the real
-  // applicant_count (replacing the unreliable `internships.current_applicants`
-  // column which is only bumped by a missing RPC).
+  // PostgREST returns the joined application rows under the ALIAS
+  // declared in the select() call. The query uses
+  // `applications:internship_applications(id, status)`, so the joined
+  // rows live under `row.applications`. The previous type declared
+  // this as `internship_applications`, which didn't match — the
+  // runtime array was always undefined and the displayed applicant
+  // count was always 0.
+  applications?: { id: string; status: string }[] | null;
+  // Back-compat alias kept for defensive code that may still read
+  // the un-aliased name.
   internship_applications?: { id: string; status: string }[] | null;
 }
 
@@ -168,8 +173,15 @@ function MarketplacePageContent() {
           const transformed: MarketplaceInternship[] = (data as unknown as RawInternshipRow[]).map((row) => {
             const company = row.company;
             // Count REAL applications, excluding withdrawn ones.
-            const apps = Array.isArray(row.internship_applications)
-              ? row.internship_applications.filter(
+            // PostgREST returns the joined rows under the ALIAS we
+            // declared in the select() call. The previous code read
+            // `row.internship_applications` — but the alias is
+            // `applications`, so the array was always undefined and
+            // the displayed count was always 0. Read BOTH shapes for
+            // defensive back-compat.
+            const appsSource = (row as any).applications ?? (row as any).internship_applications;
+            const apps = Array.isArray(appsSource)
+              ? appsSource.filter(
                   (a: any) => a && a.status !== "withdrawn",
                 )
               : [];

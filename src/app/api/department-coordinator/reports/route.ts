@@ -20,6 +20,10 @@ interface DepartmentStats {
   activeStudents: number;
   completedInternships: number;
   activeInternships: number;
+  /** Internships that are in the active pipeline (assigned + active + paused)
+   *  — i.e. neither completed nor terminated. Coordinators see this as
+   *  "currently in progress" on the dashboard. */
+  inProgressInternships: number;
   pendingAssignments: number;
   totalSupervisors: number;
   totalPrograms: number;
@@ -137,50 +141,112 @@ async function getOverviewStats(
   // NOTE: `students` table has no `status` column — the previous code filtered
   // on a non-existent column, which caused PostgREST to 400 every call.
   // `students.user_id` (not `id`) is the PK.
-  let studentQuery = supabase
-    .from("students")
-    .select("user_id", { count: "exact" });
+  //
+  // CRITICAL: supabase-js's `.eq()` MUTATES the underlying URL builder
+  // (`this.url.searchParams.append(...)` then `return this`). Re-using
+  // the same `programQuery` / `internshipQuery` variable for both the
+  // total and the filtered variant caused the previous code to ACCUMULATE
+  // filters across the Promise.all entries:
+  //   - `programQuery.eq("is_active", true)` mutated the same builder
+  //     used by `programQuery`, so the "total programs" count was also
+  //     filtered to active only.
+  //   - `internshipQuery.eq("status", "active")` + `.eq("status", "completed")`
+  //     were applied to the SAME builder, producing a query like
+  //     `?status=eq.active&status=eq.completed` — PostgREST AND-s these,
+  //     so active_internships and completed_internships BOTH returned 0.
+  // The fix is to build SEPARATE query builders for each metric. Each
+  // helper below constructs its own filters from `filters` so there's
+  // no shared mutable state.
 
-  let programQuery = supabase
-    .from("programs")
-    .select("id, is_active", { count: "exact" });
+  const buildStudentQuery = () => {
+    let q = supabase
+      .from("students")
+      .select("user_id", { count: "exact" });
+    if (filters.department_id) {
+      q = q.eq("department_id", filters.department_id);
+    } else if (filters.university_id) {
+      q = q.eq("university_id", filters.university_id);
+    }
+    return q;
+  };
 
-  let supervisorQuery = supabase
-    .from("supervisors")
-    .select("id", { count: "exact" })
-    .eq("type", "faculty");
+  const buildProgramQuery = (activeOnly: boolean) => {
+    let q = supabase
+      .from("programs")
+      .select("id, is_active", { count: "exact" });
+    if (filters.department_id) {
+      q = q.eq("department_id", filters.department_id);
+    } else if (filters.university_id) {
+      q = q.eq("university_id", filters.university_id);
+    }
+    if (activeOnly) {
+      q = q.eq("is_active", true);
+    }
+    return q;
+  };
 
-  let internshipQuery = supabase
-    .from("student_internships")
-    .select("id, status", { count: "exact" });
+  const buildSupervisorQuery = () => {
+    let q = supabase
+      .from("supervisors")
+      .select("id", { count: "exact" })
+      .eq("type", "faculty");
+    if (filters.department_id) {
+      q = q.eq("department_id", filters.department_id);
+    } else if (filters.university_id) {
+      q = q.eq("university_id", filters.university_id);
+    }
+    return q;
+  };
 
-  // Apply department/university filters
+  // For internships, we need to fetch the department's student ids first
+  // (so we can filter by `student_user_id IN (...)` as defense-in-depth
+  // against NULL `department_id` on `student_internships` rows).
+  let deptStudentIds: string[] = [];
   if (filters.department_id) {
-    studentQuery = studentQuery.eq("department_id", filters.department_id);
-    programQuery = programQuery.eq("department_id", filters.department_id);
-    supervisorQuery = supervisorQuery.eq("department_id", filters.department_id);
-    internshipQuery = internshipQuery.eq("department_id", filters.department_id);
-
-    // For internships, also restrict to students in this department (defense-in-depth
-    // in case the denormalized `department_id` on `student_internships` is NULL).
     const { data: deptStudents } = await supabase
       .from("students")
       .select("user_id")
       .eq("department_id", filters.department_id!);
-    
-    const studentIds = deptStudents?.map(s => s.user_id) || [];
-    if (studentIds.length > 0) {
-      internshipQuery = internshipQuery.in("student_user_id", studentIds);
+    deptStudentIds = (deptStudents || []).map((s) => s.user_id);
+  }
+
+  const buildInternshipQuery = (status: string) => {
+    let q = supabase
+      .from("student_internships")
+      .select("id, status", { count: "exact" })
+      .eq("status", status);
+    if (filters.department_id) {
+      q = q.eq("department_id", filters.department_id);
+      if (deptStudentIds.length > 0) {
+        q = q.in("student_user_id", deptStudentIds);
+      }
+    } else if (filters.university_id) {
+      q = q.eq("university_id", filters.university_id);
     }
-  }
+    return q;
+  };
 
-  if (filters.university_id && !filters.department_id) {
-    studentQuery = studentQuery.eq("university_id", filters.university_id);
-    programQuery = programQuery.eq("university_id", filters.university_id);
-    supervisorQuery = supervisorQuery.eq("university_id", filters.university_id);
-  }
+  // "In-progress" internships = assigned + active + paused (anything
+  // not completed/terminated). We build this with `.in("status", [...])`
+  // on its own builder — separate from the per-status builders below.
+  const buildInProgressInternshipQuery = () => {
+    let q = supabase
+      .from("student_internships")
+      .select("id, status", { count: "exact" })
+      .in("status", ["assigned", "active", "paused"]);
+    if (filters.department_id) {
+      q = q.eq("department_id", filters.department_id);
+      if (deptStudentIds.length > 0) {
+        q = q.in("student_user_id", deptStudentIds);
+      }
+    } else if (filters.university_id) {
+      q = q.eq("university_id", filters.university_id);
+    }
+    return q;
+  };
 
-  // Execute all queries in parallel.
+  // Execute all queries in parallel — each one is its own builder
+  // instance, so no shared-mutable-state accumulation.
   // `students` has no `status` column — `activeStudents` previously came from
   // a `.eq("status", "active")` filter that 400'd. We now report it equal to
   // `totalStudents` until a real status column is added.
@@ -191,13 +257,15 @@ async function getOverviewStats(
     supervisorsResult,
     activeInternshipsResult,
     completedInternshipsResult,
+    inProgressResult,
   ] = await Promise.all([
-    studentQuery,
-    programQuery,
-    programQuery.eq("is_active", true),
-    supervisorQuery,
-    internshipQuery.eq("status", "active"),
-    internshipQuery.eq("status", "completed"),
+    buildStudentQuery(),
+    buildProgramQuery(false),
+    buildProgramQuery(true),
+    buildSupervisorQuery(),
+    buildInternshipQuery("active"),
+    buildInternshipQuery("completed"),
+    buildInProgressInternshipQuery(),
   ]);
 
   // Count students without supervisors (pending assignments).
@@ -268,6 +336,7 @@ async function getOverviewStats(
     totalSupervisors: supervisorsResult.count || 0,
     activeInternships: activeInternshipsResult.count || 0,
     completedInternships: completedInternshipsResult.count || 0,
+    inProgressInternships: inProgressResult.count || 0,
     pendingAssignments: pendingAssignmentsCount,
   };
 
