@@ -402,29 +402,15 @@ export default function StudentWeeklyLogsPage() {
       }
 
       // Step 5: Patch the log with the uploaded URLs (signature is already
-      // saved by the signature route; we just need logo + evidence).
-      // The signature route already updated student_signature_url on the row,
-      // so we only need to persist logo + evidence.
-      const patchRes = await fetch("/api/student/weekly-logs", {
-        method: "POST",
+      // saved by the signature route, but we send it again for safety; logo
+      // + evidence need to be persisted).
+      const patchRes = await fetch(`/api/student/weekly-logs/${logId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Sending the same payload again will upsert (same week_start_date
-          // → unique constraint → falls into the update branch). This is
-          // wasteful but works. Better: a dedicated PATCH /api/student/weekly-logs/[id].
-          // For now we accept the redundancy.
-          ...formData,
-          tasks_completed: formData.weekly_activities
-            .map((r) => r.tasks)
-            .filter(Boolean)
-            .join("\n"),
-          hours_worked: formData.weekly_activities.reduce(
-            (sum, r) => sum + (Number(r.hours) || 0),
-            0
-          ),
           supporting_evidence: uploadedEvidence,
-          student_signature_url: signatureUrl,
           university_logo_url: logoUrl,
+          student_signature_url: signatureUrl,
         }),
       });
 
@@ -597,10 +583,6 @@ export default function StudentWeeklyLogsPage() {
           {/* Header — fixed */}
           <div className="px-6 py-4 border-b shrink-0">
             <DialogTitle className="text-base font-semibold">Weekly Internship Activity Report</DialogTitle>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Fill in all fields, attach supporting evidence, upload your university logo, and sign at the bottom.
-              Your site supervisor and faculty supervisor will both need to sign off.
-            </p>
           </div>
 
           {/* Scrollable body */}
@@ -708,12 +690,12 @@ export default function StudentWeeklyLogsPage() {
                   }
                 />
                 <InfoCell
-                  label="Supervisor"
-                  value={
-                    activeInternship?.site_supervisor?.full_name ||
-                    activeInternship?.faculty_supervisor?.full_name ||
-                    "—"
-                  }
+                  label="Site Supervisor"
+                  value={activeInternship?.site_supervisor?.full_name || "—"}
+                />
+                <InfoCell
+                  label="Faculty Supervisor"
+                  value={activeInternship?.faculty_supervisor?.full_name || "—"}
                 />
                 <InfoCell
                   label="Department"
@@ -1002,12 +984,19 @@ function SectionDivider() {
   return <div className="h-px bg-border" />;
 }
 
-// Compact label/value cell used in the auto-fetched student info grid
+// Compact label/value cell used in the auto-fetched student info grid.
+// Shows a muted hint pill when the value is missing so the student knows
+// to update their profile / ask their coordinator.
 function InfoCell({ label, value, className }: { label: string; value: string; className?: string }) {
+  const missing = !value || value === "—";
   return (
     <div className={cn("px-3 py-2 bg-muted/20", className)}>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
-      <p className="text-sm font-medium truncate">{value}</p>
+      {missing ? (
+        <p className="text-sm text-muted-foreground italic">Not set in profile</p>
+      ) : (
+        <p className="text-sm font-medium truncate">{value}</p>
+      )}
     </div>
   );
 }
