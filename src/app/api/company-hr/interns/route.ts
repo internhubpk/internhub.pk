@@ -247,25 +247,45 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Also fetch the list of active site supervisors for the assignment dropdown.
-    const { data: supervisors } = await supabase
-      .from("supervisors")
-      .select(
+    // Also fetch the list of active site supervisors AND external evaluators
+    // for the assignment dropdown. Both are returned as separate arrays so the
+    // UI can present them as two clearly labeled groups.
+    const [siteSupRes, extEvalRes] = await Promise.all([
+      supabase
+        .from("supervisors")
+        .select(
+          `
+          user_id,
+          company_id,
+          is_active,
+          first_name,
+          last_name,
+          email,
+          profiles:user_id (full_name, first_name, last_name, email)
         `
-        user_id,
-        company_id,
-        is_active,
-        first_name,
-        last_name,
-        email,
-        profiles:user_id (full_name, first_name, last_name, email)
-      `
-      )
-      .eq("company_id", profile.company_id)
-      .eq("type", "site")
-      .eq("is_active", true);
+        )
+        .eq("company_id", profile.company_id)
+        .eq("type", "site")
+        .eq("is_active", true),
+      supabase
+        .from("supervisors")
+        .select(
+          `
+          user_id,
+          company_id,
+          is_active,
+          first_name,
+          last_name,
+          email,
+          profiles:user_id (full_name, first_name, last_name, email)
+        `
+        )
+        .eq("company_id", profile.company_id)
+        .eq("type", "external")
+        .eq("is_active", true),
+    ]);
 
-    const supervisorList = (supervisors || []).map((s: any) => ({
+    const mapSupervisor = (s: any) => ({
       user_id: s.user_id,
       name:
         s.profiles?.full_name ||
@@ -273,9 +293,17 @@ export async function GET(request: NextRequest) {
         [s.profiles?.first_name, s.profiles?.last_name].filter(Boolean).join(" ") ||
         s.email,
       email: s.profiles?.email || s.email,
-    }));
+    });
 
-    return NextResponse.json({ success: true, data: enriched, supervisors: supervisorList });
+    const supervisorList = (siteSupRes.data || []).map(mapSupervisor);
+    const externalEvaluatorList = (extEvalRes.data || []).map(mapSupervisor);
+
+    return NextResponse.json({
+      success: true,
+      data: enriched,
+      supervisors: supervisorList,
+      external_evaluators: externalEvaluatorList,
+    });
   } catch (error) {
     console.error("Unexpected error:", error);
     return NextResponse.json(

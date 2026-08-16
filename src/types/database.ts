@@ -178,6 +178,8 @@ export interface ProgramRow {
   description: string | null;
   duration_weeks: number | null;
   is_active: boolean;
+  default_faculty_supervisor_id: string | null;
+  default_external_evaluator_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -318,6 +320,7 @@ export interface StudentInternshipRow {
   program_id: string | null;
   faculty_supervisor_id: string | null;
   site_supervisor_id: string | null;
+  external_evaluator_id: string | null;
   start_date: string;
   end_date: string | null;
   status: StudentInternshipStatus;

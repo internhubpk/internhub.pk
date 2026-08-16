@@ -75,10 +75,12 @@ interface Program {
   university_id: string;
   department_id: string;
   default_faculty_supervisor_id: string | null;
+  default_external_evaluator_id?: string | null;
   student_count?: number;
   created_at: string;
   updated_at: string;
   supervisor?: { full_name: string | null; email: string } | null;
+  external_evaluator?: { full_name: string | null; email: string } | null;
 }
 
 interface ProgramFormData {
@@ -87,6 +89,7 @@ interface ProgramFormData {
   description: string;
   duration_weeks: number;
   default_faculty_supervisor_id: string;
+  default_external_evaluator_id: string;
   is_active: boolean;
   // Cascading account creation: when a Department Coordinator creates
   // a new program, they simultaneously create the faculty_supervisor
@@ -111,6 +114,7 @@ const emptyForm: ProgramFormData = {
   description: "",
   duration_weeks: 8,
   default_faculty_supervisor_id: "",
+  default_external_evaluator_id: "",
   is_active: true,
   supervisorEmail: "",
   supervisorPassword: "",
@@ -122,6 +126,7 @@ export default function ProgramsPage() {
   const { profile } = useAuth();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [supervisors, setSupervisors] = useState<Profile[]>([]);
+  const [externalEvaluators, setExternalEvaluators] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActive, setFilterActive] = useState<string>("all");
@@ -132,32 +137,49 @@ export default function ProgramsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedProgram, setExpandedProgram] = useState<string | null>(null);
 
-  // Fetch faculty supervisors available to this coordinator's department.
-  // Faculty supervisors are profiles with role='faculty_supervisor' in
-  // the same university (and optionally same department). They're the
-  // pool the coordinator can allot to a program.
-  // Filter by `department_id` (NOT `university_id`) — a coordinator should
-  // only see and assign faculty supervisors from THEIR OWN department, not
-  // every supervisor in the university. The previous `university_id` filter
-  // was a cross-department data leak: a coordinator could see and assign
-  // supervisors from sibling departments in the same university.
+  // Fetch faculty supervisors AND external evaluators available to this
+  // coordinator's department. Faculty supervisors are filtered to the
+  // coordinator's own department only (no cross-department leak).
+  // External evaluators are fetched university-wide because they may be
+  // cross-department / industry experts.
   const fetchSupervisors = useCallback(async () => {
     if (!profile?.department_id) return;
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("department_id", profile.department_id)
-        .eq("role", "faculty_supervisor")
-        .eq("is_active", true)
-        .order("full_name");
-      if (error) throw error;
-      setSupervisors(data || []);
+      const [facRes, extRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("department_id", profile.department_id)
+          .eq("role", "faculty_supervisor")
+          .eq("is_active", true)
+          .order("full_name"),
+        // External evaluators are cross-department; filter by university
+        // (or no filter at all if university_id is missing).
+        profile.university_id
+          ? supabase
+              .from("profiles")
+              .select("*")
+              .eq("university_id", profile.university_id)
+              .eq("role", "external_evaluator")
+              .eq("is_active", true)
+              .order("full_name")
+          : supabase
+              .from("profiles")
+              .select("*")
+              .eq("role", "external_evaluator")
+              .eq("is_active", true)
+              .order("full_name"),
+      ]);
+
+      if (facRes.error) throw facRes.error;
+      if (extRes.error) throw extRes.error;
+      setSupervisors(facRes.data || []);
+      setExternalEvaluators(extRes.data || []);
     } catch (error) {
-      console.error("Error fetching faculty supervisors:", error);
+      console.error("Error fetching supervisors/evaluators:", error);
     }
-  }, [profile?.department_id]);
+  }, [profile?.department_id, profile?.university_id]);
 
   useEffect(() => {
     fetchSupervisors();
@@ -236,6 +258,14 @@ export default function ProgramsPage() {
         programPayload.default_faculty_supervisor_id = "";
       }
 
+      // Strip the default_external_evaluator_id when CREATING — we'll
+      // set it via a follow-up PUT once any new evaluator account exists.
+      // For EDIT mode, we keep whatever the coordinator selected so the
+      // value is updated alongside the rest of the program fields.
+      if (!editingProgram) {
+        programPayload.default_external_evaluator_id = "";
+      }
+
       const url = editingProgram ? "/api/programs" : "/api/programs";
       const method = editingProgram ? "PUT" : "POST";
 
@@ -312,7 +342,8 @@ export default function ProgramsPage() {
         // If the supervisor account was created successfully, link it
         // to the program via PUT /api/programs. This sets
         // default_faculty_supervisor_id, which is what the program
-        // card and detail pages display.
+        // card and detail pages display. Also pass through the
+        // default_external_evaluator_id the coordinator may have picked.
         if (supervisorUserId) {
           const linkRes = await fetch("/api/programs", {
             method: "PUT",
@@ -324,6 +355,7 @@ export default function ProgramsPage() {
               description: programPayload.description,
               duration_weeks: programPayload.duration_weeks,
               default_faculty_supervisor_id: supervisorUserId,
+              default_external_evaluator_id: formData.default_external_evaluator_id || null,
               is_active: programPayload.is_active,
             }),
           });
@@ -393,6 +425,7 @@ export default function ProgramsPage() {
       description: program.description || "",
       duration_weeks: program.duration_weeks,
       default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
+      default_external_evaluator_id: program.default_external_evaluator_id || "",
       is_active: program.is_active,
       // Cascading-account-creation fields are CREATE-mode only. They're
       // initialized to empty so the form state is well-typed; the
@@ -416,6 +449,20 @@ export default function ProgramsPage() {
         (s) => s.user_id === program.default_faculty_supervisor_id
       );
       if (sup) return sup.full_name || sup.email;
+    }
+    return null;
+  };
+
+  // Get the external evaluator display name for a program.
+  // Same lookup pattern as supervisorNameFor.
+  const externalEvaluatorNameFor = (program: Program): string | null => {
+    if (program.external_evaluator?.full_name) return program.external_evaluator.full_name;
+    if (program.external_evaluator?.email) return program.external_evaluator.email;
+    if (program.default_external_evaluator_id) {
+      const ev = externalEvaluators.find(
+        (s) => s.user_id === program.default_external_evaluator_id
+      );
+      if (ev) return ev.full_name || ev.email;
     }
     return null;
   };
@@ -517,37 +564,70 @@ export default function ProgramsPage() {
                 </div>
 
                 {editingProgram ? (
-                  // EDIT mode: show the existing supervisor dropdown
-                  // so the coordinator can reassign to any existing
-                  // faculty supervisor in the department.
-                  <div className="space-y-2">
-                    <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
-                    <Select
-                      value={formData.default_faculty_supervisor_id || "__none__"}
-                      onValueChange={(value) =>
-                        setFormData({
-                          ...formData,
-                          default_faculty_supervisor_id:
-                            value === "__none__" ? "" : value,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="supervisor">
-                        <SelectValue placeholder="Select a faculty supervisor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None allotted</SelectItem>
-                        {supervisors.map((sup) => (
-                          <SelectItem key={sup.user_id} value={sup.user_id}>
-                            {sup.full_name || sup.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      The allotted supervisor will be the default faculty supervisor
-                      for students enrolling in this program. You can change this later.
-                    </p>
+                  // EDIT mode: show dropdowns for both the default
+                  // faculty supervisor AND the default external
+                  // evaluator. Either can be left "None allotted".
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
+                      <Select
+                        value={formData.default_faculty_supervisor_id || "__none__"}
+                        onValueChange={(value) =>
+                          setFormData({
+                            ...formData,
+                            default_faculty_supervisor_id:
+                              value === "__none__" ? "" : value,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="supervisor">
+                          <SelectValue placeholder="Select a faculty supervisor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">None allotted</SelectItem>
+                          {supervisors.map((sup) => (
+                            <SelectItem key={sup.user_id} value={sup.user_id}>
+                              {sup.full_name || sup.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        The allotted supervisor will be the default faculty supervisor
+                        for students enrolling in this program. You can change this later.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="externalEvaluator">Allot External Evaluator</Label>
+                      <Select
+                        value={formData.default_external_evaluator_id || "__none__"}
+                        onValueChange={(value) =>
+                          setFormData({
+                            ...formData,
+                            default_external_evaluator_id:
+                              value === "__none__" ? "" : value,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="externalEvaluator">
+                          <SelectValue placeholder="Select an external evaluator" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">None allotted</SelectItem>
+                          {externalEvaluators.map((ev) => (
+                            <SelectItem key={ev.user_id} value={ev.user_id}>
+                              {ev.full_name || ev.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        The allotted evaluator will be the default external evaluator
+                        for students enrolling in this program. Leave as &quot;None
+                        allotted&quot; if not applicable. You can change this later.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   // CREATE mode: cascading account creation. The
@@ -555,6 +635,7 @@ export default function ProgramsPage() {
                   // credentials here. On submit, the program is created
                   // AND the supervisor auth account is created and
                   // auto-linked as the default supervisor.
+                  <>
                   <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-primary" />
@@ -608,6 +689,43 @@ export default function ProgramsPage() {
                       </p>
                     </div>
                   </div>
+
+                  {/* CREATE mode: optional external evaluator picker.
+                      The evaluator must already exist (created via the
+                      Supervisors page). If none exists yet, the
+                      coordinator can still create the program and add
+                      the evaluator later via Edit. */}
+                  <div className="space-y-2">
+                    <Label htmlFor="externalEvaluatorCreate">Allot External Evaluator (optional)</Label>
+                    <Select
+                      value={formData.default_external_evaluator_id || "__none__"}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          default_external_evaluator_id:
+                            value === "__none__" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="externalEvaluatorCreate">
+                        <SelectValue placeholder="Select an external evaluator" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None allotted</SelectItem>
+                        {externalEvaluators.map((ev) => (
+                          <SelectItem key={ev.user_id} value={ev.user_id}>
+                            {ev.full_name || ev.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. The allotted evaluator will be the default external
+                      evaluator for students enrolling in this program. You can
+                      change this later via Edit.
+                    </p>
+                  </div>
+                  </>
                 )}
 
                 <div className="flex items-center justify-between rounded-lg border p-3">
@@ -769,9 +887,16 @@ export default function ProgramsPage() {
                         </span>
                       </div>
 
-                      <div className="text-sm text-muted-foreground mb-3 truncate">
+                      <div className="text-sm text-muted-foreground mb-1 truncate">
                         <span className="font-medium">Supervisor:</span>{" "}
                         {supervisorNameFor(program) || (
+                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-muted-foreground mb-3 truncate">
+                        <span className="font-medium">External Evaluator:</span>{" "}
+                        {externalEvaluatorNameFor(program) || (
                           <Badge variant="outline" className="text-xs">Not allotted</Badge>
                         )}
                       </div>
@@ -851,13 +976,23 @@ export default function ProgramsPage() {
                         </code>
                       </TableCell>
                       <TableCell>
-                        {supervisorNameFor(program) ? (
-                          <span className="text-sm">{supervisorNameFor(program)}</span>
-                        ) : (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                            Not allotted
-                          </Badge>
-                        )}
+                        <div className="space-y-1">
+                          <div>
+                            {supervisorNameFor(program) ? (
+                              <span className="text-sm">{supervisorNameFor(program)}</span>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                Not allotted
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Eval:</span>{" "}
+                            {externalEvaluatorNameFor(program) || (
+                              <span className="italic">Not allotted</span>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>{program.duration_weeks} weeks</TableCell>
                       <TableCell>

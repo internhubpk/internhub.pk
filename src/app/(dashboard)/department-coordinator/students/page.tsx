@@ -48,7 +48,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -125,6 +127,7 @@ interface SupervisorOption {
   name: string;
   email: string;
   assigned_count: number;
+  type: "faculty" | "external";
 }
 
 export default function StudentsPage() {
@@ -151,6 +154,7 @@ export default function StudentsPage() {
   // Assignment dialog
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>("");
+  const [selectedExternalEvaluatorId, setSelectedExternalEvaluatorId] = useState<string>("");
   const [selectedProgramId, setSelectedProgramId] = useState<string>("");
   const [isAssigning, setIsAssigning] = useState(false);
 
@@ -417,25 +421,52 @@ export default function StudentsPage() {
     }
   }, [searchQuery, filterStatus, filterProgram, filterDepartment]);
 
-  // Fetch supervisors for assignment dropdown
+  // Fetch supervisors (faculty) AND external evaluators for assignment dropdowns.
+  // Both arrays are merged into a single `supervisors` state, tagged with a
+  // `type` field so the UI can render them as separate groups.
   const fetchSupervisors = useCallback(async () => {
     try {
-      const res = await fetch("/api/supervisors?type=faculty&pageSize=100");
-      if (res.ok) {
-        const data = await res.json();
+      const [facultyRes, extRes] = await Promise.all([
+        fetch("/api/supervisors?type=faculty&pageSize=100"),
+        fetch("/api/supervisors?type=external&pageSize=100"),
+      ]);
+
+      const options: SupervisorOption[] = [];
+
+      if (facultyRes.ok) {
+        const data = await facultyRes.json();
         if (data.success && Array.isArray(data.data?.data)) {
           // NOTE: faculty_supervisor_id on student_internships references
           // profiles.user_id, not the supervisors.id surrogate key, so we
           // must use the supervisor's user_id here.
-          const supervisorOptions = data.data.data.map((s: any) => ({
-            id: s.user_id,
-            name: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.title || "Unknown",
-            email: s.profiles?.email || "",
-            assigned_count: 0,
-          }));
-          setSupervisors(supervisorOptions);
+          data.data.data.forEach((s: any) => {
+            options.push({
+              id: s.user_id,
+              name: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.title || "Unknown",
+              email: s.profiles?.email || "",
+              assigned_count: 0,
+              type: "faculty",
+            });
+          });
         }
       }
+
+      if (extRes.ok) {
+        const data = await extRes.json();
+        if (data.success && Array.isArray(data.data?.data)) {
+          data.data.data.forEach((s: any) => {
+            options.push({
+              id: s.user_id,
+              name: `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim() || s.title || "Unknown",
+              email: s.profiles?.email || "",
+              assigned_count: 0,
+              type: "external",
+            });
+          });
+        }
+      }
+
+      setSupervisors(options);
     } catch (error) {
       console.error("Error fetching supervisors:", error);
     }
@@ -460,8 +491,13 @@ export default function StudentsPage() {
           const map = new Map<string, string>();
           data.data.data.forEach((a: any) => {
             const studentKey: string | undefined = a.student_user_id || a.student_id;
-            if (a.faculty_supervisor_id && studentKey) {
-              map.set(studentKey, a.faculty_supervisor_id);
+            // Prefer faculty_supervisor_id; fall back to external_evaluator_id
+            // so the assigned-column check still works for students who have
+            // only an external evaluator (no faculty supervisor yet).
+            const supervisorId: string | undefined =
+              a.faculty_supervisor_id || a.external_evaluator_id;
+            if (supervisorId && studentKey) {
+              map.set(studentKey, supervisorId);
             }
           });
           setAssignedSupervisorByStudent(map);
@@ -525,11 +561,12 @@ export default function StudentsPage() {
 
   // Handle bulk assignment — uses the new /api/department-coordinator/students/bulk-assign
   // endpoint so all selected students are updated in a single call (no N
-  // round-trips). Both program and supervisor can be set in one shot.
+  // round-trips). Program, faculty supervisor, and external evaluator can all
+  // be set in one shot.
   const handleBulkAssign = async () => {
     if (selectedStudents.size === 0) return;
-    if (!selectedSupervisorId && !selectedProgramId) {
-      toast.error("Nothing to assign", { description: "Pick a supervisor, a program, or both." });
+    if (!selectedSupervisorId && !selectedExternalEvaluatorId && !selectedProgramId) {
+      toast.error("Nothing to assign", { description: "Pick a supervisor, an evaluator, a program, or any combination." });
       return;
     }
 
@@ -542,6 +579,7 @@ export default function StudentsPage() {
           student_user_ids: Array.from(selectedStudents),
           program_id: selectedProgramId || null,
           faculty_supervisor_id: selectedSupervisorId || null,
+          external_evaluator_id: selectedExternalEvaluatorId || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -550,8 +588,10 @@ export default function StudentsPage() {
         const { updated, skipped } = data.data || {};
         toast.success("Assignment Complete", { description: `Updated ${updated} student(s)${skipped ? `, ${skipped} skipped` : ""}.` });
         await fetchStudents();
+        await fetchAssignedSupervisors();
         setIsAssignDialogOpen(false);
         setSelectedSupervisorId("");
+        setSelectedExternalEvaluatorId("");
         setSelectedProgramId("");
         setSelectedStudents(new Set());
         setIsSelectAll(false);
@@ -566,21 +606,34 @@ export default function StudentsPage() {
     }
   };
 
-  // Handle single student assignment
+  // Handle single student assignment. The supervisor list contains both
+  // faculty supervisors and external evaluators, tagged with `type`. We
+  // branch on the type to decide which column to send to the API.
   const handleSingleAssign = async (studentId: string, supervisorId: string) => {
     try {
+      const supervisor = supervisors.find((s) => s.id === supervisorId);
+      const body: Record<string, string> = { student_id: studentId };
+      if (supervisor?.type === "external") {
+        body.external_evaluator_id = supervisorId;
+      } else {
+        body.faculty_supervisor_id = supervisorId;
+      }
+
       const res = await fetch("/api/department-coordinator/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          student_id: studentId,
-          faculty_supervisor_id: supervisorId,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         await fetchStudents();
-        toast.success("Assigned", { description: "Student has been assigned to the selected supervisor." });
+        await fetchAssignedSupervisors();
+        toast.success("Assigned", {
+          description:
+            supervisor?.type === "external"
+              ? "External evaluator has been assigned to the student."
+              : "Student has been assigned to the selected supervisor.",
+        });
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error("Assignment failed", { description: data.error || `HTTP ${res.status}` });
@@ -1171,11 +1224,38 @@ export default function StudentsPage() {
                             Assign...
                           </SelectTrigger>
                           <SelectContent>
-                            {supervisors.map((sup) => (
-                              <SelectItem key={sup.id} value={sup.id}>
-                                {sup.name}
+                            {supervisors.length === 0 ? (
+                              <SelectItem value="__none" disabled>
+                                No supervisors or evaluators available
                               </SelectItem>
-                            ))}
+                            ) : (
+                              <>
+                                {supervisors.some((s) => s.type === "faculty") && (
+                                  <SelectGroup>
+                                    <SelectLabel>Faculty Supervisors</SelectLabel>
+                                    {supervisors
+                                      .filter((s) => s.type === "faculty")
+                                      .map((sup) => (
+                                        <SelectItem key={sup.id} value={sup.id}>
+                                          {sup.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectGroup>
+                                )}
+                                {supervisors.some((s) => s.type === "external") && (
+                                  <SelectGroup>
+                                    <SelectLabel>External Evaluators</SelectLabel>
+                                    {supervisors
+                                      .filter((s) => s.type === "external")
+                                      .map((sup) => (
+                                        <SelectItem key={sup.id} value={sup.id}>
+                                          {sup.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectGroup>
+                                )}
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1381,15 +1461,16 @@ export default function StudentsPage() {
         setIsAssignDialogOpen(open);
         if (!open) {
           setSelectedSupervisorId("");
+          setSelectedExternalEvaluatorId("");
           setSelectedProgramId("");
         }
       }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Assign Program / Supervisor</DialogTitle>
+            <DialogTitle>Assign Program / Supervisor / Evaluator</DialogTitle>
             <DialogDescription>
               Update {selectedStudents.size} selected student{selectedStudents.size > 1 ? "s" : ""} in one shot.
-              Leave either field as &quot;No change&quot; to keep the current value.
+              Leave any field as &quot;No change&quot; to keep the current value.
             </DialogDescription>
           </DialogHeader>
 
@@ -1428,18 +1509,48 @@ export default function StudentsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">No change</SelectItem>
-                  {supervisors.map((sup) => (
-                    <SelectItem key={sup.id} value={sup.id}>
-                      <div className="flex flex-col">
-                        <span>{sup.name}</span>
-                        <span className="text-xs text-muted-foreground">{sup.email}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {supervisors
+                    .filter((s) => s.type === "faculty")
+                    .map((sup) => (
+                      <SelectItem key={sup.id} value={sup.id}>
+                        <div className="flex flex-col">
+                          <span>{sup.name}</span>
+                          <span className="text-xs text-muted-foreground">{sup.email}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Pick a supervisor to assign to all selected students, or leave as &quot;No change&quot;.
+                Pick a faculty supervisor, or leave as &quot;No change&quot;.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>External Evaluator</Label>
+              <Select
+                value={selectedExternalEvaluatorId || "__none__"}
+                onValueChange={(val) => setSelectedExternalEvaluatorId(val === "__none__" ? "" : val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No change" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No change</SelectItem>
+                  {supervisors
+                    .filter((s) => s.type === "external")
+                    .map((sup) => (
+                      <SelectItem key={sup.id} value={sup.id}>
+                        <div className="flex flex-col">
+                          <span>{sup.name}</span>
+                          <span className="text-xs text-muted-foreground">{sup.email}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick an external evaluator, or leave as &quot;No change&quot;.
               </p>
             </div>
 
@@ -1466,7 +1577,7 @@ export default function StudentsPage() {
             </Button>
             <Button
               onClick={handleBulkAssign}
-              disabled={(!selectedSupervisorId && !selectedProgramId) || isAssigning}
+              disabled={(!selectedSupervisorId && !selectedExternalEvaluatorId && !selectedProgramId) || isAssigning}
             >
               {isAssigning ? (
                 <>

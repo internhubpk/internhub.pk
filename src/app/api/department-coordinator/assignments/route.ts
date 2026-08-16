@@ -227,11 +227,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { student_id, faculty_supervisor_id, internship_id } = body;
+    const { student_id, faculty_supervisor_id, external_evaluator_id, internship_id } = body;
 
-    if (!student_id || !faculty_supervisor_id) {
+    // At least one supervisor/evaluator ID and a student_id are required.
+    if (!student_id || (!faculty_supervisor_id && !external_evaluator_id)) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "student_id and faculty_supervisor_id are required" },
+        { success: false, error: "student_id and at least one of faculty_supervisor_id or external_evaluator_id are required" },
         { status: 400 }
       );
     }
@@ -264,39 +265,82 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch supervisor and verify department access.
-    // NOTE: faculty_supervisor_id here (and on student_internships) refers to
-    // the supervisor's profiles.user_id, NOT the supervisors.id surrogate key.
-    const { data: supervisor } = await supabase
-      .from("supervisors")
-      .select("*")
-      .eq("user_id", faculty_supervisor_id)
-      .maybeSingle();
-
-    if (!supervisor) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Supervisor not found" },
-        { status: 404 }
+    // Fetch supervisor(s) and verify department access.
+    // Both `faculty_supervisor_id` and `external_evaluator_id` refer to
+    // `profiles.user_id`. We look each one up in the `supervisors` table.
+    // External evaluators (type='external') don't necessarily have a
+    // `department_id` set (they may be cross-department / industry experts),
+    // so the department check is skipped for them.
+    const supervisorLookups: Promise<any>[] = [];
+    if (faculty_supervisor_id) {
+      supervisorLookups.push(
+        Promise.resolve(
+          supabase
+            .from("supervisors")
+            .select("*")
+            .eq("user_id", faculty_supervisor_id)
+            .maybeSingle()
+        ).then((r) => ({ ...r, _kind: "faculty" as const }))
       );
     }
+    if (external_evaluator_id) {
+      supervisorLookups.push(
+        Promise.resolve(
+          supabase
+            .from("supervisors")
+            .select("*")
+            .eq("user_id", external_evaluator_id)
+            .maybeSingle()
+        ).then((r) => ({ ...r, _kind: "external" as const }))
+      );
+    }
+    const supervisorResults = await Promise.all(supervisorLookups);
 
-    if (userRole === "department_coordinator") {
-      if (supervisor.department_id !== userDepartmentId || supervisor.university_id !== userUniversityId) {
-        return authorizationError("Cannot assign supervisors from another department");
+    for (const r of supervisorResults) {
+      if (!r.data) {
+        const label = r._kind === "external" ? "External evaluator" : "Supervisor";
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `${label} not found` },
+          { status: 404 }
+        );
+      }
+      // Department check is enforced only for faculty supervisors. External
+      // evaluators may be cross-department industry experts.
+      if (r._kind === "faculty" && userRole === "department_coordinator") {
+        if (r.data.department_id !== userDepartmentId || r.data.university_id !== userUniversityId) {
+          return authorizationError("Cannot assign supervisors from another department");
+        }
       }
     }
 
+    // Build the column→value map we'll apply to student_internships (and to
+    // students, for the pre-internship fallback).
+    const assignmentColumns: Record<string, string> = {};
+    if (faculty_supervisor_id) assignmentColumns.faculty_supervisor_id = faculty_supervisor_id;
+    if (external_evaluator_id) assignmentColumns.external_evaluator_id = external_evaluator_id;
+
     // Check if assignment already exists for this student-internship combo.
-    // `student_internships.student_user_id` (not `student_id`) is the FK to profiles.
+    // We check each provided column separately to avoid duplicate inserts.
     let existingAssignmentQuery = supabase
       .from("student_internships")
       .select("id")
-      .eq("student_user_id", student_id)
-      .eq("faculty_supervisor_id", faculty_supervisor_id);
+      .eq("student_user_id", student_id);
 
+    // Narrow the query: if internship_id is provided, scope to that internship.
+    // Otherwise, fall back to checking ALL of this student's internships.
     if (internship_id) {
-      existingAssignmentQuery = existingAssignmentQuery.eq("internship_id", internship_id);
+      existingAssignmentQuery = (existingAssignmentQuery as any).eq("internship_id", internship_id);
     }
+    // OR-style check across columns: supabase-js does not expose OR easily here,
+    // so we filter with a manual `.or()` string.
+    const orParts: string[] = [];
+    if (faculty_supervisor_id) {
+      orParts.push(`faculty_supervisor_id.eq.${faculty_supervisor_id}`);
+    }
+    if (external_evaluator_id) {
+      orParts.push(`external_evaluator_id.eq.${external_evaluator_id}`);
+    }
+    existingAssignmentQuery = (existingAssignmentQuery as any).or(orParts.join(","));
 
     const { data: existingAssignment } = await existingAssignmentQuery.maybeSingle();
 
@@ -308,12 +352,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if there's an existing student_internships row to update.
-    // The department-coordinator flow is “assign a faculty supervisor to a student”.
+    // The department-coordinator flow is “assign a supervisor to a student”.
     // If a student_internships row exists (student already placed in an internship),
-    // we update that row's faculty_supervisor_id.
+    // we update that row's supervisor/evaluator column(s).
     // Otherwise, we fall back to setting `students.faculty_supervisor_id` directly
     // (migration 0041) so coordinators can pre-assign supervisors before the
-    // student is placed in an internship.
+    // student is placed in an internship. NOTE: `students` table does NOT have
+    // an `external_evaluator_id` column — for external evaluators without an
+    // existing SI row we create a placeholder student_internships row instead.
     const { data: existingSI } = await supabase
       .from("student_internships")
       .select("id, status")
@@ -323,12 +369,11 @@ export async function POST(request: NextRequest) {
     let result;
 
     if (existingSI) {
-      // Update existing record — only set faculty_supervisor_id (and updated_at).
-      // Do NOT re-set student_user_id / internship_id on an UPDATE.
+      // Update existing record — only set the column(s) that were provided.
       const { data, error } = await supabase
         .from("student_internships")
         .update({
-          faculty_supervisor_id,
+          ...assignmentColumns,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingSI.id)
@@ -343,7 +388,7 @@ export async function POST(request: NextRequest) {
         );
       }
       result = data;
-    } else {
+    } else if (faculty_supervisor_id && !external_evaluator_id) {
       // No existing student_internships row — the student has not been placed
       // into an internship yet. Fall back to setting `students.faculty_supervisor_id`
       // directly (migration 0041) so the coordinator can pre-assign a supervisor.
@@ -365,21 +410,49 @@ export async function POST(request: NextRequest) {
         );
       }
       result = updatedStudent;
+    } else {
+      // External evaluator (with or without faculty) but no student_internships
+      // row exists yet. The `students` table has no `external_evaluator_id`
+      // column, so we create a placeholder student_internships row carrying
+      // whichever supervisor columns were provided.
+      const insertPayload: Record<string, any> = {
+        student_user_id: student_id,
+        ...assignmentColumns,
+        status: "assigned",
+        start_date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (internship_id) insertPayload.internship_id = internship_id;
+      // Denormalize department/university for RLS if available on the student.
+      if (student.department_id) insertPayload.department_id = student.department_id;
+      if (student.university_id) insertPayload.university_id = student.university_id;
+      if (student.company_id) insertPayload.company_id = student.company_id;
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from("student_internships")
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error("Error creating placeholder student_internships row:", insertErr);
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Failed to assign evaluator to student" },
+          { status: 500 }
+        );
+      }
+      result = inserted;
     }
 
-    // Notify the student that a supervisor has been assigned. Best-effort:
-    // the helper swallows its own errors, so a notification failure can
-    // never break the assignment flow.
+    // Notify the student that a supervisor/evaluator has been assigned. Best-effort.
     try {
-      // Resolve a human-readable supervisor name + internship title.
-      const [supervisorProfile, internship] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("user_id", faculty_supervisor_id)
-          .maybeSingle(),
-        // Prefer the body's internship_id; otherwise read it off the updated
-        // student_internships row (if we took that path).
+      // Resolve human-readable names + internship title.
+      const profileIds = [faculty_supervisor_id, external_evaluator_id].filter(Boolean) as string[];
+      const [{ data: supervisorProfiles }, internship] = await Promise.all([
+        profileIds.length
+          ? supabase.from("profiles").select("user_id, full_name").in("user_id", profileIds)
+          : Promise.resolve({ data: [], error: null }),
         (internship_id || (result as any)?.internship_id)
           ? supabase
               .from("internships")
@@ -389,7 +462,15 @@ export async function POST(request: NextRequest) {
           : Promise.resolve({ data: null, error: null }),
       ]);
 
-      const supervisorName = supervisorProfile.data?.full_name || "your supervisor";
+      const profileMap = new Map((supervisorProfiles || []).map((p: any) => [p.user_id, p.full_name]));
+      const names: string[] = [];
+      if (faculty_supervisor_id && profileMap.get(faculty_supervisor_id)) {
+        names.push(`${profileMap.get(faculty_supervisor_id)} (Faculty Supervisor)`);
+      }
+      if (external_evaluator_id && profileMap.get(external_evaluator_id)) {
+        names.push(`${profileMap.get(external_evaluator_id)} (External Evaluator)`);
+      }
+      const supervisorName = names.length ? names.join(", ") : "your supervisor";
       const internshipTitle = (internship as any)?.data?.title || "your internship";
 
       await notifyStudentAssigned(
@@ -470,18 +551,23 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Remove assignment (set supervisor to null) on BOTH tables:
-    //   1. student_internships.faculty_supervisor_id (internship-time assignment)
+    // Remove assignment (set supervisor/evaluator to null) on BOTH tables:
+    //   1. student_internships.{faculty_supervisor_id, external_evaluator_id}
     //   2. students.faculty_supervisor_id (pre-internship assignment, migration 0041)
+    // The DELETE endpoint is called with `supervisor_id` referring to whichever
+    // user_id was assigned (faculty or external). We clear BOTH columns where
+    // they match — this is safe because if `supervisor_id` only ever sat in
+    // one column, the other column's update is a no-op.
     // NOTE: `student_internships.student_user_id` (not `student_id`) is the FK to profiles.
     const { error: siErr } = await supabase
       .from("student_internships")
-      .update({ 
+      .update({
         faculty_supervisor_id: null,
+        external_evaluator_id: null,
         updated_at: new Date().toISOString()
       })
       .eq("student_user_id", studentId)
-      .eq("faculty_supervisor_id", supervisorId);
+      .or(`faculty_supervisor_id.eq.${supervisorId},external_evaluator_id.eq.${supervisorId}`);
 
     if (siErr) {
       console.error("Error removing student_internships assignment:", siErr);
@@ -491,7 +577,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Also clear the pre-internship assignment on students.faculty_supervisor_id.
+    // Also clear the pre-internship assignment on students.faculty_supervisor_id
+    // (only set if the supervisor being removed is a faculty supervisor —
+    // external evaluators are never stored on the `students` table).
     const { error: stuErr } = await supabase
       .from("students")
       .update({

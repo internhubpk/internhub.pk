@@ -65,7 +65,8 @@ export async function GET(request: NextRequest) {
         *,
         departments:department_id(name, code),
         universities:university_id(name, slug),
-        supervisor:default_faculty_supervisor_id(full_name, email)
+        supervisor:default_faculty_supervisor_id(full_name, email),
+        external_evaluator:default_external_evaluator_id(full_name, email)
       `, { count: "exact" });
 
     // Apply role-based filtering - CRITICAL SCOPING
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    let { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id } = body;
+    let { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id, default_external_evaluator_id } = body;
 
     const userRole = authContext.profile.role;
     const userUniversityId = authContext.profile.university_id;
@@ -266,6 +267,7 @@ export async function POST(request: NextRequest) {
         university_id: universityId,
         department_id,
         default_faculty_supervisor_id: default_faculty_supervisor_id || null,
+        default_external_evaluator_id: default_external_evaluator_id || null,
         is_active: is_active !== undefined ? is_active : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

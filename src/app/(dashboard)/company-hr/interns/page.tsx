@@ -14,7 +14,9 @@ import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -111,6 +113,7 @@ export default function CompanyHRInternsPage() {
   const { profile } = useAuth();
   const [interns, setInterns] = useState<ActiveIntern[]>(DEFAULT_INTERNS);
   const [supervisors, setSupervisors] = useState<Array<{ user_id: string; name: string; email: string }>>([]);
+  const [externalEvaluators, setExternalEvaluators] = useState<Array<{ user_id: string; name: string; email: string }>>([]);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [isLoading, setIsLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
@@ -152,6 +155,7 @@ export default function CompanyHRInternsPage() {
       }));
       setInterns(list);
       setSupervisors(j.supervisors || []);
+      setExternalEvaluators(j.external_evaluators || []);
       // Build program filter list from data
       const uniquePrograms = Array.from(new Set(list.map((i: any) => i.internship_title).filter(Boolean))) as string[];
       setPrograms(["All Programs", ...uniquePrograms]);
@@ -206,7 +210,9 @@ export default function CompanyHRInternsPage() {
       });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
-      const supervisor = supervisors.find((s) => s.user_id === selectedSupervisorForAssignment);
+      const supervisor =
+        supervisors.find((s) => s.user_id === selectedSupervisorForAssignment) ||
+        externalEvaluators.find((s) => s.user_id === selectedSupervisorForAssignment);
       setInterns(
         interns.map((i) =>
           i.id === assigningInternId
@@ -993,44 +999,66 @@ export default function CompanyHRInternsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Assign Supervisor Dialog */}
+      {/* Assign Supervisor / Evaluator Dialog */}
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Site Supervisor</DialogTitle>
+            <DialogTitle>Assign Supervisor / Evaluator</DialogTitle>
             <DialogDescription>
-              Select a site supervisor for this intern.
+              Select a site supervisor or external evaluator for this intern.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
-              <Label>Select Supervisor</Label>
+              <Label>Select Supervisor / Evaluator</Label>
               <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a supervisor..." />
+                  <SelectValue placeholder="Choose a supervisor or evaluator..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {supervisors.length === 0 ? (
+                  {supervisors.length === 0 && externalEvaluators.length === 0 ? (
                     <SelectItem value="__none" disabled>
-                      No active supervisors — add one first
+                      No active supervisors or evaluators — add one first
                     </SelectItem>
                   ) : (
-                    supervisors.map((supervisor) => (
-                      <SelectItem key={supervisor.user_id} value={supervisor.user_id}>
-                        <div className="flex items-center gap-2">
-                          <span>{supervisor.name}</span>
-                          <span className="text-muted-foreground text-xs">({supervisor.email})</span>
-                        </div>
-                      </SelectItem>
-                    ))
+                    <>
+                      {supervisors.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Site Supervisors</SelectLabel>
+                          {supervisors.map((supervisor) => (
+                            <SelectItem key={supervisor.user_id} value={supervisor.user_id}>
+                              <div className="flex items-center gap-2">
+                                <span>{supervisor.name}</span>
+                                <span className="text-muted-foreground text-xs">({supervisor.email})</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {externalEvaluators.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>External Evaluators</SelectLabel>
+                          {externalEvaluators.map((evaluator) => (
+                            <SelectItem key={evaluator.user_id} value={evaluator.user_id}>
+                              <div className="flex items-center gap-2">
+                                <span>{evaluator.name}</span>
+                                <span className="text-muted-foreground text-xs">({evaluator.email})</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                    </>
                   )}
                 </SelectContent>
               </Select>
             </div>
 
             {selectedSupervisorForAssignment && (() => {
-              const supervisor = supervisors.find(s => s.user_id === selectedSupervisorForAssignment);
+              const supervisor =
+                supervisors.find(s => s.user_id === selectedSupervisorForAssignment) ||
+                externalEvaluators.find(s => s.user_id === selectedSupervisorForAssignment);
               return (
                 <div className="p-3 bg-muted/30 rounded-lg text-sm">
                   <p><strong>{supervisor?.name}</strong></p>
@@ -1047,7 +1075,7 @@ export default function CompanyHRInternsPage() {
                 onClick={handleAssignSupervisor}
                 disabled={!selectedSupervisorForAssignment || assigning}
               >
-                {assigning ? "Assigning..." : "Assign Supervisor"}
+                {assigning ? "Assigning..." : "Assign"}
               </Button>
             </DialogFooter>
           </div>

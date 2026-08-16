@@ -264,9 +264,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Deactivate any currently-active assignments for these
-    // student_internship_id values (regardless of supervisor) so the new
-    // assignment is the only active one.
+    // student_internship_id values that match the SAME supervisor TYPE
+    // we're now assigning. This prevents the new assignment from
+    // colliding with a previous assignment of the same role (e.g.
+    // reassigning the site supervisor) WITHOUT clobbering an existing
+    // assignment of a different role (e.g. assigning an external
+    // evaluator should NOT end the existing site-supervisor assignment).
     const siIds = validSIs.map((si) => si.id);
+    const assignmentType = supervisor.type || "site";
     await supabase
       .from("intern_supervisor_assignments")
       .update({
@@ -276,6 +281,7 @@ export async function POST(request: NextRequest) {
         unassigned_by: user.id,
       })
       .in("student_internship_id", siIds)
+      .eq("type", assignmentType)
       .or(`is_active.eq.true,ended_at.is.null`);
 
     // Create new assignments. Use the type that matches the supervisor.
@@ -438,7 +444,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Deactivate previous assignments for this student_internship_id
+    // Deactivate previous assignments of the SAME TYPE for this
+    // student_internship_id. Scoping by `type` ensures that, e.g.,
+    // reassigning the site supervisor does NOT end an existing
+    // external-evaluator assignment on the same SI.
+    const newType = supervisor.type || "site";
     await supabase
       .from("intern_supervisor_assignments")
       .update({
@@ -448,6 +458,7 @@ export async function PUT(request: NextRequest) {
         unassigned_by: user.id,
       })
       .eq("student_internship_id", si.id)
+      .eq("type", newType)
       .or(`is_active.eq.true,ended_at.is.null`);
 
     // Insert new assignment
@@ -456,7 +467,7 @@ export async function PUT(request: NextRequest) {
       .insert({
         student_internship_id: si.id,
         supervisor_id: new_supervisor_id,
-        type: supervisor.type || "site",
+        type: newType,
         assigned_at: new Date().toISOString(),
         intern_id,
         internship_id: si.internship_id,
