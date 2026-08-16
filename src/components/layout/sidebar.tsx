@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, createContext, useContext, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -926,19 +926,56 @@ function SidebarContent({
 
 // Main Sidebar Component
 export function Sidebar({ className }: SidebarProps) {
-  // BUG 5 FIX: Persist collapse preference across refreshes / new tabs.
-  // Lazy initializer reads localStorage on first client render; SSR returns
-  // false (window undefined on server) so the server-rendered HTML matches
-  // the default-expanded state, avoiding a one-frame snap.
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("sidebar:collapsed") === "1";
-  });
+  // Persist collapse preference across refreshes / new tabs.
+  //
+  // HYDRATION-SAFE PATTERN (fix for React #418 on /external-evaluator):
+  // The previous implementation read localStorage inside the useState lazy
+  // initializer. That initializer runs on BOTH the server (SSR) and the
+  // client (first hydration render). On the server, `typeof window ===
+  // "undefined"` returned `collapsed = false`. On the client, the same
+  // initializer read localStorage and returned `collapsed = true` for any
+  // user who had previously collapsed the sidebar (e.g. a Super Admin
+  // testing on the same browser). The resulting <aside> width mismatch
+  // (280px server vs 72px client) threw React error #418 — but only for
+  // users whose browser had `sidebar:collapsed=1` in localStorage, which
+  // is why the bug appeared for the freshly-created external_evaluator
+  // account (same browser, stale preference from earlier Super Admin
+  // testing) and not for brand-new visitors.
+  //
+  // The fix is to start with the SSR-safe default (`false`) on both
+  // server and client, then read localStorage in a useEffect AFTER
+  // hydration. The client's first render now matches the server's render;
+  // the persisted preference is applied a frame later via setState, which
+  // is a normal React update (not a hydration mismatch).
+  const [collapsed, setCollapsed] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Guards the persistence effect so we don't overwrite the user's stored
+  // preference with the default `false` before the read effect has had a
+  // chance to apply it.
+  const hasSyncedFromStorageRef = useRef(false);
 
   useEffect(() => {
-    // Persist on every change. Wrapped in try/catch because localStorage
-    // can throw in private browsing modes / quota-exceeded situations.
+    // First mount: read the persisted preference. This runs only on the
+    // client (useEffect doesn't fire during SSR), so it can safely touch
+    // window.localStorage without a `typeof window` guard.
+    if (!hasSyncedFromStorageRef.current) {
+      hasSyncedFromStorageRef.current = true;
+      try {
+        if (window.localStorage.getItem("sidebar:collapsed") === "1") {
+          setCollapsed(true);
+        }
+      } catch {
+        // localStorage can throw in private browsing modes — keep default.
+      }
+      // Skip persistence on this first run: we just read the value, so
+      // writing it back would be a no-op at best and could clobber a
+      // concurrent write from another tab at worst.
+      return;
+    }
+
+    // Subsequent runs (triggered by `collapsed` changing): persist the
+    // current state. Wrapped in try/catch because localStorage can throw
+    // in private browsing modes / quota-exceeded situations.
     try {
       window.localStorage.setItem("sidebar:collapsed", collapsed ? "1" : "0");
     } catch {

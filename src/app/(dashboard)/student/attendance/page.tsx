@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,28 +78,67 @@ export default function StudentAttendancePage() {
   const { user } = useAuth();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  // HYDRATION-SAFE month state (fix for potential React #418):
+  // The previous implementation called `new Date()` inside the useState
+  // lazy initializer. That initializer runs on BOTH the server (SSR) and
+  // the client (first hydration render), and `new Date()` returns the
+  // server's wall-clock time on SSR but the client's wall-clock time on
+  // hydration. If the two hosts are in different timezones (or just
+  // across a midnight boundary), the formatted `YYYY-MM` string differs
+  // → React error #418: "Hydration failed because the server rendered
+  // HTML didn't match the client."
+  //
+  // Fix: start with an empty string on both server and client, then
+  // resolve the actual current month inside a useEffect (client-only).
+  // The empty-string default renders an empty <SelectValue> on the
+  // first paint, which is harmless — the effect fires immediately after
+  // mount and the picker snaps to the current month in a single,
+  // hydration-safe React update.
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
 
-  // Generate month options (last 6 months + current)
-  const getMonthOptions = () => {
+  useEffect(() => {
+    if (selectedMonth) return; // only initialize once
+    const now = new Date();
+    setSelectedMonth(
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    );
+  }, [selectedMonth]);
+
+  // Generate month options (last 6 months + current). Memoized so the
+  // array reference is stable across renders — this is important because
+  // the options are derived from the client's wall-clock and would
+  // otherwise produce a new array literal on every render. Memoizing on
+  // [] (no deps) means the array is computed once on the client's first
+  // render and reused for the lifetime of the component.
+  //
+  // SSR safety: this returns an empty array on the server (window is
+  // undefined during SSR for client components, but useMemo still runs on
+  // the server for the initial render — so we guard with a typeof window
+  // check). The picker renders empty on SSR, then populates on the
+  // client's first render. Since the picker is inside a dashboard that's
+  // already behind auth + RouteGuard, the empty-SSR-paint is never
+  // visible to real users.
+  const monthOptions = useMemo(() => {
+    if (typeof window === "undefined") return [];
     const options: { value: string; label: string }[] = [];
     const now = new Date();
-    
     for (let i = -5; i <= 1; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
       options.push({ value, label });
     }
-    
     return options.reverse();
-  };
+  }, []);
 
   const fetchAttendance = useCallback(async () => {
-    if (!user) return;
+    // Guard: skip if user is not resolved yet OR if the month picker
+    // hasn't been initialized client-side (see HYDRATION-SAFE comment
+    // above). selectedMonth is "" on the very first render — calling
+    // fetchAttendance now would construct an invalid date range and
+    // return garbage. The useEffect below re-fires when selectedMonth
+    // resolves to a real `YYYY-MM` string.
+    if (!user || !selectedMonth) return;
 
     try {
       const supabase = createClient();
@@ -294,6 +333,10 @@ export default function StudentAttendancePage() {
 
   // Navigate months
   const navigateMonth = (direction: "prev" | "next") => {
+    // No-op until the month picker has been initialized client-side.
+    // (See HYDRATION-SAFE comment above.) Buttons that call this are
+    // disabled while selectedMonth === "", but guard anyway for safety.
+    if (!selectedMonth) return;
     const [year, month] = selectedMonth.split("-").map(Number);
     const currentDate = new Date(year, month - 1, 1);
     
@@ -314,6 +357,10 @@ export default function StudentAttendancePage() {
 
   // Get month display name
   const getMonthDisplay = () => {
+    // Empty string until the client-side useEffect initializes the month.
+    // Returns a neutral placeholder so the loading skeleton's header
+    // doesn't flash "Invalid Date" on the very first paint.
+    if (!selectedMonth) return "";
     const [year, month] = selectedMonth.split("-");
     const date = new Date(parseInt(year), parseInt(month) - 1);
     return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -380,6 +427,7 @@ export default function StudentAttendancePage() {
               variant="ghost"
               size="icon"
               onClick={() => navigateMonth("prev")}
+              disabled={!selectedMonth}
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
@@ -390,7 +438,7 @@ export default function StudentAttendancePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {getMonthOptions().map(option => (
+                {monthOptions.map(option => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -402,6 +450,7 @@ export default function StudentAttendancePage() {
               variant="ghost"
               size="icon"
               onClick={() => navigateMonth("next")}
+              disabled={!selectedMonth}
             >
               <ChevronRight className="h-5 w-5" />
             </Button>
