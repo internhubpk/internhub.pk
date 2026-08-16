@@ -459,6 +459,20 @@
     font: inherit;
     color: inherit;
   }
+
+  /* Dialog label spacing — Labels inside a DialogBody get a small
+     margin-bottom so they don't sit flush on top of their Input.
+     The Label primitive has no built-in mb, and many dialogs place
+     <Label/> directly above <Input/> without a wrapping space-y
+     container. This scoped rule fixes label-to-input breathing room
+     for ALL dialogs at once without touching 40+ call sites.
+
+     Safe with space-y-* wrappers: space-y uses margin-top on
+     siblings (>*+*), so an explicit margin-bottom on the Label
+     is silently ignored there — no double spacing. */
+  [data-slot="dialog-body"] [data-slot="label"] {
+    margin-bottom: 0.375rem; /* mb-1.5 = 6px */
+  }
 }
 
 /* ===================================================

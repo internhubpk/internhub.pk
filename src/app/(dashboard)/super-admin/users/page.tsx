@@ -1395,7 +1395,7 @@ export default function SuperAdminUsersPage() {
           </div>
 
           {/* Footer — sticky, bordered, well-padded */}
-          <DialogFooter className="px-6 py-4 border-t bg-muted/20 gap-2">
+          <DialogFooter className="px-8 py-4 border-t bg-muted/20 gap-2">
             <Button
               variant="outline"
               onClick={() => setIsAssignRoleOpen(false)}
