@@ -93,7 +93,32 @@ export default function UniversityAdminDashboard() {
       setError(null);
       const supabase = createClient();
 
-      // Fetch all stats in parallel
+      // We need the list of this university's student user_ids so we can
+      // count their internship_applications (the `internship_applications`
+      // table has no `university_id` column — RLS scopes it via
+      // `internships.university_id`, which is NULL for company-published
+      // internships, so RLS returns 0 rows for university_admin). Fetching
+      // the IDs first and filtering by `student_user_id IN (...)` is the
+      // only way to get an accurate count without changing RLS.
+      const { data: studentIdRows } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("university_id", universityId)
+        .eq("role", "student");
+      const studentIds = (studentIdRows || []).map((r) => r.user_id);
+
+      // Fetch all stats in parallel.
+      //
+      // IMPORTANT: Active/Completed internship counts come from the
+      // `student_internships` junction table (which has a correct
+      // `university_id` column copied from the student's profile when
+      // the row is created), NOT from the `internships` table. Company
+      // HR creates internships with `university_id = NULL` (the
+      // internship is open to all universities), so filtering
+      // `internships` by `university_id` always returns 0. The correct
+      // question for a university admin dashboard is "how many of MY
+      // students are currently doing / have completed an internship?" —
+      // and that lives in `student_internships`.
       const [
         studentsRes,
         activeInternRes,
@@ -111,33 +136,39 @@ export default function UniversityAdminDashboard() {
           .select("user_id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("role", "student"),
-        
-        // Active internships
+
+        // Active internships = students from this university currently
+        // assigned to or active in an internship. `student_internships`
+        // carries the correct `university_id` (copied from the student's
+        // profile at creation), unlike `internships.university_id` which
+        // is NULL for company-published internships.
         supabase
-          .from("internships")
+          .from("student_internships")
           .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
-          .eq("status", "active"),
-        
-        // Pending applications. NOTE: use the base table
-        // `internship_applications`, not the `applications` compatibility
-        // view — the view is owned by a role that bypasses RLS, so
-        // querying it returns pending applications across ALL
-        // universities instead of just this one (a cross-tenant data
-        // leak). RLS on the base table correctly scopes rows to
-        // internships belonging to the current university admin.
+          .in("status", ["assigned", "active"]),
+
+        // Pending applications submitted by THIS university's students.
+        // `internship_applications` has no `university_id` column, and
+        // RLS scopes via `internships.university_id` (NULL for company-
+        // published internships), so RLS returns 0. Filter by the
+        // student_user_id list we fetched above instead.
+        studentIds.length > 0
+          ? supabase
+              .from("internship_applications")
+              .select("id", { count: "exact", head: true })
+              .in("student_user_id", studentIds)
+              .eq("status", "pending")
+          : Promise.resolve({ count: 0, data: null, error: null, status: 200, statusText: "" } as const),
+
+        // Completed internships = students from this university who have
+        // completed an internship.
         supabase
-          .from("internship_applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-        
-        // Completed internships
-        supabase
-          .from("internships")
+          .from("student_internships")
           .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "completed"),
-        
+
         // Departments with counts
         supabase
           .from("departments")
@@ -145,7 +176,7 @@ export default function UniversityAdminDashboard() {
           .eq("university_id", universityId)
           .eq("is_active", true)
           .order("name"),
-        
+
         // Total coordinators (same note as above — profiles has user_id, not id)
         supabase
           .from("profiles")
@@ -170,7 +201,11 @@ export default function UniversityAdminDashboard() {
         completionRate,
       });
 
-      // Process departments and get student counts
+      // Process departments and get student counts.
+      //
+      // Per-department active internship count uses `student_internships`
+      // (which carries `department_id`) instead of `internships`
+      // (whose `department_id` is NULL for company-published internships).
       if (departmentsRes.data) {
         const deptSummaries: DepartmentSummary[] = [];
         
@@ -182,11 +217,12 @@ export default function UniversityAdminDashboard() {
               .select("user_id", { count: "exact", head: true })
               .eq("department_id", dept.id)
               .eq("role", "student"),
+            // Active internships for this department's students.
             supabase
-              .from("internships")
+              .from("student_internships")
               .select("id", { count: "exact", head: true })
               .eq("department_id", dept.id)
-              .eq("status", "active"),
+              .in("status", ["assigned", "active"]),
           ]);
           
           deptSummaries.push({

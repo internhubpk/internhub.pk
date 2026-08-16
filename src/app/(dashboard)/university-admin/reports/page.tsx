@@ -88,7 +88,45 @@ export default function UniversityAdminReportsPage() {
       setError(null);
       const supabase = createClient();
 
+      // Fetch this university's student user_ids up-front so we can
+      // count their applications. `internship_applications` has no
+      // `university_id` column — even with the migration 0050 RLS fix
+      // (which lets university_admin see applications from their own
+      // students), we still need the explicit student_user_id IN (...)
+      // filter to scope the count correctly.
+      const { data: studentIdRows } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("university_id", universityId)
+        .eq("role", "student");
+      const studentIds = (studentIdRows || []).map((r) => r.user_id);
+
+      // Helper: build an applications count query, or return a
+      // synthetic zero-count result when there are no students.
+      const appsCountQuery = (status: string) =>
+        studentIds.length > 0
+          ? supabase
+              .from("internship_applications")
+              .select("id", { count: "exact", head: true })
+              .in("student_user_id", studentIds)
+              .eq("status", status)
+          : Promise.resolve({ count: 0, data: null, error: null, status: 200, statusText: "" } as const);
+
       // Batch 1: top-level counts. All these queries run in parallel.
+      //
+      // IMPORTANT: Active/Completed internship counts come from the
+      // `student_internships` junction table, NOT `internships`.
+      // Company HR creates internships with `university_id = NULL`
+      // (open to all universities), so filtering `internships` by
+      // `university_id` always returns 0. `student_internships`
+      // carries the correct `university_id` (copied from the student's
+      // profile at creation), so it's the right source for "how many of
+      // MY students are doing / have completed an internship?".
+      //
+      // `openInternships` counts internships with status='open' that
+      // are available to this university's students — i.e. either
+      // explicitly scoped to this university OR published globally
+      // (university_id IS NULL). This matches the marketplace behaviour.
       const [
         studentsRes,
         activeStudentsRes,
@@ -129,37 +167,32 @@ export default function UniversityAdminReportsPage() {
           .from("companies")
           .select("id", { count: "exact", head: true })
           .eq("university_id", universityId),
-        // Active internships at this university
+        // Active internships = students from this university currently
+        // assigned to or active in an internship.
         supabase
-          .from("internships")
+          .from("student_internships")
           .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
-          .eq("status", "active"),
+          .in("status", ["assigned", "active"]),
+        // Completed internships = students from this university who
+        // have completed an internship.
         supabase
-          .from("internships")
+          .from("student_internships")
           .select("id", { count: "exact", head: true })
           .eq("university_id", universityId)
           .eq("status", "completed"),
+        // Open internships available to this university's students:
+        // either explicitly scoped (university_id = X) OR globally
+        // published (university_id IS NULL).
         supabase
           .from("internships")
           .select("id", { count: "exact", head: true })
-          .eq("university_id", universityId)
-          .eq("status", "open"),
-        // Applications — RLS scopes to this university's internships.
-        // Table name is `internship_applications` (the `applications`
-        // view also works but the base table is more explicit).
-        supabase
-          .from("internship_applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-        supabase
-          .from("internship_applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "accepted"),
-        supabase
-          .from("internship_applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "rejected"),
+          .eq("status", "open")
+          .or(`university_id.is.null,university_id.eq.${universityId}`),
+        // Applications submitted by THIS university's students.
+        appsCountQuery("pending"),
+        appsCountQuery("accepted"),
+        appsCountQuery("rejected"),
       ]);
 
       const totalActive = (activeInternRes.count || 0) + (completedInternRes.count || 0);
@@ -183,6 +216,9 @@ export default function UniversityAdminReportsPage() {
       });
 
       // Batch 2: per-department stats. All parallel.
+      // Per-dept active internship count uses `student_internships`
+      // (which carries `department_id`) instead of `internships`
+      // (whose `department_id` is NULL for company-published internships).
       if (departmentsRes.data && departmentsRes.data.length > 0) {
         const deptStats: DepartmentStat[] = await Promise.all(
           departmentsRes.data.map(async (dept) => {
@@ -193,10 +229,10 @@ export default function UniversityAdminReportsPage() {
                 .eq("department_id", dept.id)
                 .eq("role", "student"),
               supabase
-                .from("internships")
+                .from("student_internships")
                 .select("id", { count: "exact", head: true })
                 .eq("department_id", dept.id)
-                .eq("status", "active"),
+                .in("status", ["assigned", "active"]),
             ]);
 
             return {
@@ -216,11 +252,16 @@ export default function UniversityAdminReportsPage() {
       }
 
       // Batch 3: top companies hosting internships at this university.
-      // We fetch all internships for this university with company_id,
-      // then aggregate client-side (Supabase doesn't support GROUP BY
-      // directly via the REST API without an RPC function).
+      // We join `student_internships` (which has the correct
+      // `university_id`) with `internships` (which has `company_id`)
+      // to find which companies this university's students are
+      // interning at, then aggregate client-side.
+      //
+      // `student_internships` itself has `company_id` (copied at
+      // creation), so we can read it directly without a join — that's
+      // simpler and avoids RLS complications on `internships`.
       const { data: internshipsForCompanies, error: ifcErr } = await supabase
-        .from("internships")
+        .from("student_internships")
         .select("company_id")
         .eq("university_id", universityId)
         .not("company_id", "is", null);
@@ -255,9 +296,12 @@ export default function UniversityAdminReportsPage() {
         setCompanyStats(aggregated);
       }
 
-      // Batch 4: internship status breakdown for this university.
+      // Batch 4: internship status breakdown for this university's
+      // students. Uses `student_internships` (correct `university_id`)
+      // instead of `internships` (NULL `university_id` for company-
+      // published internships).
       const { data: statusData, error: statusErr } = await supabase
-        .from("internships")
+        .from("student_internships")
         .select("status")
         .eq("university_id", universityId);
 
@@ -275,13 +319,15 @@ export default function UniversityAdminReportsPage() {
         setStatusBreakdown(breakdown);
       }
 
-      // Batch 5: monthly trend — internships created per month for the
-      // last 6 months. We fetch created_at for all internships at this
-      // university (RLS-scoped) and bucket client-side.
+      // Batch 5: monthly trend — student_internhips created per month
+      // for the last 6 months (i.e. how many of THIS university's
+      // students started/landed an internship each month). Uses
+      // `student_internships` (correct `university_id`) instead of
+      // `internships` (NULL `university_id` for company-published).
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
       const { data: trendData, error: trendErr } = await supabase
-        .from("internships")
+        .from("student_internships")
         .select("created_at")
         .eq("university_id", universityId)
         .gte("created_at", sixMonthsAgo.toISOString())
