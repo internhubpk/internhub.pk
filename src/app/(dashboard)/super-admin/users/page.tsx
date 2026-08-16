@@ -1065,268 +1065,301 @@ export default function SuperAdminUsersPage() {
           if (!open) setAssignRoleTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" />
-              Assign Role
-            </DialogTitle>
-            <DialogDescription>
-              Assign or update the role for{" "}
-              <span className="font-medium text-foreground">
-                {assignRoleTarget?.full_name || assignRoleTarget?.email || "this user"}
-              </span>
-              . Their scope associations (university, department, company) will
-              be updated atomically.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto p-0">
+          {/* Header — accent strip to signal "this is an admin action" */}
+          <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+            <DialogHeader className="p-0 space-y-2 sm:text-left">
+              <DialogTitle className="flex items-center gap-2 text-lg">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ShieldCheck className="h-4 w-4" />
+                </span>
+                Assign Role
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed">
+                Assign or update the role for{" "}
+                <span className="font-medium text-foreground">
+                  {assignRoleTarget?.full_name || assignRoleTarget?.email || "this user"}
+                </span>
+                . Their scope associations (university, department, company) will
+                be updated atomically.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-4 py-2">
-            {/* Current role display */}
+          {/* Body — sectioned for clear visual hierarchy */}
+          <div className="px-6 py-5 space-y-6">
+
+            {/* SECTION 1: Current state */}
             {assignRoleTarget && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-                <div>
-                  <p className="text-xs text-muted-foreground">Current role</p>
-                  <div className="mt-1">{getRoleBadge(assignRoleTarget.role)}</div>
+              <section className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Current State
+                </h4>
+                <div className="grid grid-cols-2 gap-3 p-4 rounded-lg bg-muted/40 border border-border/60">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Current role
+                    </p>
+                    <div>{getRoleBadge(assignRoleTarget.role)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Current university
+                    </p>
+                    <p className="text-sm font-medium truncate" title={assignRoleTarget.university_name || ""}>
+                      {assignRoleTarget.university_name || "—"}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Current university</p>
-                  <p className="text-sm font-medium truncate max-w-[220px]">
-                    {assignRoleTarget.university_name || "—"}
+              </section>
+            )}
+
+            {/* SECTION 2: New role */}
+            <section className="space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                New Role
+              </h4>
+              <div className="space-y-2">
+                <Label>
+                  Role <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={assignRoleForm.role}
+                  onValueChange={(value: UserRole) =>
+                    setAssignRoleForm((prev) => ({
+                      ...prev,
+                      role: value,
+                      // Clear scope selectors that don't apply to the new role.
+                      // The user can re-select if they want to keep them.
+                      department_id:
+                        value === "department_coordinator" || value === "faculty_supervisor"
+                          ? prev.department_id
+                          : "",
+                      program_id:
+                        value === "student" ? prev.program_id : "",
+                      company_id:
+                        value === "company_hr" || value === "site_supervisor"
+                          ? prev.company_id
+                          : "",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="cursor-pointer">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="university_admin" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        University Admin
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="department_coordinator" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <ClipboardCheck className="h-4 w-4" />
+                        Department Coordinator
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="faculty_supervisor" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" />
+                        Faculty Supervisor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="student" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="h-4 w-4" />
+                        Student
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="company_hr" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Company HR
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="site_supervisor" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <HardHat className="h-4 w-4" />
+                        Site Supervisor
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="external_evaluator" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Award className="h-4 w-4" />
+                        External Evaluator
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {roleConfig[assignRoleForm.role] && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <span className="inline-block h-1 w-1 rounded-full bg-muted-foreground/60" />
+                    {roleConfig[assignRoleForm.role].description}
                   </p>
-                </div>
+                )}
               </div>
-            )}
+            </section>
 
-            {/* Role selector */}
-            <div className="space-y-2">
-              <Label>New Role *</Label>
-              <Select
-                value={assignRoleForm.role}
-                onValueChange={(value: UserRole) =>
-                  setAssignRoleForm((prev) => ({
-                    ...prev,
-                    role: value,
-                    // Clear scope selectors that don't apply to the new role.
-                    // The user can re-select if they want to keep them.
-                    department_id:
-                      value === "department_coordinator" || value === "faculty_supervisor"
-                        ? prev.department_id
-                        : "",
-                    program_id:
-                      value === "student" ? prev.program_id : "",
-                    company_id:
-                      value === "company_hr" || value === "site_supervisor"
-                        ? prev.company_id
-                        : "",
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="university_admin">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
-                      University Admin
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="department_coordinator">
-                    <div className="flex items-center gap-2">
-                      <ClipboardCheck className="h-4 w-4" />
-                      Department Coordinator
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="faculty_supervisor">
-                    <div className="flex items-center gap-2">
-                      <UserCheck className="h-4 w-4" />
-                      Faculty Supervisor
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="student">
-                    <div className="flex items-center gap-2">
-                      <GraduationCap className="h-4 w-4" />
-                      Student
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="company_hr">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="h-4 w-4" />
-                      Company HR
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="site_supervisor">
-                    <div className="flex items-center gap-2">
-                      <HardHat className="h-4 w-4" />
-                      Site Supervisor
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="external_evaluator">
-                    <div className="flex items-center gap-2">
-                      <Award className="h-4 w-4" />
-                      External Evaluator
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              {roleConfig[assignRoleForm.role] && (
-                <p className="text-xs text-muted-foreground">
-                  {roleConfig[assignRoleForm.role].description}
-                </p>
-              )}
-            </div>
+            {/* SECTION 3: Scope (conditional — shown only when role is selected) */}
+            {assignRoleForm.role && (
+              <section className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Scope Associations
+                </h4>
 
-            {/* University selector — for university-scoped roles */}
-            {["university_admin", "department_coordinator", "faculty_supervisor", "student"].includes(
-              assignRoleForm.role
-            ) && (
-              <div className="space-y-2">
-                <Label>
-                  University <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={assignRoleForm.university_id}
-                  onValueChange={(value) =>
-                    setAssignRoleForm((prev) => ({
-                      ...prev,
-                      university_id: value,
-                      // Clear department/program when university changes —
-                      // they may not belong to the new university.
-                      department_id: "",
-                      program_id: "",
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a university" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {universities.map((uni) => (
-                      <SelectItem key={uni.id} value={uni.id}>
-                        {uni.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Department selector — for department-scoped roles */}
-            {["department_coordinator", "faculty_supervisor"].includes(assignRoleForm.role) && (
-              <div className="space-y-2">
-                <Label>
-                  Department <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={assignRoleForm.department_id}
-                  onValueChange={(value) =>
-                    setAssignRoleForm((prev) => ({
-                      ...prev,
-                      department_id: value,
-                      program_id: "",
-                    }))
-                  }
-                  disabled={!assignRoleForm.university_id}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                        assignRoleForm.university_id
-                          ? "Select a department"
-                          : "Select a university first"
+                {/* University selector — for university-scoped roles */}
+                {["university_admin", "department_coordinator", "faculty_supervisor", "student"].includes(
+                  assignRoleForm.role
+                ) && (
+                  <div className="space-y-2">
+                    <Label>
+                      University <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={assignRoleForm.university_id}
+                      onValueChange={(value) =>
+                        setAssignRoleForm((prev) => ({
+                          ...prev,
+                          university_id: value,
+                          // Clear department/program when university changes —
+                          // they may not belong to the new university.
+                          department_id: "",
+                          program_id: "",
+                        }))
                       }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments
-                      .filter(
-                        (d) => d.university_id === assignRoleForm.university_id
-                      )
-                      .map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                    >
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Select a university" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {universities.map((uni) => (
+                          <SelectItem key={uni.id} value={uni.id} className="cursor-pointer">
+                            {uni.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-            {/* Program selector — optional for students */}
-            {assignRoleForm.role === "student" && (
-              <div className="space-y-2">
-                <Label>Program (optional)</Label>
-                <Select
-                  value={assignRoleForm.program_id}
-                  onValueChange={(value) =>
-                    setAssignRoleForm((prev) => ({ ...prev, program_id: value }))
-                  }
-                  disabled={!assignRoleForm.university_id}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                        assignRoleForm.university_id
-                          ? "Select a program (optional)"
-                          : "Select a university first"
+                {/* Department selector — for department-scoped roles */}
+                {["department_coordinator", "faculty_supervisor"].includes(assignRoleForm.role) && (
+                  <div className="space-y-2">
+                    <Label>
+                      Department <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={assignRoleForm.department_id}
+                      onValueChange={(value) =>
+                        setAssignRoleForm((prev) => ({
+                          ...prev,
+                          department_id: value,
+                          program_id: "",
+                        }))
                       }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {programs
-                      .filter((p) => {
-                        // Show only programs whose department belongs to the
-                        // selected university.
-                        const dept = departments.find(
-                          (d) => d.id === p.department_id
-                        );
-                        return dept?.university_id === assignRoleForm.university_id;
-                      })
-                      .map((prog) => (
-                        <SelectItem key={prog.id} value={prog.id}>
-                          {prog.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  The student will be enrolled in this program. Leave blank to
-                  assign without a program.
-                </p>
-              </div>
+                      disabled={!assignRoleForm.university_id}
+                    >
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue
+                          placeholder={
+                            assignRoleForm.university_id
+                              ? "Select a department"
+                              : "Select a university first"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments
+                          .filter(
+                            (d) => d.university_id === assignRoleForm.university_id
+                          )
+                          .map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id} className="cursor-pointer">
+                              {dept.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Program selector — optional for students */}
+                {assignRoleForm.role === "student" && (
+                  <div className="space-y-2">
+                    <Label>Program (optional)</Label>
+                    <Select
+                      value={assignRoleForm.program_id}
+                      onValueChange={(value) =>
+                        setAssignRoleForm((prev) => ({ ...prev, program_id: value }))
+                      }
+                      disabled={!assignRoleForm.university_id}
+                    >
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue
+                          placeholder={
+                            assignRoleForm.university_id
+                              ? "Select a program (optional)"
+                              : "Select a university first"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {programs
+                          .filter((p) => {
+                            // Show only programs whose department belongs to the
+                            // selected university.
+                            const dept = departments.find(
+                              (d) => d.id === p.department_id
+                            );
+                            return dept?.university_id === assignRoleForm.university_id;
+                          })
+                          .map((prog) => (
+                            <SelectItem key={prog.id} value={prog.id} className="cursor-pointer">
+                              {prog.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      The student will be enrolled in this program. Leave blank to
+                      assign without a program.
+                    </p>
+                  </div>
+                )}
+
+                {/* Company selector — for company-scoped roles */}
+                {["company_hr", "site_supervisor"].includes(assignRoleForm.role) && (
+                  <div className="space-y-2">
+                    <Label>
+                      Company <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={assignRoleForm.company_id}
+                      onValueChange={(value) =>
+                        setAssignRoleForm((prev) => ({ ...prev, company_id: value }))
+                      }
+                    >
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Select a company" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies.map((comp) => (
+                          <SelectItem key={comp.id} value={comp.id} className="cursor-pointer">
+                            {comp.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </section>
             )}
 
-            {/* Company selector — for company-scoped roles */}
-            {["company_hr", "site_supervisor"].includes(assignRoleForm.role) && (
-              <div className="space-y-2">
-                <Label>
-                  Company <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={assignRoleForm.company_id}
-                  onValueChange={(value) =>
-                    setAssignRoleForm((prev) => ({ ...prev, company_id: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a company" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {companies.map((comp) => (
-                      <SelectItem key={comp.id} value={comp.id}>
-                        {comp.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Warning banner */}
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+            {/* SECTION 4: JWT warning — pinned at the bottom of the body */}
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <p className="text-xs">
+              <p className="text-xs leading-relaxed">
                 The user&apos;s JWT will be updated to reflect the new role on
                 their next sign-in. If they&apos;re currently signed in, they
                 may need to log out and back in for the change to take effect
@@ -1335,15 +1368,21 @@ export default function SuperAdminUsersPage() {
             </div>
           </div>
 
-          <DialogFooter>
+          {/* Footer — sticky, bordered, well-padded */}
+          <DialogFooter className="px-6 py-4 border-t bg-muted/20 gap-2">
             <Button
               variant="outline"
               onClick={() => setIsAssignRoleOpen(false)}
               disabled={isAssigningRole}
+              className="cursor-pointer"
             >
               Cancel
             </Button>
-            <Button onClick={handleAssignRole} disabled={isAssigningRole}>
+            <Button
+              onClick={handleAssignRole}
+              disabled={isAssigningRole}
+              className="cursor-pointer"
+            >
               {isAssigningRole ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
