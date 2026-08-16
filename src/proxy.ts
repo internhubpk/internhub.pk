@@ -485,7 +485,13 @@ export async function proxy(request: NextRequest) {
     //   - infrastructure domains (vercel.app previews etc.) — the redirect
     //     would loop because the deployment name isn't a real subdomain
     if (TENANT_SCOPED_ROLES.has(userRole) && userTenantSlug) {
-      const currentSubdomain = getCurrentSubdomain(request.nextUrl.hostname);
+      // Use the Host header (set by the browser) instead of nextUrl.hostname,
+      // because Next.js dev/start server normalizes nextUrl.hostname to
+      // "localhost" even when the browser requested a different host (e.g.
+      // myu.xirea.tech:3000 via /etc/hosts or curl --resolve). In production
+      // behind a proper reverse proxy, both would be the same.
+      const hostHeader = request.headers.get("host") || request.nextUrl.hostname;
+      const currentSubdomain = getCurrentSubdomain(hostHeader);
       if (currentSubdomain !== userTenantSlug) {
         // Redirect to the correct tenant subdomain, preserving the
         // pathname + search params so the user lands on their original

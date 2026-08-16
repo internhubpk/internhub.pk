@@ -159,7 +159,20 @@ export default function StudentInternshipsPage() {
       // department OR its `target_departments` jsonb array contains the
       // student's department OR it has no department restriction (NULL +
       // empty/missing `target_departments` = open to all).
+      //
+      // IMPORTANT: `target_departments` is a jsonb array of department NAMES
+      // (e.g. ["Computer Science", "Software Engineering"]), NOT UUIDs.
+      // This matches how company HR enters them in the internship form
+      // (free-text department names, since HR may target departments at
+      // universities that don't exist in our `departments` table yet).
+      // We therefore compare against `profile.departments.name` (the joined
+      // department name), NOT against `profile.department_id` (a UUID).
+      // Comparing UUIDs against name-strings was the root cause of the
+      // "No Internships Available" bug on this page — every comparison
+      // returned false, so the student saw zero internships even though
+      // 2 were available to them.
       const studentDeptId = profile?.department_id;
+      const studentDeptName = profile?.departments?.name;
       const processedInternships: Internship[] = (internshipsData || [])
         .filter((internship: any) => {
           if (!studentDeptId) return true;
@@ -172,7 +185,8 @@ export default function StudentInternshipsPage() {
           if (internship.department_id === studentDeptId) return true;
           if (
             Array.isArray(internship.target_departments) &&
-            internship.target_departments.includes(studentDeptId)
+            studentDeptName &&
+            internship.target_departments.includes(studentDeptName)
           ) {
             return true;
           }

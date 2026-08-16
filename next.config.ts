@@ -10,6 +10,18 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: pkg.version || "0.0.0",
   },
+  // Local dev tenant subdomains (mapped to 127.0.0.1 via curl --resolve /
+  // Playwright host-resolver-rules). Without this, Next.js dev server
+  // treats requests to myu.xirea.tech:3000 as cross-origin and triggers
+  // an infinite redirect loop on /university-admin.
+  allowedDevOrigins: [
+    "myu.xirea.tech",
+    "iiui.xirea.tech",
+    "internhub.pk",
+    "myu.xirea.tech:3000",
+    "iiui.xirea.tech:3000",
+    "internhub.pk:3000",
+  ],
 };
 
 export default nextConfig;

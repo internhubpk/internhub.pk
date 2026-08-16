@@ -147,8 +147,22 @@ export default function SiteSupervisorWeeklyLogsPage() {
         return;
       }
 
-      // Fetch weekly logs for assigned students. weekly_logs.supervisor_id is
-      // FK to profiles.user_id; the student FK column is `student_user_id`.
+      // Fetch weekly logs for assigned students. 
+      //
+      // weekly_logs has TWO supervisor FK columns:
+      //   - supervisor_id         → the FACULTY supervisor who originally
+      //                              created/reviewed the log (the old single-
+      //                              supervisor schema). For site supervisors,
+      //                              this column points to the faculty supervisor,
+      //                              NOT the site supervisor.
+      //   - site_supervisor_id    → the SITE supervisor assigned to this
+      //                              internship (added in migration 0058 when
+      //                              dual-signature weekly logs were introduced).
+      //
+      // A SITE supervisor must filter by `site_supervisor_id = auth.uid()`,
+      // NOT by `supervisor_id` — otherwise they see zero logs (the
+      // supervisor_id column doesn't point to them).
+      //
       // Real columns: tasks_completed text[], challenges, learnings,
       // next_week_goals, hours_worked, week_number.
       const { data: weeklyLogs } = await supabase
@@ -157,6 +171,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
           id,
           student_user_id,
           supervisor_id,
+          site_supervisor_id,
           week_number,
           week_start_date,
           week_end_date,
@@ -167,6 +182,8 @@ export default function SiteSupervisorWeeklyLogsPage() {
           hours_worked,
           status,
           supervisor_feedback,
+          site_supervisor_remarks,
+          site_supervisor_signed_at,
           reviewed_at,
           submitted_at,
           created_at,
@@ -179,7 +196,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
             avatar_url
           )
         `)
-        .eq("supervisor_id", supervisorUserId)
+        .eq("site_supervisor_id", supervisorUserId)
         .in("student_user_id", studentUserIds)
         .order("week_start_date", { ascending: false })
         .limit(100);
