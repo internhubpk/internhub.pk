@@ -452,7 +452,7 @@ export default function SuperAdminCompaniesPage() {
       {/* Create / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
+          <DialogHeader className="px-8 pt-6 pb-4">
             <DialogTitle>
               {editingCompany ? "Edit Company" : "Add New Company"}
             </DialogTitle>
@@ -463,8 +463,8 @@ export default function SuperAdminCompaniesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 py-4">
+          <DialogBody className="px-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6 py-2">
             <div className="sm:col-span-2">
               <Label htmlFor="name" className="mb-1.5">Company Name *</Label>
               <Input
@@ -589,7 +589,7 @@ export default function SuperAdminCompaniesPage() {
           </div>
           </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="px-8 pt-5 pb-6">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>

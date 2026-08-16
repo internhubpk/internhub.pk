@@ -481,7 +481,7 @@ export default function SuperAdminCompanyHrPage() {
       {/* Create HR Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
+          <DialogHeader className="px-8 pt-6 pb-4">
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
               Create Company HR Account
@@ -492,7 +492,7 @@ export default function SuperAdminCompanyHrPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-5 px-8">
             <div>
               <Label htmlFor="hr-full-name" className="mb-1.5">Full Name *</Label>
               <Input
@@ -572,7 +572,7 @@ export default function SuperAdminCompanyHrPage() {
             </div>
           </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="px-8 pt-5 pb-6">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Cancel
             </Button>
@@ -593,13 +593,13 @@ export default function SuperAdminCompanyHrPage() {
       {/* Edit HR Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
+          <DialogHeader className="px-8 pt-6 pb-4">
             <DialogTitle>Edit HR Account</DialogTitle>
             <DialogDescription>
               Update {editingHr?.email}&apos;s information.
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-5 px-8">
             <div>
               <Label htmlFor="edit-full-name" className="mb-1.5">Full Name</Label>
               <Input
@@ -654,7 +654,7 @@ export default function SuperAdminCompanyHrPage() {
               <span className="text-sm">Active</span>
             </label>
           </DialogBody>
-          <DialogFooter>
+          <DialogFooter className="px-8 pt-5 pb-6">
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel
             </Button>
