@@ -489,7 +489,7 @@ export default function CompanyHRInternsPage() {
   // Stats
   const stats = {
     total: interns.length,
-    active: interns.filter(i => i.status === "active").length,
+    active: interns.filter(i => ["assigned", "active"].includes(i.status)).length,
     onLeave: interns.filter(i => i.status === "paused").length,
     completed: interns.filter(i => i.status === "completed").length,
     unassigned: interns.filter(i => !i.supervisor_id && (i.status === "active" || i.status === "assigned")).length,

@@ -72,12 +72,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    // Fetch evaluations of type 'final' OR 'company_evaluation' for these SIs.
+    // Fetch ALL evaluations for these student_internships. The previous
+    // filter `type IN (final, company_evaluation, supervisor_evaluation)`
+    // excluded the 'weekly' and 'task' evaluation types — which are the
+    // actual types site/faculty supervisors create during the internship.
+    // Techify has 2 real evals (1 weekly + 1 task, both rating=5.00) that
+    // were being hidden by the old filter.
     const { data: evals, error } = await supabase
       .from("evaluations")
       .select("*")
       .in("student_internship_id", siIds)
-      .in("type", ["final", "company_evaluation", "supervisor_evaluation"])
       .order("created_at", { ascending: false });
 
     if (error) {

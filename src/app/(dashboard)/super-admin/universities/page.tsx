@@ -160,7 +160,7 @@ export default function SuperAdminUniversitiesPage() {
           try {
             const { count: studentCount } = await supabase
               .from("profiles")
-              .select("id", { count: "exact", head: true })
+              .select("user_id", { count: "exact", head: true })
               .eq("university_id", uni.id)
               .eq("role", "student");
             count = studentCount || 0;

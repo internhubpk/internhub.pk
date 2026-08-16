@@ -102,6 +102,7 @@ interface Student {
     last_name: string | null;
     email: string | null;
     phone: string | null;
+    is_active?: boolean;
   };
   programs?: {
     name: string | null;
@@ -960,7 +961,11 @@ export default function StudentsPage() {
         <StatCard label="Total" value={students.length} icon={GraduationCap} variant="default" />
         <StatCard
           label="Active"
-          value={students.filter(s => s.status === "active").length}
+          // The `students` table has no `status` column — the student's
+          // active flag lives on `profiles.is_active`. The previous filter
+          // `s.status === "active"` always returned 0 because `s.status`
+          // is always undefined.
+          value={students.filter(s => s.profiles?.is_active !== false).length}
           icon={Users}
           variant="success"
         />

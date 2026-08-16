@@ -150,7 +150,12 @@ export default function SiteSupervisorNotificationsPage() {
           internship:internships(title)
         `)
         .eq("site_supervisor_id", supervisorUserId)
-        .in("status", ["active", "assigned"]);
+        // Include all non-terminal statuses so supervisors can still see
+        // (and message) students whose internship is paused or completed.
+        // The previous `.in("status", ["active","assigned"])` filter hid
+        // every paused/completed student — inconsistent with the main
+        // dashboard which uses ["assigned","active","paused","completed"].
+        .in("status", ["assigned", "active", "paused", "completed"]);
 
       const studentList: AssignedStudent[] = (assignments || []).map((assign: any) => {
         const p = assign.student_profile || {};

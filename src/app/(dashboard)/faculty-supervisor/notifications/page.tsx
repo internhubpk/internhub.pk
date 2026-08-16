@@ -160,7 +160,13 @@ export default function FacultySupervisorNotificationsPage() {
             student_profile:student_user_id(full_name, email, avatar_url)
           `)
           .eq("faculty_supervisor_id", user.id)
-          .in("status", ["active"]);
+          // Include all non-terminal statuses so supervisors can still
+          // see (and message) students whose internship is paused or
+          // completed. The previous `.in("status", ["active"])` filter
+          // hid every assigned/paused/completed student — inconsistent
+          // with the main dashboard which uses ["assigned","active",
+          // "paused","completed"].
+          .in("status", ["assigned", "active", "paused", "completed"]);
 
         const { data: preInternshipStudents } = await supabase
           .from("students")
@@ -200,7 +206,7 @@ export default function FacultySupervisorNotificationsPage() {
               student_profile:student_user_id(full_name, email, avatar_url)
             `)
             .in("student_user_id", additionalStudentIds)
-            .in("status", ["active"]);
+            .in("status", ["assigned", "active", "paused", "completed"]);
           const seenIds = new Set((extra || []).map((r: any) => r.student_user_id));
           const missingIds = additionalStudentIds.filter((id) => !seenIds.has(id));
           let missingProfiles: any[] = [];

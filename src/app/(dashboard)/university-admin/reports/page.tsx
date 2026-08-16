@@ -163,10 +163,17 @@ export default function UniversityAdminReportsPage() {
           .select("id, name, code")
           .eq("university_id", universityId)
           .order("name"),
+        // Host companies = distinct companies hosting this university's
+        // student_internships. `companies.university_id` is NULL for all
+        // companies (they're platform-global, not university-scoped), so
+        // filtering companies by `university_id` always returned 0.
+        // Instead, count distinct `company_id` values from
+        // `student_internships` filtered by this university.
         supabase
-          .from("companies")
-          .select("id", { count: "exact", head: true })
-          .eq("university_id", universityId),
+          .from("student_internships")
+          .select("company_id")
+          .eq("university_id", universityId)
+          .not("company_id", "is", null),
         // Active internships = students from this university currently
         // assigned to or active in an internship.
         supabase
@@ -200,12 +207,19 @@ export default function UniversityAdminReportsPage() {
         ? Math.round(((completedInternRes.count || 0) / totalActive) * 100)
         : 0;
 
+      // totalCompanies = count of DISTINCT company_id values from
+      // student_internships (we changed the query above to return rows
+      // instead of a count, so we dedupe client-side).
+      const distinctCompanyIds = new Set(
+        (companiesRes.data || []).map((r: any) => r.company_id).filter(Boolean)
+      );
+
       setStats({
         totalStudents: studentsRes.count || 0,
         activeStudents: activeStudentsRes.count || 0,
         totalCoordinators: coordinatorsRes.count || 0,
         totalDepartments: departmentsRes.data?.length || 0,
-        totalCompanies: companiesRes.count || 0,
+        totalCompanies: distinctCompanyIds.size,
         activeInternships: activeInternRes.count || 0,
         pendingApplications: pendingAppsRes.count || 0,
         acceptedApplications: acceptedAppsRes.count || 0,

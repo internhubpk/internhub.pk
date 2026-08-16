@@ -173,20 +173,41 @@ export default function FacultySupervisorDashboard() {
         }
       }
 
+      // 'assigned' = matched to an internship but not yet started;
+      // 'active' = currently ongoing. Both should count as "active
+      // supervisions" for the dashboard stat card — the previous filter
+      // `a.status === "active"` missed every assigned-but-not-yet-started
+      // supervision (the typical state right after HR accepts an
+      // application). For supervisor.cs_myu, both of Danyal's internships
+      // have status='assigned', so the old filter showed 0.
       const activeInternshipsCount = assignedInternships.filter(
-        (a) => a.status === "active"
+        (a) => a.status === "active" || a.status === "assigned"
       ).length;
 
       // Run all the remaining stats + section queries in parallel.
-      const [pendingRes, completedRes, recentSubsRes, tasksRes, weeklyLogsRes, taskSubsForSupervisorRes] =
+      // `pendingRes` counts BOTH pending weekly_logs AND pending
+      // evaluations assigned to this faculty supervisor. The previous
+      // version only counted weekly_logs in 'submitted' status, missing
+      // pending evaluations entirely. For supervisor.cs_myu, the DB has
+      // 1 pending task evaluation (status='pending', rating=NULL) — the
+      // old query returned 0.
+      const pendingEvaluationsQuery = supabase
+        .from("evaluations")
+        .select("id", { count: "exact", head: true })
+        .eq("evaluator_id", user.id)
+        .eq("evaluator_role", "faculty_supervisor")
+        .eq("status", "pending");
+      const pendingWeeklyLogsQuery = supervisedStudentIds.length > 0
+        ? supabase
+            .from("weekly_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "submitted")
+            .in("student_user_id", supervisedStudentIds)
+        : Promise.resolve({ count: 0, data: null, error: null, status: 200, statusText: "" } as const);
+      const [pendingEvalsRes, pendingWeeklyRes, completedRes, recentSubsRes, tasksRes, weeklyLogsRes, taskSubsForSupervisorRes] =
         await Promise.all([
-          supervisedStudentIds.length > 0
-            ? supabase
-                .from("weekly_logs")
-                .select("id", { count: "exact" })
-                .eq("status", "submitted")
-                .in("student_user_id", supervisedStudentIds)
-            : Promise.resolve({ count: 0 }),
+          pendingEvaluationsQuery,
+          pendingWeeklyLogsQuery,
           // evaluation_status enum has no "completed" value; use
           // "submitted" / "approved" / "rejected" as the "done" set.
           supabase
@@ -337,7 +358,10 @@ export default function FacultySupervisorDashboard() {
       setStats({
         supervisedStudents: supervisedStudentIds.length,
         activeInternships: activeInternshipsCount,
-        pendingReviews: pendingRes.count || 0,
+        // pendingReviews = pending evaluations + pending weekly logs.
+        // The previous version only counted weekly_logs in 'submitted'
+        // status, which missed pending evaluations entirely.
+        pendingReviews: (pendingEvalsRes.count || 0) + (pendingWeeklyRes.count || 0),
         evaluationsCompleted: completedRes.count || 0,
         tasksPending: tasksPendingCount,
         tasksCompleted: tasksCompletedCount,

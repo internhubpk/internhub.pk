@@ -100,8 +100,11 @@ export default function SuperAdminDashboard() {
         supabase.from("universities").select("id", { count: "exact", head: true }),
         // Count users
         supabase.from("profiles").select("user_id", { count: "exact", head: true }),
-        // Count active internships
-        supabase.from("internships").select("id", { count: "exact", head: true }).eq("status", "active"),
+        // Count active internships — includes both 'open' (company-published,
+        // available for application) and 'active' (already started). Both are
+        // "active" in the business sense. The previous filter `status='active'`
+        // missed every company-published internship (which has status='open').
+        supabase.from("internships").select("id", { count: "exact", head: true }).in("status", ["open", "active"]),
         // Count companies
         supabase.from("companies").select("id", { count: "exact", head: true }),
         // Count students
@@ -178,12 +181,16 @@ export default function SuperAdminDashboard() {
       if (uniStatsRes?.data && !uniStatsRes.error) {
         const unis = uniStatsRes.data;
         
-        // For each university, get student and internship counts
+        // For each university, get student count (via profiles) and internship
+        // count (via student_internships, NOT internships — company-published
+        // internships have university_id=NULL, so filtering `internships` by
+        // `university_id` always returns 0). `student_internships` carries
+        // the correct `university_id` copied from the student's profile.
         const uniDataPromises = unis.map(async (uni: any) => {
           const [studentsResult, internshipsResult] = await Promise.all([
             supabase.from("profiles").select("user_id", { count: "exact", head: true })
               .eq("role", "student").eq("university_id", uni.id),
-            supabase.from("internships").select("id", { count: "exact", head: true })
+            supabase.from("student_internships").select("id", { count: "exact", head: true })
               .eq("university_id", uni.id),
           ]);
           

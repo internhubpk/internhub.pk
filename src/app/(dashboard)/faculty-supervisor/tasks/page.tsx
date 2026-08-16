@@ -400,9 +400,16 @@ export default function FacultySupervisorTasksPage() {
       );
       setStudents(dedupedStudents);
 
-      // Fetch tasks via the API
+      // Fetch tasks via the API.
+      // Use `scope=assigned` (NOT the default `scope=mine`) — faculty
+      // supervisors should see tasks that SITE SUPERVISORS created for
+      // their students, NOT tasks they created themselves (faculty
+      // supervisors do not create internship tasks per the production
+      // brief). With `scope=mine`, the page shows 0 tasks even when the
+      // site supervisor has assigned real tasks to the faculty
+      // supervisor's students.
       try {
-        const res = await fetch("/api/faculty-supervisor/tasks", { cache: "no-store" });
+        const res = await fetch("/api/faculty-supervisor/tasks?scope=assigned", { cache: "no-store" });
         const json = await res.json().catch(() => ({ success: false, data: [] }));
         if (res.ok && json?.success && Array.isArray(json.data)) {
           setTasks((json.data as any[]).map(mapApiTaskToUi));

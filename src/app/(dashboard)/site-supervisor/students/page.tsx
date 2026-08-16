@@ -71,7 +71,7 @@ interface StudentDetail {
   program?: string;
   internshipTitle?: string;
   company?: string;
-  status: "active" | "completed" | "on_leave" | "suspended";
+  status: "active" | "assigned" | "completed" | "on_leave" | "suspended" | "paused" | "terminated";
   startDate?: string;
   endDate?: string;
   progress: number;
@@ -414,11 +414,16 @@ export default function SiteSupervisorStudentsPage() {
       const matchesStatus = statusFilter === "all" || student.status === statusFilter;
 
       // Evaluation due filter
+      // `daysSinceEvaluation === null` means the student has NEVER been
+      // evaluated — that's the most overdue case possible, so it should
+      // match both 'due' and 'overdue'. The previous `?? 0` silently
+      // treated never-evaluated students as just-evaluated (0 days),
+      // hiding them from the 'due' and 'overdue' filters entirely.
       let matchesEvaluation = true;
       if (evaluationFilter === "due") {
-        matchesEvaluation = !student.daysSinceEvaluation || student.daysSinceEvaluation > 18;
+        matchesEvaluation = student.daysSinceEvaluation === null || student.daysSinceEvaluation > 18;
       } else if (evaluationFilter === "overdue") {
-        matchesEvaluation = (student.daysSinceEvaluation ?? 0) > 21;
+        matchesEvaluation = student.daysSinceEvaluation === null || student.daysSinceEvaluation > 21;
       } else if (evaluationFilter === "current") {
         matchesEvaluation = student.daysSinceEvaluation !== null && student.daysSinceEvaluation <= 18;
       }
@@ -485,19 +490,24 @@ export default function SiteSupervisorStudentsPage() {
         <StatCard label="Total Assigned" value={students.length} icon={Users} variant="success" />
         <StatCard
           label="Active"
-          value={students.filter(s => s.status === "active").length}
+          // 'assigned' = matched to an internship but not yet started;
+          // 'active' = currently ongoing. Both should count as "Active".
+          value={students.filter(s => s.status === "active" || s.status === "assigned").length}
           icon={UserCheck}
           variant="success"
         />
         <StatCard
           label="Eval Due Soon"
-          value={students.filter(s => (s.daysSinceEvaluation ?? 0) > 18).length}
+          // `daysSinceEvaluation === null` means the student has NEVER been
+          // evaluated — they're the most overdue. The previous `?? 0` hid
+          // them from this count entirely.
+          value={students.filter(s => s.daysSinceEvaluation === null || (s.daysSinceEvaluation ?? 0) > 18).length}
           icon={Clock}
           variant="warning"
         />
         <StatCard
           label="Overdue"
-          value={students.filter(s => (s.daysSinceEvaluation ?? 0) > 21).length}
+          value={students.filter(s => s.daysSinceEvaluation === null || (s.daysSinceEvaluation ?? 0) > 21).length}
           icon={AlertCircle}
           variant="danger"
         />
@@ -621,9 +631,18 @@ export default function SiteSupervisorStudentsPage() {
                     {/* Progress & Metrics */}
                     <div className="flex items-center gap-6 lg:gap-8">
                       <div className="text-center min-w-[80px]">
-                        <p className="text-2xl font-bold">{student.progress}%</p>
-                        <Progress value={student.progress} className="h-1.5 mt-1 w-full" />
-                        <p className="text-xs text-muted-foreground mt-1">Complete</p>
+                        {/* Progress % was previously hardcoded to 0 with a
+                            comment "student_internships has no progress
+                            column" — showing "0% Complete" with an empty
+                            bar misled users into thinking nothing had been
+                            done. Replaced with days-since-evaluation, which
+                            is a real signal of how engaged the student is. */}
+                        <p className="text-2xl font-bold">
+                          {student.daysSinceEvaluation !== null
+                            ? `${student.daysSinceEvaluation}d`
+                            : "Never"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">Since last eval</p>
                       </div>
 
                       <div className={`text-center px-3 py-2 rounded-lg border ${getPerformanceColor(student.performanceRating)} min-w-[120px]`}>
@@ -773,10 +792,13 @@ export default function SiteSupervisorStudentsPage() {
                         </div>
                         <div className="pt-2">
                           <div className="flex justify-between text-sm mb-1">
-                            <span>Overall Progress</span>
-                            <span className="font-semibold">{selectedStudent.progress}%</span>
+                            <span>Days since last evaluation</span>
+                            <span className="font-semibold">
+                              {selectedStudent.daysSinceEvaluation !== null
+                                ? `${selectedStudent.daysSinceEvaluation} days`
+                                : "Never evaluated"}
+                            </span>
                           </div>
-                          <Progress value={selectedStudent.progress} className="h-2" />
                         </div>
                       </CardContent>
                     </Card>

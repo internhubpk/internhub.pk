@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       .from("students")
       .select(`
         *,
-        profiles:user_id(first_name, last_name, email),
+        profiles:user_id(first_name, last_name, email, is_active),
         departments:department_id(name, code),
         programs:program_id(name, code),
         faculty_supervisor:faculty_supervisor_id(first_name, last_name, email)

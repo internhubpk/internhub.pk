@@ -148,8 +148,11 @@ export async function GET(request: NextRequest) {
         .limit(500),
       supabase
         .from("evaluations")
-        .select("id, rating, type, status, student_internship_id")
-        .in("type", ["final", "company_evaluation", "supervisor_evaluation"]),
+        // Include ALL evaluation types — weekly, task, final, company_,
+        // supervisor_ — the previous filter excluded weekly and task evals,
+        // which are the actual evaluation types created by site supervisors.
+        // Techify has 2 real evals (1 weekly + 1 task) that were being hidden.
+        .select("id, rating, type, status, student_internship_id"),
     ]);
 
     // Compute the dashboard stats
@@ -158,7 +161,12 @@ export async function GET(request: NextRequest) {
     const totalApplications = applicationsRes.count || 0;
     const pendingReviews = pendingAppsRes.count || 0;
     const allSIs = activeSIsRes.data || [];
-    const activeInterns = allSIs.filter((s) => s.status === "active").length;
+    // An intern is "active" if their student_internships row is in 'assigned'
+    // (matched to an internship but not yet started) or 'active' (currently
+    // ongoing). The previous filter `s.status === "active"` missed every
+    // assigned-but-not-yet-started intern — which is the typical state right
+    // after HR accepts an application.
+    const activeInterns = allSIs.filter((s) => ["assigned", "active"].includes(s.status)).length;
     const completedInterns = completedSIsRes.count || 0;
     const totalSupervisors = (supervisorsRes.data || []).filter((s) => s.is_active).length;
     const totalInterns = allSIs.length;

@@ -309,8 +309,14 @@ export default function StudentEvaluationsPage() {
     if (filter === "task") return !g.key.startsWith("weekly") && !["midterm", "final", "supervisor_evaluation", "company_evaluation"].includes(g.key);
     if (filter === "weekly") return g.key.startsWith("weekly");
     if (filter === "approved") {
-      return (g.siteSupervisorEval?.status === "approved") ||
-             (g.facultySupervisorEval?.status === "approved");
+      // An evaluation is "approved" if EITHER supervisor has submitted
+      // their evaluation (status='submitted' means they completed and
+      // submitted their rating — the system uses 'submitted' rather than
+      // 'approved' for completed evaluations). The previous check for
+      // status === 'approved' returned 0 groups because no evaluation in
+      // the DB has status='approved' (they're all 'submitted' or 'pending').
+      return (g.siteSupervisorEval?.status === "submitted" || g.siteSupervisorEval?.status === "approved") ||
+             (g.facultySupervisorEval?.status === "submitted" || g.facultySupervisorEval?.status === "approved");
     }
     if (filter === "pending") {
       return (!g.siteSupervisorEval || g.siteSupervisorEval.status === "pending") ||
@@ -320,9 +326,13 @@ export default function StudentEvaluationsPage() {
   });
 
   // Aggregate stats
+  // 'approved' = evaluation has been submitted (status='submitted' or
+  // 'approved'). The DB uses 'submitted' for completed evaluations —
+  // 'approved' is rarely (never) set, so the previous filter for
+  // `status === 'approved'` always returned 0.
   const stats = {
     total: evaluations.length,
-    approved: evaluations.filter((e) => e.status === "approved").length,
+    approved: evaluations.filter((e) => e.status === "submitted" || e.status === "approved").length,
     pending: evaluations.filter((e) => e.status === "pending" || e.status === "in_progress").length,
     siteEvalCount: evaluations.filter((e) => e.evaluator_role === "site_supervisor").length,
     facultyEvalCount: evaluations.filter((e) => e.evaluator_role === "faculty_supervisor").length,
@@ -606,7 +616,13 @@ function EvaluationPanel({
           <div className="flex items-center gap-1.5">
             {ratingStars(evaluation.rating)}
             <Badge variant="secondary" className="ml-1 font-mono text-xs">
-              {(evaluation.rating ?? 0).toFixed(1)}/5
+              {/* Show "N/A" when the evaluation has no rating yet (e.g.
+                  pending faculty evaluation). The previous `(rating ?? 0).toFixed(1)`
+                  displayed "0.0/5" for pending evaluations — misleading
+                  because it looks like a real 0-star rating. */}
+              {evaluation.rating !== null && evaluation.rating !== undefined
+                ? `${Number(evaluation.rating).toFixed(1)}/5`
+                : "N/A"}
             </Badge>
           </div>
         </div>

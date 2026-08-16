@@ -173,14 +173,15 @@ export default function StudentDashboard() {
           `)
           .eq("student_user_id", user.id)
           .in("status", ["active", "assigned"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+          .order("created_at", { ascending: false }),
 
-        // Fetch applications count
+        // Fetch applications count — use the real table name
+        // `internship_applications` (NOT the `applications` view, which
+        // has different RLS behaviour and was causing silent fetch
+        // failures on some joins per the applications page's own comment).
         supabase
-          .from("applications")
-          .select("id", { count: "exact" })
+          .from("internship_applications")
+          .select("id", { count: "exact", head: true })
           .eq("student_user_id", user.id),
 
         // Fetch tasks via the dedicated API route. The route returns
@@ -226,10 +227,18 @@ export default function StudentDashboard() {
         Promise.resolve({ data: null, error: null }),
       ]);
 
-      // If we have an active student_internship, hydrate the internship row
-      // (title, company_name, etc.) from the `internships` table.
-      const studentInternship =
+      // Fetch ALL active student_internships for this student (no longer
+      // limited to 1). Danyal has 2 active internships (Zora + Techify) —
+      // the previous `.limit(1).maybeSingle()` showed only the most recent
+      // one, hiding the other from the dashboard's "Active Internship"
+      // card and supervisor display.
+      const studentInternships =
         results[0].status === "fulfilled" ? (results[0].value as any).data : null;
+      // Pick the most recent one for the "Active Internship" card (the
+      // array is already ordered by created_at desc).
+      const studentInternship = Array.isArray(studentInternships) && studentInternships.length > 0
+        ? studentInternships[0]
+        : null;
       let internshipRow: any = null;
       if (studentInternship?.internship_id) {
         const { data: internship } = await supabase

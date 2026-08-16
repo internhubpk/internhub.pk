@@ -136,14 +136,19 @@ export default function ProgramsPage() {
   // Faculty supervisors are profiles with role='faculty_supervisor' in
   // the same university (and optionally same department). They're the
   // pool the coordinator can allot to a program.
+  // Filter by `department_id` (NOT `university_id`) — a coordinator should
+  // only see and assign faculty supervisors from THEIR OWN department, not
+  // every supervisor in the university. The previous `university_id` filter
+  // was a cross-department data leak: a coordinator could see and assign
+  // supervisors from sibling departments in the same university.
   const fetchSupervisors = useCallback(async () => {
-    if (!profile?.university_id) return;
+    if (!profile?.department_id) return;
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("university_id", profile.university_id)
+        .eq("department_id", profile.department_id)
         .eq("role", "faculty_supervisor")
         .eq("is_active", true)
         .order("full_name");
@@ -152,7 +157,7 @@ export default function ProgramsPage() {
     } catch (error) {
       console.error("Error fetching faculty supervisors:", error);
     }
-  }, [profile?.university_id]);
+  }, [profile?.department_id]);
 
   useEffect(() => {
     fetchSupervisors();

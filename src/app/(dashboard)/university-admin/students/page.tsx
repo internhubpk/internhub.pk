@@ -91,7 +91,7 @@ export default function UniversityAdminStudentsPage() {
 
   // Stats derived from students
   const activeStudents = students.filter(s => s.is_active).length;
-  const onInternship = students.filter(s => s.internshipStatus === "active").length;
+  const onInternship = students.filter(s => s.internshipStatus === "active" || s.internshipStatus === "assigned").length;
 
   const fetchStudents = useCallback(async () => {
     const universityId = profile?.university_id || university?.id;
@@ -313,7 +313,11 @@ export default function UniversityAdminStudentsPage() {
   };
 
   const getStatusBadge = (student: StudentWithDetails) => {
-    if (student.internshipStatus === "active") {
+    // 'assigned' = matched to an internship but not yet started; 'active' = ongoing.
+    // Both should show the green "On Internship" badge — the previous check
+    // for `=== "active"` alone missed every assigned student, which is the
+    // typical state right after HR accepts an application.
+    if (student.internshipStatus === "active" || student.internshipStatus === "assigned") {
       return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400">On Internship</Badge>;
     }
     if (!student.is_active) {
