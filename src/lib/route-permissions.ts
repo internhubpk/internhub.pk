@@ -87,22 +87,27 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   
   // ==========================================
   // SITE SUPERVISOR ROUTES
-  // Only site_supervisor can access these
+  // Both site_supervisor AND external_evaluator can access these.
+  // external_evaluator shares the same UI/API surface (tasks, weekly
+  // logs, evaluations, notifications) but writes to a different
+  // supervisor_id column on student_internships / weekly_logs. The
+  // role-aware column selection is handled in src/lib/supervisor-role.ts
+  // and applied in the /api/site-supervisor/* routes.
   // ==========================================
   {
     path: "/site-supervisor",
-    roles: ["site_supervisor"],
-    description: "Site Supervisor dashboard and all sub-routes"
+    roles: ["site_supervisor", "external_evaluator"],
+    description: "Site Supervisor dashboard and all sub-routes (shared with external_evaluator)"
   },
-  
+
   // ==========================================
   // EXTERNAL EVALUATOR ROUTES
-  // Only external_evaluator can access these
+  // Only external_evaluator can access these (read-only landing page)
   // ==========================================
   {
     path: "/external-evaluator",
     roles: ["external_evaluator"],
-    description: "External Evaluator dashboard and all sub-routes"
+    description: "External Evaluator landing dashboard — links to /site-supervisor/* for full features"
   },
 ];
 

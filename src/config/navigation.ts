@@ -365,10 +365,47 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       href: "/external-evaluator",
       icon: LayoutDashboard,
     },
+    // External evaluators share the FULL site-supervisor feature set
+    // (assigned students, tasks, evaluations, weekly logs, notifications,
+    // settings). They access these via the /site-supervisor/* routes —
+    // the role-aware column selection in src/lib/supervisor-role.ts
+    // ensures their queries hit `external_evaluator_id` instead of
+    // `site_supervisor_id`. The /external-evaluator/evaluations route
+    // below is kept for back-compat with the old read-only view.
     {
-      title: "Assigned Evaluations",
+      title: "Assigned Students",
+      href: "/site-supervisor/students",
+      icon: GraduationCap,
+    },
+    {
+      title: "Tasks",
+      href: "/site-supervisor/tasks",
+      icon: CheckSquare,
+    },
+    {
+      title: "Evaluations",
+      href: "/site-supervisor/evaluations",
+      icon: ClipboardList,
+    },
+    {
+      title: "Weekly Logs",
+      href: "/site-supervisor/weekly-logs",
+      icon: ScrollText,
+    },
+    {
+      title: "Notifications",
+      href: "/site-supervisor/notifications",
+      icon: Send,
+    },
+    {
+      title: "Legacy Evaluations View",
       href: "/external-evaluator/evaluations",
       icon: Search,
+    },
+    {
+      title: "Settings",
+      href: "/site-supervisor/settings",
+      icon: Settings,
     },
   ],
 };

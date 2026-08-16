@@ -117,14 +117,20 @@ interface CompanyIntern {
 export default function CompanyHRSupervisorsPage() {
   const [supervisors, setSupervisors] = useState<SiteSupervisor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Tab toggle: 'site' = Site Supervisors, 'external' = External Evaluators.
+  // Both use the same /api/company-hr/supervisors endpoint with a different
+  // ?type= query param. External evaluators share the full site-supervisor
+  // feature set (tasks, weekly logs, evaluations) but write to a different
+  // supervisor_id column on student_internships.
+  const [supervisorType, setSupervisorType] = useState<"site" | "external">("site");
 
   useEffect(() => {
     fetchSupervisors();
-  }, []);
+  }, [supervisorType]);
 
   async function fetchSupervisors() {
     try {
-      const response = await fetch("/api/company-hr/supervisors?include_inactive=true");
+      const response = await fetch(`/api/company-hr/supervisors?include_inactive=true&type=${supervisorType}`);
       const result = await response.json();
 
       if (!response.ok) throw new Error(result?.error?.message || "Failed to fetch supervisors");
@@ -207,13 +213,17 @@ export default function CompanyHRSupervisorsPage() {
           phone: formData.phone || null,
           department_focus: formData.department_focus || null,
           specialization: formData.specialization || null,
+          // Pass the current tab's type so the API creates either a
+          // site_supervisor or an external_evaluator account.
+          type: supervisorType,
         }),
       });
 
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || "Failed to create supervisor");
 
-      toast.success("Supervisor created", { description: `${formData.first_name} ${formData.last_name}` });
+      const roleLabel = supervisorType === "external" ? "External evaluator" : "Supervisor";
+      toast.success(`${roleLabel} created`, { description: `${formData.first_name} ${formData.last_name}` });
       setIsCreateOpen(false);
       resetForm();
       fetchSupervisors();
@@ -483,21 +493,29 @@ export default function CompanyHRSupervisorsPage() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Site Supervisors"
-        description="Manage site supervisors who mentor and evaluate your interns"
+        title={supervisorType === "external" ? "External Evaluators" : "Site Supervisors"}
+        description={
+          supervisorType === "external"
+            ? "Manage external evaluators — independent supervisors with the full site-supervisor toolkit (tasks, weekly logs, evaluations)."
+            : "Manage site supervisors who mentor and evaluate your interns"
+        }
         actions={
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <UserPlus className="h-4 w-4" />
-                Add Supervisor
+                {supervisorType === "external" ? "Add External Evaluator" : "Add Supervisor"}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Create Supervisor Account</DialogTitle>
+                <DialogTitle>
+                  {supervisorType === "external" ? "Create External Evaluator Account" : "Create Supervisor Account"}
+                </DialogTitle>
                 <DialogDescription>
-                  Add a new site supervisor to your company. They will be able to manage and evaluate assigned interns.
+                  {supervisorType === "external"
+                    ? "Add a new external evaluator to your company. They will have the full supervisor toolkit (tasks, weekly logs, evaluations) and operate independently from the site supervisor."
+                    : "Add a new site supervisor to your company. They will be able to manage and evaluate assigned interns."}
                 </DialogDescription>
               </DialogHeader>
 
@@ -594,9 +612,40 @@ export default function CompanyHRSupervisorsPage() {
         }
       />
 
+      {/* Tab toggle — switch between Site Supervisors and External Evaluators */}
+      <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          type="button"
+          onClick={() => setSupervisorType("site")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            supervisorType === "site"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Site Supervisors
+        </button>
+        <button
+          type="button"
+          onClick={() => setSupervisorType("external")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            supervisorType === "external"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          External Evaluators
+        </button>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Supervisors" value={stats.total} icon={Users} variant="info" />
+        <StatCard
+          label={supervisorType === "external" ? "Total Evaluators" : "Total Supervisors"}
+          value={stats.total}
+          icon={Users}
+          variant="info"
+        />
         <StatCard label="Active" value={stats.active} icon={UserCheck} variant="success" />
         <StatCard label="Inactive" value={stats.inactive} icon={UserX} variant="default" />
         <StatCard label="Interns Assigned" value={stats.totalInternsAssigned} icon={GraduationCap} variant="default" />

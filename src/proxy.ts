@@ -66,7 +66,9 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   "/faculty-supervisor": ["faculty_supervisor"],
   "/student": ["student"],
   "/company-hr": ["company_hr"],
-  "/site-supervisor": ["site_supervisor"],
+  // external_evaluator shares the site-supervisor UI/API surface —
+  // see src/lib/supervisor-role.ts and src/lib/route-permissions.ts.
+  "/site-supervisor": ["site_supervisor", "external_evaluator"],
   "/external-evaluator": ["external_evaluator"],
 };
 

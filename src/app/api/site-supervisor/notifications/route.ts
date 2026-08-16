@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
+import { getSupervisorColumn, isSupervisorRole } from "@/lib/supervisor-role";
 
 // POST: Send notification to assigned students only
 export async function POST(request: NextRequest) {
@@ -19,6 +20,21 @@ export async function POST(request: NextRequest) {
     }
 
     const supervisorUserId = user.id;
+
+    // Determine supervisor column + role label from caller's profile.
+    const { data: postProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!postProfile || !isSupervisorRole(postProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const supervisorColumn = getSupervisorColumn(postProfile.role as any);
+    const senderRole = postProfile.role as string;
 
     const body = await request.json();
     const { recipientType, studentIds, title, content, priority = "medium" } = body;
@@ -44,7 +60,7 @@ export async function POST(request: NextRequest) {
     const { data: assignments, error: assignError } = await supabase
       .from("student_internships")
       .select("student_user_id")
-      .eq("site_supervisor_id", supervisorUserId);
+      .eq(supervisorColumn, supervisorUserId);
 
     if (assignError) {
       console.error("Error fetching assignments:", assignError);
@@ -112,7 +128,7 @@ export async function POST(request: NextRequest) {
       priority,
       sender_id: supervisorUserId,
       metadata: {
-        sent_by: "site_supervisor",
+        sent_by: senderRole,
         supervisor_id: supervisorUserId,
         recipient_type: recipientType,
       },
@@ -180,6 +196,20 @@ export async function GET(request: NextRequest) {
 
     const supervisorUserId = user.id;
 
+    // Determine the sender role so we filter on the correct metadata value.
+    const { data: getProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!getProfile || !isSupervisorRole(getProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const senderRole = getProfile.role as string;
+
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -192,7 +222,7 @@ export async function GET(request: NextRequest) {
     const { data: notifications, error, count } = await supabase
       .from("notifications")
       .select("*", { count: "exact" })
-      .eq("metadata->>sent_by", "site_supervisor")
+      .eq("metadata->>sent_by", senderRole)
       .eq("metadata->>supervisor_id", supervisorUserId)
       .range(from, to)
       .order("created_at", { ascending: false });

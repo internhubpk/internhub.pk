@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
+import { getSupervisorColumn, getSignatureColumn, getRemarksColumn, getSignedAtColumn, isSupervisorRole, getSupervisorRoleLabel } from "@/lib/supervisor-role";
 
 // ============================================================================
 // POST /api/site-supervisor/weekly-logs/[id]/sign
@@ -38,6 +39,26 @@ export async function POST(
       );
     }
 
+    // Look up caller's profile so we can use the right signature column
+    // (site_supervisor_signature_url vs external_evaluator_signature_url)
+    // and the right supervisor_id link column.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!profile || !isSupervisorRole(profile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
+    const signatureColumn = getSignatureColumn(profile.role as any);
+    const remarksColumn = getRemarksColumn(profile.role as any);
+    const signedAtColumn = getSignedAtColumn(profile.role as any);
+    const roleLabel = getSupervisorRoleLabel(profile.role as any);
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const remarks = (formData.get("remarks") as string | null) || "";
@@ -63,12 +84,14 @@ export async function POST(
       );
     }
 
-    // Fetch the log + verify the student is assigned to this site supervisor.
+    // Fetch the log + verify the student is assigned to this supervisor.
+    // We select BOTH supervisor_id columns so the assignment check works
+    // regardless of which role the caller has.
     const { data: log, error: logError } = await supabase
       .from("weekly_logs")
       .select(
         `id, student_user_id, student_internship_id, status, faculty_supervisor_signature_url,
-         student_internships:student_internship_id ( site_supervisor_id )`
+         student_internships:student_internship_id ( site_supervisor_id, external_evaluator_id )`
       )
       .eq("id", logId)
       .maybeSingle();
@@ -85,15 +108,16 @@ export async function POST(
     const si = Array.isArray(log.student_internships)
       ? log.student_internships[0]
       : log.student_internships;
-    const assignedSiteSupervisorId = si?.site_supervisor_id;
+    const assignedSupervisorId =
+      supervisorColumn === "external_evaluator_id"
+        ? si?.external_evaluator_id
+        : si?.site_supervisor_id;
 
-    if (assignedSiteSupervisorId && assignedSiteSupervisorId !== user.id) {
-      // Maybe this user is the faculty supervisor — but faculty should use
-      // the faculty sign route. Reject here.
+    if (assignedSupervisorId && assignedSupervisorId !== user.id) {
       return NextResponse.json<ApiResponse<null>>(
         {
           success: false,
-          error: { code: "FORBIDDEN", message: "You are not the assigned site supervisor for this student" },
+          error: { code: "FORBIDDEN", message: `You are not the assigned ${roleLabel.toLowerCase()} for this student` },
         },
         { status: 403 }
       );
@@ -131,11 +155,15 @@ export async function POST(
     // faculty supervisor.
     const newStatus = log.faculty_supervisor_signature_url ? "approved" : "site_signed";
 
+    // Build the update payload with the role-specific column names.
+    // We use computed column names so external_evaluator writes to
+    // external_evaluator_*_url etc., and site_supervisor writes to
+    // site_supervisor_*_url as before.
     const updatePayload: Record<string, any> = {
-      site_supervisor_id: user.id,
-      site_supervisor_signature_url: signatureUrl,
-      site_supervisor_remarks: remarks || null,
-      site_supervisor_signed_at: new Date().toISOString(),
+      [supervisorColumn]: user.id,
+      [signatureColumn]: signatureUrl,
+      [remarksColumn]: remarks || null,
+      [signedAtColumn]: new Date().toISOString(),
       // Maintain back-compat columns — keep supervisor_id / feedback in sync.
       supervisor_id: user.id,
       supervisor_feedback: remarks || null,
@@ -166,18 +194,18 @@ export async function POST(
       title:
         newStatus === "approved"
           ? "Weekly Log Fully Signed & Approved"
-          : "Weekly Log Signed by Site Supervisor",
+          : `Weekly Log Signed by ${roleLabel}`,
       message:
         newStatus === "approved"
           ? `Your weekly log has been signed by both supervisors and is now fully approved.`
-          : `Your weekly log has been signed by your site supervisor. It is now awaiting faculty supervisor sign-off.`,
+          : `Your weekly log has been signed by your ${roleLabel.toLowerCase()}. It is now awaiting faculty supervisor sign-off.`,
       category: "evaluation",
       priority: newStatus === "approved" ? "high" : "medium",
       metadata: {
         log_id: logId,
         action: "site_signed",
         supervisor_id: user.id,
-        sent_by: "site_supervisor",
+        sent_by: profile.role,
       },
     });
 

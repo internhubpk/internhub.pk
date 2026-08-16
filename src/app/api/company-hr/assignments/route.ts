@@ -305,25 +305,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Also mirror the assignment onto student_internships.site_supervisor_id
-    // so existing code that reads that column continues to work.
+    // Also mirror the assignment onto student_internships so existing code
+    // that reads the role-specific column continues to work.
+    //   - type='site'     → site_supervisor_id
+    //   - type='external' → external_evaluator_id (migration 0071)
+    //   - type='faculty'  → faculty_supervisor_id (rare from company HR)
+    const mirrorColumn =
+      supervisor.type === "external"
+        ? "external_evaluator_id"
+        : supervisor.type === "faculty"
+          ? "faculty_supervisor_id"
+          : "site_supervisor_id";
+    const mirrorPayload: Record<string, unknown> = {
+      [mirrorColumn]: supervisor_id,
+      updated_at: new Date().toISOString(),
+    };
     await Promise.all(
       validSIs.map((si) =>
         supabase
           .from("student_internships")
-          .update({ site_supervisor_id: supervisor_id, updated_at: new Date().toISOString() })
+          .update(mirrorPayload)
           .eq("id", si.id)
       )
     );
 
-    // Notify each intern
+    // Notify each intern with a role-appropriate message.
+    const assignLabel =
+      supervisor.type === "external"
+        ? "external evaluator"
+        : supervisor.type === "faculty"
+          ? "faculty supervisor"
+          : "site supervisor";
     await Promise.all(
       validSIs.map((si) =>
         supabase.from("notifications").insert({
           user_id: si.student_user_id,
           sender_id: user.id,
-          title: "Site supervisor assigned",
-          message: "You have been assigned a site supervisor. You can now submit weekly logs and request evaluations.",
+          title: `${assignLabel.charAt(0).toUpperCase() + assignLabel.slice(1)} assigned`,
+          message: `You have been assigned an ${assignLabel}. You can now submit weekly logs and request evaluations.`,
           category: "system",
           priority: "medium",
           is_read: false,
@@ -455,10 +474,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Mirror onto student_internships
+    // Mirror onto student_internships using the role-appropriate column.
+    const putMirrorColumn =
+      supervisor.type === "external"
+        ? "external_evaluator_id"
+        : supervisor.type === "faculty"
+          ? "faculty_supervisor_id"
+          : "site_supervisor_id";
     await supabase
       .from("student_internships")
-      .update({ site_supervisor_id: new_supervisor_id, updated_at: new Date().toISOString() })
+      .update({ [putMirrorColumn]: new_supervisor_id, updated_at: new Date().toISOString() })
       .eq("id", si.id);
 
     await supabase.from("audit_logs").insert({
@@ -514,7 +539,7 @@ export async function DELETE(request: NextRequest) {
     if (assignment_id) {
       const { data: a } = await supabase
         .from("intern_supervisor_assignments")
-        .select("id, student_internship_id, supervisor_id")
+        .select("id, student_internship_id, supervisor_id, type")
         .eq("id", assignment_id)
         .maybeSingle();
 
@@ -548,11 +573,18 @@ export async function DELETE(request: NextRequest) {
         })
         .eq("id", assignment_id);
 
+      // Clear the role-appropriate mirror column on student_internships.
+      const deleteMirrorColumn =
+        a.type === "external"
+          ? "external_evaluator_id"
+          : a.type === "faculty"
+            ? "faculty_supervisor_id"
+            : "site_supervisor_id";
       await supabase
         .from("student_internships")
-        .update({ site_supervisor_id: null, updated_at: new Date().toISOString() })
+        .update({ [deleteMirrorColumn]: null, updated_at: new Date().toISOString() })
         .eq("id", a.student_internship_id)
-        .eq("site_supervisor_id", a.supervisor_id);
+        .eq(deleteMirrorColumn, a.supervisor_id);
 
       return NextResponse.json({ success: true, message: "Assignment removed" });
     }
@@ -572,7 +604,7 @@ export async function DELETE(request: NextRequest) {
 
     const { data: si } = await supabase
       .from("student_internships")
-      .select("id, internship_id, company_id, site_supervisor_id")
+      .select("id, internship_id, company_id, site_supervisor_id, external_evaluator_id, faculty_supervisor_id")
       .eq("student_user_id", intern_id)
       .eq("company_id", profile.company_id)
       .maybeSingle();
@@ -596,10 +628,23 @@ export async function DELETE(request: NextRequest) {
       .eq("student_internship_id", si.id)
       .or(`is_active.eq.true,ended_at.is.null`);
 
+    // Clear whichever mirror column currently points at this supervisor.
+    // We check all three (site / external / faculty) so the unassign works
+    // regardless of the supervisor's type.
     if (si.site_supervisor_id === supervisor_id) {
       await supabase
         .from("student_internships")
         .update({ site_supervisor_id: null, updated_at: new Date().toISOString() })
+        .eq("id", si.id);
+    } else if (si.external_evaluator_id === supervisor_id) {
+      await supabase
+        .from("student_internships")
+        .update({ external_evaluator_id: null, updated_at: new Date().toISOString() })
+        .eq("id", si.id);
+    } else if (si.faculty_supervisor_id === supervisor_id) {
+      await supabase
+        .from("student_internships")
+        .update({ faculty_supervisor_id: null, updated_at: new Date().toISOString() })
         .eq("id", si.id);
     }
 

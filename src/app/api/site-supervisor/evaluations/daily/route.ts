@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
+import { getSupervisorColumn, getEvaluatorRoleValue, isSupervisorRole } from "@/lib/supervisor-role";
 
 /**
  * /api/site-supervisor/evaluations/daily
@@ -66,6 +67,20 @@ export async function GET(request: NextRequest) {
     const weekNumber = searchParams.get("week_number");
     const type = searchParams.get("type");
 
+    // Determine evaluator_role from caller's profile.
+    const { data: getProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!getProfile || !isSupervisorRole(getProfile.role as any)) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: Supervisor access required" },
+        { status: 403 }
+      );
+    }
+    const evaluatorRoleValue = getEvaluatorRoleValue(getProfile.role as any);
+
     let query = supabase
       .from("evaluations")
       .select(
@@ -77,7 +92,7 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
       .eq("evaluator_id", user.id)
-      .eq("evaluator_role", "site_supervisor")
+      .eq("evaluator_role", evaluatorRoleValue)
       .in("type", ["task", "weekly"])
       .order("created_at", { ascending: false });
 
@@ -141,12 +156,15 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+    if (!isSupervisorRole(profile.role as any) && profile.role !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Site supervisor access required" },
+        { success: false, error: "Forbidden: Site supervisor or external evaluator access required" },
         { status: 403 }
       );
     }
+
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
+    const evaluatorRoleValue = getEvaluatorRoleValue(profile.role as any);
 
     const body = await request.json().catch(() => ({}));
     const {
@@ -217,7 +235,7 @@ export async function POST(request: NextRequest) {
     const { data: assignment } = await supabase
       .from("student_internships")
       .select("id, internship_id")
-      .eq("site_supervisor_id", user.id)
+      .eq(supervisorColumn, user.id)
       .eq("student_user_id", student_user_id)
       .in("status", ["assigned", "active"])
       .maybeSingle();
@@ -256,7 +274,7 @@ export async function POST(request: NextRequest) {
       type,
       student_user_id,
       evaluator_id: user.id,
-      evaluator_role: "site_supervisor",
+      evaluator_role: evaluatorRoleValue,
       status: "submitted",
       scores: scores || {},
       comments: comments?.trim() || null,
@@ -320,7 +338,7 @@ export async function POST(request: NextRequest) {
         .eq("task_id", task_id)
         .eq("student_user_id", student_user_id)
         .eq("evaluator_id", user.id)
-        .eq("evaluator_role", "site_supervisor")
+        .eq("evaluator_role", evaluatorRoleValue)
         .eq("type", "task")
         .maybeSingle();
       if (existingEval) {
@@ -350,7 +368,7 @@ export async function POST(request: NextRequest) {
         .select("id")
         .eq("student_user_id", student_user_id)
         .eq("evaluator_id", user.id)
-        .eq("evaluator_role", "site_supervisor")
+        .eq("evaluator_role", evaluatorRoleValue)
         .eq("type", "weekly")
         .eq("week_number", week_number)
         .maybeSingle();

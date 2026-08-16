@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { sanitizeApiError } from "@/lib/api-error";
+import { getSupervisorColumn, isSupervisorRole } from "@/lib/supervisor-role";
 
 /**
  * /api/site-supervisor/tasks
@@ -98,12 +99,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+    if (!isSupervisorRole(profile.role as any) && profile.role !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Site supervisor access required" },
+        { success: false, error: "Forbidden: Site supervisor or external evaluator access required" },
         { status: 403 }
       );
     }
+
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -259,12 +262,14 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+    if (!isSupervisorRole(profile.role as any) && profile.role !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Site supervisor access required" },
+        { success: false, error: "Forbidden: Site supervisor or external evaluator access required" },
         { status: 403 }
       );
     }
+
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
 
     const body = await request.json().catch(() => ({}));
     const {
@@ -316,7 +321,7 @@ export async function POST(request: NextRequest) {
     const { data: assignedStudents, error: assignCheckErr } = await supabase
       .from("student_internships")
       .select("student_user_id, internship_id, id")
-      .eq("site_supervisor_id", user.id)
+      .eq(supervisorColumn, user.id)
       .in("status", ["assigned", "active"])
       .in("student_user_id", student_user_ids);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
+import { getSupervisorColumn, isSupervisorRole } from "@/lib/supervisor-role";
 
 // GET: Get weekly logs from assigned students
 export async function GET(request: NextRequest) {
@@ -20,6 +21,20 @@ export async function GET(request: NextRequest) {
 
     const supervisorUserId = user.id;
 
+    // Determine supervisor column from caller's role.
+    const { data: getProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!getProfile || !isSupervisorRole(getProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const supervisorColumn = getSupervisorColumn(getProfile.role as any);
+
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -32,7 +47,7 @@ export async function GET(request: NextRequest) {
     const { data: assignments, error: assignError } = await supabase
       .from("student_internships")
       .select("student_user_id")
-      .eq("site_supervisor_id", supervisorUserId);
+      .eq(supervisorColumn, supervisorUserId);
 
     if (assignError) {
       console.error("Error fetching assignments:", assignError);
@@ -85,7 +100,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         student_profile:student_user_id(full_name, first_name, last_name, email, avatar_url)
       `, { count: "exact" })
-      .eq("site_supervisor_id", supervisorUserId)
+      .eq(supervisorColumn, supervisorUserId)
       .in("student_user_id", studentIds);
 
     if (status) {
@@ -177,6 +192,20 @@ export async function PUT(request: NextRequest) {
 
     const supervisorUserId = user.id;
 
+    // Determine supervisor column from caller's role.
+    const { data: putProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!putProfile || !isSupervisorRole(putProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const supervisorColumn = getSupervisorColumn(putProfile.role as any);
+
     const body = await request.json();
     const { logId, action, feedback } = body;
 
@@ -208,7 +237,7 @@ export async function PUT(request: NextRequest) {
     const { data: assignment } = await supabase
       .from("student_internships")
       .select("id")
-      .eq("site_supervisor_id", supervisorUserId)
+      .eq(supervisorColumn, supervisorUserId)
       .eq("student_user_id", log.student_user_id)
       .maybeSingle();
 
@@ -229,18 +258,21 @@ export async function PUT(request: NextRequest) {
     const newStatus = statusMap[action as keyof typeof statusMap];
 
     // Update the log — all columns below exist on weekly_logs.
-    // `site_supervisor_id` (migration 0058) references profiles.user_id,
-    // so write the supervisor's user_id (not the supervisors table PK).
+    // `site_supervisor_id` / `external_evaluator_id` (migration 0058/0071)
+    // references profiles.user_id, so write the supervisor's user_id.
     // (Legacy `supervisor_id` column is left untouched.)
+    const updatePayload: Record<string, unknown> = {
+      status: newStatus,
+      supervisor_feedback: feedback || null,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    // Write to the role-specific supervisor_id column.
+    updatePayload[supervisorColumn] = supervisorUserId;
+
     const { data: updatedLog, error: updateError } = await supabase
       .from("weekly_logs")
-      .update({
-        status: newStatus,
-        supervisor_feedback: feedback || null,
-        site_supervisor_id: supervisorUserId,
-        reviewed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", logId)
       .select()
       .single();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
+import { getSupervisorColumn, getEvaluatorRoleValue, isSupervisorRole } from "@/lib/supervisor-role";
 
 // GET: List ONLY assigned students (scoped by site_supervisor_id).
 //
@@ -22,6 +23,24 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Look up the caller's profile so we can determine which supervisor
+    // column to filter on. site_supervisor filters on site_supervisor_id;
+    // external_evaluator filters on external_evaluator_id. Both roles share
+    // this same API route and the same UI pages.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!profile || !isSupervisorRole(profile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
+    const evaluatorRoleValue = getEvaluatorRoleValue(profile.role as any);
 
     const supervisorUserId = user.id;
 
@@ -67,7 +86,7 @@ export async function GET(request: NextRequest) {
         `,
         { count: "exact" }
       )
-      .eq("site_supervisor_id", supervisorUserId);
+      .eq(supervisorColumn, supervisorUserId);
 
     // Apply filters
     if (status) {
@@ -103,7 +122,7 @@ export async function GET(request: NextRequest) {
         .from("evaluations")
         .select("id, student_user_id, created_at, rating")
         .eq("evaluator_id", supervisorUserId)
-        .eq("evaluator_role", "site_supervisor")
+        .eq("evaluator_role", evaluatorRoleValue)
         .in("student_user_id", studentUserIds)
         .order("created_at", { ascending: false });
       (evals || []).forEach((ev: any) => {

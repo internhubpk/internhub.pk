@@ -5,10 +5,13 @@ import { cookies } from "next/headers";
 
 // ============================================================================
 // GET /api/company-hr/supervisors
-// List site supervisors for the current HR's company.
+// List supervisors for the current HR's company.
 // ----------------------------------------------------------------------------
 // Query params:
 //   include_inactive=true  → also include inactive supervisors
+//   type=site|external     → supervisor type to filter on (default: 'site')
+//                            Use type=external to list external evaluators
+//                            that belong to this company.
 //   page=1                 → 1-indexed page number
 //   limit=20               → page size
 // ============================================================================
@@ -57,6 +60,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
+    // Allow the caller to filter by supervisor type. Default is 'site' for
+    // back-compat with the existing Site Supervisors page. Pass type=external
+    // to list external evaluators that belong to this company.
+    const supervisorType = searchParams.get("type") || "site";
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
@@ -77,7 +84,7 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
       .eq("company_id", profile.company_id)
-      .eq("type", "site")
+      .eq("type", supervisorType)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -213,7 +220,23 @@ export async function POST(request: NextRequest) {
       department_focus,
       specialization,
       program_ids = [],
+      // type defaults to 'site' for back-compat. Pass type='external' to
+      // create an external_evaluator account instead of a site_supervisor.
+      type = "site",
     } = body;
+
+    // Validate type — only 'site' and 'external' are supported here.
+    // 'faculty' supervisors are created via the department-coordinator flow.
+    if (type !== "site" && type !== "external") {
+      return NextResponse.json(
+        { error: { code: "VALIDATION_ERROR", message: "type must be 'site' or 'external'" } },
+        { status: 400 }
+      );
+    }
+
+    // Determine the role + supervisor type to create.
+    const newRole: "site_supervisor" | "external_evaluator" =
+      type === "external" ? "external_evaluator" : "site_supervisor";
 
     if (!first_name?.trim()) {
       return NextResponse.json(
@@ -311,7 +334,7 @@ export async function POST(request: NextRequest) {
       full_name: `${trimmedFirst} ${trimmedLast}`,
       first_name: trimmedFirst,
       last_name: trimmedLast,
-      role: "site_supervisor",
+      role: newRole,
       company_id: profile.company_id,
     };
     if (phone?.trim()) userMetadata.phone = phone.trim();
@@ -319,7 +342,7 @@ export async function POST(request: NextRequest) {
     if (specialization?.trim()) userMetadata.specialization = specialization.trim();
 
     const appMetadata: Record<string, unknown> = {
-      role: "site_supervisor",
+      role: newRole,
       company_id: profile.company_id,
     };
 
@@ -364,7 +387,7 @@ export async function POST(request: NextRequest) {
       full_name: `${trimmedFirst} ${trimmedLast}`,
       first_name: trimmedFirst,
       last_name: trimmedLast,
-      role: "site_supervisor",
+      role: newRole,
       status: "active",
       is_active: true,
       company_id: profile.company_id,
@@ -413,16 +436,13 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: newUserId,
         company_id: profile.company_id,
-        type: "site",
+        type, // 'site' or 'external'
         first_name: trimmedFirst,
         last_name: trimmedLast,
         email: trimmedEmail,
         phone: phone?.trim() || null,
         department_focus: department_focus?.trim() || null,
         specialization: specialization?.trim() || null,
-        // program_ids intentionally omitted — site supervisors are assigned
-        // to internships (via intern_supervisor_assignments), NOT to
-        // university programs. The column exists for backward compat.
         is_active: true,
       })
       .select()
@@ -467,7 +487,10 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         data: { ...supervisor, profile: newProfile },
-        message: "Site supervisor created successfully",
+        message:
+          type === "external"
+            ? "External evaluator created successfully"
+            : "Site supervisor created successfully",
       },
       { status: 201 }
     );

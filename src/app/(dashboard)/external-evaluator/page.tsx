@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle, GraduationCap, CheckSquare, ScrollText, Send, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -85,7 +85,13 @@ export default function ExternalEvaluatorDashboard() {
       // All queries are scoped by evaluator_id = user.id (which matches
       // profiles.user_id, which evaluations.evaluator_id references) and
       // evaluator_role = 'external_evaluator'. RLS will further enforce this.
-      const [pendingRes, completedRes, studentsRes, recentRes] = await Promise.allSettled([
+      //
+      // We ALSO query student_internships.external_evaluator_id (migration
+      // 0071) to count students who are assigned to this external
+      // evaluator but may not yet have an evaluation row. This gives a
+      // more accurate "Students Assigned" count than the evaluations-only
+      // query below.
+      const [pendingRes, completedRes, studentsRes, recentRes, assignedStudentsRes] = await Promise.allSettled([
         supabase
           .from("evaluations")
           .select("id", { count: "exact", head: true })
@@ -121,6 +127,12 @@ export default function ExternalEvaluatorDashboard() {
           .eq("evaluator_role", evaluatorRole)
           .order("created_at", { ascending: false })
           .limit(5),
+        // New: also fetch students assigned via student_internships.external_evaluator_id
+        supabase
+          .from("student_internships")
+          .select("student_user_id, status")
+          .eq("external_evaluator_id", evaluatorId)
+          .in("status", ["assigned", "active"]),
       ]);
 
       if (cancelled) return;
@@ -129,14 +141,23 @@ export default function ExternalEvaluatorDashboard() {
         pendingRes.status === "fulfilled" ? pendingRes.value.count ?? 0 : 0;
       const evaluationsCompleted =
         completedRes.status === "fulfilled" ? completedRes.value.count ?? 0 : 0;
-      // Distinct student count — derived client-side from the (possibly
-      // unpaginated) student_user_id list. evaluations is scoped per
-      // evaluator so this list is small enough to dedupe in JS.
-      const studentRows =
+      // Distinct student count — UNION of:
+      //   (a) students with an evaluation row for this evaluator
+      //   (b) students assigned via student_internships.external_evaluator_id
+      // This gives an accurate count of "students this external evaluator
+      // is responsible for" — including those who haven't been evaluated
+      // yet but are formally assigned.
+      const evalStudentRows =
         studentsRes.status === "fulfilled" ? (studentsRes.value.data ?? []) : [];
-      const distinctStudents = new Set(
-        studentRows.map((row: { student_user_id: string }) => row.student_user_id)
-      );
+      const assignedStudentRows =
+        assignedStudentsRes.status === "fulfilled" ? (assignedStudentsRes.value.data ?? []) : [];
+      const distinctStudents = new Set<string>();
+      evalStudentRows.forEach((row: { student_user_id: string }) => {
+        if (row.student_user_id) distinctStudents.add(row.student_user_id);
+      });
+      assignedStudentRows.forEach((row: { student_user_id: string }) => {
+        if (row.student_user_id) distinctStudents.add(row.student_user_id);
+      });
 
       setStats({
         evaluationsAssigned,
@@ -212,6 +233,94 @@ export default function ExternalEvaluatorDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Actions — link to the full site-supervisor feature set */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Supervision Tools</CardTitle>
+          <CardDescription>
+            As an external evaluator, you have the full supervisor toolkit —
+            manage your assigned students, create and review tasks, sign
+            weekly logs, and submit evaluations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+              href="/site-supervisor/students"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <GraduationCap className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="font-medium">Assigned Students</p>
+                <p className="text-xs text-muted-foreground">View & manage your students</p>
+              </div>
+            </Link>
+            <Link
+              href="/site-supervisor/tasks"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <CheckSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="font-medium">Tasks</p>
+                <p className="text-xs text-muted-foreground">Assign & review student work</p>
+              </div>
+            </Link>
+            <Link
+              href="/site-supervisor/evaluations"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <ClipboardCheck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="font-medium">Evaluations</p>
+                <p className="text-xs text-muted-foreground">Submit HEC-aligned evaluations</p>
+              </div>
+            </Link>
+            <Link
+              href="/site-supervisor/weekly-logs"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                <ScrollText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <p className="font-medium">Weekly Logs</p>
+                <p className="text-xs text-muted-foreground">Review & sign weekly logs</p>
+              </div>
+            </Link>
+            <Link
+              href="/site-supervisor/notifications"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
+                <Send className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+              </div>
+              <div>
+                <p className="font-medium">Notifications</p>
+                <p className="text-xs text-muted-foreground">Message your assigned students</p>
+              </div>
+            </Link>
+            <Link
+              href="/site-supervisor/settings"
+              className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
+            >
+              <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
+                <Settings className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+              </div>
+              <div>
+                <p className="font-medium">Settings</p>
+                <p className="text-xs text-muted-foreground">Change your password</p>
+              </div>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Evaluations */}
       <Card>

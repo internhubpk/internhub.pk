@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
 import { notifyEvaluationSubmitted } from "@/lib/notifications";
+import { getSupervisorColumn, getEvaluatorRoleValue, isSupervisorRole } from "@/lib/supervisor-role";
 
 // Real `evaluations` columns (from 0001_initial_schema.sql):
 //   id, type, student_user_id, internship_id, student_internship_id,
@@ -43,6 +44,21 @@ export async function GET(request: NextRequest) {
 
     const supervisorUserId = user.id;
 
+    // Determine which supervisor role the caller has so we can filter on the
+    // correct evaluator_role value (site_supervisor vs external_evaluator).
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!callerProfile || !isSupervisorRole(callerProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const evaluatorRoleValue = getEvaluatorRoleValue(callerProfile.role as any);
+
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -75,7 +91,7 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
       .eq("evaluator_id", supervisorUserId)
-      .eq("evaluator_role", "site_supervisor");
+      .eq("evaluator_role", evaluatorRoleValue);
 
     if (status) {
       query = query.eq("status", status);
@@ -196,12 +212,15 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+    if (!isSupervisorRole(profile.role as any) && profile.role !== "super_admin") {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "FORBIDDEN", message: `Your account role is "${profile.role}". Only site supervisors can submit site-supervisor evaluations.` } },
+        { success: false, error: { code: "FORBIDDEN", message: `Your account role is "${profile.role}". Only site supervisors or external evaluators can submit evaluations.` } },
         { status: 403 }
       );
     }
+
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
+    const evaluatorRoleValue = getEvaluatorRoleValue(profile.role as any);
 
     // Verify the student is actively assigned to this supervisor.
     // RLS requires status IN ('assigned','active') — we mirror that here so
@@ -209,7 +228,7 @@ export async function POST(request: NextRequest) {
     const { data: assignment, error: assignError } = await supabase
       .from("student_internships")
       .select("id, status")
-      .eq("site_supervisor_id", supervisorUserId)
+      .eq(supervisorColumn, supervisorUserId)
       .eq("student_user_id", body.student_user_id)
       .in("status", ["assigned", "active"])
       .maybeSingle();
@@ -229,7 +248,7 @@ export async function POST(request: NextRequest) {
     const insertPayload = {
       student_user_id: body.student_user_id,
       evaluator_id: supervisorUserId,
-      evaluator_role: "site_supervisor",
+      evaluator_role: evaluatorRoleValue,
       // `evaluation_type` enum: weekly_log, midterm, final,
       // company_evaluation, supervisor_evaluation, task.
       // "site_evaluation" is NOT a valid enum value — use supervisor_evaluation.
@@ -341,6 +360,21 @@ export async function PUT(request: NextRequest) {
 
     const supervisorUserId = user.id;
 
+    // Determine evaluator_role from caller's profile (PUT supports both
+    // site_supervisor and external_evaluator).
+    const { data: putProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!putProfile || !isSupervisorRole(putProfile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const evaluatorRoleValue = getEvaluatorRoleValue(putProfile.role as any);
+
     const body = await request.json();
     const { evaluationId, scores, rating, comments, status } = body;
 
@@ -357,7 +391,7 @@ export async function PUT(request: NextRequest) {
       .select("id, evaluator_id, status, created_at")
       .eq("id", evaluationId)
       .eq("evaluator_id", supervisorUserId)
-      .eq("evaluator_role", "site_supervisor")
+      .eq("evaluator_role", evaluatorRoleValue)
       .single();
 
     if (fetchError || !existingEval) {

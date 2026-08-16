@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse } from "@/types";
+import { getSupervisorColumn, isSupervisorRole } from "@/lib/supervisor-role";
 import { notifyTaskEvaluated } from "@/lib/notifications";
 
 /**
@@ -59,12 +60,14 @@ export async function POST(
         { status: 403 }
       );
     }
-    if (profile.role !== "site_supervisor" && profile.role !== "super_admin") {
+    if (!isSupervisorRole(profile.role as any) && profile.role !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Site supervisor access required" },
+        { success: false, error: "Forbidden: Site supervisor or external evaluator access required" },
         { status: 403 }
       );
     }
+
+    const supervisorColumn = getSupervisorColumn(profile.role as any);
 
     const { id: taskId } = await params;
     const body = await request.json().catch(() => ({}));
@@ -138,7 +141,7 @@ export async function POST(
         .from("student_internships")
         .select("id")
         .eq("student_user_id", submission.student_user_id)
-        .eq("site_supervisor_id", user.id)
+        .eq(supervisorColumn, user.id)
         .in("status", ["assigned", "active"])
         .maybeSingle();
       isAssignedSupervisor = !!si;
