@@ -25,6 +25,7 @@ import {
   Square,
   Loader2,
   Eye,
+  EyeOff,
   GraduationCap,
   Building2,
   Lock,
@@ -167,6 +168,7 @@ export default function StudentsPage() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isCreatingStudent, setIsCreatingStudent] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [newStudent, setNewStudent] = useState({
     first_name: "",
     last_name: "",
@@ -1612,7 +1614,7 @@ export default function StudentsPage() {
               <DialogDescription>
                 Create a student account. The student will be enrolled in your department
                 ({profile?.department_id ? "linked" : "—"}). They can sign in with their email
-                and the auto-generated password.
+                and the password you set below.
               </DialogDescription>
             </DialogHeader>
 
@@ -1665,16 +1667,48 @@ export default function StudentsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="student-password">Password *</Label>
-                  <Input
-                    id="student-password"
-                    type="password"
-                    value={newStudent.password}
-                    onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
-                    required
-                    minLength={6}
-                    placeholder="Min 6 characters"
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="student-password"
+                      type={showPassword ? "text" : "password"}
+                      value={newStudent.password}
+                      onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
+                      required
+                      minLength={6}
+                      placeholder="Min 6 characters"
+                      autoComplete="new-password"
+                      className="pr-24"
+                    />
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          const newPass = "Stu@" + Math.random().toString(36).substring(2, 8);
+                          setNewStudent({ ...newStudent, password: newPass });
+                        }}
+                        tabIndex={-1}
+                      >
+                        Generate
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

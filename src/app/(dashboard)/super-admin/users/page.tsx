@@ -12,6 +12,7 @@ import {
   UserX,
   MoreVertical,
   Eye,
+  EyeOff,
   Ban,
   CheckCircle2,
   Building2,
@@ -138,6 +139,7 @@ export default function SuperAdminUsersPage() {
   // Create user dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [createForm, setCreateForm] = useState<CreateUserForm>({
     email: "",
     password: "",
@@ -842,13 +844,45 @@ export default function SuperAdminUsersPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="create-password">Password *</Label>
-                <Input
-                  id="create-password"
-                  type="password"
-                  placeholder="Min. 8 characters"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
-                />
+                <div className="relative">
+                  <Input
+                    id="create-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Min. 8 characters"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+                    className="pr-24"
+                  />
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        const newPass = "User@" + Math.random().toString(36).substring(2, 8);
+                        setCreateForm(prev => ({ ...prev, password: newPass }));
+                      }}
+                      tabIndex={-1}
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
               </div>
 

@@ -53,6 +53,7 @@ import {
   Edit,
   Trash2,
   Eye,
+  EyeOff,
   UserPlus,
   Mail,
   Phone,
@@ -162,6 +163,7 @@ export default function CompanyHRSupervisorsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedSupervisor, setSelectedSupervisor] = useState<SiteSupervisor | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -554,13 +556,45 @@ export default function CompanyHRSupervisorsPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Temporary Password *</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Set initial password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Set initial password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="pr-24"
+                  />
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        const newPass = "Sup@" + Math.random().toString(36).substring(2, 8);
+                        setFormData({ ...formData, password: newPass });
+                      }}
+                      tabIndex={-1}
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
               </div>
 
