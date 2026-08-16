@@ -59,7 +59,7 @@ interface StudentOverview {
   program: string;
   company: string;
   progress: number;
-  status: "active" | "on_leave" | "completed";
+  status: "active" | "on_leave" | "completed" | "awaiting_placement";
   lastActivity: string;
   avatarUrl?: string;
 }
@@ -175,13 +175,18 @@ export default function FacultySupervisorDashboard() {
 
       // 'assigned' = matched to an internship but not yet started;
       // 'active' = currently ongoing. Both should count as "active
-      // supervisions" for the dashboard stat card — the previous filter
-      // `a.status === "active"` missed every assigned-but-not-yet-started
-      // supervision (the typical state right after HR accepts an
-      // application). For supervisor.cs_myu, both of Danyal's internships
-      // have status='assigned', so the old filter showed 0.
+      // supervisions" for the dashboard stat card — but ONLY for real
+      // student_internships rows. Synthesized `pre-` rows (students
+      // linked via students.faculty_supervisor_id who haven't been
+      // placed in an internship yet) must NOT inflate this count,
+      // otherwise the dashboard shows "1 Active Internship" when zero
+      // internships exist in the DB.
       const activeInternshipsCount = assignedInternships.filter(
-        (a) => a.status === "active" || a.status === "assigned"
+        (a) =>
+          (a.status === "active" || a.status === "assigned") &&
+          a.internship !== null &&
+          a.id !== null &&
+          !String(a.id).startsWith("pre-")
       ).length;
 
       // Run all the remaining stats + section queries in parallel.
@@ -300,15 +305,31 @@ export default function FacultySupervisorDashboard() {
         const name =
           s.student_profile?.full_name ||
           `Student ${s.student_user_id?.slice(0, 6)}`;
-        const company = s.company?.name || s.internship?.title || "N/A";
+        // Pre-internship (synthesized) rows have no internship/company.
+        // Show a meaningful label instead of "N/A" so coordinators can
+        // tell at a glance that this student hasn't been placed yet.
+        const isPreInternship =
+          s.internship === null || (s.id && String(s.id).startsWith("pre-"));
+        const company = isPreInternship
+          ? "Awaiting internship"
+          : s.company?.name || s.internship?.title || "N/A";
+        // Pre-internship students get their own status so the badge and
+        // progress buckets can distinguish them from active interns.
+        const status: StudentOverview["status"] = isPreInternship
+          ? "awaiting_placement"
+          : s.status === "active"
+          ? "active"
+          : s.status === "completed"
+          ? "completed"
+          : "active";
         return {
           id: s.student_user_id || s.id,
           name,
           email: s.student_profile?.email || "",
           program: "", // not in profile; left blank
           company,
-          progress,
-          status: s.status === "active" ? "active" : s.status === "completed" ? "completed" : "active",
+          progress: isPreInternship ? 0 : progress,
+          status,
           lastActivity: meta.latest || s.start_date || "",
           avatarUrl: s.student_profile?.avatar_url,
         };
@@ -353,7 +374,12 @@ export default function FacultySupervisorDashboard() {
       // Set stats from actual database counts
       const avgProgress =
         studentList.length > 0
-          ? Math.round(studentList.reduce((acc, s) => acc + s.progress, 0) / studentList.length)
+          ? Math.round(
+              studentList
+                .filter((s) => s.status !== "awaiting_placement")
+                .reduce((acc, s) => acc + s.progress, 0) /
+                Math.max(1, studentList.filter((s) => s.status !== "awaiting_placement").length)
+            )
           : 0;
       setStats({
         supervisedStudents: supervisedStudentIds.length,
@@ -607,11 +633,21 @@ export default function FacultySupervisorDashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-medium truncate">{student.name}</p>
-                            <Badge 
-                              variant={student.status === "active" ? "default" : "secondary"}
+                            <Badge
+                              variant={
+                                student.status === "active"
+                                  ? "default"
+                                  : "secondary"
+                              }
                               className="shrink-0 text-xs"
                             >
-                              {student.status === "active" ? "Active" : "On Leave"}
+                              {student.status === "active"
+                                ? "Active"
+                                : student.status === "awaiting_placement"
+                                ? "Awaiting Placement"
+                                : student.status === "completed"
+                                ? "Completed"
+                                : "On Leave"}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground truncate">{student.company}</p>
@@ -808,19 +844,19 @@ export default function FacultySupervisorDashboard() {
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="p-2 rounded-lg bg-emerald-50">
                     <p className="text-lg font-bold text-emerald-600">
-                      {students.filter(s => s.progress >= 70).length}
+                      {students.filter(s => s.status !== "awaiting_placement" && s.progress >= 70).length}
                     </p>
                     <p className="text-xs text-muted-foreground">On Track</p>
                   </div>
                   <div className="p-2 rounded-lg bg-amber-50">
                     <p className="text-lg font-bold text-amber-600">
-                      {students.filter(s => s.progress >= 40 && s.progress < 70).length}
+                      {students.filter(s => s.status !== "awaiting_placement" && s.progress >= 40 && s.progress < 70).length}
                     </p>
                     <p className="text-xs text-muted-foreground">Needs Focus</p>
                   </div>
                   <div className="p-2 rounded-lg bg-red-50">
                     <p className="text-lg font-bold text-red-600">
-                      {students.filter(s => s.progress < 40).length}
+                      {students.filter(s => s.status !== "awaiting_placement" && s.progress < 40).length}
                     </p>
                     <p className="text-xs text-muted-foreground">At Risk</p>
                   </div>
