@@ -25,8 +25,9 @@ import type { ApiResponse, UserRole } from "@/types";
  *   2. Verifies caller.role === 'super_admin' (the only role allowed to
  *      arbitrarily re-assign roles across tenants).
  *   3. Validates the request body (target user_id, target role, scope ids).
- *   4. Calls the SECURITY DEFINER function `internhub.assign_role()` with
- *      a SERVICE_ROLE client. That function (migration 0004_bootstrap_admin)
+ *   4. Calls the SECURITY DEFINER function `assign_role()` with a
+ *      SERVICE_ROLE client. That function (migration 0004_bootstrap_admin,
+ *      hardened in 0028, exposed as a public-schema RPC wrapper in 0069)
  *      atomically:
  *        - Validates every scope FK relationship (department→university,
  *          program→department, etc.).
@@ -260,12 +261,20 @@ export async function POST(request: NextRequest) {
     }
 
     // ==========================================================
-    // 4. Call the SECURITY DEFINER function `internhub.assign_role()`.
-    //    This function (migration 0004_bootstrap_admin.sql) validates every
-    //    FK relationship and atomically updates profiles + auth.users +
-    //    audit_logs. We pass `null` for unspecified scopes so the function
-    //    clears them (e.g. assigning 'university_admin' should null out
-    //    any previous department_id / company_id / program_id on that user).
+    // 4. Call the SECURITY DEFINER function `assign_role()`.
+    //    This function (migration 0004 + hardening in 0028, exposed as a
+    //    public-schema wrapper in 0069) validates every FK relationship and
+    //    atomically updates profiles + auth.users + audit_logs. We pass
+    //    `null` for unspecified scopes so the function clears them (e.g.
+    //    assigning 'university_admin' should null out any previous
+    //    department_id / company_id / program_id on that user).
+    //
+    //    NOTE: We call `assign_role` (no schema prefix). PostgREST does NOT
+    //    support schema-qualified function names in /rpc — calling
+    //    `internhub.assign_role` here would 404 with
+    //    "Could not find the function public.internhub.assign_role(...)".
+    //    Migration 0069 created `public.assign_role(...)` as a thin wrapper
+    //    over `internhub.assign_role(...)`.
     // ==========================================================
     const rpcArgs = {
       p_user_id: user_id,
@@ -277,7 +286,7 @@ export async function POST(request: NextRequest) {
     };
 
     const { error: rpcError } = await adminClient.rpc(
-      "internhub.assign_role",
+      "assign_role",
       rpcArgs
     );
 
