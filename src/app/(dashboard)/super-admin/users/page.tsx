@@ -26,6 +26,7 @@ import {
   AlertCircle,
   Key,
   UserPlus,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,6 +79,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import type { UserRole } from "@/types";
 
 interface UserProfile {
   id?: string;
@@ -100,6 +102,15 @@ interface CreateUserForm {
   full_name: string;
   role: "university_admin" | "department_coordinator" | "faculty_supervisor" | "company_hr" | "site_supervisor" | "external_evaluator";
   university_id: string;
+  company_id: string;
+}
+
+interface AssignRoleForm {
+  user_id: string;
+  role: UserRole;
+  university_id: string;
+  department_id: string;
+  program_id: string;
   company_id: string;
 }
 
@@ -138,6 +149,21 @@ export default function SuperAdminUsersPage() {
   const [universities, setUniversities] = useState<{ id: string; name: string }[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
 
+  // Assign-role dialog state
+  const [isAssignRoleOpen, setIsAssignRoleOpen] = useState(false);
+  const [isAssigningRole, setIsAssigningRole] = useState(false);
+  const [assignRoleTarget, setAssignRoleTarget] = useState<UserProfile | null>(null);
+  const [assignRoleForm, setAssignRoleForm] = useState<AssignRoleForm>({
+    user_id: "",
+    role: "university_admin",
+    university_id: "",
+    department_id: "",
+    program_id: "",
+    company_id: "",
+  });
+  const [departments, setDepartments] = useState<{ id: string; name: string; university_id: string }[]>([]);
+  const [programs, setPrograms] = useState<{ id: string; name: string; department_id: string }[]>([]);
+
   // View user detail state
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -153,6 +179,7 @@ export default function SuperAdminUsersPage() {
   useEffect(() => {
     fetchUsers();
     fetchUniversitiesAndCompanies();
+    fetchDepartmentsAndPrograms();
   }, []);
 
   async function fetchUsers() {
@@ -232,6 +259,103 @@ export default function SuperAdminUsersPage() {
       }
     } catch (e) {
       console.log("Could not fetch universities/companies:", e);
+    }
+  }
+
+  // Fetch all departments + programs once on mount. Super Admin can read all
+  // rows via RLS, so we don't need to refetch when the selected university /
+  // department changes — we just filter the in-memory list.
+  async function fetchDepartmentsAndPrograms() {
+    try {
+      const supabase = createClient();
+      const [deptRes, progRes] = await Promise.all([
+        supabase.from("departments").select("id, name, university_id").order("name"),
+        supabase.from("programs").select("id, name, department_id").order("name"),
+      ]);
+      if (deptRes.data && !deptRes.error) setDepartments(deptRes.data);
+      if (progRes.data && !progRes.error) setPrograms(progRes.data);
+    } catch (e) {
+      console.log("Could not fetch departments/programs:", e);
+    }
+  }
+
+  function openAssignRoleDialog(targetUser: UserProfile) {
+    setAssignRoleTarget(targetUser);
+    // Pre-fill the form with the user's current role + scopes so the admin
+    // can see the existing state and tweak it.
+    setAssignRoleForm({
+      user_id: targetUser.user_id,
+      role: (targetUser.role as UserRole) || "university_admin",
+      university_id: targetUser.university_id || "",
+      department_id: "",
+      program_id: "",
+      company_id: "",
+    });
+    setIsAssignRoleOpen(true);
+  }
+
+  async function handleAssignRole() {
+    if (!assignRoleForm.user_id) {
+      setMessage({ type: "error", text: "No target user selected" });
+      return;
+    }
+
+    const role = assignRoleForm.role;
+
+    // Role-specific validation — mirrors the server-side check in
+    // /api/admin/assign-role/route.ts.
+    const needsUniversity = ["university_admin", "department_coordinator", "faculty_supervisor", "student"].includes(role);
+    const needsDepartment = ["department_coordinator", "faculty_supervisor"].includes(role);
+    const needsCompany = ["company_hr", "site_supervisor"].includes(role);
+
+    if (needsUniversity && !assignRoleForm.university_id) {
+      setMessage({ type: "error", text: `A university is required for role '${role}'` });
+      return;
+    }
+    if (needsDepartment && !assignRoleForm.department_id) {
+      setMessage({ type: "error", text: `A department is required for role '${role}'` });
+      return;
+    }
+    if (needsCompany && !assignRoleForm.company_id) {
+      setMessage({ type: "error", text: `A company is required for role '${role}'` });
+      return;
+    }
+
+    setIsAssigningRole(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/assign-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: assignRoleForm.user_id,
+          role: assignRoleForm.role,
+          university_id: assignRoleForm.university_id || undefined,
+          department_id: assignRoleForm.department_id || undefined,
+          program_id: assignRoleForm.program_id || undefined,
+          company_id: assignRoleForm.company_id || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      setMessage({
+        type: "success",
+        text: `Role updated to '${role}' for ${assignRoleTarget?.email || "user"}`,
+      });
+      setIsAssignRoleOpen(false);
+      setAssignRoleTarget(null);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error assigning role:", error);
+      setMessage({
+        type: "error",
+        text: error.message || "Failed to assign role",
+      });
+    } finally {
+      setIsAssigningRole(false);
     }
   }
 
@@ -645,6 +769,10 @@ export default function SuperAdminUsersPage() {
                             <Eye className="h-4 w-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openAssignRoleDialog(userItem)}>
+                            <ShieldCheck className="h-4 w-4 mr-2" />
+                            Assign Role
+                          </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => handleToggleUserStatus(userItem.user_id, userItem.status)}
                             className={
@@ -924,6 +1052,309 @@ export default function SuperAdminUsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Role Dialog */}
+      <Dialog
+        open={isAssignRoleOpen}
+        onOpenChange={(open) => {
+          setIsAssignRoleOpen(open);
+          if (!open) setAssignRoleTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Assign Role
+            </DialogTitle>
+            <DialogDescription>
+              Assign or update the role for{" "}
+              <span className="font-medium text-foreground">
+                {assignRoleTarget?.full_name || assignRoleTarget?.email || "this user"}
+              </span>
+              . Their scope associations (university, department, company) will
+              be updated atomically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Current role display */}
+            {assignRoleTarget && (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+                <div>
+                  <p className="text-xs text-muted-foreground">Current role</p>
+                  <div className="mt-1">{getRoleBadge(assignRoleTarget.role)}</div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Current university</p>
+                  <p className="text-sm font-medium truncate max-w-[220px]">
+                    {assignRoleTarget.university_name || "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Role selector */}
+            <div className="space-y-2">
+              <Label>New Role *</Label>
+              <Select
+                value={assignRoleForm.role}
+                onValueChange={(value: UserRole) =>
+                  setAssignRoleForm((prev) => ({
+                    ...prev,
+                    role: value,
+                    // Clear scope selectors that don't apply to the new role.
+                    // The user can re-select if they want to keep them.
+                    department_id:
+                      value === "department_coordinator" || value === "faculty_supervisor"
+                        ? prev.department_id
+                        : "",
+                    program_id:
+                      value === "student" ? prev.program_id : "",
+                    company_id:
+                      value === "company_hr" || value === "site_supervisor"
+                        ? prev.company_id
+                        : "",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="university_admin">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      University Admin
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="department_coordinator">
+                    <div className="flex items-center gap-2">
+                      <ClipboardCheck className="h-4 w-4" />
+                      Department Coordinator
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="faculty_supervisor">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4" />
+                      Faculty Supervisor
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="student">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4" />
+                      Student
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="company_hr">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="h-4 w-4" />
+                      Company HR
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="site_supervisor">
+                    <div className="flex items-center gap-2">
+                      <HardHat className="h-4 w-4" />
+                      Site Supervisor
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="external_evaluator">
+                    <div className="flex items-center gap-2">
+                      <Award className="h-4 w-4" />
+                      External Evaluator
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {roleConfig[assignRoleForm.role] && (
+                <p className="text-xs text-muted-foreground">
+                  {roleConfig[assignRoleForm.role].description}
+                </p>
+              )}
+            </div>
+
+            {/* University selector — for university-scoped roles */}
+            {["university_admin", "department_coordinator", "faculty_supervisor", "student"].includes(
+              assignRoleForm.role
+            ) && (
+              <div className="space-y-2">
+                <Label>
+                  University <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={assignRoleForm.university_id}
+                  onValueChange={(value) =>
+                    setAssignRoleForm((prev) => ({
+                      ...prev,
+                      university_id: value,
+                      // Clear department/program when university changes —
+                      // they may not belong to the new university.
+                      department_id: "",
+                      program_id: "",
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a university" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {universities.map((uni) => (
+                      <SelectItem key={uni.id} value={uni.id}>
+                        {uni.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Department selector — for department-scoped roles */}
+            {["department_coordinator", "faculty_supervisor"].includes(assignRoleForm.role) && (
+              <div className="space-y-2">
+                <Label>
+                  Department <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={assignRoleForm.department_id}
+                  onValueChange={(value) =>
+                    setAssignRoleForm((prev) => ({
+                      ...prev,
+                      department_id: value,
+                      program_id: "",
+                    }))
+                  }
+                  disabled={!assignRoleForm.university_id}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        assignRoleForm.university_id
+                          ? "Select a department"
+                          : "Select a university first"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments
+                      .filter(
+                        (d) => d.university_id === assignRoleForm.university_id
+                      )
+                      .map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Program selector — optional for students */}
+            {assignRoleForm.role === "student" && (
+              <div className="space-y-2">
+                <Label>Program (optional)</Label>
+                <Select
+                  value={assignRoleForm.program_id}
+                  onValueChange={(value) =>
+                    setAssignRoleForm((prev) => ({ ...prev, program_id: value }))
+                  }
+                  disabled={!assignRoleForm.university_id}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        assignRoleForm.university_id
+                          ? "Select a program (optional)"
+                          : "Select a university first"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs
+                      .filter((p) => {
+                        // Show only programs whose department belongs to the
+                        // selected university.
+                        const dept = departments.find(
+                          (d) => d.id === p.department_id
+                        );
+                        return dept?.university_id === assignRoleForm.university_id;
+                      })
+                      .map((prog) => (
+                        <SelectItem key={prog.id} value={prog.id}>
+                          {prog.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  The student will be enrolled in this program. Leave blank to
+                  assign without a program.
+                </p>
+              </div>
+            )}
+
+            {/* Company selector — for company-scoped roles */}
+            {["company_hr", "site_supervisor"].includes(assignRoleForm.role) && (
+              <div className="space-y-2">
+                <Label>
+                  Company <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={assignRoleForm.company_id}
+                  onValueChange={(value) =>
+                    setAssignRoleForm((prev) => ({ ...prev, company_id: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((comp) => (
+                      <SelectItem key={comp.id} value={comp.id}>
+                        {comp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Warning banner */}
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+              <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <p className="text-xs">
+                The user&apos;s JWT will be updated to reflect the new role on
+                their next sign-in. If they&apos;re currently signed in, they
+                may need to log out and back in for the change to take effect
+                everywhere.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsAssignRoleOpen(false)}
+              disabled={isAssigningRole}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAssignRole} disabled={isAssigningRole}>
+              {isAssigningRole ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4 mr-2" />
+                  Assign Role
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
