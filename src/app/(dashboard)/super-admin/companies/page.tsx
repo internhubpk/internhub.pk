@@ -463,10 +463,10 @@ export default function SuperAdminCompaniesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DialogBody className="p-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+          <DialogBody>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 py-4">
             <div className="sm:col-span-2">
-              <Label htmlFor="name">Company Name *</Label>
+              <Label htmlFor="name" className="mb-1.5">Company Name *</Label>
               <Input
                 id="name"
                 value={formData.name}
@@ -475,7 +475,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="industry">Industry</Label>
+              <Label htmlFor="industry" className="mb-1.5">Industry</Label>
               <Input
                 id="industry"
                 value={formData.industry}
@@ -484,7 +484,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="size">Size</Label>
+              <Label htmlFor="size" className="mb-1.5">Size</Label>
               <Input
                 id="size"
                 value={formData.size}
@@ -493,7 +493,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="website">Website</Label>
+              <Label htmlFor="website" className="mb-1.5">Website</Label>
               <Input
                 id="website"
                 value={formData.website}
@@ -502,7 +502,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="mb-1.5">Description</Label>
               <Textarea
                 id="description"
                 value={formData.description}
@@ -512,7 +512,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="address">Address</Label>
+              <Label htmlFor="address" className="mb-1.5">Address</Label>
               <Input
                 id="address"
                 value={formData.address}
@@ -521,7 +521,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="city" className="mb-1.5">City</Label>
               <Input
                 id="city"
                 value={formData.city}
@@ -530,7 +530,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="country">Country</Label>
+              <Label htmlFor="country" className="mb-1.5">Country</Label>
               <Input
                 id="country"
                 value={formData.country}
@@ -539,7 +539,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="contact_person">Contact Person</Label>
+              <Label htmlFor="contact_person" className="mb-1.5">Contact Person</Label>
               <Input
                 id="contact_person"
                 value={formData.contact_person}
@@ -548,7 +548,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div>
-              <Label htmlFor="contact_phone">Contact Phone</Label>
+              <Label htmlFor="contact_phone" className="mb-1.5">Contact Phone</Label>
               <Input
                 id="contact_phone"
                 value={formData.contact_phone}
@@ -557,7 +557,7 @@ export default function SuperAdminCompaniesPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="contact_email">Contact Email *</Label>
+              <Label htmlFor="contact_email" className="mb-1.5">Contact Email *</Label>
               <Input
                 id="contact_email"
                 type="email"
@@ -566,7 +566,7 @@ export default function SuperAdminCompaniesPage() {
                 placeholder="hr@acme.example.com"
               />
             </div>
-            <div className="sm:col-span-2 flex gap-6 pt-2">
+            <div className="sm:col-span-2 flex gap-6 pt-4 mt-2 border-t">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
