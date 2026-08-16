@@ -111,10 +111,17 @@ export async function GET(request: NextRequest) {
       query = query.eq("university_id", profile.university_id);
     }
 
-    // Department coordinators further filter by their department
+    // Department coordinators further filter by their department.
+    // SKIP this filter for external evaluators (type='external') — they are
+    // cross-department / cross-institution industry experts and may have
+    // `department_id = NULL`. Applying the filter here would silently hide
+    // every external evaluator in the system from the coordinator's
+    // Students-page "Assign External Evaluator" dropdown, defeating the
+    // whole feature.
     if (
       profile.role === "department_coordinator" &&
-      profile.department_id
+      profile.department_id &&
+      supervisorType !== "external"
     ) {
       query = query.eq("department_id", profile.department_id);
     }

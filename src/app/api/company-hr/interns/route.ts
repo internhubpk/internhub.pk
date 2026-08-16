@@ -250,39 +250,69 @@ export async function GET(request: NextRequest) {
     // Also fetch the list of active site supervisors AND external evaluators
     // for the assignment dropdown. Both are returned as separate arrays so the
     // UI can present them as two clearly labeled groups.
+    //
+    // SITE SUPERVISORS are scoped to this company — they're employees the HR
+    // manages, so `company_id = profile.company_id` is correct.
+    //
+    // EXTERNAL EVALUATORS are NOT company-bound — they're industry experts
+    // shared across the ecosystem. Filtering them by `company_id` returns an
+    // empty list because external evaluator rows NEVER have a `company_id`.
+    // Instead, we fetch external evaluators whose `university_id` matches any
+    // of the universities of this company's interns. This ensures HR sees the
+    // same pool of external evaluators that the coordinators at those
+    // universities assigned from. If no university info is available on any
+    // intern, we fall back to fetching all active external evaluators (open
+    // marketplace model) so HR can still pick one.
+    const internUniversityIds = Array.from(
+      new Set(
+        interns
+          .map((i) => i.student?.university_id)
+          .filter(Boolean) as string[]
+      )
+    );
+
+    const siteSupQuery = supabase
+      .from("supervisors")
+      .select(
+        `
+        user_id,
+        company_id,
+        is_active,
+        first_name,
+        last_name,
+        email,
+        profiles:user_id (full_name, first_name, last_name, email)
+      `
+      )
+      .eq("company_id", profile.company_id)
+      .eq("type", "site")
+      .eq("is_active", true);
+
+    let extEvalQuery = supabase
+      .from("supervisors")
+      .select(
+        `
+        user_id,
+        is_active,
+        first_name,
+        last_name,
+        email,
+        profiles:user_id (full_name, first_name, last_name, email)
+      `
+      )
+      .eq("type", "external")
+      .eq("is_active", true);
+    if (internUniversityIds.length > 0) {
+      // Include evaluators whose university_id is in our list, OR is NULL
+      // (truly external industry experts with no university affiliation).
+      extEvalQuery = extEvalQuery.or(
+        `university_id.in.(${internUniversityIds.join(",")}),university_id.is.null`
+      );
+    }
+
     const [siteSupRes, extEvalRes] = await Promise.all([
-      supabase
-        .from("supervisors")
-        .select(
-          `
-          user_id,
-          company_id,
-          is_active,
-          first_name,
-          last_name,
-          email,
-          profiles:user_id (full_name, first_name, last_name, email)
-        `
-        )
-        .eq("company_id", profile.company_id)
-        .eq("type", "site")
-        .eq("is_active", true),
-      supabase
-        .from("supervisors")
-        .select(
-          `
-          user_id,
-          company_id,
-          is_active,
-          first_name,
-          last_name,
-          email,
-          profiles:user_id (full_name, first_name, last_name, email)
-        `
-        )
-        .eq("company_id", profile.company_id)
-        .eq("type", "external")
-        .eq("is_active", true),
+      siteSupQuery,
+      extEvalQuery,
     ]);
 
     const mapSupervisor = (s: any) => ({

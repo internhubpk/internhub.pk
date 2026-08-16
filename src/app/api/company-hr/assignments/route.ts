@@ -225,17 +225,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify supervisor belongs to this company and is active.
-    const { data: supervisor } = await supabase
+    // Verify supervisor exists and is active.
+    //
+    // For SITE and FACULTY supervisors, we enforce `company_id` matches the
+    // HR's company — site supervisors are company employees, and faculty
+    // supervisors (rare from HR) should at minimum be scoped to the company.
+    //
+    // For EXTERNAL evaluators the `company_id` filter is intentionally
+    // SKIPPED — external evaluators are industry experts who never have a
+    // `company_id`. Requiring the match would always return null here, so
+    // every external-evaluator assignment would fail with 404 even though
+    // the evaluator was visible in the dropdown. We instead verify that
+    // the evaluator exists, is active, and is type='external'.
+    const supervisorFetchQuery = supabase
       .from("supervisors")
       .select("user_id, company_id, is_active, type")
-      .eq("user_id", supervisor_id)
-      .eq("company_id", profile.company_id)
-      .maybeSingle();
+      .eq("user_id", supervisor_id);
+    // We can't know the type ahead of time, so we fetch the supervisor row
+    // WITHOUT the company_id filter and then check the type explicitly below.
+    // (Filtering by company_id would silently drop external evaluators.)
+    const { data: supervisor } = await supervisorFetchQuery.maybeSingle();
 
     if (!supervisor) {
       return NextResponse.json(
-        { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or does not belong to your company" } },
+        { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found" } },
         { status: 404 }
       );
     }
@@ -243,6 +256,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: { code: "SUPERVISOR_INACTIVE", message: "Cannot assign to an inactive supervisor" } },
         { status: 400 }
+      );
+    }
+    // Enforce company scoping for non-external supervisors.
+    if (
+      supervisor.type !== "external" &&
+      supervisor.company_id !== profile.company_id
+    ) {
+      return NextResponse.json(
+        { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or does not belong to your company" } },
+        { status: 404 }
       );
     }
 
@@ -429,17 +452,26 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify supervisor
+    // Verify supervisor (same rules as POST: external evaluators don't
+    // have a company_id, so we don't enforce company scoping for them).
     const { data: supervisor } = await supabase
       .from("supervisors")
       .select("user_id, company_id, is_active, type")
       .eq("user_id", new_supervisor_id)
-      .eq("company_id", profile.company_id)
       .maybeSingle();
 
     if (!supervisor || !supervisor.is_active) {
       return NextResponse.json(
         { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or inactive" } },
+        { status: 404 }
+      );
+    }
+    if (
+      supervisor.type !== "external" &&
+      supervisor.company_id !== profile.company_id
+    ) {
+      return NextResponse.json(
+        { error: { code: "SUPERVISOR_NOT_FOUND", message: "Supervisor not found or does not belong to your company" } },
         { status: 404 }
       );
     }
