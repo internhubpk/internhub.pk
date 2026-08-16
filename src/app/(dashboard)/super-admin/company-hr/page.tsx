@@ -494,7 +494,7 @@ export default function SuperAdminCompanyHrPage() {
 
           <DialogBody className="space-y-4">
             <div>
-              <Label htmlFor="hr-full-name">Full Name *</Label>
+              <Label htmlFor="hr-full-name" className="mb-1.5">Full Name *</Label>
               <Input
                 id="hr-full-name"
                 value={createForm.full_name}
@@ -503,7 +503,7 @@ export default function SuperAdminCompanyHrPage() {
               />
             </div>
             <div>
-              <Label htmlFor="hr-email">Email *</Label>
+              <Label htmlFor="hr-email" className="mb-1.5">Email *</Label>
               <Input
                 id="hr-email"
                 type="email"
@@ -513,7 +513,7 @@ export default function SuperAdminCompanyHrPage() {
               />
             </div>
             <div>
-              <Label htmlFor="hr-password">Password *</Label>
+              <Label htmlFor="hr-password" className="mb-1.5">Password *</Label>
               <div className="relative">
                 <Input
                   id="hr-password"
@@ -533,7 +533,7 @@ export default function SuperAdminCompanyHrPage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="hr-company">Company *</Label>
+              <Label htmlFor="hr-company" className="mb-1.5">Company *</Label>
               <Select
                 value={createForm.company_id}
                 onValueChange={(v) => setCreateForm({ ...createForm, company_id: v })}
@@ -552,7 +552,7 @@ export default function SuperAdminCompanyHrPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="hr-title">Job Title</Label>
+                <Label htmlFor="hr-title" className="mb-1.5">Job Title</Label>
                 <Input
                   id="hr-title"
                   value={createForm.job_title}
@@ -561,7 +561,7 @@ export default function SuperAdminCompanyHrPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="hr-phone">Phone</Label>
+                <Label htmlFor="hr-phone" className="mb-1.5">Phone</Label>
                 <Input
                   id="hr-phone"
                   value={createForm.phone}
@@ -601,7 +601,7 @@ export default function SuperAdminCompanyHrPage() {
           </DialogHeader>
           <DialogBody className="space-y-4">
             <div>
-              <Label htmlFor="edit-full-name">Full Name</Label>
+              <Label htmlFor="edit-full-name" className="mb-1.5">Full Name</Label>
               <Input
                 id="edit-full-name"
                 value={editForm.full_name}
@@ -609,7 +609,7 @@ export default function SuperAdminCompanyHrPage() {
               />
             </div>
             <div>
-              <Label htmlFor="edit-company">Company</Label>
+              <Label htmlFor="edit-company" className="mb-1.5">Company</Label>
               <Select
                 value={editForm.company_id}
                 onValueChange={(v) => setEditForm({ ...editForm, company_id: v })}
@@ -628,7 +628,7 @@ export default function SuperAdminCompanyHrPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="edit-title">Job Title</Label>
+                <Label htmlFor="edit-title" className="mb-1.5">Job Title</Label>
                 <Input
                   id="edit-title"
                   value={editForm.job_title}
@@ -636,7 +636,7 @@ export default function SuperAdminCompanyHrPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-phone">Phone</Label>
+                <Label htmlFor="edit-phone" className="mb-1.5">Phone</Label>
                 <Input
                   id="edit-phone"
                   value={editForm.phone}
