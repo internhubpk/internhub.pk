@@ -599,17 +599,25 @@ function SidebarMenuBadge({
   )
 }
 
+// Deterministic widths cycle. The original shadcn/ui implementation used
+// `Math.random()` inside a `useMemo(() => ..., [])` — that runs once on the
+// server and once on the client during hydration, producing two different
+// widths and triggering React error #418. Picking from a fixed array by
+// index makes the output identical on both passes.
+const SIDEBAR_MENU_SKELETON_WIDTHS = ["50%", "65%", "80%", "60%", "75%", "55%", "70%", "85%"]
+
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
+  index = 0,
   ...props
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
+  index?: number
 }) {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+  // Width is picked deterministically from a fixed array so server and
+  // client produce identical output during hydration.
+  const width = SIDEBAR_MENU_SKELETON_WIDTHS[index % SIDEBAR_MENU_SKELETON_WIDTHS.length]
 
   return (
     <div

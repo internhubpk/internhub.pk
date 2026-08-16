@@ -494,7 +494,12 @@ export function StatNumber({
   );
 }
 
-// Chart skeleton for loading states
+// Chart skeleton for loading states.
+// HYDRATION-SAFE: uses a deterministic heights array indexed by position.
+// Calling Math.random() during render would produce different output on
+// the server vs the client during hydration → React error #418.
+const CHART_SKELETON_HEIGHTS = [65, 45, 80, 55, 70, 40];
+
 export function ChartSkeleton({ className }: { className?: string }) {
   return (
     <Card className={cn("p-6", className)}>
@@ -511,12 +516,12 @@ export function ChartSkeleton({ className }: { className?: string }) {
               ))}
             </div>
             <div className="flex-1 space-y-2">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {CHART_SKELETON_HEIGHTS.map((h, i) => (
                 <Skeleton
                   key={i}
                   className="h-[120px] w-full rounded-t-md"
                   style={{
-                    height: `${Math.random() * 80 + 20}%`,
+                    height: `${h}%`,
                   }}
                 />
               ))}

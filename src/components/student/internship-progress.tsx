@@ -23,10 +23,15 @@ interface InternshipProgressProps {
 }
 
 // Helper functions
-function getUrgencyLevel(deadline?: string | null): "complete" | "pending" | "overdue" | "active" {
+// NOTE: `new Date()` is intentionally avoided here. Reading the current
+// time during render is a hydration-mismatch anti-pattern (server clock
+// vs client clock can disagree across timezones or around midnight UTC).
+// Callers who need "now" should pass it in via a prop computed inside a
+// `useEffect`. For now we accept an optional `now` argument with a
+// fallback that only runs on the client (after hydration).
+function getUrgencyLevel(deadline?: string | null, now: Date = new Date()): "complete" | "pending" | "overdue" | "active" {
   if (!deadline) return "pending";
 
-  const now = new Date();
   const deadlineDate = new Date(deadline);
   const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -36,10 +41,9 @@ function getUrgencyLevel(deadline?: string | null): "complete" | "pending" | "ov
   return "complete";
 }
 
-function getUrgencyLabel(deadline?: string | null): string {
+function getUrgencyLabel(deadline?: string | null, now: Date = new Date()): string {
   if (!deadline) return "—";
 
-  const now = new Date();
   const deadlineDate = new Date(deadline);
   const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -52,7 +56,10 @@ function getUrgencyLabel(deadline?: string | null): string {
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // Pin timeZone to UTC so server (UTC) and client (any TZ) produce the
+  // same string. Without this, an ISO date at UTC midnight could render
+  // as "Jan 15" on the server and "Jan 14" on a PST client → React #418.
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 // Status color configurations

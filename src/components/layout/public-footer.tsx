@@ -134,7 +134,10 @@ export function PublicFooter({
         {/* Bottom bar */}
         <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <p className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
-            © {new Date().getFullYear()} {isTenant ? branding.name : "InternHub"}. All rights reserved.
+            {/* Hardcoded year — new Date().getFullYear() in a "use client"
+                footer is a hydration-mismatch anti-pattern at the year
+                boundary across timezones (server UTC vs client TZ). */}
+            © 2026 {isTenant ? branding.name : "InternHub"}. All rights reserved.
           </p>
           <p className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
             <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />

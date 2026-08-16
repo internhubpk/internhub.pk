@@ -175,7 +175,9 @@ export default function NotFound() {
       {/* Footer */}
       <footer className="mt-16 pb-8 text-center">
         <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} InternHub. All rights reserved.
+          {/* Hardcoded year — new Date().getFullYear() in a "use client"
+              page is a hydration-mismatch anti-pattern. */}
+          © 2026 InternHub. All rights reserved.
         </p>
       </footer>
     </div>

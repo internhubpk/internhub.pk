@@ -138,7 +138,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         {/* ============================================ */}
         <footer className="border-t border-border py-4 px-6 shrink-0 bg-background">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
-            <p>© {new Date().getFullYear()} InternHub. All rights reserved.</p>
+            {/* Hardcoded year — calling new Date().getFullYear() during
+                render is a hydration-mismatch anti-pattern (server and
+                client can disagree at the Dec 31 → Jan 1 boundary,
+                especially across timezones). */}
+            <p>© 2026 InternHub. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <a
                 href="/privacy"
