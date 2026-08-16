@@ -173,16 +173,9 @@ export default async function RootLayout({
   let tenantConfig: TenantConfig;
   try {
     tenantConfig = await getServerTenantConfig();
-  } catch (error) {
+  } catch {
     // Fallback to default config if tenant detection fails.
-    // Note: `getServerTenantConfig()` already swallows the common case
-    // (headers() unavailable during build, DB unreachable) and returns
-    // PLATFORM_DEFAULT_TENANT, so this catch only fires on truly
-    // unexpected errors. We deliberately don't log here — the prior
-    // `console.log("Using fallback tenant config:", ...)` produced noise
-    // during build. Real runtime errors will surface via Next.js's own
-    // error reporting.
-    void error;
+    // (Build-time, missing env vars, or DB unavailable — silently fall back.)
     tenantConfig = {
       id: "default",
       name: "InternHub",

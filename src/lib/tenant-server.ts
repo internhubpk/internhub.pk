@@ -51,17 +51,9 @@ export async function detectTenantSlug(): Promise<string | null> {
     }
 
     return null;
-  } catch (error) {
-    // `headers()` is unavailable during `next build` SSG attempts. With
-    // `export const dynamic = "force-dynamic"` set on the root layout,
-    // Next.js no longer attempts static rendering for routes that use
-    // this function, so this catch is mostly defensive. We deliberately
-    // do NOT log here — the prior `console.log("Tenant detection error:",
-    // ...)` was producing one noisy warning per route per build, and the
-    // underlying condition (headers unavailable during build) is benign
-    // and already handled by the caller's fallback to
-    // PLATFORM_DEFAULT_TENANT.
-    void error;
+  } catch {
+    // Headers might not be available in all contexts (e.g. during build).
+    // Silently fall through to null — caller returns the platform default.
     return null;
   }
 }
@@ -133,14 +125,8 @@ async function fetchTenantBySlug(slug: string): Promise<TenantConfig | null> {
     // Cache for subsequent lookups in the same request / nearby requests
     tenantCache.set(slug, { tenant, expiresAt: Date.now() + TENANT_CACHE_TTL_MS });
     return tenant;
-  } catch (err) {
-    // DB / network errors here are real runtime issues (Supabase down,
-    // bad connection, etc.) — log them at warn level so they're visible
-    // in production server logs without polluting `next build` output.
-    // (During build, Supabase env vars may be unset, which is benign.)
-    if (process.env.NEXT_PHASE !== "phase-production-build") {
-      console.warn("fetchTenantBySlug error:", err instanceof Error ? err.message : err);
-    }
+  } catch {
+    // DB / network error — fall back to platform default branding.
     return null;
   }
 }
