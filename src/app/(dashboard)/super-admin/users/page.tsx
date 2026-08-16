@@ -1068,21 +1068,13 @@ export default function SuperAdminUsersPage() {
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto p-0">
           {/* Header — accent strip to signal "this is an admin action" */}
           <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent">
-            <DialogHeader className="p-0 space-y-2 sm:text-left">
-              <DialogTitle className="flex items-center gap-2 text-lg">
+            <DialogHeader className="p-0 space-y-0 text-center sm:text-center">
+              <DialogTitle className="flex items-center justify-center gap-2 text-lg">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <ShieldCheck className="h-4 w-4" />
                 </span>
                 Assign Role
               </DialogTitle>
-              <DialogDescription className="text-sm leading-relaxed">
-                Assign or update the role for{" "}
-                <span className="font-medium text-foreground">
-                  {assignRoleTarget?.full_name || assignRoleTarget?.email || "this user"}
-                </span>
-                . Their scope associations (university, department, company) will
-                be updated atomically.
-              </DialogDescription>
             </DialogHeader>
           </div>
 
