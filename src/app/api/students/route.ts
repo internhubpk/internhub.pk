@@ -30,11 +30,15 @@ const VIEW_STUDENT_ROLES: UserRole[] = [
   "super_admin",
   "university_admin",
   "department_coordinator",
+  "program_coordinator",
   "faculty_supervisor",
 ];
 
-// Roles that can create students
-const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin", "department_coordinator"];
+// Roles that can create students.
+// IMPORTANT: department_coordinator is INTENTIONALLY EXCLUDED per InternHub
+// spec section 14 — only program_coordinator (and higher) can create students.
+// This is enforced server-side AND via RLS, not just by hiding UI buttons.
+const CREATE_STUDENT_ROLES: UserRole[] = ["super_admin", "university_admin", "program_coordinator"];
 
 // Allowed sort fields to prevent SQL injection
 const ALLOWED_SORT_FIELDS = [
@@ -321,15 +325,34 @@ export async function POST(request: NextRequest) {
     }
 
     if (userRole === "department_coordinator") {
+      // REJECTED per InternHub spec section 14:
+      //   "Department Coordinators must NOT be able to: create students,
+      //    create supervisors."
+      //   "Do not only hide buttons. Enforce the restriction in:
+      //    server-side actions/API routes, authorization checks, RLS where applicable."
+      // This branch is reached only if CREATE_STUDENT_ROLES is misconfigured
+      // — defensive denial. The requireRole() call above should already have
+      // rejected department_coordinator callers before this code runs.
+      return authorizationError(
+        "Department Coordinators cannot create students. This responsibility belongs to the Program Coordinator of the relevant program. Contact your University Admin if a Program Coordinator has not yet been assigned."
+      );
+    }
+
+    if (userRole === "program_coordinator") {
+      // Program coordinators can create students ONLY within their own program.
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account");
       }
-      if (!userDepartmentId) {
-        return authorizationError("No department assigned to your account. Ask a University Admin to assign you to a department first.");
+      const userProgramId = (authContext.profile as any)?.program_id;
+      if (!userProgramId) {
+        return authorizationError(
+          "No program assigned to your account. Ask a Department Coordinator to assign you to a program first."
+        );
       }
-      // Force both university_id and department_id from the caller's profile.
+      // Force university_id from caller's profile (cannot spoof).
       studentData.university_id = userUniversityId;
-      studentData.department_id = userDepartmentId;
+      // Force program_id from caller's profile (cannot spoof).
+      studentData.program_id = userProgramId;
     }
 
     // For super admins, verify the university exists.

@@ -8,6 +8,7 @@ export const ROLE_DASHBOARD_PATHS: Record<UserRole, string> = {
   super_admin: "/super-admin",
   university_admin: "/university-admin",
   department_coordinator: "/department-coordinator",
+  program_coordinator: "/program-coordinator",
   faculty_supervisor: "/faculty-supervisor",
   student: "/student",
   company_hr: "/company-hr",

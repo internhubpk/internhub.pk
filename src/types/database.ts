@@ -27,6 +27,7 @@ export type UserRole =
   | "company_hr"
   | "site_supervisor"
   | "external_evaluator"
+  | "program_coordinator"
   | "pending_assignment";
 
 export type InternshipStatus =

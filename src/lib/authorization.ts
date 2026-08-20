@@ -101,12 +101,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
     canAccessAssignedStudentsOnly: false,
     canAccessCompanyData: false,
   },
+  // Department coordinator has REDUCED permissions per InternHub spec:
+  //   - Can create programs
+  //   - CANNOT create students (program_coordinator does that)
+  //   - CANNOT create supervisors (program_coordinator does that)
+  //   - Can view appropriate students/supervisors/program info
+  //   - Can generate authorized reports
   department_coordinator: {
     canManageUniversities: false,
     canManageUsers: false,
-    canManageStudents: true,
+    canManageStudents: false, // RESTRICTED — only program_coordinator can create students
     canManageDepartments: false,
-    canManagePrograms: false,
+    canManagePrograms: true, // Can CREATE programs (NOT duration_weeks field)
     canManageCompanies: false,
     canManageInternships: true,
     canEvaluate: false,
@@ -115,6 +121,26 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
     canEditSettings: false,
     canAccessAllUniversityData: false,
     canAccessOwnDepartmentOnly: true,
+    canAccessAssignedStudentsOnly: false,
+    canAccessCompanyData: false,
+  },
+  // Program coordinator manages students, supervisors (with bulk assign),
+  // and reports for their authorized program. Auto-created when a program is
+  // created by a department_coordinator.
+  program_coordinator: {
+    canManageUniversities: false,
+    canManageUsers: false,
+    canManageStudents: true, // Creates students within their program
+    canManageDepartments: false,
+    canManagePrograms: false, // Cannot create programs (department_coordinator does that)
+    canManageCompanies: false,
+    canManageInternships: true,
+    canEvaluate: false,
+    canIssueCertificates: false,
+    canViewReports: true, // Own program reports only (RLS-enforced)
+    canEditSettings: false,
+    canAccessAllUniversityData: false,
+    canAccessOwnDepartmentOnly: false,
     canAccessAssignedStudentsOnly: false,
     canAccessCompanyData: false,
   },

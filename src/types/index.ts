@@ -13,7 +13,8 @@ export type UserRole =
   | "student"
   | "company_hr"
   | "site_supervisor"
-  | "external_evaluator";
+  | "external_evaluator"
+  | "program_coordinator";
 
 export interface Profile {
   user_id: string;

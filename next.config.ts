@@ -1,19 +1,32 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
 import pkg from "./package.json";
 
+// ============================================================================
+// InternHub Next.js Configuration
+// ----------------------------------------------------------------------------
+// PWA support is provided by Serwist (@serwist/next) — the maintained
+// successor to next-pwa. The service worker source is at src/sw.ts.
+//
+// SECURITY NOTE:
+//   The service worker does NOT intercept /api/* or /auth/* requests —
+//   authenticated data must never be cached in the SW. This is enforced
+//   in src/sw.ts via the `deniedNavigationRoutes` config and the runtime
+//   caching rules. See public/manifest.webmanifest for the PWA manifest.
+// ============================================================================
+
+const withSerwist = withSerwistInit({
+  swSrc: "src/sw.ts",
+  swDest: "public/sw.js",
+  disable: process.env.NODE_ENV === "development",
+  reloadOnOnline: true,
+});
+
 const nextConfig: NextConfig = {
-  /* config options here */
   reactStrictMode: false,
-  // Expose the app version (from package.json) to the client bundle so
-  // settings pages can display the real version instead of a hardcoded
-  // "1.0.0" placeholder. NEXT_PUBLIC_* vars are inlined at build time.
   env: {
     NEXT_PUBLIC_APP_VERSION: pkg.version || "0.0.0",
   },
-  // Local dev tenant subdomains (mapped to 127.0.0.1 via curl --resolve /
-  // Playwright host-resolver-rules). Without this, Next.js dev server
-  // treats requests to myu.xirea.tech:3000 as cross-origin and triggers
-  // an infinite redirect loop on /university-admin.
   allowedDevOrigins: [
     "myu.xirea.tech",
     "iiui.xirea.tech",
@@ -22,6 +35,34 @@ const nextConfig: NextConfig = {
     "iiui.xirea.tech:3000",
     "internhub.pk:3000",
   ],
+  // PWA: add manifest headers so /manifest.webmanifest is served with the
+  // correct MIME type (some browsers refuse to install the PWA otherwise).
+  async headers() {
+    return [
+      {
+        source: "/manifest.webmanifest",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/manifest+json; charset=utf-8",
+          },
+        ],
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Service-Worker-Allowed",
+            value: "/",
+          },
+        ],
+      },
+    ];
+  },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

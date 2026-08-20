@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type {
   ApiResponse,
@@ -17,14 +18,14 @@ const VIEW_PROGRAM_ROLES: UserRole[] = [
   "super_admin",
   "university_admin",
   "department_coordinator",
+  "program_coordinator",
   "faculty_supervisor",
   "student",
 ];
 
-// Roles that can create/edit programs
-// University Admin can only VIEW programs (see migration 0002 RLS + the
-// university-admin/programs page which is view-only). Programs are created
-// and managed by Department Coordinators, with super_admin as override.
+// Roles that can create/edit programs.
+// Per InternHub spec section 14: Department Coordinators create programs.
+// Program Coordinators CANNOT create programs (they manage students/supervisors).
 const MANAGE_PROGRAM_ROLES: UserRole[] = [
   "super_admin",
   "department_coordinator",
@@ -187,12 +188,34 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/programs
- * Create new program - University Admin or Super Admin only
+ * Create new program — Department Coordinator or Super Admin only.
+ *
+ * Per InternHub spec section 14:
+ *   - The Program record must NOT REQUIRE a `duration_weeks` field.
+ *     (We still accept it for back-compat with the existing column, but
+ *      it is NOT a required field.)
+ *   - When a program is created, the corresponding Program Coordinator
+ *     account MUST be created according to the application's existing
+ *     authentication/role architecture. We use the SAME pattern as
+ *     /api/coordinators (Supabase auth.admin.createUser + profiles insert),
+ *     with role = "program_coordinator" and program_id = the new program.
+ *   - Do NOT create a second authentication system.
+ *
+ * The auto-created Program Coordinator receives:
+ *   - email = caller-supplied (or auto-generated from program code)
+ *   - password = random 16-char password (Supabase will email a recovery link
+ *     if email_confirm is false; for now we set email_confirm=true and rely
+ *     on Supabase's "invite user" pattern)
+ *   - role metadata = "program_coordinator"
+ *   - university_id = the program's university
+ *   - department_id = the program's department
+ *   - program_id = the new program's id
  */
 export async function POST(request: NextRequest) {
+  const requestId = `prog-post-${Date.now()}`;
   try {
     const authContext = await requireAuth();
-    
+
     if (!authContext.profile || !MANAGE_PROGRAM_ROLES.includes(authContext.profile.role as UserRole)) {
       return authorizationError("Forbidden: Insufficient permissions to create programs");
     }
@@ -203,9 +226,22 @@ export async function POST(request: NextRequest) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
 
-    // Parse request body
+    // Parse request body.
     const body = await request.json();
-    let { name, code, description, duration_weeks, department_id, is_active, default_faculty_supervisor_id, default_external_evaluator_id } = body;
+    let {
+      name,
+      code,
+      description,
+      duration_weeks, // OPTIONAL per InternHub spec
+      department_id,
+      is_active,
+      default_faculty_supervisor_id,
+      default_external_evaluator_id,
+      // Optional: caller can supply coordinator_email + coordinator_full_name
+      // to create a Program Coordinator account. If not provided, we auto-generate.
+      coordinator_email,
+      coordinator_full_name,
+    } = body;
 
     const userRole = authContext.profile.role;
     const userUniversityId = authContext.profile.university_id;
@@ -218,18 +254,16 @@ export async function POST(request: NextRequest) {
       department_id = userDepartmentId;
     }
 
-    // Validate required fields
-    if (!name || !code || !duration_weeks || !department_id) {
+    // Validate required fields.
+    // NOTE: duration_weeks is intentionally NOT required per InternHub spec.
+    if (!name || !code || !department_id) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Missing required fields: name, code, duration_weeks, department_id" },
+        { success: false, error: "Missing required fields: name, code, department_id" },
         { status: 400 }
       );
     }
 
     // Determine university_id based on role.
-    // University Admin is NOT in MANAGE_PROGRAM_ROLES (they can only
-    // view programs). Only super_admin and department_coordinator reach
-    // this point.
     let universityId = body.university_id;
 
     if (userRole === "department_coordinator") {
@@ -240,6 +274,13 @@ export async function POST(request: NextRequest) {
       universityId = userUniversityId;
     }
     // super_admin: use body.university_id (must be passed by caller)
+
+    if (!universityId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "university_id is required" },
+        { status: 400 }
+      );
+    }
 
     // Check if code is unique within the university
     const { data: existingProgram } = await supabase
@@ -256,45 +297,190 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create program
+    // Create program (duration_weeks is OPTIONAL — pass through if provided)
+    const programInsert: Record<string, unknown> = {
+      name,
+      code,
+      description: description || null,
+      university_id: universityId,
+      department_id,
+      default_faculty_supervisor_id: default_faculty_supervisor_id || null,
+      default_external_evaluator_id: default_external_evaluator_id || null,
+      is_active: is_active !== undefined ? is_active : true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    // Only set duration_weeks if provided — do NOT require it.
+    if (duration_weeks !== undefined && duration_weeks !== null) {
+      programInsert.duration_weeks = duration_weeks;
+    }
+
     const { data: program, error } = await supabase
       .from("programs")
-      .insert({
-        name,
-        code,
-        description: description || null,
-        duration_weeks,
-        university_id: universityId,
-        department_id,
-        default_faculty_supervisor_id: default_faculty_supervisor_id || null,
-        default_external_evaluator_id: default_external_evaluator_id || null,
-        is_active: is_active !== undefined ? is_active : true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .insert(programInsert)
       .select()
       .single();
 
-    if (error) {
-      console.error("Error creating program:", error);
+    if (error || !program) {
+      console.error(`[${requestId}] program INSERT error:`, error);
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Failed to create program" },
+        { success: false, error: `Failed to create program: ${error?.message || "unknown"}` },
         { status: 500 }
       );
+    }
+
+    // ----------------------------------------------------------------------
+    // AUTO-CREATE Program Coordinator account (per InternHub spec section 14)
+    // ----------------------------------------------------------------------
+    // Use the SAME authentication pattern as /api/coordinators:
+    //   1. Build service-role client (supabase.auth.admin.createUser
+    //      requires the service role key — the publishable key cannot
+    //      create new auth users without establishing a session for them,
+    //      which would log the calling coordinator OUT).
+    //   2. Create the auth user with email_confirm=true and a random
+    //      password. Supabase will send a "confirm your account" email
+    //      if SMTP is configured; the new Program Coordinator can then
+    //      use "Forgot Password" to set their own password.
+    //   3. Insert a profile row with role=program_coordinator, university_id,
+    //      department_id, and program_id (linking them to the just-created
+    //      program).
+    //
+    // The trigger `profiles_sync_auth_metadata` (migration 0011/0038) will
+    // automatically keep the new user's app_metadata.role in sync with
+    // their profiles.role, so the proxy/JWT can read the role.
+    // ----------------------------------------------------------------------
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      // Service role not configured — return success but warn.
+      // The program was created; the PC account creation can be retried
+      // via /api/programs/[id]/create-coordinator later.
+      console.warn(`[${requestId}] SUPABASE_SERVICE_ROLE_KEY not set — skipping PC auto-creation`);
+      return NextResponse.json<ApiResponse<typeof program>>({
+        success: true,
+        data: program!,
+        message:
+          "Program created successfully, but the Program Coordinator account could not be auto-created (server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is not set). Use the 'Create Program Coordinator' action on the program to create one manually.",
+        warning: "PC_AUTO_CREATE_SKIPPED",
+      });
+    }
+
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
+
+    // Determine the PC's email and full name.
+    const pcEmail = coordinator_email || `${code.toLowerCase()}-pc@${universityId.slice(0, 8)}.internhub.pk`;
+    const pcFullName = coordinator_full_name || `${name} Coordinator`;
+
+    // Check if a user with this email already exists.
+    const { data: existingUsersList, error: listErr } = await admin.auth.admin.listUsers();
+    if (listErr) {
+      console.warn(`[${requestId}] Could not list existing users:`, listErr);
+    }
+    const emailExists = (existingUsersList?.users || []).some(
+      (u: { email?: string }) => (u.email || "").toLowerCase() === pcEmail.toLowerCase()
+    );
+
+    let pcUserId: string | null = null;
+    if (emailExists) {
+      // Fetch the existing user.
+      const { data: existingUser } = await admin
+        .from("profiles")
+        .select("user_id, role, program_id")
+        .eq("email", pcEmail)
+        .maybeSingle();
+      if (existingUser) {
+        pcUserId = existingUser.user_id;
+        // Update their profile to point to this program.
+        await admin
+          .from("profiles")
+          .update({
+            role: "program_coordinator",
+            university_id: universityId,
+            department_id: department_id,
+            program_id: program.id,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", pcUserId);
+      }
+    } else {
+      // Create a new auth user. We use a random 24-char password — the
+      // user will use "Forgot Password" to set their own.
+      const randomPassword = Array.from({ length: 24 }, () =>
+        "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789".charAt(
+          Math.floor(Math.random() * 56)
+        )
+      ).join("");
+
+      const { data: newUser, error: createUserErr } = await admin.auth.admin.createUser({
+        email: pcEmail,
+        password: randomPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: pcFullName,
+          role: "program_coordinator",
+          program_id: program.id,
+          university_id: universityId,
+        },
+      });
+
+      if (createUserErr) {
+        console.error(`[${requestId}] PC auth user creation failed:`, createUserErr);
+        return NextResponse.json<ApiResponse<typeof program>>({
+          success: true,
+          data: program!,
+          message: `Program created, but the Program Coordinator account could not be created: ${createUserErr.message}. Use the 'Create Program Coordinator' action on the program to retry.`,
+          warning: "PC_AUTO_CREATE_FAILED",
+        });
+      }
+
+      pcUserId = newUser.user?.id || null;
+    }
+
+    if (pcUserId) {
+      // Ensure profile row exists with role=program_coordinator.
+      const { error: profileErr } = await admin
+        .from("profiles")
+        .upsert(
+          {
+            user_id: pcUserId,
+            email: pcEmail,
+            full_name: pcFullName,
+            first_name: pcFullName.split(" ")[0] || pcFullName,
+            last_name: pcFullName.split(" ").slice(1).join(" ") || null,
+            role: "program_coordinator",
+            university_id: universityId,
+            department_id: department_id,
+            program_id: program.id,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+
+      if (profileErr) {
+        console.error(`[${requestId}] PC profile upsert failed:`, profileErr);
+        // Don't fail the whole request — the program was created.
+      }
     }
 
     return NextResponse.json<ApiResponse<typeof program>>({
       success: true,
       data: program!,
-      message: "Program created successfully",
+      message: `Program created successfully. Program Coordinator account ${pcEmail} has been provisioned.`,
     });
   } catch (error) {
     console.error("Error in POST /api/programs:", error);
-    
+
     if (error instanceof Error && error.message.includes("Authentication")) {
       return authenticationError(error.message);
     }
-    
+
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }

@@ -19,14 +19,17 @@ const VIEW_ROLES: UserRole[] = [
   "super_admin",
   "university_admin",
   "department_coordinator",
+  "program_coordinator",
   "faculty_supervisor",
 ];
 
-// Roles that can create supervisors
+// Roles that can create supervisors.
+// IMPORTANT: department_coordinator is INTENTIONALLY EXCLUDED per InternHub
+// spec section 14 — only program_coordinator (and higher) can create supervisors.
 const CREATE_ROLES: UserRole[] = [
   "super_admin",
   "university_admin",
-  "department_coordinator",
+  "program_coordinator",
 ];
 
 /**
@@ -269,7 +272,7 @@ export async function POST(request: NextRequest) {
     //    but their app_metadata has the correct value).
     const { data: callerProfile, error: callerErr } = await admin
       .from("profiles")
-      .select("user_id, role, university_id, department_id, email")
+      .select("user_id, role, university_id, department_id, program_id, email")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -284,7 +287,7 @@ export async function POST(request: NextRequest) {
     const callerRole = callerProfile.role as UserRole;
     if (!CREATE_ROLES.includes(callerRole)) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin or Department Coordinator access required to add supervisors" },
+        { success: false, error: "Forbidden: University Admin, Program Coordinator, or Super Admin access required to add supervisors. Department Coordinators cannot create supervisors." },
         { status: 403 }
       );
     }
@@ -328,9 +331,24 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (callerRole === "department_coordinator") {
-      if (!userUniversityId || !userDepartmentId) {
+      // REJECTED per InternHub spec section 14.
+      // This branch is defensive — the CREATE_ROLES check above should
+      // already have rejected department_coordinator callers.
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Department Coordinators cannot create supervisors. This responsibility belongs to the Program Coordinator of the relevant program.",
+        },
+        { status: 403 }
+      );
+    } else if (callerRole === "program_coordinator") {
+      // Program coordinators can create supervisors ONLY within their own
+      // program. They cannot create supervisors for other programs or
+      // universities.
+      if (!userUniversityId) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first." },
+          { success: false, error: "Your coordinator account has no university_id." },
           { status: 403 }
         );
       }
@@ -340,14 +358,15 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      // Force department_id to caller's own department.
-      if (supervisorData.department_id && supervisorData.department_id !== userDepartmentId) {
+      // Force program_id to caller's own program (cannot spoof).
+      const userProgramId = (callerProfile as any).program_id;
+      if (!userProgramId) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "Department coordinators can only add supervisors to their own department" },
+          { success: false, error: "Your coordinator account is not linked to a program. Ask a Department Coordinator to assign you to a program first." },
           { status: 403 }
         );
       }
-      supervisorData.department_id = userDepartmentId;
+      (supervisorData as any).program_id = userProgramId;
     }
     // super_admin: no additional scoping.
 

@@ -21,7 +21,8 @@ type UserRole =
   | "student"
   | "company_hr"
   | "site_supervisor"
-  | "external_evaluator";
+  | "external_evaluator"
+  | "program_coordinator";
 
 /** Public routes that don't require authentication.
  *
@@ -63,6 +64,7 @@ const ROUTE_ROLES: Record<string, UserRole[]> = {
   "/super-admin": ["super_admin"],
   "/university-admin": ["university_admin"],
   "/department-coordinator": ["department_coordinator"],
+  "/program-coordinator": ["program_coordinator"],
   "/faculty-supervisor": ["faculty_supervisor"],
   "/student": ["student"],
   "/company-hr": ["company_hr"],
@@ -77,6 +79,7 @@ const ROLE_DASHBOARDS: Record<UserRole, string> = {
   super_admin: "/super-admin",
   university_admin: "/university-admin",
   department_coordinator: "/department-coordinator",
+  program_coordinator: "/program-coordinator",
   faculty_supervisor: "/faculty-supervisor",
   student: "/student",
   company_hr: "/company-hr",
@@ -93,6 +96,7 @@ const ROLE_DASHBOARDS: Record<UserRole, string> = {
 const TENANT_SCOPED_ROLES: ReadonlySet<UserRole> = new Set<UserRole>([
   "university_admin",
   "department_coordinator",
+  "program_coordinator",
   "faculty_supervisor",
   "student",
 ]);

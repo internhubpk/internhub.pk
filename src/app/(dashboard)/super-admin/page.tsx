@@ -205,24 +205,31 @@ export default function SuperAdminDashboard() {
         setUniversitiesData(uniData.sort((a, b) => b.students - a.students).slice(0, 8));
       }
 
-      // Process role distribution
+      // Process role distribution (REAL Supabase data — no dummies)
       if (roleDistRes?.data && !roleDistRes.error) {
         const roleCounts: Record<string, number> = {};
         roleDistRes.data.forEach((p: any) => {
-          roleCounts[p.role] = (roleCounts[p.role] || 0) + 1;
+          const role = p.role || "pending_assignment";
+          roleCounts[role] = (roleCounts[role] || 0) + 1;
         });
-        
+
+        // Per InternHub spec section 12: display
+        //   Student, Super Admin, Supervisor, Site Supervisor, Company HR,
+        //   Coordinator, University Admin, Program Coordinator
+        // Each category must be visually distinct and readable in light/dark theme.
         const roleLabels: Record<string, string> = {
           super_admin: "Super Admin",
-          university_admin: "Uni. Admin",
-          department_coordinator: "Coordinator",
-          faculty_supervisor: "Supervisor",
+          university_admin: "University Admin",
+          department_coordinator: "Dept Coordinator",
+          program_coordinator: "Program Coordinator",
+          faculty_supervisor: "Faculty Supervisor",
           student: "Student",
           company_hr: "Company HR",
           site_supervisor: "Site Supervisor",
-          external_evaluator: "Evaluator",
+          external_evaluator: "External Evaluator",
+          pending_assignment: "Pending",
         };
-        
+
         const pieData = Object.entries(roleCounts).map(([key, value]) => ({
           name: roleLabels[key] || key,
           value,

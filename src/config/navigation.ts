@@ -47,6 +47,7 @@ export const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
   university_admin: "University Admin",
   department_coordinator: "Department Coordinator",
+  program_coordinator: "Program Coordinator",
   faculty_supervisor: "Faculty Supervisor",
   student: "Student",
   company_hr: "Company HR",
@@ -114,6 +115,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: BookOpen,
     },
     {
+      title: "Holidays",
+      href: "/university-admin/holidays",
+      icon: CalendarClock,
+    },
+    {
       title: "Companies",
       href: "/university-admin/companies",
       icon: Briefcase,
@@ -163,6 +169,33 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
     {
       title: "Settings",
       href: "/department-coordinator/settings",
+      icon: Settings,
+    },
+  ],
+  program_coordinator: [
+    {
+      title: "Dashboard",
+      href: "/program-coordinator",
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Students",
+      href: "/program-coordinator/students",
+      icon: GraduationCap,
+    },
+    {
+      title: "Supervisors",
+      href: "/program-coordinator/supervisors",
+      icon: UserCheck,
+    },
+    {
+      title: "Reports",
+      href: "/program-coordinator/reports",
+      icon: BarChart3,
+    },
+    {
+      title: "Settings",
+      href: "/program-coordinator/settings",
       icon: Settings,
     },
   ],

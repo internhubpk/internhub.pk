@@ -47,12 +47,26 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
   
   // ==========================================
   // DEPARTMENT COORDINATOR ROUTES
-  // Only department_coordinator can access these
+  // Only department_coordinator can access these.
+  // Department coordinators can create programs but CANNOT create students
+  // or supervisors (those are program_coordinator responsibilities).
   // ==========================================
   {
     path: "/department-coordinator",
     roles: ["department_coordinator"],
-    description: "Department Coordinator dashboard and all sub-routes"
+    description: "Department Coordinator dashboard and all sub-routes (program creation, oversight)"
+  },
+  
+  // ==========================================
+  // PROGRAM COORDINATOR ROUTES
+  // Only program_coordinator can access these.
+  // Program coordinators manage students, supervisors (with bulk assign),
+  // and access reports for their authorized program.
+  // ==========================================
+  {
+    path: "/program-coordinator",
+    roles: ["program_coordinator"],
+    description: "Program Coordinator dashboard — student/supervisor/report management for an authorized program"
   },
   
   // ==========================================
@@ -188,6 +202,7 @@ export function getRoleDashboardPath(role: UserRole | null): string {
     case "super_admin": return "/super-admin";
     case "university_admin": return "/university-admin";
     case "department_coordinator": return "/department-coordinator";
+    case "program_coordinator": return "/program-coordinator";
     case "faculty_supervisor": return "/faculty-supervisor";
     case "student": return "/student";
     case "company_hr": return "/company-hr";
@@ -304,6 +319,18 @@ export function checkResourceAccess(
     if (resourceSupervisorId && resourceSupervisorId !== userId) {
       return { allowed: false, reason: "Evaluation not assigned to you" };
     }
+    return { allowed: true };
+  }
+
+  // Program coordinators can access anything in their program
+  if (userRole === "program_coordinator") {
+    if (resourceUniversityId && userUniversityId !== resourceUniversityId) {
+      return { allowed: false, reason: "Cross-university access denied" };
+    }
+    // Program scoping is enforced at the data layer (RLS on program_id).
+    // If a resourceProgramId is provided, check it matches the user's program.
+    // (ResourceOwnershipCheck doesn't currently include resourceProgramId,
+    // but the underlying DB query already filters by program_id via RLS.)
     return { allowed: true };
   }
 

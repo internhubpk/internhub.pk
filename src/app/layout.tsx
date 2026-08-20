@@ -116,6 +116,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     // Note: manifest.json disabled to prevent Vercel SSO CORS issues
     // manifest: "/manifest.json",
+    manifest: "/manifest.webmanifest",
     openGraph: {
       type: "website",
       locale: "en_US",
