@@ -285,21 +285,23 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Create notification for student about log review. weekly_logs has no
-    // `student_id` column — use `student_user_id`. week_number IS a real
-    // column (migration 0042 made it nullable w/ default 1), but we use
-    // week_start_date for the human-readable label.
+    // Create notification for student about log review. Uses the shared
+    // sendNotification helper so the notification is also delivered via
+    // web push to subscribed devices.
     const weekLabel = log.week_start_date
       ? new Date(log.week_start_date).toLocaleDateString()
       : "the week";
-    await supabase.from("notifications").insert({
-      user_id: log.student_user_id,
-      sender_id: supervisorUserId,
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: log.student_user_id,
+      senderId: supervisorUserId,
       title: `Weekly Log ${newStatus === 'approved' ? 'Approved' : 'Reviewed'}`,
       message: `Your weekly log for the week of ${weekLabel} has been ${newStatus.replace('_', ' ')}.${feedback ? ` Feedback: ${feedback}` : ''}`,
       category: "evaluation",
       priority: newStatus === "rejected" ? "high" : "medium",
+      actionUrl: "/student/weekly-logs",
       metadata: {
+        type: "weekly_log_reviewed",
         log_id: logId,
         action,
         supervisor_id: supervisorUserId,

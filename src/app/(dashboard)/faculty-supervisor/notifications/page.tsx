@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
   Send,
@@ -774,6 +775,9 @@ export default function FacultySupervisorNotificationsPage() {
         </Dialog>
         }
       />
+
+      {/* Push notification subscription status */}
+      <PushNotificationsStatusCard />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">

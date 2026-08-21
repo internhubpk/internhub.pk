@@ -187,10 +187,12 @@ export async function POST(
       );
     }
 
-    // Notify the student.
-    await supabase.from("notifications").insert({
-      user_id: log.student_user_id,
-      sender_id: user.id,
+    // Notify the student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: log.student_user_id,
+      senderId: user.id,
       title:
         newStatus === "approved"
           ? "Weekly Log Fully Signed & Approved"
@@ -201,7 +203,9 @@ export async function POST(
           : `Your weekly log has been signed by your ${roleLabel.toLowerCase()}. It is now awaiting faculty supervisor sign-off.`,
       category: "evaluation",
       priority: newStatus === "approved" ? "high" : "medium",
+      actionUrl: "/student/weekly-logs",
       metadata: {
+        type: "weekly_log_signed",
         log_id: logId,
         action: "site_signed",
         supervisor_id: user.id,
@@ -217,14 +221,15 @@ export async function POST(
         .eq("id", log.student_internship_id || "")
         .maybeSingle();
       if (siRow?.faculty_supervisor_id) {
-        await supabase.from("notifications").insert({
-          user_id: siRow.faculty_supervisor_id,
-          sender_id: user.id,
+        await sendNotification(supabase, {
+          userId: siRow.faculty_supervisor_id,
+          senderId: user.id,
           title: "Weekly Log Fully Approved",
           message: `A weekly log you signed has now also been signed by the site supervisor. It is fully approved.`,
           category: "evaluation",
           priority: "low",
-          metadata: { log_id: logId, action: "approved", sent_by: "site_supervisor" },
+          actionUrl: "/faculty-supervisor/weekly-logs",
+          metadata: { type: "weekly_log_approved", log_id: logId, action: "approved", sent_by: "site_supervisor" },
         });
       }
     }

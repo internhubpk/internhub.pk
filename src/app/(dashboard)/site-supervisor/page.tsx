@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 import { StatCard } from "@/components/dashboard/stat-card";
 
 // ---------------------------------------------------------------------------
@@ -382,6 +383,9 @@ export default function SiteSupervisorDashboard() {
           </Button>
         }
       />
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Overview stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

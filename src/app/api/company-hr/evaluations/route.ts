@@ -284,10 +284,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Notify student
-    await supabase.from("notifications").insert({
-      user_id: student_user_id,
-      sender_id: user.id,
+    // Notify student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: student_user_id,
+      senderId: user.id,
       title: evalStatus === "submitted" ? "Final evaluation submitted" : "Evaluation draft saved",
       message:
         evalStatus === "submitted"
@@ -295,7 +297,8 @@ export async function POST(request: NextRequest) {
           : "A draft of your final evaluation has been saved by the company.",
       category: "evaluation",
       priority: "medium",
-      is_read: false,
+      actionUrl: "/student/evaluations",
+      metadata: { type: "evaluation_submitted", evaluation_id: evaluation.id, status: evalStatus },
     });
 
     await supabase.from("audit_logs").insert({

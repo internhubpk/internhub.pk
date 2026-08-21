@@ -47,6 +47,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
 
 // Types
 interface AssignedStudent {
@@ -388,6 +389,9 @@ export default function SiteSupervisorNotificationsPage() {
           </Button>
         }
       />
+
+      {/* Push notification subscription status */}
+      <PushNotificationsStatusCard />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>

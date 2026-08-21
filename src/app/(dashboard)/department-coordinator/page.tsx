@@ -34,6 +34,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 
 interface DepartmentStats {
   totalStudents: number;
@@ -256,6 +257,9 @@ export default function DepartmentCoordinatorDashboard() {
           </div>
         }
       />
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Department Info Card (View-Only) */}
       {department && (

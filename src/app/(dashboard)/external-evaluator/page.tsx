@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 
 type EvaluationStatus = "pending" | "in_progress" | "submitted" | "approved" | "rejected";
 
@@ -199,6 +200,9 @@ export default function ExternalEvaluatorDashboard() {
         title="External Evaluator Dashboard"
         description={`Welcome back, ${greetingName}. Manage your assigned evaluations below.`}
       />
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">

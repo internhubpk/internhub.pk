@@ -37,6 +37,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 
 // Types
 interface StudentStats {
@@ -541,6 +542,9 @@ export default function StudentDashboard() {
           </>
         }
       />
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

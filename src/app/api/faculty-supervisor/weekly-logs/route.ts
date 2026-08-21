@@ -224,16 +224,19 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Notify the student.
+    // Notify the student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
     const weekLabel = log.week_start_date ? new Date(log.week_start_date).toLocaleDateString() : "the week";
-    await supabase.from("notifications").insert({
-      user_id: log.student_user_id,
-      sender_id: user.id,
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: log.student_user_id,
+      senderId: user.id,
       title: `Weekly Log ${newStatus === "approved" ? "Approved" : "Reviewed"}`,
       message: `Your weekly log for the week of ${weekLabel} has been ${newStatus.replace("_", " ")} by your faculty supervisor.${feedback ? ` Feedback: ${feedback}` : ""}`,
       category: "evaluation",
       priority: newStatus === "rejected" ? "high" : "medium",
-      metadata: { log_id: logId, action, sent_by: "faculty_supervisor" },
+      actionUrl: "/student/weekly-logs",
+      metadata: { type: "weekly_log_reviewed", log_id: logId, action, sent_by: "faculty_supervisor" },
     });
 
     await supabase.from("audit_logs").insert({

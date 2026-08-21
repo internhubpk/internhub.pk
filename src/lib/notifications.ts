@@ -2,8 +2,8 @@
  * Server-side notification helper.
  *
  * Centralises the logic for inserting in-app notifications into the
- * `notifications` table. Used by API routes to fire notifications on
- * key workflow events:
+ * `notifications` table AND firing web push notifications to subscribed
+ * devices. Used by API routes to fire notifications on key workflow events:
  *
  *   - Application submitted / accepted / rejected
  *   - Task assigned / submitted / evaluated
@@ -12,12 +12,17 @@
  *   - Student enrolled / assigned supervisor
  *
  * Each helper accepts a Supabase server client (so it inherits the
- * caller's RLS context) and inserts one row per recipient. Failures are
- * logged but never throw — notifications are best-effort and should not
- * break the parent workflow.
+ * caller's RLS context) and inserts one row per recipient. The push
+ * notification is sent via the service-role client (so we can read
+ * push_subscriptions rows for the recipient — the SENDER is not the
+ * RECIPIENT, so the caller's RLS context cannot read them).
+ *
+ * Failures are logged but never throw — notifications are best-effort
+ * and should not break the parent workflow.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToUser } from "@/lib/push-notifications";
 
 // notification_category enum (from migration 0001):
 //   auth, application, evaluation, deadline, system,
@@ -52,7 +57,53 @@ export interface SendNotificationInput {
 }
 
 /**
- * Insert a single notification row for one recipient.
+ * Fire a web push notification to all active subscriptions for one user.
+ *
+ * Uses the service-role client to read `push_subscriptions` (the caller's
+ * RLS context cannot read another user's subscriptions). If VAPID is not
+ * configured, this is a silent no-op (the in-app notification row is
+ * still inserted by the caller).
+ *
+ * Best-effort: logs on error, never throws.
+ */
+async function firePushNotification(
+  userId: string,
+  title: string,
+  body: string,
+  options: {
+    category?: NotificationCategory;
+    priority?: NotificationPriority;
+    actionUrl?: string | null;
+    tag?: string;
+    metadata?: Record<string, any>;
+  } = {}
+): Promise<void> {
+  try {
+    await sendPushToUser(userId, {
+      title,
+      body,
+      icon: "/icon-192.png",
+      badge: "/icon-96.png",
+      tag: options.tag || `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      data: {
+        actionUrl: options.actionUrl,
+        category: options.category,
+        priority: options.priority,
+        ...(options.metadata || {}),
+      },
+      requireInteraction: options.priority === "urgent",
+    });
+  } catch (err) {
+    // Push failure must NEVER break the in-app notification flow.
+    // Most common failure: VAPID env vars not set on the Next.js deployment.
+    console.error("[notifications] firePushNotification error:", err);
+  }
+}
+
+/**
+ * Insert a single notification row for one recipient AND fire a push
+ * notification to all their subscribed devices.
+ *
  * Best-effort: logs on error, never throws.
  */
 export async function sendNotification(
@@ -77,10 +128,19 @@ export async function sendNotification(
   } catch (err) {
     console.error("[notifications] sendNotification error:", err);
   }
+
+  // Fire push notification in parallel — never blocks the in-app row.
+  await firePushNotification(input.userId, input.title, input.message, {
+    category: input.category,
+    priority: input.priority,
+    actionUrl: input.actionUrl,
+    metadata: input.metadata,
+  });
 }
 
 /**
- * Insert the same notification for multiple recipients.
+ * Insert the same notification for multiple recipients AND fire a push
+ * notification to each recipient's subscribed devices.
  * Uses a single batched insert for efficiency.
  */
 export async function sendNotificationToMany(
@@ -108,6 +168,19 @@ export async function sendNotificationToMany(
   } catch (err) {
     console.error("[notifications] sendNotificationToMany error:", err);
   }
+
+  // Fire push to each recipient in parallel. This is bounded by the
+  // number of recipients (typically small — 1-5 supervisors).
+  await Promise.all(
+    userIds.map((uid) =>
+      firePushNotification(uid, input.title, input.message, {
+        category: input.category,
+        priority: input.priority,
+        actionUrl: input.actionUrl,
+        metadata: input.metadata,
+      })
+    )
+  );
 }
 
 // ============================================================

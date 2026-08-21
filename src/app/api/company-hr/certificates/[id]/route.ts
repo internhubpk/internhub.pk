@@ -114,18 +114,22 @@ async function changeStatus(request: NextRequest, context: { params: Promise<{ i
       );
     }
 
-    // Notify the student about the status change.
-    await supabase.from("notifications").insert({
-      user_id: cert.student_user_id,
-      sender_id: user.id,
+    // Notify the student about the status change — uses the shared
+    // sendNotification helper so the notification is also delivered via
+    // web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: cert.student_user_id,
+      senderId: user.id,
       title: newStatus === "revoked" ? "Certificate revoked" : "Certificate re-issued",
       message:
         newStatus === "revoked"
           ? `Your certificate "${cert.title}" (#${cert.certificate_number}) has been revoked. Please contact your company HR for details.`
           : `Your certificate "${cert.title}" (#${cert.certificate_number}) has been re-issued and is now valid.`,
       category: "certificate",
-      priority: newStatus === "revoked" ? "high" : "normal",
-      is_read: false,
+      priority: newStatus === "revoked" ? "high" : "medium",
+      actionUrl: "/student/certificates",
+      metadata: { type: "certificate_status_change", certificate_id: cert.id, new_status: newStatus },
     });
 
     await supabase.from("audit_logs").insert({

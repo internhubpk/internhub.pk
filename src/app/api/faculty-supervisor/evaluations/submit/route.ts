@@ -277,19 +277,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ---- Notify the student ----
+    // ---- Notify the student (also fires web push) ----
     try {
-      await supabase.from("notifications").insert({
-        user_id: student_user_id,
-        sender_id: user.id,
+      const { sendNotification } = await import("@/lib/notifications");
+      await sendNotification(supabase, {
+        userId: student_user_id,
+        senderId: user.id,
         title: "Faculty Evaluation Submitted",
         message:
           comments?.trim() ||
           `Your ${type === "task" ? "task" : type === "weekly" ? "weekly" : type} evaluation has been submitted by ${profile.full_name || "your faculty supervisor"}.`,
         category: "evaluation",
         priority: "medium",
-        is_read: false,
-        metadata: { evaluation_id: data.id, type, evaluator_role: "faculty_supervisor" },
+        actionUrl: "/student/evaluations",
+        metadata: { type: "evaluation_submitted", evaluation_id: data.id, eval_type: type, evaluator_role: "faculty_supervisor" },
       });
     } catch (notifErr) {
       // Best-effort — don't fail the evaluation submission if the notification fails.

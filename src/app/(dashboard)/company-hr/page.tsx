@@ -43,6 +43,7 @@ import {
 import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 
 interface CompanyStats {
   activeInternships: number;
@@ -249,6 +250,9 @@ export default function CompanyHRDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

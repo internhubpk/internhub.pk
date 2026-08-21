@@ -344,16 +344,16 @@ export default function UniversityAdminHolidaysPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingHoliday ? "Edit Holiday" : "Add Holiday"}</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-lg">{editingHoliday ? "Edit Holiday" : "Add Holiday"}</DialogTitle>
+            <DialogDescription className="pt-1">
               {editingHoliday
                 ? "Update holiday details."
                 : "Define a new official holiday for your university."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5 px-1 py-2">
             <div className="space-y-2">
               <Label htmlFor="name">Holiday Name *</Label>
               <Input
@@ -362,6 +362,7 @@ export default function UniversityAdminHolidaysPage() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g. Independence Day"
                 required
+                className="h-10"
               />
             </div>
             <div className="space-y-2">
@@ -371,10 +372,11 @@ export default function UniversityAdminHolidaysPage() {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="e.g. National holiday — university closed"
-                rows={2}
+                rows={3}
+                className="resize-none"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="holiday_date">Holiday Date *</Label>
                 <Input
@@ -383,6 +385,7 @@ export default function UniversityAdminHolidaysPage() {
                   value={formData.holiday_date}
                   onChange={(e) => setFormData({ ...formData, holiday_date: e.target.value })}
                   required
+                  className="h-10"
                 />
               </div>
               <div className="space-y-2">
@@ -393,16 +396,18 @@ export default function UniversityAdminHolidaysPage() {
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   min={formData.holiday_date}
+                  className="h-10"
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="flex items-start gap-3">
-                <Ban className="h-5 w-5 text-destructive mt-0.5" />
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <Ban className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="font-medium text-sm">Restrict student submissions</p>
-                  <p className="text-xs text-muted-foreground">
-                    When enabled, students cannot submit weekly logs or restricted tasks on this date.
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When enabled, students cannot submit weekly logs or restricted
+                    tasks on this date.
                   </p>
                 </div>
               </div>
@@ -413,7 +418,7 @@ export default function UniversityAdminHolidaysPage() {
                 }
               />
             </div>
-            <DialogFooter>
+            <DialogFooter className="pt-2 gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={isSaving}>
                 Cancel
               </Button>

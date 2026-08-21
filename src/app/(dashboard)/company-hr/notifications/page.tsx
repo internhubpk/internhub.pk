@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
 
 interface Notification {
   id: string;
@@ -191,6 +192,9 @@ export default function CompanyHRNotificationsPage() {
           </>
         }
       />
+
+      {/* Push notification subscription status */}
+      <PushNotificationsStatusCard />
 
       <Card>
         <CardHeader>

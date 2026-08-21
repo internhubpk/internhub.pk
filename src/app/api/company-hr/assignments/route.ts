@@ -365,16 +365,20 @@ export async function POST(request: NextRequest) {
         : supervisor.type === "faculty"
           ? "faculty supervisor"
           : "site supervisor";
+    // Notify each assigned student — uses the shared sendNotification helper
+    // so the notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
     await Promise.all(
       validSIs.map((si) =>
-        supabase.from("notifications").insert({
-          user_id: si.student_user_id,
-          sender_id: user.id,
+        sendNotification(supabase, {
+          userId: si.student_user_id,
+          senderId: user.id,
           title: `${assignLabel.charAt(0).toUpperCase() + assignLabel.slice(1)} assigned`,
           message: `You have been assigned an ${assignLabel}. You can now submit weekly logs and request evaluations.`,
           category: "system",
           priority: "medium",
-          is_read: false,
+          actionUrl: "/student/internships",
+          metadata: { type: "supervisor_assigned", supervisor_id: (supervisor as any).id, supervisor_type: supervisor.type },
         })
       )
     );

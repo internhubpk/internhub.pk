@@ -8,10 +8,7 @@ import {
   FileText,
   Briefcase,
   BarChart3,
-  UserCircle,
   CheckCircle2,
-  Clock,
-  TrendingUp,
 } from "lucide-react";
 import {
   Card,
@@ -20,15 +17,12 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { usePushNotifications } from "@/hooks/use-push-notifications";
-import { Bell, BellOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 
 export default function ProgramCoordinatorDashboard() {
   const { profile } = useAuth();
@@ -41,8 +35,6 @@ export default function ProgramCoordinatorDashboard() {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [programName, setProgramName] = useState<string>("");
-
-  const push = usePushNotifications();
 
   useEffect(() => {
     if (!profile?.program_id) {
@@ -108,17 +100,6 @@ export default function ProgramCoordinatorDashboard() {
     }
   }
 
-  const handleSubscribe = async () => {
-    const result = await push.subscribe();
-    if (result.success) {
-      toast.success("Notifications enabled", {
-        description: "You'll receive push notifications for workflow events.",
-      });
-    } else {
-      toast.error("Failed to enable notifications", { description: result.error });
-    }
-  };
-
   if (!profile?.program_id) {
     return (
       <div className="space-y-6">
@@ -140,36 +121,8 @@ export default function ProgramCoordinatorDashboard() {
         description={`Managing: ${programName || "Loading..."}`}
       />
 
-      {/* Push notification enable prompt */}
-      {push.isSupported && push.isConfigured && !push.isSubscribed && (push.permission as string) !== "denied" && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Bell className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-medium">Enable push notifications</p>
-                <p className="text-sm text-muted-foreground">
-                  Get notified when students submit weekly logs, evaluations are completed, and more.
-                </p>
-              </div>
-            </div>
-            <Button onClick={handleSubscribe} disabled={(push.permission as string) === "denied"}>
-              Enable
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {(push.permission as string) === "denied" && (
-        <Card className="border-orange-500/30 bg-orange-500/5">
-          <CardContent className="p-4 flex items-center gap-3">
-            <BellOff className="h-5 w-5 text-orange-500" />
-            <p className="text-sm">
-              Notifications are blocked. Enable them in your browser settings to receive push alerts.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Push notification enable prompt (shared, silent if not supported) */}
+      <EnablePushNotificationsCard />
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

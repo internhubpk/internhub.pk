@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 import Link from "next/link";
 
 interface UniversityStats {
@@ -572,6 +573,9 @@ export default function UniversityAdminDashboard() {
           </Button>
         }
       />
+
+      {/* Push notifications enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {error ? (
         <Card className="border-destructive/50">

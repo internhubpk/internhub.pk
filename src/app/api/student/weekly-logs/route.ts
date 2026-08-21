@@ -376,17 +376,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Notify the supervisor (best-effort).
+    // Notify the supervisor(s) — best-effort. Uses the shared sendNotification
+    // helper which also fires a web push notification to subscribed devices.
     if (supervisorId) {
       const weekLabel = new Date(body.week_start_date).toLocaleDateString();
-      await supabase.from("notifications").insert({
-        user_id: supervisorId,
-        sender_id: user.id,
-        title: "New Weekly Log Submitted",
-        message: `Your student ${profile?.full_name || ""} submitted a weekly log for the week of ${weekLabel}. Please review and sign.`,
+      const { sendNotification } = await import("@/lib/notifications");
+      await sendNotification(supabase, {
+        userId: supervisorId,
+        senderId: user.id,
         category: "evaluation",
         priority: "medium",
+        title: "New Weekly Log Submitted",
+        message: `Your student ${profile?.full_name || ""} submitted a weekly log for the week of ${weekLabel}. Please review and sign.`,
+        actionUrl: "/site-supervisor/weekly-logs",
         metadata: {
+          type: "weekly_log_submitted",
           log_id: inserted?.id,
           student_user_id: user.id,
           week_start_date: body.week_start_date,

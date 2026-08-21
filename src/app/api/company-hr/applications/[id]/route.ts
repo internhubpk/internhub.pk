@@ -195,10 +195,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         );
     }
 
-    // Notify student
-    await supabase.from("notifications").insert({
-      user_id: existing.student_user_id,
-      sender_id: user.id,
+    // Notify student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: existing.student_user_id,
+      senderId: user.id,
       title:
         status === "accepted"
           ? "Application accepted!"
@@ -213,7 +215,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           : `Your application status is now: ${status}.`,
       category: "application",
       priority: status === "accepted" ? "high" : "medium",
-      is_read: false,
+      actionUrl: "/student/applications",
+      metadata: {
+        type: status === "accepted" ? "application_accepted" : status === "rejected" ? "application_rejected" : "application_status_update",
+        application_id: existing.id,
+        internship_id: existing.internship_id,
+        new_status: status,
+      },
     });
 
     await supabase.from("audit_logs").insert({

@@ -27,6 +27,7 @@ import {
   Filter,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
 
 interface Notification {
   id: string;
@@ -215,6 +216,9 @@ export default function StudentNotificationsPage() {
           </div>
         }
       />
+
+      {/* Push notification subscription status */}
+      <PushNotificationsStatusCard />
 
       {/* Filters */}
       <Card>

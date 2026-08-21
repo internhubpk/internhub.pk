@@ -361,14 +361,18 @@ export async function POST(request: NextRequest) {
         .eq("id", inserted.id)
         .single();
 
-      await supabase.from("notifications").insert({
-        user_id: student_user_id,
-        sender_id: user.id,
+      // Notify the student via the shared sendNotification helper —
+      // also delivers via web push to subscribed devices.
+      const { sendNotification } = await import("@/lib/notifications");
+      await sendNotification(supabase, {
+        userId: student_user_id,
+        senderId: user.id,
         title: "Certificate issued",
         message: `${profile.full_name || "Your company"} issued your certificate "${title}". Certificate #${certificate_number}. You can now add it to LinkedIn.`,
         category: "certificate",
         priority: "high",
-        is_read: false,
+        actionUrl: "/student/certificates",
+        metadata: { type: "certificate_issued", certificate_id: inserted.id, certificate_number, title },
       });
 
       await supabase.from("audit_logs").insert({

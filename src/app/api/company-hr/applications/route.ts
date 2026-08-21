@@ -346,12 +346,14 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Notify each student
+    // Notify each student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
     await Promise.all(
       ownedApps.map((a) =>
-        supabase.from("notifications").insert({
-          user_id: a.student_user_id,
-          sender_id: user.id,
+        sendNotification(supabase, {
+          userId: a.student_user_id,
+          senderId: user.id,
           title:
             status === "accepted"
               ? "Application accepted!"
@@ -366,7 +368,8 @@ export async function PATCH(request: NextRequest) {
               : `Your application status is now: ${status}.`,
           category: "application",
           priority: status === "accepted" ? "high" : "medium",
-          is_read: false,
+          actionUrl: "/student/applications",
+          metadata: { type: status === "accepted" ? "application_accepted" : status === "rejected" ? "application_rejected" : "application_status_update", application_id: a.id, new_status: status },
         })
       )
     );

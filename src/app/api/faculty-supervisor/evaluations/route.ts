@@ -258,15 +258,18 @@ export async function POST(request: Request) {
     const notificationMessage =
       feedback || evaluator_comments || "Your evaluation has been updated.";
 
-    await supabase.from("notifications").insert({
-      user_id: evaluation.student_user_id,
-      sender_id: user.id,
+    // Notify the student — uses the shared sendNotification helper so the
+    // notification is also delivered via web push to subscribed devices.
+    const { sendNotification } = await import("@/lib/notifications");
+    await sendNotification(supabase, {
+      userId: evaluation.student_user_id,
+      senderId: user.id,
       title: notificationTitle,
       message: notificationMessage,
       category: "evaluation",
       priority: decision === "reject" ? "high" : "medium",
-      is_read: false,
-      metadata: { evaluation_id: evaluation.id, decision },
+      actionUrl: "/student/evaluations",
+      metadata: { type: "evaluation_reviewed", evaluation_id: evaluation.id, decision },
     });
 
     // Also fire the centralized helper notification so the student gets a
