@@ -2,10 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { GraduationCap, Menu, LogIn, UserPlus, Compass, Sparkles, ListTree, Search, X } from "lucide-react";
+import { GraduationCap, Menu, LogIn, UserPlus, Compass, Sparkles, ListTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -25,32 +23,6 @@ const navLinks = [
 
 export function SiteNav() {
   const [open, setOpen] = React.useState(false);
-  const [searchOpen, setSearchOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
-  const router = useRouter();
-  const mobileSearchInputRef = React.useRef<HTMLInputElement>(null);
-
-  const submitSearch = React.useCallback(
-    (e?: React.FormEvent) => {
-      e?.preventDefault();
-      const q = query.trim();
-      if (q) {
-        router.push(`/marketplace?search=${encodeURIComponent(q)}`);
-      } else {
-        router.push("/marketplace");
-      }
-      setQuery("");
-      setSearchOpen(false);
-      setOpen(false);
-    },
-    [query, router]
-  );
-
-  React.useEffect(() => {
-    if (searchOpen && mobileSearchInputRef.current) {
-      mobileSearchInputRef.current.focus();
-    }
-  }, [searchOpen]);
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -62,28 +34,7 @@ export function SiteNav() {
           <span className="text-xl font-bold tracking-tight">InternHub</span>
         </Link>
 
-        {/* Desktop search bar (inline) — hidden below lg because at
-            768-1023px the nav would overflow (logo + search + 3 links +
-            theme toggle + Sign In + Get Started = ~1240px > 768px). */}
-        <form
-          onSubmit={submitSearch}
-          className="hidden lg:flex items-center flex-1 max-w-md mx-4"
-          role="search"
-        >
-          <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search internships, companies, locations..."
-              aria-label="Search internships"
-              className="w-full pl-9 pr-3 h-9 bg-muted/40 border-transparent focus-visible:bg-background focus-visible:border-primary/30"
-            />
-          </div>
-        </form>
-
-        {/* Desktop links — hidden below lg (see search bar comment above) */}
+        {/* Desktop links */}
         <div className="hidden lg:flex items-center gap-6 shrink-0">
           {navLinks.map((link) => (
             <Link
@@ -99,21 +50,6 @@ export function SiteNav() {
 
         {/* Right side */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Mobile search toggle — visible below lg */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 lg:hidden"
-            aria-label={searchOpen ? "Close search" : "Open search"}
-            aria-expanded={searchOpen}
-            onClick={() => {
-              setSearchOpen((v) => !v);
-              setQuery("");
-            }}
-          >
-            {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
-          </Button>
-
           <ThemeToggle />
 
           <Button variant="ghost" size="sm" asChild className="hidden sm:flex">
@@ -190,32 +126,6 @@ export function SiteNav() {
         </div>
       </div>
 
-      {/* Mobile search panel (expand below nav) — visible below lg */}
-      {searchOpen && (
-        <div className="lg:hidden border-t bg-background/95 backdrop-blur">
-          <form
-            onSubmit={submitSearch}
-            className="container mx-auto flex items-center gap-2 px-4 py-3"
-            role="search"
-          >
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                ref={mobileSearchInputRef}
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search internships, companies..."
-                aria-label="Search internships"
-                className="w-full pl-9 pr-3 h-10"
-              />
-            </div>
-            <Button type="submit" size="sm" className="h-10">
-              Search
-            </Button>
-          </form>
-        </div>
-      )}
     </nav>
   );
 }
