@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Video,
   UserCircle,
+  UserCog,
   Inbox,
   Clock,
   CheckSquare,
@@ -125,6 +126,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: Briefcase,
     },
     {
+      title: "MOUs",
+      href: "/university-admin/mous",
+      icon: FileCheck,
+    },
+    {
       title: "Internships",
       href: "/university-admin/internships",
       icon: FileText,
@@ -150,6 +156,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       title: "Programs",
       href: "/department-coordinator/programs",
       icon: BookOpen,
+    },
+    {
+      title: "Program Coordinators",
+      href: "/department-coordinator/coordinators",
+      icon: UserCog,
     },
     {
       title: "Supervisors",
@@ -303,6 +314,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       title: "Internships",
       href: "/company-hr/internships",
       icon: FileText,
+    },
+    {
+      title: "MOUs",
+      href: "/company-hr/mous",
+      icon: FileCheck,
     },
     {
       title: "Applications",

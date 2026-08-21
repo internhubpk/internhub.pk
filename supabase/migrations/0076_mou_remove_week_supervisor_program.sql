@@ -179,7 +179,12 @@ DROP VIEW IF EXISTS external_evaluators;
 DROP VIEW IF EXISTS site_supervisors;
 
 -- 4b. NULL all values (no data loss — the link is just severed).
-UPDATE supervisors SET program_id = NULL WHERE program_id IS NOT NULL;
+-- Wrapped in DO block: if the column was already dropped (e.g. on a fresh DB
+-- where 0001 didn't create it), the UPDATE would fail. We skip it gracefully.
+DO $$ BEGIN
+  UPDATE supervisors SET program_id = NULL WHERE program_id IS NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 
 -- 4c. Drop the column.
 ALTER TABLE supervisors DROP COLUMN IF EXISTS program_id;

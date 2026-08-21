@@ -56,6 +56,11 @@ export const ROUTE_PERMISSIONS: RoutePermission[] = [
     roles: ["department_coordinator"],
     description: "Department Coordinator dashboard and all sub-routes (program creation, oversight)"
   },
+  {
+    path: "/department-coordinator/coordinators",
+    roles: ["department_coordinator"],
+    description: "Department Coordinator — view Program Coordinators in the department"
+  },
   
   // ==========================================
   // PROGRAM COORDINATOR ROUTES

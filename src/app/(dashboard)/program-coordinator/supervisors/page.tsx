@@ -6,9 +6,11 @@ import {
   Search,
   Filter,
   X,
+  Plus,
   Mail,
   Phone,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,11 +23,20 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { toast } from "sonner";
+import { toast } from "@/components/shared/toast";
 
 interface SupervisorRow {
   id: string;
@@ -45,6 +56,16 @@ export default function ProgramCoordinatorSupervisorsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+
+  // Add Supervisor dialog state
+  const [isAddSupervisorOpen, setIsAddSupervisorOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [supervisorForm, setSupervisorForm] = useState({
+    full_name: "",
+    email: "",
+    type: "faculty",
+    employee_id: "",
+  });
 
   const fetchSupervisors = useCallback(async () => {
     if (!profile?.university_id) {
@@ -149,6 +170,12 @@ export default function ProgramCoordinatorSupervisorsPage() {
       <PageHeader
         title="Supervisors"
         description="Faculty and site supervisors at your university. Supervisors are assigned to students, not programs."
+        actions={
+          <Button onClick={() => setIsAddSupervisorOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Supervisor
+          </Button>
+        }
       />
 
       {/* Stats */}
@@ -264,6 +291,118 @@ export default function ProgramCoordinatorSupervisorsPage() {
           </div>
         </Card>
       )}
+
+      {/* Add Supervisor Dialog */}
+      <Dialog open={isAddSupervisorOpen} onOpenChange={setIsAddSupervisorOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Supervisor</DialogTitle>
+            <DialogDescription>
+              Create a new supervisor at your university.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="supervisor-full-name">Full Name *</Label>
+              <Input
+                id="supervisor-full-name"
+                placeholder="e.g. Dr. Sara Ali"
+                value={supervisorForm.full_name}
+                onChange={(e) => setSupervisorForm((f) => ({ ...f, full_name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="supervisor-email">Email *</Label>
+              <Input
+                id="supervisor-email"
+                type="email"
+                placeholder="e.g. sara.ali@university.edu.pk"
+                value={supervisorForm.email}
+                onChange={(e) => setSupervisorForm((f) => ({ ...f, email: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="supervisor-type">Type *</Label>
+              <Select value={supervisorForm.type} onValueChange={(v) => setSupervisorForm((f) => ({ ...f, type: v }))}>
+                <SelectTrigger id="supervisor-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="faculty">Faculty</SelectItem>
+                  <SelectItem value="site">Site</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="supervisor-employee-id">Employee ID</Label>
+              <Input
+                id="supervisor-employee-id"
+                placeholder="e.g. EMP-0042"
+                value={supervisorForm.employee_id}
+                onChange={(e) => setSupervisorForm((f) => ({ ...f, employee_id: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddSupervisorOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!supervisorForm.full_name.trim() || !supervisorForm.email.trim()) {
+                  toast.error("Full name and email are required");
+                  return;
+                }
+                setIsAdding(true);
+                try {
+                  const resp = await fetch("/api/supervisors", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      full_name: supervisorForm.full_name.trim(),
+                      email: supervisorForm.email.trim(),
+                      type: supervisorForm.type,
+                      employee_id: supervisorForm.employee_id.trim() || null,
+                      university_id: profile?.university_id,
+                      department_id: profile?.department_id,
+                    }),
+                  });
+                  const data = await resp.json();
+                  if (!data.success) {
+                    toast.error("Failed to create supervisor", { description: data.error });
+                    return;
+                  }
+                  toast.success("Supervisor created successfully");
+                  setIsAddSupervisorOpen(false);
+                  setSupervisorForm({
+                    full_name: "",
+                    email: "",
+                    type: "faculty",
+                    employee_id: "",
+                  });
+                  fetchSupervisors();
+                } catch (err) {
+                  toast.error("Failed to create supervisor", { err });
+                } finally {
+                  setIsAdding(false);
+                }
+              }}
+              disabled={isAdding}
+            >
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Supervisor"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

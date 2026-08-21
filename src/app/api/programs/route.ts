@@ -154,10 +154,31 @@ export async function GET(request: NextRequest) {
       }, {} as Record<string, number>);
     }
 
-    // Enrich programs with student counts
+    // Fetch Program Coordinator info for each program (PC is linked
+    // via profiles.program_id, not a column on programs).
+    let pcMap: Record<string, { full_name: string | null; email: string }> = {};
+    if (programIds.length > 0) {
+      const { data: pcProfiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email, program_id")
+        .eq("role", "program_coordinator")
+        .in("program_id", programIds);
+
+      for (const pc of pcProfiles || []) {
+        if (pc.program_id) {
+          pcMap[pc.program_id] = {
+            full_name: pc.full_name,
+            email: pc.email,
+          };
+        }
+      }
+    }
+
+    // Enrich programs with student counts and PC info
     const enrichedPrograms = (programs || []).map(p => ({
       ...p,
       student_count: studentCounts[p.id] || 0,
+      program_coordinator: pcMap[p.id] || null,
     }));
 
     const response: PaginatedResponse<typeof enrichedPrograms[0]> = {
@@ -236,10 +257,10 @@ export async function POST(request: NextRequest) {
       is_active,
       default_faculty_supervisor_id,
       default_external_evaluator_id,
-      // Optional: caller can supply coordinator_email + coordinator_full_name
-      // to create a Program Coordinator account. If not provided, we auto-generate.
+      // Program Coordinator credentials (required for program creation)
       coordinator_email,
       coordinator_full_name,
+      coordinator_password,
     } = body;
 
     const userRole = authContext.profile.role;
@@ -259,6 +280,32 @@ export async function POST(request: NextRequest) {
     if (!name || !code || !department_id) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Missing required fields: name, code, department_id" },
+        { status: 400 }
+      );
+    }
+
+    // Validate Program Coordinator credentials.
+    if (!coordinator_full_name || !coordinator_email) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Missing required fields: coordinator_full_name, coordinator_email" },
+        { status: 400 }
+      );
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(coordinator_email)) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Invalid coordinator email format" },
+        { status: 400 }
+      );
+    }
+
+    // Validate password (minimum 8 characters)
+    const pcPassword = coordinator_password || '';
+    if (pcPassword.length < 8) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Coordinator password must be at least 8 characters" },
         { status: 400 }
       );
     }
@@ -367,54 +414,37 @@ export async function POST(request: NextRequest) {
       { auth: { persistSession: false } }
     );
 
-    // Determine the PC's email and full name.
-    const pcEmail = coordinator_email || `${code.toLowerCase()}-pc@${universityId.slice(0, 8)}.internhub.pk`;
-    const pcFullName = coordinator_full_name || `${name} Coordinator`;
+    // Determine the PC's email and full name from caller-supplied values.
+    const pcEmail = coordinator_email;
+    const pcFullName = coordinator_full_name;
 
     // Check if a user with this email already exists.
-    const { data: existingUsersList, error: listErr } = await admin.auth.admin.listUsers();
-    if (listErr) {
-      console.warn(`[${requestId}] Could not list existing users:`, listErr);
-    }
-    const emailExists = (existingUsersList?.users || []).some(
-      (u: { email?: string }) => (u.email || "").toLowerCase() === pcEmail.toLowerCase()
-    );
+    const { data: existingUser } = await admin
+      .from("profiles")
+      .select("user_id, role, program_id")
+      .eq("email", pcEmail)
+      .maybeSingle();
 
     let pcUserId: string | null = null;
-    if (emailExists) {
-      // Fetch the existing user.
-      const { data: existingUser } = await admin
+    if (existingUser) {
+      // Reuse the existing user — update their profile to point to this program.
+      pcUserId = existingUser.user_id;
+      await admin
         .from("profiles")
-        .select("user_id, role, program_id")
-        .eq("email", pcEmail)
-        .maybeSingle();
-      if (existingUser) {
-        pcUserId = existingUser.user_id;
-        // Update their profile to point to this program.
-        await admin
-          .from("profiles")
-          .update({
-            role: "program_coordinator",
-            university_id: universityId,
-            department_id: department_id,
-            program_id: program.id,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", pcUserId);
-      }
+        .update({
+          role: "program_coordinator",
+          university_id: universityId,
+          department_id: department_id,
+          program_id: program.id,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", pcUserId);
     } else {
-      // Create a new auth user. We use a random 24-char password — the
-      // user will use "Forgot Password" to set their own.
-      const randomPassword = Array.from({ length: 24 }, () =>
-        "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789".charAt(
-          Math.floor(Math.random() * 56)
-        )
-      ).join("");
-
+      // Create a new auth user with the CALLER-SUPPLIED password.
       const { data: newUser, error: createUserErr } = await admin.auth.admin.createUser({
         email: pcEmail,
-        password: randomPassword,
+        password: pcPassword,
         email_confirm: true,
         user_metadata: {
           full_name: pcFullName,
@@ -429,7 +459,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json<ApiResponse<typeof program>>({
           success: true,
           data: program!,
-          message: `Program created, but the Program Coordinator account could not be created: ${createUserErr.message}. Use the 'Create Program Coordinator' action on the program to retry.`,
+          message: `Program created, but the Program Coordinator account could not be created: ${createUserErr.message}. The program exists but has no coordinator.`,
           warning: "PC_AUTO_CREATE_FAILED",
         });
       }

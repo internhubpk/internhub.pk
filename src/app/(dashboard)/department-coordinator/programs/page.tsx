@@ -18,6 +18,10 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  UserCog,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,6 +86,8 @@ interface Program {
   updated_at: string;
   supervisor?: { full_name: string | null; email: string } | null;
   external_evaluator?: { full_name: string | null; email: string } | null;
+  // Joined Program Coordinator info (from the API)
+  program_coordinator?: { full_name: string | null; email: string } | null;
 }
 
 interface ProgramFormData {
@@ -91,6 +97,18 @@ interface ProgramFormData {
   default_faculty_supervisor_id: string;
   default_external_evaluator_id: string;
   is_active: boolean;
+  // Program Coordinator credentials (CREATE mode only)
+  coordinator_full_name: string;
+  coordinator_email: string;
+  coordinator_password: string;
+  showPassword: boolean;
+}
+
+function generatePassword(length = 16): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*";
+  return Array.from({ length }, () =>
+    chars.charAt(Math.floor(Math.random() * chars.length))
+  ).join("");
 }
 
 const emptyForm: ProgramFormData = {
@@ -100,6 +118,10 @@ const emptyForm: ProgramFormData = {
   default_faculty_supervisor_id: "",
   default_external_evaluator_id: "",
   is_active: true,
+  coordinator_full_name: "",
+  coordinator_email: "",
+  coordinator_password: generatePassword(),
+  showPassword: false,
 };
 
 export default function ProgramsPage() {
@@ -197,20 +219,26 @@ export default function ProgramsPage() {
     setIsSubmitting(true);
 
     try {
-      // Program creation: just send the program fields to /api/programs.
-      // The API auto-creates a Program Coordinator account (separate role)
-      // and links it to the new program. Per InternHub spec, Department
-      // Coordinators must NOT create supervisors — that's the Program
-      // Coordinator's responsibility after the program exists.
-      // Send the program fields to /api/programs. The API route
-      // auto-creates a Program Coordinator account (separate role) and
-      // links it to the new program. Department Coordinators do NOT
-      // create supervisors — that's the Program Coordinator's job.
-      const programPayload = { ...formData };
-      // Clear supervisor defaults on CREATE (no supervisor assigned yet).
+      // Program creation: send the program fields AND Program Coordinator
+      // credentials to /api/programs. The API auto-creates a Program Coordinator
+      // account (separate role) and links it to the new program.
+      const programPayload: Record<string, unknown> = {
+        name: formData.name,
+        code: formData.code,
+        description: formData.description,
+        is_active: formData.is_active,
+      };
+
+      // On CREATE: include PC credentials and clear supervisor defaults
       if (!editingProgram) {
+        programPayload.coordinator_full_name = formData.coordinator_full_name;
+        programPayload.coordinator_email = formData.coordinator_email;
+        programPayload.coordinator_password = formData.coordinator_password;
         programPayload.default_faculty_supervisor_id = "";
         programPayload.default_external_evaluator_id = "";
+      } else {
+        programPayload.default_faculty_supervisor_id = formData.default_faculty_supervisor_id || null;
+        programPayload.default_external_evaluator_id = formData.default_external_evaluator_id || null;
       }
 
       const url = "/api/programs";
@@ -290,6 +318,10 @@ export default function ProgramsPage() {
       default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
       default_external_evaluator_id: program.default_external_evaluator_id || "",
       is_active: program.is_active,
+      coordinator_full_name: "",
+      coordinator_email: "",
+      coordinator_password: generatePassword(),
+      showPassword: false,
     });
     setIsDialogOpen(true);
   };
@@ -465,64 +497,137 @@ export default function ProgramsPage() {
                     </div>
                   </div>
                 ) : (
-                  // CREATE mode: NO supervisor cascade creation.
-                  // Per InternHub spec, Department Coordinators must NOT
-                  // create supervisors — the Program Coordinator (auto-
-                  // created by the API) is responsible for adding
-                  // supervisors and assigning students to them.
-                  <>
-                  <div className="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
-                    <div className="flex items-center gap-2">
-                      <Info className="h-4 w-4 text-blue-600" />
-                      <h4 className="text-sm font-semibold">Program Coordinator Auto-Creation</h4>
+                  // CREATE mode: collect Program Coordinator credentials.
+                  // Per InternHub spec, the Department Coordinator provides
+                  // the PC's name, email, and password when creating a program.
+                  <div className="space-y-4">
+                    <div className="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <UserCog className="h-4 w-4 text-blue-600" />
+                        <h4 className="text-sm font-semibold">Program Coordinator Account</h4>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        A Program Coordinator account will be created and linked
+                        to this program. The PC is responsible for adding students,
+                        supervisors, and assigning students to supervisors.
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      When you create this program, a Program Coordinator
-                      account will be automatically provisioned (separate
-                      from supervisors). The Program Coordinator is
-                      responsible for adding students, supervisors, and
-                      assigning students to supervisors. You can add a
-                      default faculty supervisor and external evaluator
-                      later via Edit once they exist.
-                    </p>
-                  </div>
 
-                  {/* CREATE mode: optional external evaluator picker.
-                      The evaluator must already exist (created via the
-                      Supervisors page). If none exists yet, the
-                      coordinator can still create the program and add
-                      the evaluator later via Edit. */}
-                  <div className="space-y-2">
-                    <Label htmlFor="externalEvaluatorCreate">Assign Default External Evaluator (optional)</Label>
-                    <Select
-                      value={formData.default_external_evaluator_id || "__none__"}
-                      onValueChange={(value) =>
-                        setFormData({
-                          ...formData,
-                          default_external_evaluator_id:
-                            value === "__none__" ? "" : value,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="externalEvaluatorCreate">
-                        <SelectValue placeholder="Select an external evaluator" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None assigned</SelectItem>
-                        {externalEvaluators.map((ev) => (
-                          <SelectItem key={ev.user_id} value={ev.user_id}>
-                            {ev.full_name || ev.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Optional. The assigned evaluator will be the default external
-                      evaluator for students enrolling in this program. You can
-                      change this later via Edit.
-                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="coordinator_name">Coordinator Full Name *</Label>
+                      <Input
+                        id="coordinator_name"
+                        value={formData.coordinator_full_name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, coordinator_full_name: e.target.value })
+                        }
+                        placeholder="e.g., Dr. Ahmad Khan"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="coordinator_email">Coordinator Email *</Label>
+                      <Input
+                        id="coordinator_email"
+                        type="email"
+                        value={formData.coordinator_email}
+                        onChange={(e) =>
+                          setFormData({ ...formData, coordinator_email: e.target.value })
+                        }
+                        placeholder="e.g., ahmad.khan@university.edu.pk"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="coordinator_password">Coordinator Password *</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            id="coordinator_password"
+                            type={formData.showPassword ? "text" : "password"}
+                            value={formData.coordinator_password}
+                            onChange={(e) =>
+                              setFormData({ ...formData, coordinator_password: e.target.value })
+                            }
+                            placeholder="Auto-generated or enter manually"
+                            required
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() =>
+                              setFormData({ ...formData, showPassword: !formData.showPassword })
+                            }
+                            tabIndex={-1}
+                          >
+                            {formData.showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              coordinator_password: generatePassword(),
+                              showPassword: true,
+                            })
+                          }
+                          title="Generate new password"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Click the refresh icon to generate a secure random password.
+                        Share this password with the Program Coordinator securely.
+                      </p>
+                    </div>
+
+                    {/* Optional external evaluator picker on create.
+                        The evaluator must already exist (created via the
+                        Supervisors page). If none exists yet, the
+                        coordinator can still create the program and add
+                        the evaluator later via Edit. */}
+                    <div className="space-y-2">
+                      <Label htmlFor="externalEvaluatorCreate">Assign Default External Evaluator (optional)</Label>
+                      <Select
+                        value={formData.default_external_evaluator_id || "__none__"}
+                        onValueChange={(value) =>
+                          setFormData({
+                            ...formData,
+                            default_external_evaluator_id:
+                              value === "__none__" ? "" : value,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="externalEvaluatorCreate">
+                          <SelectValue placeholder="Select an external evaluator" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">None assigned</SelectItem>
+                          {externalEvaluators.map((ev) => (
+                            <SelectItem key={ev.user_id} value={ev.user_id}>
+                              {ev.full_name || ev.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Optional. The assigned evaluator will be the default external
+                        evaluator for students enrolling in this program. You can
+                        change this later via Edit.
+                      </p>
+                    </div>
                   </div>
-                  </>
                 )}
 
                 <div className="flex items-center justify-between rounded-lg border p-3">
@@ -681,14 +786,23 @@ export default function ProgramsPage() {
                       </div>
 
                       <div className="text-sm text-muted-foreground mb-1 truncate">
-                        <span className="font-medium">Supervisor:</span>{" "}
+                        <span className="font-medium">Program Coordinator:</span>{" "}
+                        {program.program_coordinator?.full_name ? (
+                          <span>{program.program_coordinator.full_name}</span>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">Not provisioned</Badge>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-muted-foreground mb-1 truncate">
+                        <span className="font-medium">Def. Faculty Supervisor:</span>{" "}
                         {supervisorNameFor(program) || (
                           <Badge variant="outline" className="text-xs">Not assigned</Badge>
                         )}
                       </div>
 
                       <div className="text-sm text-muted-foreground mb-3 truncate">
-                        <span className="font-medium">External Evaluator:</span>{" "}
+                        <span className="font-medium">Ext. Evaluator:</span>{" "}
                         {externalEvaluatorNameFor(program) || (
                           <Badge variant="outline" className="text-xs">Not assigned</Badge>
                         )}
@@ -726,7 +840,8 @@ export default function ProgramsPage() {
                 <TableRow>
                   <TableHead>Program</TableHead>
                   <TableHead>Code</TableHead>
-                  <TableHead>Supervisor</TableHead>
+                  <TableHead>Program Coordinator</TableHead>
+                  <TableHead>Def. Faculty Sup.</TableHead>
                   <TableHead>Students</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[70px]"></TableHead>
@@ -766,6 +881,21 @@ export default function ProgramsPage() {
                         <code className="text-sm bg-muted px-2 py-1 rounded">
                           {program.code}
                         </code>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <UserCog className="h-3.5 w-3.5 text-blue-500" />
+                            {program.program_coordinator?.full_name ? (
+                              <span className="text-sm">{program.program_coordinator.full_name}</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground italic">Not provisioned</span>
+                            )}
+                          </div>
+                          {program.program_coordinator?.email && (
+                            <p className="text-xs text-muted-foreground pl-5">{program.program_coordinator.email}</p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">

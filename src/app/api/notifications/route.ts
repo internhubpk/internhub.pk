@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { sendPushToUser } from "@/lib/push-notifications";
 
 // GET: List notifications related to the current user (sent by OR addressed to them).
 //
@@ -123,6 +124,7 @@ export async function POST(request: Request) {
     const allowedRoles = [
       "faculty_supervisor",
       "department_coordinator",
+      "program_coordinator",
       "university_admin",
       "super_admin",
       "company_hr",
@@ -205,7 +207,7 @@ export async function POST(request: Request) {
       // their own company. super_admin and faculty_supervisor are not
       // tenant-scoped here (faculty supervisors typically target students
       // in their own programs via `recipient_user_ids`).
-      if (profile.role === "university_admin" || profile.role === "department_coordinator") {
+      if (profile.role === "university_admin" || profile.role === "department_coordinator" || profile.role === "program_coordinator") {
         if (!profile.university_id) {
           return NextResponse.json(
             { error: "Your profile is not associated with a university" },
@@ -348,6 +350,26 @@ export async function POST(request: Request) {
       }
       insertedCount += batch.length;
     }
+
+    // Fire push notifications to all recipients in parallel (best-effort).
+    // This runs AFTER the in-app rows are inserted, so a push failure
+    // does not affect the in-app notification delivery.
+    await Promise.allSettled(
+      recipientUserIds.map((userId) =>
+        sendPushToUser(userId, {
+          title,
+          body: message,
+          icon: "/icon-192.png",
+          badge: "/icon-96.png",
+          tag: `manual-notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          data: { actionUrl: action_url, category, priority },
+          requireInteraction: priority === "urgent",
+        }).catch((err) => {
+          // Push failure must never break the in-app notification flow.
+          console.warn("[notifications] Push failed for", userId, err);
+        })
+      )
+    );
 
     return NextResponse.json({
       success: true,

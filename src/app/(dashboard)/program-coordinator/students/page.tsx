@@ -52,7 +52,8 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { toast } from "sonner";
+import { Label } from "@/components/ui/label";
+import { toast } from "@/components/shared/toast";
 
 interface StudentRow {
   user_id: string;
@@ -81,6 +82,18 @@ export default function ProgramCoordinatorStudentsPage() {
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>("");
   const [isAssigning, setIsAssigning] = useState(false);
+
+  // Add Student dialog state
+  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [studentForm, setStudentForm] = useState({
+    full_name: "",
+    email: "",
+    student_id_number: "",
+    enrollment_year: "",
+    expected_graduation: "",
+    cgpa: "",
+  });
 
   const programId = profile?.program_id;
 
@@ -275,13 +288,20 @@ export default function ProgramCoordinatorStudentsPage() {
         title="Students"
         description="Students in your program. Assign supervisors individually or in bulk."
         actions={
-          <Button
-            onClick={() => setIsAssignDialogOpen(true)}
-            disabled={selectedIds.size === 0}
-          >
-            <UserCheck className="h-4 w-4 mr-2" />
-            Bulk Assign ({selectedIds.size})
-          </Button>
+          <>
+            <Button onClick={() => setIsAddStudentOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Student
+            </Button>
+            <Button
+              onClick={() => setIsAssignDialogOpen(true)}
+              disabled={selectedIds.size === 0}
+              variant="outline"
+            >
+              <UserCheck className="h-4 w-4 mr-2" />
+              Bulk Assign ({selectedIds.size})
+            </Button>
+          </>
         }
       />
 
@@ -414,6 +434,145 @@ export default function ProgramCoordinatorStudentsPage() {
           </div>
         </Card>
       )}
+
+      {/* Add Student Dialog */}
+      <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Student</DialogTitle>
+            <DialogDescription>
+              Create a new student in your program.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="student-full-name">Full Name *</Label>
+              <Input
+                id="student-full-name"
+                placeholder="e.g. Ahmed Khan"
+                value={studentForm.full_name}
+                onChange={(e) => setStudentForm((f) => ({ ...f, full_name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="student-email">Email *</Label>
+              <Input
+                id="student-email"
+                type="email"
+                placeholder="e.g. ahmed@university.edu.pk"
+                value={studentForm.email}
+                onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="student-id-number">Student ID Number</Label>
+              <Input
+                id="student-id-number"
+                placeholder="e.g. 2022-CS-001"
+                value={studentForm.student_id_number}
+                onChange={(e) => setStudentForm((f) => ({ ...f, student_id_number: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="enrollment-year">Enrollment Year</Label>
+                <Input
+                  id="enrollment-year"
+                  type="number"
+                  placeholder="e.g. 2022"
+                  value={studentForm.enrollment_year}
+                  onChange={(e) => setStudentForm((f) => ({ ...f, enrollment_year: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="student-cgpa">CGPA</Label>
+                <Input
+                  id="student-cgpa"
+                  type="number"
+                  min="0"
+                  max="4"
+                  step="0.01"
+                  placeholder="0 - 4"
+                  value={studentForm.cgpa}
+                  onChange={(e) => setStudentForm((f) => ({ ...f, cgpa: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expected-graduation">Expected Graduation</Label>
+              <Input
+                id="expected-graduation"
+                type="date"
+                value={studentForm.expected_graduation}
+                onChange={(e) => setStudentForm((f) => ({ ...f, expected_graduation: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddStudentOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!studentForm.full_name.trim() || !studentForm.email.trim()) {
+                  toast.error("Full name and email are required");
+                  return;
+                }
+                setIsAdding(true);
+                try {
+                  const resp = await fetch("/api/students", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      full_name: studentForm.full_name.trim(),
+                      email: studentForm.email.trim(),
+                      student_id_number: studentForm.student_id_number.trim() || null,
+                      enrollment_year: studentForm.enrollment_year ? parseInt(studentForm.enrollment_year, 10) : null,
+                      expected_graduation: studentForm.expected_graduation || null,
+                      cgpa: studentForm.cgpa ? parseFloat(studentForm.cgpa) : null,
+                      department_id: profile?.department_id,
+                      program_id: profile?.program_id,
+                      university_id: profile?.university_id,
+                    }),
+                  });
+                  const data = await resp.json();
+                  if (!data.success) {
+                    toast.error("Failed to create student", { description: data.error });
+                    return;
+                  }
+                  toast.success("Student created successfully");
+                  setIsAddStudentOpen(false);
+                  setStudentForm({
+                    full_name: "",
+                    email: "",
+                    student_id_number: "",
+                    enrollment_year: "",
+                    expected_graduation: "",
+                    cgpa: "",
+                  });
+                  fetchStudents();
+                } catch (err) {
+                  toast.error("Failed to create student", { err });
+                } finally {
+                  setIsAdding(false);
+                }
+              }}
+              disabled={isAdding}
+            >
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Student"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk Assign Dialog */}
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>

@@ -184,7 +184,8 @@ export type EvaluationType =
   | "midterm"
   | "final"
   | "company_evaluation"
-  | "supervisor_evaluation";
+  | "supervisor_evaluation"
+  | "task";
 
 export type EvaluationStatus = 
   | "pending"
@@ -248,6 +249,10 @@ export type DocumentType =
   | "weekly_report"
   | "evaluation_form"
   | "certificate"
+  | "cv"
+  | "task_attachment"
+  | "signature"
+  | "internship_letter"
   | "other";
 
 export type DocumentStatus = 
@@ -261,11 +266,11 @@ export interface Document {
   name: string;
   type: DocumentType;
   url: string;
-  size: number;
-  mime_type: string;
+  size: number | null;
+  mime_type: string | null;
   uploaded_by: string;
-  entity_type: "student" | "internship" | "application" | "evaluation";
-  entity_id: string;
+  entity_type: "student" | "internship" | "application" | "evaluation" | "task" | "company" | "certificate" | "signature";
+  entity_id: string | null;
   status: DocumentStatus;
   verified_by: string | null;
   verified_at: string | null;
@@ -415,7 +420,10 @@ export type NotificationCategory =
   | "evaluation"
   | "deadline"
   | "system"
-  | "announcement";
+  | "announcement"
+  | "task"
+  | "attendance"
+  | "certificate";
 
 export type NotificationPriority = "low" | "medium" | "high" | "urgent";
 
@@ -638,6 +646,37 @@ export interface Student {
   avatar_url?: string | null;
 }
 
+/** MOU status enum — mirrors the database `mou_status` enum. */
+export type MouStatus =
+  | "pending"
+  | "approved"
+  | "active"
+  | "suspended"
+  | "terminated"
+  | "expired";
+
+/** MOU (Memorandum of Understanding) domain model. */
+export interface Mou {
+  id: string;
+  company_id: string;
+  university_id: string;
+  status: MouStatus;
+  mou_document_url: string | null;
+  notes: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  suspended_at: string | null;
+  terminated_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined fields commonly attached by API routes.
+  companies?: { id: string; name: string; logo_url: string | null } | null;
+  universities?: { id: string; name: string; slug: string } | null;
+}
+
 /** Supervisor domain model. */
 export interface Supervisor {
   id: string;
@@ -645,7 +684,6 @@ export interface Supervisor {
   type: "faculty" | "site" | "external";
   university_id: string | null;
   department_id: string | null;
-  program_id: string | null;
   company_id: string | null;
   employee_id: string | null;
   is_active: boolean;

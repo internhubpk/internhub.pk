@@ -134,6 +134,14 @@ export type CertificateStatus = "draft" | "issued" | "revoked" | "expired";
 
 export type ProfileStatus = "pending" | "active" | "suspended" | "disabled";
 
+export type MouStatus =
+  | "pending"
+  | "approved"
+  | "active"
+  | "suspended"
+  | "terminated"
+  | "expired";
+
 // ----------------------------------------------------------------------------
 // Database row types — one interface per table
 // ----------------------------------------------------------------------------
@@ -181,6 +189,7 @@ export interface ProgramRow {
   is_active: boolean;
   default_faculty_supervisor_id: string | null;
   default_external_evaluator_id: string | null;
+  program_coordinator_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -255,11 +264,18 @@ export interface SupervisorRow {
   department_id: string | null;
   // program_id was DROPPED in migration 0076. Supervisors are assigned
   // to students (via student_internships), not to programs.
-  // program_ids (jsonb array) is still present on the table for
-  // future multi-program scoping, but is not currently used.
   company_id: string | null;
   employee_id: string | null;
   is_active: boolean;
+  // Added by migration 0024 (company_hr_extras)
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  department_focus: string | null;
+  specialization: string | null;
+  program_ids: Json;
+  last_login: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -296,6 +312,10 @@ export interface InternshipRow {
   start_date: string | null;
   end_date: string | null;
   application_deadline: string | null;
+  // Added by migration 0024 (company_hr_extras)
+  image_url: string | null;
+  location_type: string;
+  target_departments: Json;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -339,6 +359,13 @@ export interface InternSupervisorAssignmentRow {
   type: SupervisorType;
   assigned_at: string;
   ended_at: string | null;
+  // Added by migration 0024 (company_hr_extras)
+  intern_id: string | null;
+  internship_id: string | null;
+  assigned_by: string | null;
+  is_active: boolean;
+  unassigned_at: string | null;
+  unassigned_by: string | null;
   created_at: string;
 }
 
@@ -623,6 +650,24 @@ export interface SupervisorRemarkRow {
   created_at: string;
 }
 
+export interface CompanyUniversityMouRow {
+  id: string;
+  company_id: string;
+  university_id: string;
+  status: MouStatus;
+  mou_document_url: string | null;
+  notes: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  suspended_at: string | null;
+  terminated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ----------------------------------------------------------------------------
 // Aggregate `Database` type for supabase-js typed client
 // ----------------------------------------------------------------------------
@@ -706,6 +751,11 @@ export interface Database {
         Insert: Partial<SupervisorRemarkRow>;
         Update: Partial<SupervisorRemarkRow>;
       };
+      company_university_mous: {
+        Row: CompanyUniversityMouRow;
+        Insert: Partial<CompanyUniversityMouRow>;
+        Update: Partial<CompanyUniversityMouRow>;
+      };
     };
     Views: {
       applications: { Row: InternshipApplicationRow };
@@ -767,6 +817,7 @@ export interface Database {
       task_submission_status: TaskSubmissionStatus;
       certificate_status: CertificateStatus;
       profile_status: ProfileStatus;
+      mou_status: MouStatus;
     };
   };
 }
