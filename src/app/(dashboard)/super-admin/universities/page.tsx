@@ -166,7 +166,6 @@ export default function SuperAdminUniversitiesPage() {
             count = studentCount || 0;
           } catch (e) {
             // Profiles table might not exist yet
-            console.log("Could not fetch student count:", e);
           }
           
           return { ...uni, student_count: count };
@@ -251,7 +250,7 @@ export default function SuperAdminUniversitiesPage() {
         setEditingAdminUserId(adminProfile.user_id);
       }
     } catch (e) {
-      console.log("Could not fetch admin info:", e);
+      // Admin info is optional; continue without it
     }
     
     setIsDialogOpen(true);

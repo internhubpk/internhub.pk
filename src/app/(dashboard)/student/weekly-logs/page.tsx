@@ -36,6 +36,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { downloadCsv, generatePdf } from "@/lib/export-helpers";
+import { toast } from "@/components/shared/toast";
 
 // Real schema columns on `weekly_logs`:
 //   id, student_user_id, internship_id, student_internship_id,
@@ -341,7 +342,7 @@ export default function StudentWeeklyLogsPage() {
                     className="gap-2"
                     onClick={() => {
                       if (logs.length === 0) {
-                        alert("No weekly logs to export.");
+                        toast.info("No Data", { description: "No weekly logs to export." });
                         return;
                       }
                       downloadCsv(

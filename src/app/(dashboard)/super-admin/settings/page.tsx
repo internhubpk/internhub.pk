@@ -135,7 +135,6 @@ export default function SuperAdminSettingsPage() {
 
       if (error && error.code !== "PGRST116") {
         // PGRST116 = no rows found. That's fine — fall back to defaults.
-        console.log("Settings fetch returned:", error.message);
       }
 
       if (data?.value) {
@@ -197,7 +196,7 @@ export default function SuperAdminSettingsPage() {
         total_applications: appsRes.count || 0,
       });
     } catch (e) {
-      console.log("Could not fetch platform stats:", e);
+      // Stats are non-critical; silently continue with zeros
     } finally {
       setIsRefreshingStats(false);
     }
@@ -237,7 +236,6 @@ export default function SuperAdminSettingsPage() {
         }));
       }
     } catch (e) {
-      console.log("Could not fetch system health:", e);
       setHealth((prev) => ({ ...prev, database_status: "down", db_latency_ms: null }));
     }
   }, []);

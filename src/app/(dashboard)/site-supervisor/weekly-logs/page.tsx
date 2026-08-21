@@ -59,6 +59,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { downloadCsv, generatePdf } from "@/lib/export-helpers";
+import { toast } from "@/components/shared/toast";
 
 // Types
 interface WeeklyLogEntry {
@@ -284,7 +285,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
   async function handleReview(action: "approve" | "reject" | "request_revision") {
     if (!selectedLog || !reviewFeedback.trim()) {
       if (action !== "approve") {
-        alert("Please provide feedback before rejecting or requesting revision.");
+        toast.error("Feedback Required", { description: "Please provide feedback before rejecting or requesting revision." });
         return;
       }
     }
@@ -304,7 +305,8 @@ export default function SiteSupervisorWeeklyLogsPage() {
       });
 
       if (response.ok) {
-        alert(`Log ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision"} successfully!`);
+        const actionText = action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision";
+        toast.success(`Log ${actionText}`, { description: "The weekly log has been updated successfully." });
         
         // Update local state
         setLogs(prev => prev.map(log =>
@@ -317,11 +319,11 @@ export default function SiteSupervisorWeeklyLogsPage() {
         setReviewFeedback("");
         fetchWeeklyLogs();
       } else {
-        alert("Error processing review. Please try again.");
+        toast.error("Review Failed", { description: "Error processing review. Please try again." });
       }
     } catch (error) {
       console.error("Error submitting review:", error);
-      alert("An error occurred. Please try again.");
+      toast.error("Unexpected Error", { description: "An error occurred. Please try again." });
     } finally {
       setIsSubmittingReview(false);
     }
@@ -347,7 +349,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
               variant="outline"
               onClick={() => {
                 if (!filteredLogs || filteredLogs.length === 0) {
-                  alert("No weekly logs to export.");
+                  toast.info("No Data", { description: "No weekly logs to export." });
                   return;
                 }
                 downloadCsv(

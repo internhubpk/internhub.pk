@@ -160,8 +160,6 @@ function MarketplacePageContent() {
           .limit(50);
 
         if (error) {
-          console.log("Marketplace: Could not fetch internships:", error.message);
-
           // Check if it's a "table doesn't exist" error
           if (error.code === "42P01") {
             setDbError(true);
@@ -258,7 +256,6 @@ function MarketplacePageContent() {
           setInternships(transformed);
         }
       } catch (error) {
-        console.log("Marketplace: Fetch error:", error instanceof Error ? error.message : error);
         setDbError(true);
         setInternships([]);
       } finally {

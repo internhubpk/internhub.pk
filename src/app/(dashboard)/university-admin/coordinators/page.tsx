@@ -264,12 +264,6 @@ export default function CoordinatorsPage() {
 
   const handleToggleStatus = async (coordinator: CoordinatorWithDetails) => {
     const nextActive = !coordinator.is_active;
-    console.log("[coordinators.handleToggleStatus] start", {
-      user_id: coordinator.user_id,
-      email: coordinator.email,
-      current: coordinator.is_active,
-      next: nextActive,
-    });
 
     try {
       const res = await fetch(`/api/coordinators/${coordinator.user_id}`, {
@@ -279,7 +273,6 @@ export default function CoordinatorsPage() {
       });
 
       const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      console.log("[coordinators.handleToggleStatus] response", { status: res.status, json });
 
       if (!res.ok || !json?.success) {
         toast.error("Status change failed", { description: json?.error || `Request failed (${res.status})` });
@@ -296,13 +289,6 @@ export default function CoordinatorsPage() {
   };
 
   const handleUpdateDepartment = async (coordinator: CoordinatorWithDetails, departmentId: string) => {
-    console.log("[coordinators.handleUpdateDepartment] start", {
-      user_id: coordinator.user_id,
-      email: coordinator.email,
-      current_dept: coordinator.department_id,
-      new_dept: departmentId || null,
-    });
-
     try {
       const res = await fetch(`/api/coordinators/${coordinator.user_id}`, {
         method: "PATCH",
@@ -311,7 +297,6 @@ export default function CoordinatorsPage() {
       });
 
       const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      console.log("[coordinators.handleUpdateDepartment] response", { status: res.status, json });
 
       if (!res.ok || !json?.success) {
         toast.error("Assignment failed", { description: json?.error || `Request failed (${res.status})` });

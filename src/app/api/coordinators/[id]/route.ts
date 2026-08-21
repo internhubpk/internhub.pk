@@ -60,12 +60,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  console.log(`[PATCH /api/coordinators/[id]] ${requestId} start`);
-
   try {
     const { id: coordUserId } = await params;
-    console.log(`[PATCH /api/coordinators/[id]] ${requestId} target=`, coordUserId);
 
     if (!coordUserId) {
       return NextResponse.json<ApiResponse<never>>(
@@ -74,9 +70,8 @@ export async function PATCH(
       );
     }
 
-    // Parse body first so we can log it
+    // Parse body
     const body = await request.json().catch(() => ({}));
-    console.log(`[PATCH /api/coordinators/[id]] ${requestId} body=`, body);
 
     const { department_id, is_active } = body as {
       department_id?: string | null;
@@ -105,7 +100,6 @@ export async function PATCH(
     } = await supabase.auth.getUser();
 
     if (authErr || !user) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} no auth session`);
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -152,10 +146,6 @@ export async function PATCH(
       .maybeSingle();
 
     if (adminErr || !adminProfile) {
-      console.log(
-        `[PATCH /api/coordinators/[id]] ${requestId} admin profile fetch failed`,
-        adminErr
-      );
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Could not load your profile" },
         { status: 500 }
@@ -167,7 +157,6 @@ export async function PATCH(
     const isUniAdmin = adminRole === "university_admin";
 
     if (!isSuperAdmin && !isUniAdmin) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} forbidden role=`, adminRole);
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Forbidden: University Admin or Super Admin access required" },
         { status: 403 }
@@ -175,7 +164,6 @@ export async function PATCH(
     }
 
     if (!isSuperAdmin && !adminProfile.university_id) {
-      console.log(`[PATCH /api/coordinators/[id]] ${requestId} admin has no university_id`);
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
@@ -200,10 +188,6 @@ export async function PATCH(
       .maybeSingle();
 
     if (coordErr) {
-      console.log(
-        `[PATCH /api/coordinators/[id]] ${requestId} coordinator SELECT error`,
-        coordErr
-      );
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: `Could not load coordinator: ${coordErr.message}` },
         { status: 500 }
@@ -211,9 +195,6 @@ export async function PATCH(
     }
 
     if (!coord) {
-      console.log(
-        `[PATCH /api/coordinators/[id]] ${requestId} coordinator not found in profiles table`
-      );
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
@@ -253,12 +234,6 @@ export async function PATCH(
       effectiveUniversityId = adminProfile.university_id as string;
 
       if (coord.university_id && coord.university_id !== adminProfile.university_id) {
-        console.log(
-          `[PATCH /api/coordinators/[id]] ${requestId} uni mismatch: coord=`,
-          coord.university_id,
-          "admin=",
-          adminProfile.university_id
-        );
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Coordinator belongs to a different university" },
           { status: 403 }
@@ -268,10 +243,6 @@ export async function PATCH(
       // If coord.university_id is NULL, heal it to the admin's.
       if (!coord.university_id) {
         shouldHealUniversityId = true;
-        console.log(
-          `[PATCH /api/coordinators/[id]] ${requestId} healing NULL university_id to admin's:`,
-          effectiveUniversityId
-        );
       }
     }
 
@@ -289,7 +260,6 @@ export async function PATCH(
           .maybeSingle();
 
         if (deptErr || !dept) {
-          console.log(`[PATCH /api/coordinators/[id]] ${requestId} dept not found`, deptErr);
           return NextResponse.json<ApiResponse<never>>(
             { success: false, error: "Selected department does not exist" },
             { status: 400 }
@@ -297,12 +267,6 @@ export async function PATCH(
         }
 
         if (effectiveUniversityId && dept.university_id !== effectiveUniversityId) {
-          console.log(
-            `[PATCH /api/coordinators/[id]] ${requestId} dept uni mismatch: dept=`,
-            dept.university_id,
-            "target=",
-            effectiveUniversityId
-          );
           return NextResponse.json<ApiResponse<never>>(
             { success: false, error: "Department does not belong to your university" },
             { status: 400 }
@@ -329,8 +293,6 @@ export async function PATCH(
       update.university_id = effectiveUniversityId;
     }
 
-    console.log(`[PATCH /api/coordinators/[id]] ${requestId} performing UPDATE`, update);
-
     // ==========================================================
     // 8. Perform the UPDATE with the SERVICE ROLE client.
     //    Service role bypasses RLS, so the WITH CHECK clause is
@@ -345,7 +307,7 @@ export async function PATCH(
       .select("user_id, role, university_id, department_id, is_active, email, full_name");
 
     if (updateErr) {
-      console.error(`[PATCH /api/coordinators/[id]] ${requestId} UPDATE error`, updateErr);
+      console.error(`[PATCH /api/coordinators/${coordUserId}] UPDATE error`, updateErr);
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
@@ -357,7 +319,7 @@ export async function PATCH(
 
     if (!updatedRows || updatedRows.length === 0) {
       console.error(
-        `[PATCH /api/coordinators/[id]] ${requestId} UPDATE affected 0 rows (unexpected with service role)`
+        `[PATCH /api/coordinators/${coordUserId}] UPDATE affected 0 rows (unexpected with service role)`
       );
       return NextResponse.json<ApiResponse<never>>(
         {
@@ -405,22 +367,12 @@ export async function PATCH(
           app_metadata: appMetaPatch,
           user_metadata: appMetaPatch,
         });
-        console.log(
-          `[PATCH /api/coordinators/[id]] ${requestId} synced auth.users metadata`,
-          appMetaPatch
-        );
       } catch (metaErr) {
         // Non-fatal — the profiles row was updated successfully.
         // The metadata will get synced later by the trigger or by
-        // the user re-logging in. Log and continue.
-        console.warn(
-          `[PATCH /api/coordinators/[id]] ${requestId} failed to sync auth.users metadata (non-fatal)`,
-          metaErr
-        );
+        // the user re-logging in.
       }
     }
-
-    console.log(`[PATCH /api/coordinators/[id]] ${requestId} success`, updated);
 
     const res = NextResponse.json<ApiResponse<Profile>>({
       success: true,

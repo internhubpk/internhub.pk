@@ -49,6 +49,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { downloadCsv, generatePdf } from "@/lib/export-helpers";
+import { toast } from "@/components/shared/toast";
 
 interface WeeklyLog {
   id: string;
@@ -208,7 +209,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
       setReviewFeedback("");
     } catch (error) {
       console.error("Error reviewing weekly log:", error);
-      alert("Failed to update weekly log. Please try again.");
+      toast.error("Update Failed", { description: "Failed to update weekly log. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -226,7 +227,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
               variant="outline"
               onClick={() => {
                 if (filteredLogs.length === 0) {
-                  alert("No weekly logs to export.");
+                  toast.info("No Data", { description: "No weekly logs to export." });
                   return;
                 }
                 downloadCsv(

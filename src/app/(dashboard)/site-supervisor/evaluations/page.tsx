@@ -64,6 +64,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { generatePdf, downloadCsv } from "@/lib/export-helpers";
+import { toast } from "@/components/shared/toast";
 
 // Types
 interface EvaluationStudent {
@@ -414,7 +415,7 @@ export default function SiteSupervisorEvaluationsPage() {
 
   async function handleSubmitEvaluation() {
     if (!formData.signatureData) {
-      alert("Please provide your digital signature before submitting.");
+      toast.error("Signature Required", { description: "Please provide your digital signature before submitting." });
       return;
     }
     if (!user) return;
@@ -482,17 +483,17 @@ export default function SiteSupervisorEvaluationsPage() {
       });
 
       if (response.ok) {
-        alert("Evaluation submitted successfully!");
+        toast.success("Evaluation Submitted", { description: "The evaluation has been submitted successfully." });
         setFormData(initialFormData);
         setActiveTab("history");
         fetchEvaluationData();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error?.message || "Failed to submit evaluation"}`);
+        toast.error("Submission Failed", { description: error.error?.message || "Failed to submit evaluation" });
       }
     } catch (error) {
       console.error("Error submitting evaluation:", error);
-      alert("An error occurred while submitting the evaluation.");
+      toast.error("Submission Error", { description: "An error occurred while submitting the evaluation." });
     } finally {
       setIsSubmitting(false);
     }
@@ -588,7 +589,7 @@ export default function SiteSupervisorEvaluationsPage() {
               variant="outline"
               onClick={() => {
                 if (!evaluations || evaluations.length === 0) {
-                  alert("No evaluations to export.");
+                  toast.info("No Data", { description: "No evaluations to export." });
                   return;
                 }
                 downloadCsv(

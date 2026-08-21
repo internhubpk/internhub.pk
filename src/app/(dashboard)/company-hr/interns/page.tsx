@@ -78,6 +78,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { createClient } from "@/utils/supabase/client";
 import { generatePdf } from "@/lib/export-helpers";
+import { toast } from "@/components/shared/toast";
 
 // Types
 interface ActiveIntern {
@@ -228,7 +229,7 @@ export default function CompanyHRInternsPage() {
       setAssigningInternId(null);
       setSelectedSupervisorForAssignment("");
     } catch (e: any) {
-      alert(e.message || "Failed to assign supervisor");
+      toast.error("Assignment Failed", { description: e.message || "Failed to assign supervisor" });
     } finally {
       setAssigning(false);
     }
@@ -318,7 +319,7 @@ export default function CompanyHRInternsPage() {
       );
     } catch (error) {
       console.error("Error generating weekly logs PDF:", error);
-      alert(error instanceof Error ? error.message : "Could not generate the weekly logs PDF.");
+      toast.error("Export Failed", { description: error instanceof Error ? error.message : "Could not generate the weekly logs PDF." });
     } finally {
       setDownloadingFor(null);
     }
@@ -486,7 +487,7 @@ export default function CompanyHRInternsPage() {
       );
     } catch (error) {
       console.error("Error generating final report PDF:", error);
-      alert(error instanceof Error ? error.message : "Could not generate the final report PDF.");
+      toast.error("Export Failed", { description: error instanceof Error ? error.message : "Could not generate the final report PDF." });
     } finally {
       setDownloadingFor(null);
     }

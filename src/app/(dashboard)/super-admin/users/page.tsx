@@ -260,7 +260,7 @@ export default function SuperAdminUsersPage() {
         setCompanies(compRes.data);
       }
     } catch (e) {
-      console.log("Could not fetch universities/companies:", e);
+      // Universities/companies data is non-critical
     }
   }
 
@@ -277,7 +277,7 @@ export default function SuperAdminUsersPage() {
       if (deptRes.data && !deptRes.error) setDepartments(deptRes.data);
       if (progRes.data && !progRes.error) setPrograms(progRes.data);
     } catch (e) {
-      console.log("Could not fetch departments/programs:", e);
+      // Departments/programs data is non-critical
     }
   }
 

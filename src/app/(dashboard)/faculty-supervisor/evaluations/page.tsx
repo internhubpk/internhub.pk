@@ -74,6 +74,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 
@@ -198,7 +199,7 @@ export default function FacultySupervisorEvaluationsPage() {
   // external-evaluator/evaluations/page.tsx.
   const handleExport = useCallback(() => {
     if (!evaluationHistory || evaluationHistory.length === 0) {
-      alert("No evaluations to export.");
+      toast.info("No Data", { description: "No evaluations to export." });
       return;
     }
     const headers = [
@@ -635,7 +636,7 @@ export default function FacultySupervisorEvaluationsPage() {
       setSelectedEvaluation(null);
     } catch (error) {
       console.error("Error submitting evaluation:", error);
-      alert("Failed to submit evaluation. Please try again.");
+      toast.error("Submission Failed", { description: "Failed to submit evaluation. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -657,7 +658,7 @@ export default function FacultySupervisorEvaluationsPage() {
       setWeeklyReports((prev) => prev.filter((r) => r.id !== reportId));
     } catch (error) {
       console.error("Error approving weekly report:", error);
-      alert("Failed to approve weekly report.");
+      toast.error("Approval Failed", { description: "Failed to approve weekly report." });
     }
   };
 
