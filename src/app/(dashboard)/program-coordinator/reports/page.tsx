@@ -82,7 +82,11 @@ export default function ProgramCoordinatorReportsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const fetchReports = useCallback(async () => {
-    if (!profile?.department_id) {
+    // PC should use program_id as primary filter, fallback to department_id
+    const programId = profile?.program_id;
+    const deptId = profile?.department_id;
+    
+    if (!programId && !deptId) {
       setIsLoading(false);
       return;
     }
@@ -91,8 +95,9 @@ export default function ProgramCoordinatorReportsPage() {
       setIsLoading(true);
       const supabase = await createClient();
 
-      // Fetch weekly logs for department's students
-      const { data: logsData, error: logsError } = await supabase
+      // Fetch weekly logs for program/department's students
+      // Use program_id filter for PC (more precise)
+      let logsQuery = supabase
         .from("weekly_logs")
         .select(`
           id,
@@ -108,13 +113,72 @@ export default function ProgramCoordinatorReportsPage() {
             user_id,
             profiles!user_id(full_name, email)
           )
-        `)
-        .eq("students.department_id", profile.department_id)
+        `);
+      
+      // Filter by program_id (preferred) or department_id (fallback)
+      if (programId) {
+        logsQuery = logsQuery.eq("students.program_id", programId);
+      } else if (deptId) {
+        logsQuery = logsQuery.eq("students.department_id", deptId);
+      }
+      
+      const { data: logsData, error: logsError } = await logsQuery
         .order("week_start_date", { ascending: false })
         .limit(100);
 
       if (logsError) {
         console.error("Error fetching weekly logs:", logsError);
+        // Try alternative approach without inner join if first attempt fails
+        console.log("Trying alternative approach for weekly logs...");
+        const { data: altLogsData, error: altLogsError } = await supabase
+          .from("weekly_logs")
+          .select("*")
+          .order("week_start_date", { ascending: false })
+          .limit(100);
+        
+        if (!altLogsError && altLogsData) {
+          // Filter client-side for program/department students
+          const programStudentIds = new Set();
+          if (programId) {
+            const { data: progStudents } = await supabase
+              .from("students")
+              .select("user_id")
+              .eq("program_id", programId);
+            progStudents?.forEach((s: any) => programStudentIds.add(s.user_id));
+          }
+          
+          const filteredLogs = (altLogsData || []).filter((log: any) => 
+            !programId || programStudentIds.has(log.student_user_id)
+          );
+          
+          // Fetch student profiles separately
+          const userIds = [...new Set(filteredLogs.map((l: any) => l.student_user_id))];
+          let profileMap: Record<string, {full_name: string | null, email: string}> = {};
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("user_id, full_name, email")
+              .in("user_id", userIds);
+            (profiles || []).forEach((p: any) => {
+              profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
+            });
+          }
+          
+          const formattedLogs: WeeklyLogReport[] = filteredLogs.map((row: any) => ({
+            id: row.id,
+            student_user_id: row.student_user_id,
+            student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
+            student_email: profileMap[row.student_user_id]?.email || "",
+            week_number: row.week_number,
+            week_start_date: row.week_start_date,
+            week_end_date: row.week_end_date,
+            status: row.status,
+            submitted_at: row.submitted_at,
+            hours_worked: row.hours_worked,
+            tasks_completed: row.tasks_completed || [],
+          }));
+          setWeeklyLogs(formattedLogs);
+        }
       } else {
         const formattedLogs: WeeklyLogReport[] = (logsData || []).map((row: any) => ({
           id: row.id,
@@ -132,8 +196,8 @@ export default function ProgramCoordinatorReportsPage() {
         setWeeklyLogs(formattedLogs);
       }
 
-      // Fetch evaluations for department's students
-      const { data: evalsData, error: evalsError } = await supabase
+      // Fetch evaluations for program/department's students
+      let evalsQuery = supabase
         .from("evaluations")
         .select(`
           id,
@@ -148,13 +212,83 @@ export default function ProgramCoordinatorReportsPage() {
             profiles!user_id(full_name, email)
           ),
           evaluators!evaluator_id(profiles!user_id(full_name))
-        `)
-        .eq("students.department_id", profile.department_id)
+        `);
+      
+      // Filter by program_id (preferred) or department_id (fallback)
+      if (programId) {
+        evalsQuery = evalsQuery.eq("students.program_id", programId);
+      } else if (deptId) {
+        evalsQuery = evalsQuery.eq("students.department_id", deptId);
+      }
+      
+      const { data: evalsData, error: evalsError } = await evalsQuery
         .order("created_at", { ascending: false })
         .limit(100);
 
       if (evalsError) {
         console.error("Error fetching evaluations:", evalsError);
+        // Try alternative approach
+        console.log("Trying alternative approach for evaluations...");
+        const { data: altEvalsData, error: altEvalsError } = await supabase
+          .from("evaluations")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        
+        if (!altEvalsError && altEvalsData) {
+          // Filter client-side
+          const programStudentIds = new Set();
+          if (programId) {
+            const { data: progStudents } = await supabase
+              .from("students")
+              .select("user_id")
+              .eq("program_id", programId);
+            progStudents?.forEach((s: any) => programStudentIds.add(s.user_id));
+          }
+          
+          const filteredEvals = (altEvalsData || []).filter((ev: any) => 
+            !programId || programStudentIds.has(ev.student_user_id)
+          );
+          
+          // Fetch profiles
+          const userIds = [...new Set(filteredEvals.map((e: any) => e.student_user_id))];
+          const evaluatorIds = [...new Set(filteredEvals.map((e: any) => e.evaluator_id).filter(Boolean))];
+          let profileMap: Record<string, {full_name: string | null, email: string}> = {};
+          let evaluatorMap: Record<string, string> = {};
+          
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("user_id, full_name, email")
+              .in("user_id", userIds);
+            (profiles || []).forEach((p: any) => {
+              profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
+            });
+          }
+          
+          if (evaluatorIds.length > 0) {
+            const { data: evalProfiles } = await supabase
+              .from("profiles")
+              .select("user_id, full_name")
+              .in("user_id", evaluatorIds);
+            (evalProfiles || []).forEach((p: any) => {
+              evaluatorMap[p.user_id] = p.full_name || "Unknown";
+            });
+          }
+          
+          const formattedEvals: EvaluationReport[] = filteredEvals.map((row: any) => ({
+            id: row.id,
+            student_user_id: row.student_user_id,
+            student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
+            student_email: profileMap[row.student_user_id]?.email || "",
+            type: row.type,
+            status: row.status,
+            rating: row.rating,
+            submitted_at: row.submitted_at,
+            evaluator_name: row.evaluator_id ? evaluatorMap[row.evaluator_id] : null,
+          }));
+          setEvaluations(formattedEvals);
+        }
       } else {
         const formattedEvals: EvaluationReport[] = (evalsData || []).map((row: any) => ({
           id: row.id,
@@ -175,7 +309,7 @@ export default function ProgramCoordinatorReportsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [profile?.department_id]);
+  }, [profile?.program_id, profile?.department_id]);
 
   useEffect(() => {
     fetchReports();
