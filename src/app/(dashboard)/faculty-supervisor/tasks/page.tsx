@@ -86,6 +86,7 @@ import {
   Star,
   MoreVertical,
   Loader2,
+  Info,
 } from "lucide-react";
 
 // Types
@@ -670,47 +671,23 @@ export default function FacultySupervisorTasksPage() {
       {/* Header */}
       <PageHeader
         title="Task Management"
-        description="Create and manage tasks for your supervised students"
-        actions={
-          <div className="flex gap-2">
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2" onClick={resetForm}>
-                  <Plus className="h-4 w-4" /> New Task
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Create New Task</DialogTitle>
-                  <DialogDescription>
-                    Assign a new task to one or more students in your programs.
-                  </DialogDescription>
-                </DialogHeader>
-                <TaskForm
-                  formData={formData}
-                  students={students}
-                  onFormDataChange={setFormData}
-                  onSelectAllStudents={selectAllStudents}
-                  onDeselectAllStudents={deselectAllStudents}
-                  onToggleStudentSelection={toggleStudentSelection}
-                />
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateTask}
-                    disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-                  >
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Task
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-        }
+        description="View tasks assigned to your students. Faculty supervisors evaluate tasks; they do not create them."
       />
+
+      {/* Info banner — faculty supervisors cannot create tasks */}
+      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30">
+        <CardContent className="p-4 flex items-start gap-3">
+          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-sm">View-only access</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Tasks are created and assigned by site supervisors and program
+              coordinators. Your role is to evaluate student submissions — you
+              cannot create, edit, or delete tasks.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -965,11 +942,9 @@ export default function FacultySupervisorTasksPage() {
               <ListTodo className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium mb-2">No tasks found</h3>
               <p className="text-muted-foreground mb-4">
-                Try adjusting your search or filter criteria, or create a new task.
+                Try adjusting your search or filter criteria. Tasks are
+                created by site supervisors and program coordinators.
               </p>
-              <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" /> Create New Task
-              </Button>
             </CardContent>
           </Card>
         )}
@@ -1124,12 +1099,9 @@ export default function FacultySupervisorTasksPage() {
                   </Card>
                 )}
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2 pt-4 border-t">
-                  <Button variant="outline" className="gap-2" onClick={() => openEditDialog(selectedTask)}>
-                    <Edit className="h-4 w-4" /> Edit Task
-                  </Button>
-                </div>
+                {/* Actions — faculty supervisors cannot edit tasks; this
+                    section is intentionally empty. Tasks are managed by
+                    site supervisors and program coordinators. */}
               </div>
             </>
           )}

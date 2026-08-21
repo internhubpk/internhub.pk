@@ -31,13 +31,17 @@
 import { createClient } from "@/utils/supabase/server";
 
 // ----------------------------------------------------------------------------
-// Weights (per spec: 40% / 30% / 25% / 5%)
+// Weights (per updated spec: 40% / 30% / 25% / 5%)
+//   - Site Supervisor     40%  (was 40%, unchanged)
+//   - Department Coord.   30%  (CHANGED — was "Student Reports 30%")
+//   - Faculty Supervisor  25%  (unchanged)
+//   - Activity Log         5%  (unchanged; or auto — see safeAverage)
 // ----------------------------------------------------------------------------
 export const FINAL_GRADE_WEIGHTS = {
-  site_supervisor: 0.40,   // 40% — Site Supervisor Evaluations
-  student_reports: 0.30,   // 30% — Student Reports (weekly logs)
-  faculty_supervisor: 0.25, // 25% — Faculty Supervisor Evaluation
-  activity_log: 0.05,      //  5% — Activity Log Completion
+  site_supervisor: 0.40,           // 40% — Site Supervisor Evaluations
+  department_coordinator: 0.30,    // 30% — Department Coordinator Evaluation
+  faculty_supervisor: 0.25,        // 25% — Faculty Supervisor Evaluation
+  activity_log: 0.05,              //  5% — Activity Log Completion (or auto)
 } as const;
 
 // Letter grade thresholds (per standard IIUI / Ibadat scale).
@@ -82,10 +86,11 @@ async function computeSiteSupervisorScore(
   studentId: string,
   internshipId: string
 ): Promise<{ score: number | null; metadata: Record<string, unknown> }> {
+  // evaluations uses student_user_id (not student_id) on the live DB.
   const { data: evals, error } = await supabase
     .from("evaluations")
     .select("id, scores, status, submitted_at, evaluator_role")
-    .eq("student_id", studentId)
+    .eq("student_user_id", studentId)
     .eq("internship_id", internshipId)
     .eq("evaluator_role", "site_supervisor")
     .in("status", ["submitted", "approved"]);
@@ -130,62 +135,65 @@ async function computeSiteSupervisorScore(
 }
 
 /**
- * Component 2: Student Reports (30%)
+ * Component 2: Department Coordinator Evaluation (30%)
  *
- * Average score across all submitted/approved weekly logs for this
- * student/internship. The weekly_logs table doesn't have an explicit
- * numeric `score` column — instead, we compute completion-based:
- *   - Each weekly log gets 100 if approved, 70 if submitted-but-pending,
- *     0 if draft/rejected.
+ * Average score across all evaluations submitted by department_coordinator
+ * for this student/internship. Mirrors computeSiteSupervisorScore but
+ * filters on evaluator_role = 'department_coordinator'.
  *
- * Alternative: if the supervisor stored a numeric score in
- * `weekly_logs.supervisor_feedback` (in the future), it would be parsed.
- * For now, completion-based scoring is used.
- *
- * If no weekly logs exist, returns null.
+ * If no department_coordinator evaluations exist, returns null.
  */
-async function computeStudentReportsScore(
+async function computeDepartmentCoordinatorScore(
   supabase: Awaited<ReturnType<typeof createClient>>,
   studentId: string,
   internshipId: string
 ): Promise<{ score: number | null; metadata: Record<string, unknown> }> {
-  const { data: logs, error } = await supabase
-    .from("weekly_logs")
-    .select("id, status, supervisor_feedback, week_number")
-    .eq("student_id", studentId)
+  // NOTE: weekly_logs uses student_user_id (the student's auth.users.id),
+  // not student_id. evaluations uses student_user_id too (migration 0001
+  // column name on the live DB).
+  const { data: evals, error } = await supabase
+    .from("evaluations")
+    .select("id, scores, status, submitted_at, evaluator_role, type")
+    .eq("student_user_id", studentId)
     .eq("internship_id", internshipId)
-    .in("status", ["submitted", "approved", "revision_required"]);
+    .eq("evaluator_role", "department_coordinator")
+    .in("status", ["submitted", "approved"]);
 
   if (error) {
-    console.error("[final-grade] student_reports query failed:", error);
+    console.error("[final-grade] department_coordinator query failed:", error);
     return { score: null, metadata: { error: error.message } };
   }
 
-  if (!logs || logs.length === 0) {
-    return { score: null, metadata: { logCount: 0 } };
+  if (!evals || evals.length === 0) {
+    return { score: null, metadata: { evalCount: 0 } };
   }
 
-  const logScores: number[] = [];
-  for (const log of logs) {
-    if (log.status === "approved") {
-      logScores.push(100);
-    } else if (log.status === "submitted") {
-      logScores.push(70);
-    } else if (log.status === "revision_required") {
-      logScores.push(40);
-    } else {
-      logScores.push(0);
+  const evalMeans: number[] = [];
+  for (const ev of evals) {
+    const scores = ev.scores as Record<string, number> | null;
+    if (scores && typeof scores === "object") {
+      const values = Object.values(scores).filter(
+        (v): v is number => typeof v === "number" && !Number.isNaN(v) && v >= 0 && v <= 100
+      );
+      if (values.length > 0) {
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        evalMeans.push(mean);
+      }
     }
   }
 
-  const avg = logScores.reduce((a, b) => a + b, 0) / logScores.length;
+  if (evalMeans.length === 0) {
+    return { score: null, metadata: { evalCount: evals.length, scoredCount: 0 } };
+  }
+
+  const avg = evalMeans.reduce((a, b) => a + b, 0) / evalMeans.length;
   return {
     score: Math.round(avg * 100) / 100,
     metadata: {
-      logCount: logs.length,
-      approved: logs.filter((l) => l.status === "approved").length,
-      submitted: logs.filter((l) => l.status === "submitted").length,
-      revision_required: logs.filter((l) => l.status === "revision_required").length,
+      evalCount: evals.length,
+      scoredCount: evalMeans.length,
+      perEvalMeans: evalMeans,
+      types: evals.map((e) => e.type),
     },
   };
 }
@@ -204,10 +212,11 @@ async function computeFacultySupervisorScore(
   studentId: string,
   internshipId: string
 ): Promise<{ score: number | null; metadata: Record<string, unknown> }> {
+  // evaluations uses student_user_id (not student_id) on the live DB.
   const { data: evals, error } = await supabase
     .from("evaluations")
     .select("id, scores, status, type")
-    .eq("student_id", studentId)
+    .eq("student_user_id", studentId)
     .eq("internship_id", internshipId)
     .eq("evaluator_role", "faculty_supervisor")
     .in("status", ["submitted", "approved"])
@@ -277,11 +286,12 @@ async function computeActivityLogScore(
     return { score: null, metadata: { error: "internship_not_found" } };
   }
 
-  // Count completed weekly logs.
+  // Count completed weekly logs. weekly_logs uses student_user_id (not
+  // student_id) on the live DB.
   const { count: completedCount, error: countErr } = await supabase
     .from("weekly_logs")
     .select("id", { count: "exact", head: true })
-    .eq("student_id", studentId)
+    .eq("student_user_id", studentId)
     .eq("internship_id", internshipId)
     .in("status", ["submitted", "approved"]);
 
@@ -392,16 +402,17 @@ export async function computeFinalGrade(
     .single();
 
   // 3. Compute all 4 components.
-  const [site, reports, faculty, activity] = await Promise.all([
+  //    Component 2 is now "Department Coordinator Evaluation" (was Student Reports).
+  const [site, deptCoord, faculty, activity] = await Promise.all([
     computeSiteSupervisorScore(supabase, studentId, internshipId),
-    computeStudentReportsScore(supabase, studentId, internshipId),
+    computeDepartmentCoordinatorScore(supabase, studentId, internshipId),
     computeFacultySupervisorScore(supabase, studentId, internshipId),
     computeActivityLogScore(supabase, studentId, internshipId),
   ]);
 
   const allAvailable =
     site.score !== null &&
-    reports.score !== null &&
+    deptCoord.score !== null &&
     faculty.score !== null &&
     activity.score !== null;
 
@@ -412,7 +423,7 @@ export async function computeFinalGrade(
   if (allAvailable) {
     finalScore =
       (site.score! * FINAL_GRADE_WEIGHTS.site_supervisor) +
-      (reports.score! * FINAL_GRADE_WEIGHTS.student_reports) +
+      (deptCoord.score! * FINAL_GRADE_WEIGHTS.department_coordinator) +
       (faculty.score! * FINAL_GRADE_WEIGHTS.faculty_supervisor) +
       (activity.score! * FINAL_GRADE_WEIGHTS.activity_log);
     finalScore = Math.round(finalScore * 100) / 100;
@@ -424,7 +435,10 @@ export async function computeFinalGrade(
     student_id: studentId,
     internship_id: internshipId,
     site_supervisor_score: site.score,
-    student_reports_score: reports.score,
+    // Back-compat: `student_reports_score` field is kept on the type so the
+    // DB upsert still works against existing rows — but now stores the
+    // Department Coordinator's evaluation score.
+    student_reports_score: deptCoord.score,
     faculty_supervisor_score: faculty.score,
     activity_log_score: activity.score,
     final_score: finalScore,
@@ -433,7 +447,7 @@ export async function computeFinalGrade(
     metadata: {
       weights: FINAL_GRADE_WEIGHTS,
       site_supervisor: site.metadata,
-      student_reports: reports.metadata,
+      department_coordinator: deptCoord.metadata,
       faculty_supervisor: faculty.metadata,
       activity_log: activity.metadata,
     },
@@ -451,7 +465,10 @@ export async function computeFinalGrade(
         internship_id: internshipId,
         university_id: profile?.university_id || null,
         site_supervisor_score: site.score,
-        student_reports_score: reports.score,
+        // Back-compat: store dept coordinator score in the student_reports_score
+        // column (existing schema). The column name is misleading but changing
+        // the schema would require a new migration; we keep it for now.
+        student_reports_score: deptCoord.score,
         faculty_supervisor_score: faculty.score,
         activity_log_score: activity.score,
         final_score: finalScore,

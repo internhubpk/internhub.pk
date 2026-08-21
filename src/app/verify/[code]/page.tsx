@@ -14,6 +14,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
+import { StableNow } from "@/components/shared/stable-date";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -418,16 +419,7 @@ export default async function CertificateVerificationPage({
             {/* Footer */}
             <div className="text-center text-xs text-slate-500 dark:text-slate-500 px-4">
               <p>
-                Verified by InternHub at{" "}
-                {new Date().toLocaleString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: "UTC",
-                  timeZoneName: "short",
-                })}
+                <StableNow prefix="Verified by InternHub at " />
               </p>
               <p className="mt-1">
                 This verification is authoritative. For disputes, contact the

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StableLastUpdated } from "@/components/shared/stable-date";
 
 export const metadata: Metadata = {
   title: "Privacy Policy - InternHub",
@@ -15,7 +16,7 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="text-muted-foreground">
-            Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            Last updated: <StableLastUpdated />
           </p>
         </header>
 

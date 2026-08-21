@@ -14,6 +14,7 @@ import {
   Mail,
   Phone,
   ExternalLink,
+  Plus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -152,8 +153,13 @@ export default function UniversityAdminCompaniesPage() {
       {/* Header */}
       <PageHeader
         title="Companies"
-        description="Browse all companies on the platform and the internships they offer. Company management is handled by Super Admins."
-        actions={<Badge variant="outline" className="text-xs">View only</Badge>}
+        description="Manage partner companies for your university. Add new host organizations, manage their details, and create HR accounts."
+        actions={
+          <Button onClick={() => toast.info("Coming soon", { description: "The company creation form will be available here shortly." })}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Company
+          </Button>
+        }
       />
 
       {/* Filters */}

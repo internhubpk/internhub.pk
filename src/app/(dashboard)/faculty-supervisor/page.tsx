@@ -530,12 +530,6 @@ export default function FacultySupervisorDashboard() {
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button asChild>
-              <Link href="/faculty-supervisor/tasks">
-                <Plus className="h-4 w-4 mr-2" />
-                New Task
-              </Link>
-            </Button>
             <Button variant="outline" asChild>
               <Link href="/faculty-supervisor/notifications">
                 <Send className="h-4 w-4 mr-2" />

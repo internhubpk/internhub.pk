@@ -213,11 +213,91 @@ function LoginForm() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [autoLoginChecked, setAutoLoginChecked] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { identifier: "", password: "" },
   });
+
+  // ---------------------------------------------------------------------
+  // On mount: check for an existing session (carried over via Domain=.apex
+  // cookie after a cross-subdomain redirect) AND consume any handoff token
+  // to prefill the email field.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        if (!supabase) return;
+
+        // 1. If a handoff token is in the URL, consume it to get the email
+        //    for prefill. (This is a UX convenience — the user may still
+        //    need to log in if the session didn't carry over.)
+        const params = new URLSearchParams(window.location.search);
+        const handoffToken = params.get("handoff");
+        if (handoffToken) {
+          try {
+            const resp = await fetch(`/api/auth/handoff?token=${encodeURIComponent(handoffToken)}`);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data?.success && data?.data?.email && !cancelled) {
+                form.setValue("identifier", data.data.email);
+                // Focus the password field since email is prefilled
+                setTimeout(() => {
+                  const pwdInput = document.getElementById("password") as HTMLInputElement | null;
+                  pwdInput?.focus();
+                }, 100);
+              }
+            }
+          } catch (handoffErr) {
+            console.warn("[login] handoff consume failed:", handoffErr);
+          }
+          // Clean the URL — remove the handoff param so it's not in history
+          const cleanUrl = window.location.pathname + (params.get("redirected") ? "?redirected=true" : "");
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+
+        // 2. Check if there's an existing valid session (carried over via
+        //    Domain=.apex cookie). If yes, redirect to dashboard — the
+        //    user doesn't need to log in again.
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (!cancelled && session && !error) {
+          // Valid session exists — read the role and redirect
+          const role = session.user?.app_metadata?.role as string | undefined
+                    || session.user?.user_metadata?.role as string | undefined
+                    || null;
+          if (role) {
+            const dashboardPaths: Record<string, string> = {
+              super_admin: "/super-admin",
+              university_admin: "/university-admin",
+              department_coordinator: "/department-coordinator",
+              program_coordinator: "/program-coordinator",
+              faculty_supervisor: "/faculty-supervisor",
+              student: "/student",
+              company_hr: "/company-hr",
+              site_supervisor: "/site-supervisor",
+              external_evaluator: "/external-evaluator",
+            };
+            const target = dashboardPaths[role] || "/dashboard";
+            // Show a brief toast before redirecting
+            toast.success("Already signed in", {
+              description: "Redirecting to your dashboard…",
+            });
+            setTimeout(() => { window.location.href = target; }, 600);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[login] session check failed:", err);
+      } finally {
+        if (!cancelled) setAutoLoginChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(values: LoginFormValues) {
     setIsLoading(true);
@@ -350,10 +430,46 @@ function LoginForm() {
         const targetHost = userTenantDomain
           || (apex ? `${userTenantSlug}.${apex}` : null);
         if (targetHost) {
-          const correctUrl = `${window.location.protocol}//${targetHost}${port}/login?redirected=wrong_tenant`;
+          // Build the redirect URL. We pass the email (NOT the password) via
+          // a short-lived signed handoff token so the subdomain's /login page
+          // can prefill the email field. The user is then already authenticated
+          // because the session cookie carries over via Domain=.apex — but
+          // just in case the session didn't carry over (e.g. they cleared
+          // cookies mid-redirect), the prefill saves them from re-typing.
+          //
+          // SECURITY: we do NOT pass the password in the URL. If the session
+          // carried over, the subdomain's login page sees the existing session
+          // and redirects to the dashboard automatically (no re-login needed).
+          // If the session didn't carry over, the user sees their email prefilled
+          // and only has to re-enter their password.
+          let handoffToken: string | null = null;
+          try {
+            const handoffResp = await fetch("/api/auth/handoff/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email }),
+            });
+            if (handoffResp.ok) {
+              const handoffData = await handoffResp.json();
+              if (handoffData?.success && handoffData?.data?.token) {
+                handoffToken = handoffData.data.token;
+              }
+            }
+          } catch (handoffErr) {
+            console.warn("[login] handoff create failed:", handoffErr);
+          }
+          const handoffParam = handoffToken ? `&handoff=${handoffToken}` : "";
+          const correctUrl = `${window.location.protocol}//${targetHost}${port}/login?redirected=wrong_tenant${handoffParam}`;
+
+          // Sign out ONLY if we're on a tenant subdomain going to a DIFFERENT
+          // tenant subdomain (cross-tenant block). If we're on the apex going
+          // to a tenant subdomain, KEEP the session — the Domain=.apex cookie
+          // will carry it over to the subdomain and the user won't need to
+          // re-enter credentials.
           if (currentSubdomain) {
             await supabase.auth.signOut();
           }
+
           toast.info("Redirecting to your portal", {
             description: `This account belongs to the "${userTenantSlug}" portal. Taking you there…`,
           });

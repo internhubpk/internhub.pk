@@ -8,6 +8,8 @@
  *   - If push is supported but not configured server-side: nothing (silent)
  *   - If push is supported + configured + not yet subscribed + permission not denied:
  *       A subtle blue banner with an "Enable" button
+ *       ALSO: auto-triggers the browser permission prompt after a 3-second
+ *       delay (only once per 7 days per browser, tracked via localStorage)
  *   - If push is supported + configured + subscribed: nothing (silent — user already opted in)
  *   - If push is supported + configured + permission denied:
  *       An amber banner explaining the user blocked notifications
@@ -17,22 +19,76 @@
  *   <EnablePushNotificationsCard />
  */
 
-import { useState } from "react";
-import { Bell, BellOff, CheckCircle2, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bell, BellOff, CheckCircle2, Loader2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { toast } from "sonner";
 
+// localStorage key tracking the last time we auto-prompted for notification
+// permission. We only auto-prompt once per 7 days per browser to avoid
+// being annoying.
+const AUTO_PROMPT_KEY = "internhub_push_auto_prompted_at";
+const AUTO_PROMPT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 export function EnablePushNotificationsCard() {
   const push = usePushNotifications();
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  // Auto-prompt the user for notification permission once per 7 days.
+  // We do this on a 3-second delay so the dashboard has time to render
+  // before the browser's permission dialog appears.
+  useEffect(() => {
+    if (!push.isSupported || !push.isConfigured) return;
+    if (push.isSubscribed) return;
+    const perm = push.permission as string;
+    if (perm === "denied") return; // user already blocked — don't pester
+    if (perm === "granted") return; // already granted (but subscription may have failed)
+
+    // Check the cooldown
+    try {
+      const lastPromptedAt = Number(localStorage.getItem(AUTO_PROMPT_KEY) || "0");
+      const elapsed = Date.now() - lastPromptedAt;
+      if (elapsed < AUTO_PROMPT_COOLDOWN_MS) {
+        return; // within cooldown — don't auto-prompt
+      }
+    } catch {
+      // localStorage may be unavailable (private mode) — proceed
+    }
+
+    // Schedule the auto-prompt
+    const timer = setTimeout(() => {
+      // Mark that we prompted (even before the user responds)
+      try {
+        localStorage.setItem(AUTO_PROMPT_KEY, String(Date.now()));
+      } catch {
+        // ignore
+      }
+      // Trigger the subscribe flow which will call Notification.requestPermission()
+      // The browser will show its native permission dialog.
+      // We don't await here — the user can respond at their own pace.
+      push.subscribe().then((result) => {
+        if (result.success) {
+          toast.success("Notifications enabled", {
+            description: "You'll receive alerts for important workflow events.",
+          });
+        }
+        // If failed/denied, the banner below will update to show the
+        // recovery state automatically.
+      });
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [push.isSupported, push.isConfigured, push.isSubscribed, push.permission, push]);
 
   // Silent no-op cases:
   // - Push not supported by browser
   // - Push not configured on server (no VAPID keys)
   // - Already subscribed
-  if (!push.isSupported || !push.isConfigured || push.isSubscribed) {
+  // - User dismissed the banner
+  if (!push.isSupported || !push.isConfigured || push.isSubscribed || dismissed) {
     return null;
   }
 
@@ -90,24 +146,35 @@ export function EnablePushNotificationsCard() {
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleEnable}
-          disabled={isSubscribing}
-          size="sm"
-          className="flex-shrink-0"
-        >
-          {isSubscribing ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Enabling...
-            </>
-          ) : (
-            <>
-              <Bell className="h-4 w-4 mr-2" />
-              Enable
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDismissed(true)}
+            disabled={isSubscribing}
+            className="text-muted-foreground hover:text-foreground"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={handleEnable}
+            disabled={isSubscribing}
+            size="sm"
+          >
+            {isSubscribing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Enabling...
+              </>
+            ) : (
+              <>
+                <Bell className="h-4 w-4 mr-2" />
+                Enable
+              </>
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

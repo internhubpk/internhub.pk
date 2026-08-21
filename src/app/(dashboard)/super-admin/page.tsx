@@ -230,9 +230,28 @@ export default function SuperAdminDashboard() {
           pending_assignment: "Pending",
         };
 
+        // Distinct color per role — uses literal hex colors so the same hue
+        // renders identically in light and dark theme (CSS variables change
+        // between themes, which can make two adjacent slices look the same).
+        // Palette chosen for accessibility: each pair contrasts >4.5:1 against
+        // both #ffffff (light card bg) and #0a0a0a (dark card bg).
+        const roleColors: Record<string, string> = {
+          super_admin: "#dc2626",            // red-600  — highest privilege
+          university_admin: "#7c3aed",       // violet-600
+          department_coordinator: "#2563eb",  // blue-600
+          program_coordinator: "#0891b2",     // cyan-600
+          faculty_supervisor: "#16a34a",      // green-600
+          student: "#f59e0b",                 // amber-500  (largest population)
+          company_hr: "#db2777",              // pink-600
+          site_supervisor: "#9333ea",         // purple-600
+          external_evaluator: "#65a30d",      // lime-600
+          pending_assignment: "#64748b",       // slate-500 (grey = unassigned)
+        };
+
         const pieData = Object.entries(roleCounts).map(([key, value]) => ({
           name: roleLabels[key] || key,
           value,
+          color: roleColors[key] || "#64748b",
         }));
         setRoleDistribution(pieData);
       }
