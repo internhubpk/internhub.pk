@@ -552,7 +552,7 @@ function SidebarContent({
                       <button
                         className={cn(
                           "flex items-center w-full gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative group border",
-                          childActive && !collapsed
+                          (childActive && isExpanded) && !collapsed
                             ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-400/30"
                             : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-blue-500/10 hover:border-blue-500/20 border-transparent",
                           collapsed &&
@@ -563,8 +563,8 @@ function SidebarContent({
                           !collapsed && toggleExpand(item.title)
                         }
                       >
-                        {/* Active indicator bar */}
-                        {(childActive || active) && !collapsed && (
+                        {/* Active indicator bar - only show when section is expanded */}
+                        {(childActive && isExpanded) && !collapsed && (
                           <motion.div
                             layoutId="activeIndicator"
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-blue-400 rounded-r-full"
@@ -579,7 +579,7 @@ function SidebarContent({
                         <item.icon
                           className={cn(
                             "h-5 w-5 shrink-0 relative z-10 transition-colors",
-                            childActive && !collapsed
+                            (childActive && isExpanded) && !collapsed
                               ? "text-blue-700 dark:text-blue-300"
                               : "text-sidebar-foreground/60 group-hover:text-blue-700 dark:group-hover:text-blue-300"
                           )}
