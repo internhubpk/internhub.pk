@@ -778,20 +778,6 @@ export default function ProgramsPage() {
                         )}
                       </div>
 
-                      <div className="text-sm text-muted-foreground mb-1 truncate">
-                        <span className="font-medium">Def. Faculty Supervisor:</span>{" "}
-                        {supervisorNameFor(program) || (
-                          <Badge variant="outline" className="text-xs">Not assigned</Badge>
-                        )}
-                      </div>
-
-                      <div className="text-sm text-muted-foreground mb-3 truncate">
-                        <span className="font-medium">Ext. Evaluator:</span>{" "}
-                        {externalEvaluatorNameFor(program) || (
-                          <Badge variant="outline" className="text-xs">Not assigned</Badge>
-                        )}
-                      </div>
-
                       <div className="flex gap-2 pt-3 border-t">
                         <Button
                           variant="outline"
@@ -825,7 +811,6 @@ export default function ProgramsPage() {
                   <TableHead>Program</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Program Coordinator</TableHead>
-                  <TableHead>Def. Faculty Sup.</TableHead>
                   <TableHead>Students</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[70px]"></TableHead>
@@ -879,25 +864,6 @@ export default function ProgramsPage() {
                           {program.program_coordinator?.email && (
                             <p className="text-xs text-muted-foreground pl-5">{program.program_coordinator.email}</p>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div>
-                            {supervisorNameFor(program) ? (
-                              <span className="text-sm">{supervisorNameFor(program)}</span>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">
-                                Not assigned
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            <span className="font-medium">Eval:</span>{" "}
-                            {externalEvaluatorNameFor(program) || (
-                              <span className="italic">Not assigned</span>
-                            )}
-                          </div>
                         </div>
                       </TableCell>
                       {/* Duration column removed — programs no longer have a fixed week count */}

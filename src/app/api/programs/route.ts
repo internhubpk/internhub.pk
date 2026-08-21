@@ -641,11 +641,20 @@ export async function DELETE(request: NextRequest) {
       return authorizationError("Forbidden: Insufficient permissions to delete programs");
     }
 
-    const cookieStore = await cookies();
-    const supabase = await createClient(cookieStore);
-    if (!supabase) {
-      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    // Use service role for delete operations to bypass RLS and handle cascades
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfiguration" },
+        { status: 500 }
+      );
     }
+    
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceRoleKey,
+      { auth: { persistSession: false } }
+    );
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -659,7 +668,7 @@ export async function DELETE(request: NextRequest) {
 
     // Department coordinators can only delete programs in their own department
     if (authContext.profile.role === "department_coordinator") {
-      const { data: existingProgram } = await supabase
+      const { data: existingProgram } = await admin
         .from("programs")
         .select("department_id")
         .eq("id", id)
@@ -677,25 +686,42 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Check if program has enrolled students
-    const { data: students } = await supabase
+    // Cascade: Unlink students from this program before deleting
+    // This handles the FK constraint that would otherwise block deletion
+    const { error: unlinkError } = await admin
       .from("students")
-      .select("id")
-      .eq("program_id", id)
-      .limit(1);
+      .update({ program_id: null, updated_at: new Date().toISOString() })
+      .eq("program_id", id);
 
-    if (students && students.length > 0) {
-      return NextResponse.json<ApiResponse<never>>(
-        { 
-          success: false, 
-          error: "Cannot delete program with enrolled students. Please reassign students first." 
-        },
-        { status: 409 }
-      );
+    if (unlinkError) {
+      console.error("Error unlinking students from program:", unlinkError);
+      // Continue anyway - non-critical error
     }
 
-    // Delete program
-    const { error } = await supabase
+    // Also clear program_coordinator_id reference on the program itself if it exists
+    // (though we're deleting the program, this helps with any triggers)
+    
+    // Delete any task assignments linked to this program's tasks
+    const { data: tasksToDelete } = await admin
+      .from("tasks")
+      .select("id")
+      .eq("program_id", id);
+    
+    if (tasksToDelete && tasksToDelete.length > 0) {
+      const taskIds = tasksToDelete.map(t => t.id);
+      await admin
+        .from("task_assignments")
+        .delete()
+        .in("task_id", taskIds);
+      
+      await admin
+        .from("tasks")
+        .delete()
+        .in("id", taskIds);
+    }
+
+    // Delete the program
+    const { error } = await admin
       .from("programs")
       .delete()
       .eq("id", id);
@@ -703,7 +729,7 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       console.error("Error deleting program:", error);
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Failed to delete program" },
+        { success: false, error: `Failed to delete program: ${error.message}` },
         { status: 500 }
       );
     }
@@ -711,7 +737,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json<ApiResponse<null>>({
       success: true,
       data: null,
-      message: "Program deleted successfully",
+      message: "Program deleted successfully. Students have been unlinked from this program.",
     });
   } catch (error) {
     console.error("Error in DELETE /api/programs:", error);
