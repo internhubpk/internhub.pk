@@ -98,7 +98,7 @@ export default function ProgramCoordinatorStudentsPage() {
   const programId = profile?.program_id;
 
   const fetchStudents = useCallback(async () => {
-    if (!programId) {
+    if (!profile?.department_id && !programId) {
       setIsLoading(false);
       return;
     }
@@ -106,16 +106,27 @@ export default function ProgramCoordinatorStudentsPage() {
       setIsLoading(true);
       const supabase = createClient();
 
-      // Fetch students in this program with their profiles
-      const { data: studentRows, error } = await supabase
+      // Fetch students in this program OR department
+      // (some students may not have program_id assigned yet)
+      let query = supabase
         .from("students")
         .select(`
           user_id,
           student_id_number,
           faculty_supervisor_id,
+          department_id,
+          program_id,
           profiles:user_id (full_name, email)
-        `)
-        .eq("program_id", programId)
+        `);
+
+      // Filter by program_id if available, otherwise by department_id
+      if (programId) {
+        query = query.eq("program_id", programId);
+      } else if (profile?.department_id) {
+        query = query.eq("department_id", profile.department_id);
+      }
+      
+      const { data: studentRows, error } = await query
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -173,7 +184,7 @@ export default function ProgramCoordinatorStudentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [programId]);
+  }, [programId, profile?.department_id]);
 
   // Fetch available faculty supervisors (from the PC's university)
   const fetchSupervisors = useCallback(async () => {

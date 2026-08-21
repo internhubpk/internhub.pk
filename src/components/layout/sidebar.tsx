@@ -227,7 +227,7 @@ function SidebarContent({
     // For non-dashboard items, check if path starts with href + "/"
     // BUT don't highlight parent "Dashboard" items when on a sub-page
     const isDashboardItem = ["/super-admin", "/university-admin", "/department-coordinator", 
-      "/faculty-supervisor", "/student", "/company-hr", "/site-supervisor", "/external-evaluator"]
+      "/program-coordinator", "/faculty-supervisor", "/student", "/company-hr", "/site-supervisor", "/external-evaluator"]
       .includes(href);
     
     if (isDashboardItem) {
