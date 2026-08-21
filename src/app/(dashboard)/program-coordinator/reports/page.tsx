@@ -95,96 +95,60 @@ export default function ProgramCoordinatorReportsPage() {
       setIsLoading(true);
       const supabase = await createClient();
 
-      // Fetch weekly logs for program/department's students
-      // Use program_id filter for PC (more precise)
-      let logsQuery = supabase
-        .from("weekly_logs")
-        .select(`
-          id,
-          student_user_id,
-          week_number,
-          week_start_date,
-          week_end_date,
-          status,
-          submitted_at,
-          hours_worked,
-          tasks_completed,
-          students!inner(
-            user_id,
-            profiles!user_id(full_name, email)
-          )
-        `);
-      
-      // Filter by program_id (preferred) or department_id (fallback)
-      if (programId) {
-        logsQuery = logsQuery.eq("students.program_id", programId);
-      } else if (deptId) {
-        logsQuery = logsQuery.eq("students.department_id", deptId);
-      }
-      
-      const { data: logsData, error: logsError } = await logsQuery
-        .order("week_start_date", { ascending: false })
-        .limit(100);
+      // ============================================================
+      // STRATEGY: Avoid complex joins that cause 400 errors
+      // weekly_logs and evaluations reference profiles.user_id directly,
+      // NOT students.user_id. So we:
+      // 1. Fetch logs/evaluations with simple select (no joins)
+      // 2. Get program's student user_ids
+      // 3. Filter client-side
+      // 4. Fetch profiles separately for display
+      // ============================================================
 
-      if (logsError) {
-        console.error("Error fetching weekly logs:", logsError);
-        // Try alternative approach without inner join if first attempt fails
-        console.log("Trying alternative approach for weekly logs...");
-        const { data: altLogsData, error: altLogsError } = await supabase
-          .from("weekly_logs")
-          .select("*")
-          .order("week_start_date", { ascending: false })
-          .limit(100);
+      // Step 1: Get this program's student user_ids
+      const { data: programStudents } = await supabase
+        .from("students")
+        .select("user_id")
+        .eq("program_id", programId!);
+      
+      const programStudentUserIds = new Set(
+        (programStudents || []).map((s: any) => s.user_id)
+      );
+
+      // Step 2: Fetch ALL weekly logs (simple select, no joins)
+      const { data: allLogsData, error: logsError } = await supabase
+        .from("weekly_logs")
+        .select("*")
+        .order("week_start_date", { ascending: false })
+        .limit(500); // Get more to filter client-side
+
+      if (!logsError && allLogsData) {
+        // Step 3: Filter to only show logs from our program's students
+        const filteredLogs = allLogsData.filter((log: any) =>
+          programStudentUserIds.has(log.student_user_id)
+        );
+
+        // Step 4: Fetch profiles for these students
+        const logStudentIds = [...new Set(filteredLogs.map((l: any) => l.student_user_id))];
+        let profileMap: Record<string, {full_name: string | null, email: string}> = {};
         
-        if (!altLogsError && altLogsData) {
-          // Filter client-side for program/department students
-          const programStudentIds = new Set();
-          if (programId) {
-            const { data: progStudents } = await supabase
-              .from("students")
-              .select("user_id")
-              .eq("program_id", programId);
-            progStudents?.forEach((s: any) => programStudentIds.add(s.user_id));
-          }
+        if (logStudentIds.length > 0) {
+          const { data: logProfiles } = await supabase
+            .from("profiles")
+            .select("user_id, full_name, email")
+            .in("user_id", logStudentIds);
           
-          const filteredLogs = (altLogsData || []).filter((log: any) => 
-            !programId || programStudentIds.has(log.student_user_id)
-          );
-          
-          // Fetch student profiles separately
-          const userIds = [...new Set(filteredLogs.map((l: any) => l.student_user_id))];
-          let profileMap: Record<string, {full_name: string | null, email: string}> = {};
-          if (userIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("user_id, full_name, email")
-              .in("user_id", userIds);
-            (profiles || []).forEach((p: any) => {
-              profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
-            });
-          }
-          
-          const formattedLogs: WeeklyLogReport[] = filteredLogs.map((row: any) => ({
-            id: row.id,
-            student_user_id: row.student_user_id,
-            student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
-            student_email: profileMap[row.student_user_id]?.email || "",
-            week_number: row.week_number,
-            week_start_date: row.week_start_date,
-            week_end_date: row.week_end_date,
-            status: row.status,
-            submitted_at: row.submitted_at,
-            hours_worked: row.hours_worked,
-            tasks_completed: row.tasks_completed || [],
-          }));
-          setWeeklyLogs(formattedLogs);
+          (logProfiles || []).forEach((p: any) => {
+            profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
+          });
         }
-      } else {
-        const formattedLogs: WeeklyLogReport[] = (logsData || []).map((row: any) => ({
+
+        // Format and set weekly logs
+        const formattedLogs: WeeklyLogReport[] = filteredLogs.map((row: any) => ({
           id: row.id,
           student_user_id: row.student_user_id,
-          student_name: row.students?.profiles?.full_name || "Unknown",
-          student_email: row.students?.profiles?.email || "",
+          student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
+          student_email: profileMap[row.student_user_id]?.email || "",
           week_number: row.week_number,
           week_start_date: row.week_start_date,
           week_end_date: row.week_end_date,
@@ -194,115 +158,71 @@ export default function ProgramCoordinatorReportsPage() {
           tasks_completed: row.tasks_completed || [],
         }));
         setWeeklyLogs(formattedLogs);
+      } else if (logsError) {
+        console.error("Error fetching weekly logs:", logsError);
       }
 
-      // Fetch evaluations for program/department's students
-      let evalsQuery = supabase
+      // Step 5: Fetch ALL evaluations (simple select, no joins)
+      const { data: allEvalsData, error: evalsError } = await supabase
         .from("evaluations")
-        .select(`
-          id,
-          student_user_id,
-          type,
-          status,
-          rating,
-          submitted_at,
-          evaluator_id,
-          students!inner(
-            user_id,
-            profiles!user_id(full_name, email)
-          ),
-          evaluators!evaluator_id(profiles!user_id(full_name))
-        `);
-      
-      // Filter by program_id (preferred) or department_id (fallback)
-      if (programId) {
-        evalsQuery = evalsQuery.eq("students.program_id", programId);
-      } else if (deptId) {
-        evalsQuery = evalsQuery.eq("students.department_id", deptId);
-      }
-      
-      const { data: evalsData, error: evalsError } = await evalsQuery
+        .select("*")
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(500);
 
-      if (evalsError) {
-        console.error("Error fetching evaluations:", evalsError);
-        // Try alternative approach
-        console.log("Trying alternative approach for evaluations...");
-        const { data: altEvalsData, error: altEvalsError } = await supabase
-          .from("evaluations")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(100);
+      if (!evalsError && allEvalsData) {
+        // Step 6: Filter to only show evaluations from our program's students
+        const filteredEvals = allEvalsData.filter((ev: any) =>
+          programStudentUserIds.has(ev.student_user_id)
+        );
+
+        // Step 7: Fetch profiles for students AND evaluators
+        const evalStudentIds = [...new Set(filteredEvals.map((e: any) => e.student_user_id))];
+        const evaluatorIds = [...new Set(
+          filteredEvals.map((e: any) => e.evaluator_id).filter(Boolean)
+        )];
         
-        if (!altEvalsError && altEvalsData) {
-          // Filter client-side
-          const programStudentIds = new Set();
-          if (programId) {
-            const { data: progStudents } = await supabase
-              .from("students")
-              .select("user_id")
-              .eq("program_id", programId);
-            progStudents?.forEach((s: any) => programStudentIds.add(s.user_id));
-          }
+        let profileMap: Record<string, {full_name: string | null, email: string}> = {};
+        let evaluatorMap: Record<string, string> = {};
+
+        if (evalStudentIds.length > 0) {
+          const { data: evalProfiles } = await supabase
+            .from("profiles")
+            .select("user_id, full_name, email")
+            .in("user_id", evalStudentIds);
           
-          const filteredEvals = (altEvalsData || []).filter((ev: any) => 
-            !programId || programStudentIds.has(ev.student_user_id)
-          );
-          
-          // Fetch profiles
-          const userIds = [...new Set(filteredEvals.map((e: any) => e.student_user_id))];
-          const evaluatorIds = [...new Set(filteredEvals.map((e: any) => e.evaluator_id).filter(Boolean))];
-          let profileMap: Record<string, {full_name: string | null, email: string}> = {};
-          let evaluatorMap: Record<string, string> = {};
-          
-          if (userIds.length > 0) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("user_id, full_name, email")
-              .in("user_id", userIds);
-            (profiles || []).forEach((p: any) => {
-              profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
-            });
-          }
-          
-          if (evaluatorIds.length > 0) {
-            const { data: evalProfiles } = await supabase
-              .from("profiles")
-              .select("user_id, full_name")
-              .in("user_id", evaluatorIds);
-            (evalProfiles || []).forEach((p: any) => {
-              evaluatorMap[p.user_id] = p.full_name || "Unknown";
-            });
-          }
-          
-          const formattedEvals: EvaluationReport[] = filteredEvals.map((row: any) => ({
-            id: row.id,
-            student_user_id: row.student_user_id,
-            student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
-            student_email: profileMap[row.student_user_id]?.email || "",
-            type: row.type,
-            status: row.status,
-            rating: row.rating,
-            submitted_at: row.submitted_at,
-            evaluator_name: row.evaluator_id ? evaluatorMap[row.evaluator_id] : null,
-          }));
-          setEvaluations(formattedEvals);
+          (evalProfiles || []).forEach((p: any) => {
+            profileMap[p.user_id] = { full_name: p.full_name, email: p.email };
+          });
         }
-      } else {
-        const formattedEvals: EvaluationReport[] = (evalsData || []).map((row: any) => ({
+
+        if (evaluatorIds.length > 0) {
+          const { data: evaluatorProfiles } = await supabase
+            .from("profiles")
+            .select("user_id, full_name")
+            .in("user_id", evaluatorIds);
+          
+          (evaluatorProfiles || []).forEach((p: any) => {
+            evaluatorMap[p.user_id] = p.full_name || "Unknown";
+          });
+        }
+
+        // Format and set evaluations
+        const formattedEvals: EvaluationReport[] = filteredEvals.map((row: any) => ({
           id: row.id,
           student_user_id: row.student_user_id,
-          student_name: row.students?.profiles?.full_name || "Unknown",
-          student_email: row.students?.profiles?.email || "",
+          student_name: profileMap[row.student_user_id]?.full_name || "Unknown",
+          student_email: profileMap[row.student_user_id]?.email || "",
           type: row.type,
           status: row.status,
           rating: row.rating,
           submitted_at: row.submitted_at,
-          evaluator_name: row.evaluators?.profiles?.full_name || null,
+          evaluator_name: row.evaluator_id ? evaluatorMap[row.evaluator_id] : null,
         }));
         setEvaluations(formattedEvals);
+      } else if (evalsError) {
+        console.error("Error fetching evaluations:", evalsError);
       }
+      
     } catch (error) {
       console.error("Error fetching reports:", error);
       toast.error("Error", { description: "Failed to load reports." });
