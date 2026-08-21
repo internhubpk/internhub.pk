@@ -288,14 +288,14 @@ export default function SiteSupervisorNotificationsPage() {
       id: "t2",
       name: "Evaluation Notice",
       subject: "Upcoming Evaluation - Week {week_range}",
-      content: "Hi {student_name},\n\nYour evaluation for Week {week_range} is scheduled for this week. Please ensure:\n✓ All weekly logs are submitted and approved\n✓ Your task list is up to date\n✓ You have documented your achievements\n\nThe evaluation will cover technical skills, professional conduct, and work quality.\n\nBest regards,\n{supervisor_name}",
+      content: "Hi {student_name},\n\nYour evaluation for Week {week_range} is scheduled for this week. Please ensure:\n- All weekly logs are submitted and approved\n- Your task list is up to date\n- You have documented your achievements\n\nThe evaluation will cover technical skills, professional conduct, and work quality.\n\nBest regards,\n{supervisor_name}",
       icon: <ClipboardList className="h-4 w-4" />,
     },
     {
       id: "t3",
       name: "Meeting Invitation",
       subject: "Meeting: {meeting_topic}",
-      content: "Hi {student_name},\n\nYou are invited to attend:\n\n📅 Meeting: {meeting_topic}\n🕐 Time: {date_time}\n📍 Location: {location}\n\nAgenda:\n{agenda}\n\nPlease confirm your attendance.\n\nBest regards,\n{supervisor_name}",
+      content: "Hi {student_name},\n\nYou are invited to attend:\n\n- Meeting: {meeting_topic}\n- Time: {date_time}\n- Location: {location}\n\nAgenda:\n{agenda}\n\nPlease confirm your attendance.\n\nBest regards,\n{supervisor_name}",
       icon: <Calendar className="h-4 w-4" />,
     },
     {
@@ -309,7 +309,7 @@ export default function SiteSupervisorNotificationsPage() {
       id: "t5",
       name: "Urgent Attention Required",
       subject: "URGENT: Action Required - {topic}",
-      content: "Hi {student_name},\n\n⚠️ URGENT ATTENTION REQUIRED ⚠️\n\n{urgent_message}\n\nPlease address this as soon as possible. If you have any questions or concerns, contact me immediately.\n\nDeadline: {deadline}\n\nBest regards,\n{supervisor_name}",
+      content: "Hi {student_name},\n\n[URGENT ATTENTION REQUIRED]\n\n{urgent_message}\n\nPlease address this as soon as possible. If you have any questions or concerns, contact me immediately.\n\nDeadline: {deadline}\n\nBest regards,\n{supervisor_name}",
       icon: <AlertTriangle className="h-4 w-4" />,
     },
   ];

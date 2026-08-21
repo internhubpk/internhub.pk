@@ -1177,12 +1177,12 @@ function CurrentTaskCard({ task }: { task: TaskRow }) {
 // can see their overall progress at a glance.
 //
 // Visual states:
-//   ✅ Approved        — green
-//   🟢 Current         — primary blue (pulse)
-//   ⏳ Awaiting Review — amber
-//   🔁 Resubmit        — orange
-//   🔒 Locked          — muted gray
-//   ⚪ Pending         — outlined
+//   Approved        — green
+//   Current         — primary blue (pulse)
+//   Awaiting Review — amber
+//   Resubmit        — orange
+//   Locked          — muted gray
+//   Pending         — outlined
 // ---------------------------------------------------------------------------
 function TaskStrip({ tasks }: { tasks: TaskRow[] }) {
   // Sort by week → day → sort_order so the strip reads left-to-right

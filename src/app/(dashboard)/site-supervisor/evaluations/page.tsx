@@ -779,8 +779,8 @@ export default function SiteSupervisorEvaluationsPage() {
                   </div>
                   <div className="grid grid-cols-6 gap-2">
                     {[
-                      { status: "completed", label: "✓ Done" },
-                      { status: "completed", label: "✓ Done" },
+                      { status: "completed", label: "Done" },
+                      { status: "completed", label: "Done" },
                       { status: "current", label: "Current" },
                       { status: "upcoming", label: "Upcoming" },
                       { status: "upcoming", label: "Upcoming" },
@@ -907,7 +907,7 @@ export default function SiteSupervisorEvaluationsPage() {
                     }`}>
                       <p className={`text-sm ${days === 21 ? "text-green-700" : days > 14 && days <= 28 ? "text-yellow-700" : "text-red-700"}`}>
                         <strong>Evaluation Window:</strong> {days} days
-                        {days === 21 && " ✓ Standard 3-week HEC cycle"}
+                        {days === 21 && " Standard 3-week HEC cycle"}
                         {days !== 21 && days > 0 && ` (Standard is 21 days)`}
                       </p>
                     </div>

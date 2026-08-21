@@ -550,7 +550,7 @@ export default function SuperAdminUniversitiesPage() {
               <Database className="h-6 w-6 text-amber-600 mt-1 flex-shrink-0" />
               <div className="flex-1">
                 <h3 className="font-semibold text-amber-800 mb-2">
-                  ⚠️ Database Tables Not Found
+                  Database Tables Not Found
                 </h3>
                 <p className="text-amber-700 text-sm mb-4">
                   The <code className="bg-amber-100 px-1 rounded">universities</code> table doesn&apos;t exist yet. 

@@ -58,6 +58,7 @@ export default function UniversityAdminProgramsPage() {
   const [filterActive, setFilterActive] = useState<string>("all");
   const [filterDepartment, setFilterDepartment] = useState<string>("all");
   const [expandedProgram, setExpandedProgram] = useState<string | null>(null);
+  const [coordinators, setCoordinators] = useState<Record<string, { full_name: string | null; email: string }>>({});
 
   const universityId = profile?.university_id || university?.id;
 
@@ -107,8 +108,30 @@ export default function UniversityAdminProgramsPage() {
 
       if (error) throw error;
 
-      // Get student counts per program
+      // Fetch Program Coordinator for each program (profiles with
+      // role='program_coordinator' and program_id = this program's id).
       const programIds = (data || []).map((p) => p.id);
+      let coordinatorMap: Record<string, { full_name: string | null; email: string }> = {};
+
+      if (programIds.length > 0) {
+        const { data: coordinators } = await supabase
+          .from("profiles")
+          .select("full_name, email, program_id")
+          .eq("role", "program_coordinator")
+          .in("program_id", programIds)
+          .eq("is_active", true);
+
+        for (const c of (coordinators || []) as any[]) {
+          if (c.program_id) {
+            coordinatorMap[c.program_id] = {
+              full_name: c.full_name,
+              email: c.email,
+            };
+          }
+        }
+      }
+
+      // Get student counts per program
       let studentCounts: Record<string, number> = {};
 
       if (programIds.length > 0) {
@@ -140,6 +163,7 @@ export default function UniversityAdminProgramsPage() {
         );
       }
 
+      setCoordinators(coordinatorMap);
       setPrograms(enriched);
     } catch (error) {
       console.error("Error fetching programs:", error);
@@ -367,9 +391,9 @@ export default function UniversityAdminProgramsPage() {
                       </div>
 
                       <div className="text-sm text-muted-foreground mt-2 truncate">
-                        <span className="font-medium">Supervisor:</span>{" "}
-                        {supervisorNameFor(program) || (
-                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                        <span className="font-medium">Program Coordinator:</span>{" "}
+                        {coordinators[program.id]?.full_name || (
+                          <Badge variant="outline" className="text-xs">Not assigned</Badge>
                         )}
                       </div>
                     </CardContent>
@@ -387,7 +411,7 @@ export default function UniversityAdminProgramsPage() {
                   <tr>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Program</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Department</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Supervisor</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Program Coordinator</th>
                     {/* Duration column removed — programs no longer have a fixed week count */}
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Students</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
@@ -438,11 +462,14 @@ export default function UniversityAdminProgramsPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          {supervisorNameFor(program) ? (
-                            <span className="text-sm">{supervisorNameFor(program)}</span>
+                          {coordinators[program.id]?.full_name ? (
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{coordinators[program.id].full_name}</span>
+                              <span className="text-xs text-muted-foreground">{coordinators[program.id].email}</span>
+                            </div>
                           ) : (
                             <Badge variant="outline" className="text-xs text-muted-foreground">
-                              Not allotted
+                              Not assigned
                             </Badge>
                           )}
                         </td>

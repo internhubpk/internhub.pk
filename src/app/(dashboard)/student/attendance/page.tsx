@@ -479,7 +479,7 @@ export default function StudentAttendancePage() {
             </div>
             <Progress value={stats.attendanceRate} className="h-2" />
             <p className="text-xs text-muted-foreground">
-              {stats.attendanceRate >= 95 ? "Excellent! 🎉" :
+              {stats.attendanceRate >= 95 ? "Excellent!" :
                stats.attendanceRate >= 80 ? "Good progress!" :
                stats.attendanceRate >= 60 ? "Needs improvement" :
                "Below expected"}

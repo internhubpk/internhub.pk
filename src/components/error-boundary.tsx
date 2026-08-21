@@ -65,7 +65,7 @@ class ErrorBoundaryClass extends React.Component<
     const errorId = `ERR-${Date.now()}-${++errorIdCounter}`;
     
     // Log error details
-    console.group(`🚨 [${errorId}] Error Boundary Caught an Error`);
+    console.group(`[${errorId}] Error Boundary Caught an Error`);
     console.error("Error:", error);
     console.error("Error Info:", errorInfo);
     console.error("Component Stack:", errorInfo.componentStack);

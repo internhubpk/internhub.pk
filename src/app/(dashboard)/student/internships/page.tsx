@@ -914,7 +914,7 @@ export default function StudentInternshipsPage() {
                     className="py-2 px-4"
                   >
                     {detailInternship.applicationStatus === "pending" && "Application Pending"}
-                    {detailInternship.applicationStatus === "accepted" && "✓ Accepted!"}
+                    {detailInternship.applicationStatus === "accepted" && "Accepted"}
                     {detailInternship.applicationStatus === "rejected" && "Application Rejected"}
                   </Badge>
                 ) : (

@@ -249,7 +249,7 @@ export default function StudentApplicationsPage() {
     if (app.status === "accepted") {
       timeline.push({
         date: app.updated_at,
-        action: "Accepted! 🎉",
+        action: "Accepted!",
         description: `Congratulations! ${app.company_name} has accepted your application.`,
         type: "decision",
       });

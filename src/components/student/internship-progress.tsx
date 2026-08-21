@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Clock,
   Calendar,
+  CheckCircle,
 } from "lucide-react";
 import type { InternshipProgress as InternshipProgressType } from "@/types";
 
@@ -152,7 +153,7 @@ export function InternshipProgressCard({ progress, className }: InternshipProgre
                 >
                   W{week}
                   {week < currentWeek && (
-                    <span className="ml-1 text-emerald-400">✓</span>
+                    <span className="ml-1 text-emerald-400"><CheckCircle className="inline h-3 w-3" /></span>
                   )}
                 </Badge>
               </motion.div>

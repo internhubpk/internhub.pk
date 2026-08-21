@@ -160,7 +160,7 @@ export function PlanBadge({ plan, className }: PlanBadgeProps) {
         className
       )}
     >
-      {plan === "enterprise" && "👑 "}
+      {plan === "enterprise" && ""}
       {plan}
     </Badge>
   );
