@@ -107,7 +107,7 @@ interface ActiveIntern {
 const DEFAULT_INTERNS: ActiveIntern[] = [];
 
 // Curated program filter list — replaced dynamically after data loads.
-const DEFAULT_PROGRAMS = ["All Programs"];
+const DEFAULT_PROGRAMS = ["All Internships"];
 
 export default function CompanyHRInternsPage() {
   const { profile } = useAuth();
@@ -140,7 +140,7 @@ export default function CompanyHRInternsPage() {
         university: intern.university || "",
         department: intern.department || "",
         internship_id: intern.internship_id,
-        internship_title: intern.internship_title || "Unknown Program",
+        internship_title: intern.internship_title || "Unknown Internship",
         supervisor_id: intern.site_supervisor_id,
         supervisor_name: intern.supervisor_name || null,
         start_date: intern.start_date,
@@ -158,7 +158,7 @@ export default function CompanyHRInternsPage() {
       setExternalEvaluators(j.external_evaluators || []);
       // Build program filter list from data
       const uniquePrograms = Array.from(new Set(list.map((i: any) => i.internship_title).filter(Boolean))) as string[];
-      setPrograms(["All Programs", ...uniquePrograms]);
+      setPrograms(["All Internships", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching interns:", error);
     } finally {
@@ -612,7 +612,7 @@ export default function CompanyHRInternsPage() {
             <Select value={programFilter} onValueChange={setProgramFilter}>
               <SelectTrigger className="w-full sm:w-[220px]">
                 <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="All Programs" />
+                <SelectValue placeholder="All Internships" />
               </SelectTrigger>
               <SelectContent>
                 {programs.map(program => (
@@ -694,7 +694,7 @@ export default function CompanyHRInternsPage() {
                     <TableRow>
                       <TableHead>Intern</TableHead>
                       <TableHead>University</TableHead>
-                      <TableHead>Program</TableHead>
+                      <TableHead>Internship</TableHead>
                       <TableHead>Supervisor</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Attendance</TableHead>

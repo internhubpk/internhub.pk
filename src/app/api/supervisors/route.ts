@@ -358,7 +358,10 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      // Force program_id to caller's own program (cannot spoof).
+      // Program Coordinators must have a program assigned on their PROFILE
+      // (profiles.program_id is still valid — only supervisors.program_id
+      // was dropped in migration 0076). We check the profile's program_id
+      // for authorization, but do NOT set it on the supervisor row.
       const userProgramId = (callerProfile as any).program_id;
       if (!userProgramId) {
         return NextResponse.json<ApiResponse<never>>(
@@ -366,7 +369,9 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      (supervisorData as any).program_id = userProgramId;
+      // NOTE: supervisors.program_id was DROPPED in migration 0076.
+      // Supervisors are now assigned to STUDENTS (via student_internships),
+      // not to programs. Do NOT set program_id on the supervisor row.
     }
     // super_admin: no additional scoping.
 

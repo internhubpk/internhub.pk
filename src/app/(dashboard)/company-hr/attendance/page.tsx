@@ -109,7 +109,7 @@ interface AttendanceSummary {
 const DEFAULT_RECORDS: AttendanceRecord[] = [];
 const DEFAULT_SUMMARIES: AttendanceSummary[] = [];
 
-const DEFAULT_PROGRAMS = ["All Programs"];
+const DEFAULT_PROGRAMS = ["All Internships"];
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -159,7 +159,7 @@ export default function CompanyHRAttendancePage() {
         intern_id: rec.student_user_id,
         intern_name: rec.student_name || "Unknown",
         intern_email: rec.student_email || "",
-        program: rec.internship_title || "Unknown Program",
+        program: rec.internship_title || "Unknown Internship",
         date: rec.date,
         check_in: rec.check_in,
         check_out: rec.check_out,
@@ -172,7 +172,7 @@ export default function CompanyHRAttendancePage() {
       setAttendanceStats(j.stats || null);
       // Build programs filter list from internships returned
       const internshipTitles = (j.internships || []).map((i: any) => i.title).filter(Boolean);
-      setPrograms(["All Programs", ...Array.from(new Set(internshipTitles as string[]))]);
+      setPrograms(["All Internships", ...Array.from(new Set(internshipTitles as string[]))]);
 
       // Compute per-intern summaries from records (approximation)
       const byIntern = new Map<string, { name: string; program: string; total: number; present: number; late: number; absent: number; leave: number; half_day: number }>();
@@ -316,7 +316,7 @@ export default function CompanyHRAttendancePage() {
             className="gap-2"
             onClick={() => {
               const rows = [
-                ["Intern", "Email", "Program", "Date", "Status", "Check-in", "Check-out", "Notes"],
+                ["Intern", "Email", "Internship", "Date", "Status", "Check-in", "Check-out", "Notes"],
                 ...filteredRecords.map((r) => [
                   r.intern_name,
                   r.intern_email,
@@ -417,11 +417,11 @@ export default function CompanyHRAttendancePage() {
             <Select value={programFilter} onValueChange={setProgramFilter}>
               <SelectTrigger className="w-full sm:w-[200px]">
                 <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="All Programs" />
+                <SelectValue placeholder="All Internships" />
               </SelectTrigger>
               <SelectContent>
                 {programs.map(program => (
-                  <SelectItem key={program} value={program === "All Programs" ? "all" : program}>{program}</SelectItem>
+                  <SelectItem key={program} value={program === "All Internships" ? "all" : program}>{program}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -492,7 +492,7 @@ export default function CompanyHRAttendancePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Intern</TableHead>
-                    <TableHead>Program</TableHead>
+                    <TableHead>Internship</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Check In</TableHead>
                     <TableHead>Check Out</TableHead>

@@ -833,7 +833,7 @@ export default function FacultySupervisorReportsPage() {
           <div className="border-b-2 border-gray-400 pb-1 mb-2 min-h-[60px] flex items-end justify-center">
             <span className="font-script text-2xl italic text-gray-600">{data.supervisorName}</span>
           </div>
-          <p className="font-semibold">Program Supervisor</p>
+          <p className="font-semibold">Faculty Supervisor</p>
           <p className="text-xs text-gray-500">Signature & Date</p>
         </div>
 

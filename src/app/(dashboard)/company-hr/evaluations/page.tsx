@@ -108,7 +108,7 @@ interface FinalEvaluation {
 // Default empty state - evaluations will be fetched from database
 const DEFAULT_EVALUATIONS: FinalEvaluation[] = [];
 
-const DEFAULT_PROGRAMS = ["All Programs"];
+const DEFAULT_PROGRAMS = ["All Internships"];
 
 export default function CompanyHREvaluationsPage() {
   const { profile } = useAuth();
@@ -152,7 +152,7 @@ export default function CompanyHREvaluationsPage() {
           intern_name: ev.student_name || "Unknown",
           intern_email: ev.student_email || "",
           internship_id: ev.internship_id,
-          internship_title: ev.internship_title || "Unknown Program",
+          internship_title: ev.internship_title || "Unknown Internship",
           supervisor_name: ev.evaluator_name || null,
           evaluator_role: ev.evaluator_role || null,
           status: ev.status || "pending",
@@ -173,7 +173,7 @@ export default function CompanyHREvaluationsPage() {
       });
       setEvaluations(evals);
       const uniquePrograms = Array.from(new Set(evals.map((e) => e.internship_title).filter(Boolean)));
-      setPrograms(["All Programs", ...uniquePrograms]);
+      setPrograms(["All Internships", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching evaluations:", error);
     } finally {
@@ -458,7 +458,7 @@ export default function CompanyHREvaluationsPage() {
             <Select value={programFilter} onValueChange={setProgramFilter}>
               <SelectTrigger className="w-full sm:w-[220px]">
                 <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="All Programs" />
+                <SelectValue placeholder="All Internships" />
               </SelectTrigger>
               <SelectContent>
                 {programs.map(program => (

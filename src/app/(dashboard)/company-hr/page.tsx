@@ -169,7 +169,7 @@ export default function CompanyHRDashboard() {
 
   const statCards = [
     {
-      label: "Active Programs",
+      label: "Active Internships",
       value: displayValue(stats.activeInternships),
       icon: Briefcase,
       color: "text-blue-600",
@@ -384,7 +384,7 @@ export default function CompanyHRDashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Active Internship Programs</CardTitle>
-              <CardDescription>Currently open and active programs</CardDescription>
+              <CardDescription>Currently open and active internships</CardDescription>
             </div>
             <Link href="/company-hr/internships">
               <Button variant="ghost" size="sm">
@@ -402,7 +402,7 @@ export default function CompanyHRDashboard() {
             ) : activePrograms.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No active programs yet.</p>
+                <p className="text-sm">No active internships yet.</p>
                 <Link href="/company-hr/internships">
                   <Button size="sm" variant="outline" className="mt-3">
                     <Plus className="h-3 w-3 mr-1" /> Create one

@@ -177,7 +177,7 @@ export interface ProgramRow {
   name: string;
   code: string | null;
   description: string | null;
-  duration_weeks: number | null;
+  // duration_weeks was DROPPED in migration 0076.
   is_active: boolean;
   default_faculty_supervisor_id: string | null;
   default_external_evaluator_id: string | null;
@@ -253,7 +253,10 @@ export interface SupervisorRow {
   type: SupervisorType;
   university_id: string | null;
   department_id: string | null;
-  program_id: string | null;
+  // program_id was DROPPED in migration 0076. Supervisors are assigned
+  // to students (via student_internships), not to programs.
+  // program_ids (jsonb array) is still present on the table for
+  // future multi-program scoping, but is not currently used.
   company_id: string | null;
   employee_id: string | null;
   is_active: boolean;

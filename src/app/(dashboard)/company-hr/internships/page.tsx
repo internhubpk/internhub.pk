@@ -452,19 +452,19 @@ export default function CompanyHRInternshipsPage() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Internship Programs"
+        title="Internships"
         description="Create and manage your company's internship offerings"
         actions={
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
-                New Program
+                New Internship
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-3xl">
               <DialogHeader>
-                <DialogTitle>Create New Internship Program</DialogTitle>
+                <DialogTitle>Create New Internship</DialogTitle>
                 <DialogDescription>
                   Fill in the details to post a new internship opportunity. Fields marked with * are required.
                 </DialogDescription>
@@ -478,7 +478,7 @@ export default function CompanyHRInternshipsPage() {
                 </h3>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="title">Program Title *</Label>
+                  <Label htmlFor="title">Internship Title *</Label>
                   <Input
                     id="title"
                     placeholder="e.g., Software Engineering Internship - Summer 2024"
@@ -671,7 +671,7 @@ export default function CompanyHRInternshipsPage() {
                   onClick={handleCreateInternship}
                   disabled={!formData.title || !formData.description || isSaving}
                 >
-                  {isSaving ? "Creating..." : "Create Program"}
+                  {isSaving ? "Creating..." : "Create Internship"}
                 </Button>
               </DialogFooter>
             </DialogBody>
@@ -694,7 +694,7 @@ export default function CompanyHRInternshipsPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search programs..."
+            placeholder="Search internships..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -723,16 +723,16 @@ export default function CompanyHRInternshipsPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <Briefcase className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Programs Found</h3>
+              <h3 className="text-lg font-semibold mb-2">No Internships Found</h3>
               <p className="text-muted-foreground mb-4">
                 {searchTerm || statusFilter !== "all" 
                   ? "Try adjusting your search or filters" 
-                  : "Get started by creating your first internship program"}
+                  : "Get started by creating your first internship"}
               </p>
               {!searchTerm && statusFilter === "all" && (
                 <Button onClick={() => setIsCreateOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Program
+                  Create Internship
                 </Button>
               )}
             </CardContent>
@@ -847,7 +847,7 @@ export default function CompanyHRInternshipsPage() {
                           {internship.start_date && internship.end_date && (
                             <div className="text-sm text-muted-foreground">
                               <Calendar className="inline h-4 w-4 mr-1" />
-                              Program Period: {new Date(internship.start_date).toLocaleDateString()} —{" "}
+                              Internship Period: {new Date(internship.start_date).toLocaleDateString()} —{" "}
                               {new Date(internship.end_date).toLocaleDateString()}
                             </div>
                           )}
@@ -950,15 +950,15 @@ export default function CompanyHRInternshipsPage() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Edit Internship Program</DialogTitle>
+            <DialogTitle>Edit Internship</DialogTitle>
             <DialogDescription>
-              Update the details for this internship program.
+              Update the details for this internship.
             </DialogDescription>
           </DialogHeader>
 
           <DialogBody className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="edit-title">Program Title *</Label>
+              <Label htmlFor="edit-title">Internship Title *</Label>
               <Input
                 id="edit-title"
                 value={formData.title}

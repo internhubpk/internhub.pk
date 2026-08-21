@@ -113,7 +113,7 @@ interface Application {
 // Default empty state - applications will be fetched from database
 const DEFAULT_APPLICATIONS: Application[] = [];
 
-const DEFAULT_PROGRAMS = ["All Programs"];
+const DEFAULT_PROGRAMS = ["All Internships"];
 
 // Human-readable labels for the structured `additional_answers` JSONB
 // values stored on internship_applications. Keys mirror the field names
@@ -166,7 +166,7 @@ export default function CompanyHRApplicationsPage() {
         student_email: app.student?.email || "",
         student_avatar: app.student?.avatar_url || null,
         internship_id: app.internship_id,
-        internship_title: app.internship?.title || "Unknown Program",
+        internship_title: app.internship?.title || "Unknown Internship",
         status: app.status || "pending",
         applied_at: app.applied_at,
         updated_at: app.updated_at || app.applied_at,
@@ -186,7 +186,7 @@ export default function CompanyHRApplicationsPage() {
       setApplications(apps);
       // Build program filter list from data
       const uniquePrograms = Array.from(new Set(apps.map((a) => a.internship_title).filter(Boolean)));
-      setAvailablePrograms(["All Programs", ...uniquePrograms]);
+      setAvailablePrograms(["All Internships", ...uniquePrograms]);
     } catch (error) {
       console.error("Error fetching applications:", error);
     } finally {
@@ -883,7 +883,7 @@ function ApplicationTable({
           <Select value={programFilter} onValueChange={setProgramFilter}>
             <SelectTrigger className="w-full sm:w-[200px]">
               <Briefcase className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="All Programs" />
+              <SelectValue placeholder="All Internships" />
             </SelectTrigger>
             <SelectContent>
               {availablePrograms.map(program => (
@@ -987,7 +987,7 @@ function ApplicationTable({
                     </TableHead>
                   )}
                   <TableHead>Candidate</TableHead>
-                  <TableHead>Program</TableHead>
+                  <TableHead>Internship</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Match</TableHead>
                   <TableHead>Applied</TableHead>

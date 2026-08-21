@@ -462,7 +462,7 @@ export default function CompanyHRReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Per-Internship Breakdown</CardTitle>
-          <CardDescription>Hiring and intern status for each program</CardDescription>
+          <CardDescription>Hiring and intern status for each internship</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {data.per_internship.length === 0 ? (

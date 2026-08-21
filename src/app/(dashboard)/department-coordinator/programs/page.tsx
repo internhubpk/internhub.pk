@@ -401,10 +401,10 @@ export default function ProgramsPage() {
                 {editingProgram ? (
                   // EDIT mode: show dropdowns for both the default
                   // faculty supervisor AND the default external
-                  // evaluator. Either can be left "None allotted".
+                  // evaluator. Either can be left "None assigned".
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="supervisor">Allot Faculty Supervisor</Label>
+                      <Label htmlFor="supervisor">Assign Default Faculty Supervisor</Label>
                       <Select
                         value={formData.default_faculty_supervisor_id || "__none__"}
                         onValueChange={(value) =>
@@ -419,7 +419,7 @@ export default function ProgramsPage() {
                           <SelectValue placeholder="Select a faculty supervisor" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None allotted</SelectItem>
+                          <SelectItem value="__none__">None assigned</SelectItem>
                           {supervisors.map((sup) => (
                             <SelectItem key={sup.user_id} value={sup.user_id}>
                               {sup.full_name || sup.email}
@@ -428,13 +428,13 @@ export default function ProgramsPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        The allotted supervisor will be the default faculty supervisor
+                        The assigned supervisor will be the default faculty supervisor
                         for students enrolling in this program. You can change this later.
                       </p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="externalEvaluator">Allot External Evaluator</Label>
+                      <Label htmlFor="externalEvaluator">Assign Default External Evaluator</Label>
                       <Select
                         value={formData.default_external_evaluator_id || "__none__"}
                         onValueChange={(value) =>
@@ -449,7 +449,7 @@ export default function ProgramsPage() {
                           <SelectValue placeholder="Select an external evaluator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None allotted</SelectItem>
+                          <SelectItem value="__none__">None assigned</SelectItem>
                           {externalEvaluators.map((ev) => (
                             <SelectItem key={ev.user_id} value={ev.user_id}>
                               {ev.full_name || ev.email}
@@ -458,9 +458,9 @@ export default function ProgramsPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        The allotted evaluator will be the default external evaluator
+                        The assigned evaluator will be the default external evaluator
                         for students enrolling in this program. Leave as &quot;None
-                        allotted&quot; if not applicable. You can change this later.
+                        assigned&quot; if not applicable. You can change this later.
                       </p>
                     </div>
                   </div>
@@ -493,7 +493,7 @@ export default function ProgramsPage() {
                       coordinator can still create the program and add
                       the evaluator later via Edit. */}
                   <div className="space-y-2">
-                    <Label htmlFor="externalEvaluatorCreate">Allot External Evaluator (optional)</Label>
+                    <Label htmlFor="externalEvaluatorCreate">Assign Default External Evaluator (optional)</Label>
                     <Select
                       value={formData.default_external_evaluator_id || "__none__"}
                       onValueChange={(value) =>
@@ -508,7 +508,7 @@ export default function ProgramsPage() {
                         <SelectValue placeholder="Select an external evaluator" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">None allotted</SelectItem>
+                        <SelectItem value="__none__">None assigned</SelectItem>
                         {externalEvaluators.map((ev) => (
                           <SelectItem key={ev.user_id} value={ev.user_id}>
                             {ev.full_name || ev.email}
@@ -517,7 +517,7 @@ export default function ProgramsPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Optional. The allotted evaluator will be the default external
+                      Optional. The assigned evaluator will be the default external
                       evaluator for students enrolling in this program. You can
                       change this later via Edit.
                     </p>
@@ -683,14 +683,14 @@ export default function ProgramsPage() {
                       <div className="text-sm text-muted-foreground mb-1 truncate">
                         <span className="font-medium">Supervisor:</span>{" "}
                         {supervisorNameFor(program) || (
-                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                          <Badge variant="outline" className="text-xs">Not assigned</Badge>
                         )}
                       </div>
 
                       <div className="text-sm text-muted-foreground mb-3 truncate">
                         <span className="font-medium">External Evaluator:</span>{" "}
                         {externalEvaluatorNameFor(program) || (
-                          <Badge variant="outline" className="text-xs">Not allotted</Badge>
+                          <Badge variant="outline" className="text-xs">Not assigned</Badge>
                         )}
                       </div>
 
@@ -774,14 +774,14 @@ export default function ProgramsPage() {
                               <span className="text-sm">{supervisorNameFor(program)}</span>
                             ) : (
                               <Badge variant="outline" className="text-xs text-muted-foreground">
-                                Not allotted
+                                Not assigned
                               </Badge>
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             <span className="font-medium">Eval:</span>{" "}
                             {externalEvaluatorNameFor(program) || (
-                              <span className="italic">Not allotted</span>
+                              <span className="italic">Not assigned</span>
                             )}
                           </div>
                         </div>

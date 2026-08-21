@@ -222,7 +222,11 @@ export const CreateSupervisorSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
   type: z.enum(["faculty", "site", "external"]),
   department_id: z.string().uuid("Invalid department ID").optional(),
-  program_id: z.string().uuid("Invalid program ID").optional(),
+  // NOTE: supervisors.program_id was DROPPED in migration 0076.
+  // Supervisors are assigned to students, not programs. Use program_ids
+  // (jsonb array on supervisors table, still valid) if multi-program
+  // scoping is needed in the future.
+  program_ids: z.array(z.string().uuid()).optional(),
   company_id: z.string().uuid("Invalid company ID").optional(),
   employee_id: z.string().max(100).optional(),
   specialization: z.string().max(200).optional(),

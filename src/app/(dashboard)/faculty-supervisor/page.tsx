@@ -522,7 +522,7 @@ export default function FacultySupervisorDashboard() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Program Supervisor Dashboard"
+        title="Faculty Supervisor Dashboard"
         description={`Welcome back, ${profile?.full_name || user?.email || "Supervisor"}`}
         actions={
           <div className="flex flex-wrap gap-2">

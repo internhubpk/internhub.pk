@@ -59,12 +59,25 @@ export default function ProgramCoordinatorDashboard() {
 
       const studentIds = (students || []).map((s) => s.user_id);
 
-      const [studentsRes, supervisorsRes, internshipsRes, reportsRes] = await Promise.all([
+      // Supervisors are assigned to STUDENTS (not programs — migration 0076
+      // dropped supervisors.program_id). We count unique supervisors via
+      // student_internships where the student is in this program.
+      const { data: assignedSupervisors } = await supabase
+        .from("student_internships")
+        .select("faculty_supervisor_id, site_supervisor_id")
+        .in("student_user_id", studentIds);
+
+      const supervisorIds = new Set<string>();
+      for (const si of (assignedSupervisors || []) as any[]) {
+        if (si.faculty_supervisor_id) supervisorIds.add(si.faculty_supervisor_id);
+        if (si.site_supervisor_id) supervisorIds.add(si.site_supervisor_id);
+      }
+
+      const [studentsRes, internshipsRes, reportsRes] = await Promise.all([
         supabase.from("students").select("id", { count: "exact", head: true }).eq("program_id", programId),
-        supabase.from("supervisors").select("id", { count: "exact", head: true }).eq("program_id", programId),
         supabase.from("internships").select("id", { count: "exact", head: true }).eq("program_id", programId).in("status", ["open", "active"]),
         studentIds.length > 0
-          ? supabase.from("weekly_logs").select("id, status").in("student_id", studentIds)
+          ? supabase.from("weekly_logs").select("id, status").in("student_user_id", studentIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -73,7 +86,7 @@ export default function ProgramCoordinatorDashboard() {
 
       setStats({
         totalStudents: studentsRes.count || 0,
-        totalSupervisors: supervisorsRes.count || 0,
+        totalSupervisors: supervisorIds.size,
         activeInternships: internshipsRes.count || 0,
         pendingReports,
         totalReports: reports.length,
@@ -149,7 +162,7 @@ export default function ProgramCoordinatorDashboard() {
               icon={<Users className="h-5 w-5" />}
               label="Supervisors"
               value={stats?.totalSupervisors ?? "—"}
-              description="Assigned to your program"
+              description="Across your program's students"
               color="text-purple-500"
             />
             <StatCard
