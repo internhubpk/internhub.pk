@@ -451,17 +451,11 @@ export default function ProgramsPage() {
                           <SelectValue placeholder="Select a faculty supervisor" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None assigned</SelectItem>
-                          {supervisors.map((sup) => (
-                            <SelectItem key={sup.user_id} value={sup.user_id}>
-                              {sup.full_name || sup.email}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="__none__">No supervisor</SelectItem>
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        The assigned supervisor will be the default faculty supervisor
-                        for students enrolling in this program. You can change this later.
+                        Default faculty supervisor for students in this program.
                       </p>
                     </div>
 
@@ -481,7 +475,7 @@ export default function ProgramsPage() {
                           <SelectValue placeholder="Select an external evaluator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None assigned</SelectItem>
+                          <SelectItem value="__none__">No evaluator</SelectItem>
                           {externalEvaluators.map((ev) => (
                             <SelectItem key={ev.user_id} value={ev.user_id}>
                               {ev.full_name || ev.email}
@@ -489,11 +483,6 @@ export default function ProgramsPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        The assigned evaluator will be the default external evaluator
-                        for students enrolling in this program. Leave as &quot;None
-                        assigned&quot; if not applicable. You can change this later.
-                      </p>
                     </div>
                   </div>
                 ) : (
@@ -613,7 +602,7 @@ export default function ProgramsPage() {
                           <SelectValue placeholder="Select an external evaluator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None assigned</SelectItem>
+                          <SelectItem value="__none__">No evaluator</SelectItem>
                           {externalEvaluators.map((ev) => (
                             <SelectItem key={ev.user_id} value={ev.user_id}>
                               {ev.full_name || ev.email}
@@ -621,11 +610,6 @@ export default function ProgramsPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Optional. The assigned evaluator will be the default external
-                        evaluator for students enrolling in this program. You can
-                        change this later via Edit.
-                      </p>
                     </div>
                   </div>
                 )}

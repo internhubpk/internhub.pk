@@ -15,7 +15,6 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
-  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -158,23 +157,6 @@ export default function SupervisorsPage() {
         title="Supervisors"
         description="Faculty supervisors in your department"
       />
-
-      {/* Info banner: explains supervisors are created with programs */}
-      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
-        <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="text-sm font-medium">
-            Supervisors are added separately via this page.
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            When you create a Program, a Program Coordinator account is
-            auto-provisioned (a separate role from supervisors). The Program
-            Coordinator is then responsible for adding supervisors and
-            assigning students to them. Use this page to manage existing
-            supervisors in your department.
-          </p>
-        </div>
-      </div>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
