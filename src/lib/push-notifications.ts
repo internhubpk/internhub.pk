@@ -5,16 +5,21 @@
  * subscribed browsers. Subscription endpoints are stored in the
  * `push_subscriptions` table (migration 0074) and scoped per-user via RLS.
  *
- * VAPID keys are generated once and stored as environment variables:
- *   - VAPID_PUBLIC_KEY  (safe to expose to the browser)
- *   - VAPID_PRIVATE_KEY (server-only, NEVER expose)
- *   - VAPID_SUBJECT     (mailto: or https: URL for VAPID identification)
+ * VAPID keys are resolved from TWO sources (in priority order):
+ *   1. Environment variables (VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT)
+ *      — set on Vercel/Netlify for production deployments.
+ *   2. Database `platform_settings` table (key = 'push_vapid')
+ *      — set via the Supabase Management API or a SQL INSERT.
+ *      This is the FALLBACK when env vars are not set (common on fresh
+ *      deployments where the operator hasn't configured Vercel env vars yet).
  *
  * Security:
  *   - The public key is exposed via /api/push/vapid-public-key
  *   - The private key is NEVER imported into client code
  *   - All sends go through this server module, which uses the service role
  *     to bypass RLS when fetching subscriptions for a target user.
+ *   - The private key in platform_settings is protected by RLS (only
+ *     super_admin can SELECT it; the service role bypasses RLS).
  */
 
 import webpush, { type PushSubscription as WebPushSubscription } from "web-push";
@@ -22,43 +27,129 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ----------------------------------------------------------------------------
-// VAPID configuration
+// VAPID configuration — resolved lazily from env vars OR database
 // ----------------------------------------------------------------------------
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
-const VAPID_SUBJECT =
-  process.env.VAPID_SUBJECT || "mailto:noreply@internhub.pk";
+let _vapidPublicKey: string | null = null;
+let _vapidPrivateKey: string | null = null;
+let _vapidSubject: string = "mailto:noreply@internhub.pk";
+let _vapidResolvedFromDb = false;
+
+/**
+ * Resolve VAPID keys from env vars first, then from the database as a
+ * fallback. Cached after first resolution.
+ *
+ * Returns { publicKey, privateKey, subject } or null if not configured.
+ */
+async function resolveVapidKeys(): Promise<{
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+} | null> {
+  // 1. Try env vars first (fastest — no DB round-trip)
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    return {
+      publicKey: process.env.VAPID_PUBLIC_KEY,
+      privateKey: process.env.VAPID_PRIVATE_KEY,
+      subject: process.env.VAPID_SUBJECT || "mailto:noreply@internhub.pk",
+    };
+  }
+
+  // 2. Try the database (platform_settings table)
+  if (!_vapidResolvedFromDb) {
+    _vapidResolvedFromDb = true; // only try once per server lifetime
+    try {
+      const serviceClient = createServiceRoleClient();
+      const { data, error } = await serviceClient
+        .from("platform_settings")
+        .select("value")
+        .eq("key", "push_vapid")
+        .maybeSingle();
+
+      if (!error && data?.value) {
+        const v = data.value as Record<string, string>;
+        if (v.public_key && v.private_key) {
+          _vapidPublicKey = v.public_key;
+          _vapidPrivateKey = v.private_key;
+          _vapidSubject = v.subject || "mailto:noreply@internhub.pk";
+        }
+      }
+    } catch (err) {
+      // Service role key may be missing — can't read from DB
+      console.warn("[push] Could not resolve VAPID keys from database:", err);
+    }
+  }
+
+  if (_vapidPublicKey && _vapidPrivateKey) {
+    return {
+      publicKey: _vapidPublicKey,
+      privateKey: _vapidPrivateKey,
+      subject: _vapidSubject,
+    };
+  }
+
+  return null;
+}
 
 let vapidConfigured = false;
+let vapidConfigKeys: { publicKey: string; privateKey: string; subject: string } | null = null;
 
 /**
  * Configure web-push with VAPID keys. Called lazily on first send.
- * If keys are missing, sends will fail with a clear error.
+ * If keys are missing (both env vars AND database), throws.
  */
-function configureWebPush(): void {
-  if (vapidConfigured) return;
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+async function configureWebPush(): Promise<void> {
+  if (vapidConfigured && vapidConfigKeys) {
+    webpush.setVapidDetails(
+      vapidConfigKeys.subject,
+      vapidConfigKeys.publicKey,
+      vapidConfigKeys.privateKey
+    );
+    return;
+  }
+
+  vapidConfigKeys = await resolveVapidKeys();
+  if (!vapidConfigKeys) {
     throw new Error(
-      "[push] VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY environment variables are required for push notifications. Generate with: npx web-push generate-vapid-keys"
+      "[push] VAPID keys not found. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY env vars OR insert a 'push_vapid' row in platform_settings."
     );
   }
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+  webpush.setVapidDetails(
+    vapidConfigKeys.subject,
+    vapidConfigKeys.publicKey,
+    vapidConfigKeys.privateKey
+  );
   vapidConfigured = true;
 }
 
 /**
  * Get the VAPID public key for client-side subscription.
  * Safe to expose — the public key is NOT a secret.
+ *
+ * Resolves from env vars first, then from the database.
  */
-export function getVapidPublicKey(): string {
-  return VAPID_PUBLIC_KEY;
+export async function getVapidPublicKeyAsync(): Promise<string | null> {
+  const keys = await resolveVapidKeys();
+  return keys?.publicKey || null;
 }
 
 /**
- * Check if push notifications are configured (VAPID keys present).
+ * Check if push notifications are configured (VAPID keys available
+ * from env vars OR database).
+ *
+ * NOTE: This is a synchronous check that only looks at env vars.
+ * For the full async check (including DB), use isPushConfiguredAsync().
  */
 export function isPushConfigured(): boolean {
-  return !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+  return !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+}
+
+/**
+ * Async check: resolves VAPID keys from env vars OR database.
+ */
+export async function isPushConfiguredAsync(): Promise<boolean> {
+  const keys = await resolveVapidKeys();
+  return keys !== null;
 }
 
 // ----------------------------------------------------------------------------
@@ -174,14 +265,22 @@ export async function sendPushToUser(
   userId: string,
   payload: PushPayload
 ): Promise<{ sent: number; failed: number; errors: Array<{ endpoint: string; reason: string }> }> {
-  if (!isPushConfigured()) {
+  // Check if VAPID keys are available (env vars OR database)
+  const configured = await isPushConfiguredAsync();
+  if (!configured) {
     // Push not configured — silently no-op. The notification row in the
     // `notifications` table is still inserted by the caller, so the user
     // still sees it in the notifications popover.
+    console.warn("[push] sendPushToUser called but VAPID keys not configured (env vars or DB). Skipping.");
     return { sent: 0, failed: 0, errors: [] };
   }
 
-  configureWebPush();
+  try {
+    await configureWebPush();
+  } catch (err) {
+    console.error("[push] configureWebPush failed:", err);
+    return { sent: 0, failed: 0, errors: [] };
+  }
 
   const serviceClient = createServiceRoleClient();
   const { data: subs, error } = await serviceClient

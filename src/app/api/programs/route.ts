@@ -232,7 +232,6 @@ export async function POST(request: NextRequest) {
       name,
       code,
       description,
-      duration_weeks, // OPTIONAL per InternHub spec
       department_id,
       is_active,
       default_faculty_supervisor_id,
@@ -255,7 +254,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required fields.
-    // NOTE: duration_weeks is intentionally NOT required per InternHub spec.
+    // NOTE: duration_weeks was REMOVED from the programs table in migration
+    // 0076 — programs no longer have a fixed week count.
     if (!name || !code || !department_id) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Missing required fields: name, code, department_id" },
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create program (duration_weeks is OPTIONAL — pass through if provided)
+    // Create program (duration_weeks column was DROPPED in migration 0076)
     const programInsert: Record<string, unknown> = {
       name,
       code,
@@ -310,10 +310,6 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    // Only set duration_weeks if provided — do NOT require it.
-    if (duration_weeks !== undefined && duration_weeks !== null) {
-      programInsert.duration_weeks = duration_weeks;
-    }
 
     const { data: program, error } = await supabase
       .from("programs")

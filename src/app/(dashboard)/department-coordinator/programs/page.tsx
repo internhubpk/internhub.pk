@@ -13,11 +13,11 @@ import {
   Filter,
   X,
   Calendar,
-  Clock,
   CheckCircle2,
   XCircle,
   ChevronDown,
   ChevronUp,
+  Info,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,7 +70,8 @@ interface Program {
   name: string;
   code: string;
   description: string | null;
-  duration_weeks: number;
+  // duration_weeks was REMOVED from the programs table in migration 0076.
+  // Programs no longer have a fixed week count.
   is_active: boolean;
   university_id: string;
   department_id: string;
@@ -87,39 +88,18 @@ interface ProgramFormData {
   name: string;
   code: string;
   description: string;
-  duration_weeks: number;
   default_faculty_supervisor_id: string;
   default_external_evaluator_id: string;
   is_active: boolean;
-  // Cascading account creation: when a Department Coordinator creates
-  // a new program, they simultaneously create the faculty_supervisor
-  // account that will own it. Mirrors the university+admin and
-  // department+coordinator cascading flows. Eliminates the previous
-  // "no faculty supervisors found, ask your admin to create one"
-  // chicken-and-egg dead-end that stranded coordinators on an empty
-  // supervisor dropdown.
-  supervisorEmail: string;
-  supervisorPassword: string;
-  supervisorName: string;
-  // Specialization of the supervisor (e.g., "Software Engineering",
-  // "Data Science"). Stored on the `supervisors.specialization` column
-  // and shown on the Supervisors page. Optional — falls back to the
-  // program name if left blank, so the column is never empty.
-  supervisorSpecialization: string;
 }
 
 const emptyForm: ProgramFormData = {
   name: "",
   code: "",
   description: "",
-  duration_weeks: 8,
   default_faculty_supervisor_id: "",
   default_external_evaluator_id: "",
   is_active: true,
-  supervisorEmail: "",
-  supervisorPassword: "",
-  supervisorName: "",
-  supervisorSpecialization: "",
 };
 
 export default function ProgramsPage() {
@@ -216,57 +196,24 @@ export default function ProgramsPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // When CREATING a new program, the supervisor account fields are
-    // required (cascading creation flow). When editing, they're hidden
-    // and the existing supervisor dropdown is used instead.
-    if (!editingProgram) {
-      if (!formData.supervisorEmail.trim() || !formData.supervisorEmail.includes("@")) {
-        toast.error("Validation error", { description: "A valid supervisor email is required." });
-        setIsSubmitting(false);
-        return;
-      }
-      if (!formData.supervisorPassword || formData.supervisorPassword.length < 8) {
-        toast.error("Validation error", { description: "Supervisor password must be at least 8 characters." });
-        setIsSubmitting(false);
-        return;
-      }
-      if (!formData.supervisorName.trim()) {
-        toast.error("Validation error", { description: "Supervisor name is required." });
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
     try {
-      // Strip the cascading-account-creation fields from the payload
-      // sent to /api/programs — that route only knows about program
-      // columns. When creating, we also leave default_faculty_supervisor_id
-      // empty: the supervisor auth account doesn't exist yet. After
-      // the program is created and the supervisor account is created,
-      // we PUT /api/programs again to link them.
-      const {
-        supervisorEmail: _se,
-        supervisorPassword: _sp,
-        supervisorName: _sn,
-        supervisorSpecialization: _ss,
-        ...programPayload
-      } = formData;
-
+      // Program creation: just send the program fields to /api/programs.
+      // The API auto-creates a Program Coordinator account (separate role)
+      // and links it to the new program. Per InternHub spec, Department
+      // Coordinators must NOT create supervisors — that's the Program
+      // Coordinator's responsibility after the program exists.
+      // Send the program fields to /api/programs. The API route
+      // auto-creates a Program Coordinator account (separate role) and
+      // links it to the new program. Department Coordinators do NOT
+      // create supervisors — that's the Program Coordinator's job.
+      const programPayload = { ...formData };
+      // Clear supervisor defaults on CREATE (no supervisor assigned yet).
       if (!editingProgram) {
-        // CREATE: clear default_faculty_supervisor_id — we'll set it
-        // after the supervisor account exists.
         programPayload.default_faculty_supervisor_id = "";
-      }
-
-      // Strip the default_external_evaluator_id when CREATING — we'll
-      // set it via a follow-up PUT once any new evaluator account exists.
-      // For EDIT mode, we keep whatever the coordinator selected so the
-      // value is updated alongside the rest of the program fields.
-      if (!editingProgram) {
         programPayload.default_external_evaluator_id = "";
       }
 
-      const url = editingProgram ? "/api/programs" : "/api/programs";
+      const url = "/api/programs";
       const method = editingProgram ? "PUT" : "POST";
 
       const body = editingProgram
@@ -287,100 +234,17 @@ export default function ProgramsPage() {
         return;
       }
 
-      // CREATING: now create the faculty_supervisor auth account via
-      // /api/admin/create-user. The route's COORD_TARGET_ROLES list
-      // allows department_coordinator callers to create faculty_supervisor
-      // accounts, and force-sets university_id and department_id from
-      // the caller's own profile (defense-in-depth — the body values
-      // are ignored). The new supervisor can sign in immediately.
-      if (!editingProgram && data.data?.id) {
-        const programId = data.data.id;
-        let supervisorUserId: string | null = null;
-        let supervisorWarning: string | null = null;
-
-        try {
-          const createRes = await fetch("/api/admin/create-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: formData.supervisorEmail.trim(),
-              password: formData.supervisorPassword,
-              full_name: formData.supervisorName.trim(),
-              role: "faculty_supervisor",
-              // These are force-set by the route from the caller's
-              // profile, but we pass them anyway for clarity.
-              university_id: profile?.university_id,
-              department_id: profile?.department_id,
-              job_title: `Faculty Supervisor — ${formData.name.trim()}`,
-              // Specialization is stored on supervisors.specialization
-              // and shown on the Supervisors page. If the coordinator
-              // did not enter one, fall back to the program name so
-              // the column is never blank.
-              specialization:
-                formData.supervisorSpecialization.trim() ||
-                formData.name.trim(),
-            }),
-          });
-
-          const createJson = await createRes.json();
-
-          if (!createRes.ok || !createJson?.success) {
-            console.error("Supervisor creation error:", createJson?.error);
-            supervisorWarning =
-              createJson?.error || `Request failed (${createRes.status})`;
-          } else {
-            supervisorUserId = createJson?.data?.id ?? null;
-            if (createJson?.warning) {
-              supervisorWarning = createJson.warning;
-            }
-          }
-        } catch (adminError: any) {
-          console.error("Supervisor creation error:", adminError);
-          supervisorWarning = adminError?.message || "Unknown error";
-        }
-
-        // If the supervisor account was created successfully, link it
-        // to the program via PUT /api/programs. This sets
-        // default_faculty_supervisor_id, which is what the program
-        // card and detail pages display. Also pass through the
-        // default_external_evaluator_id the coordinator may have picked.
-        if (supervisorUserId) {
-          const linkRes = await fetch("/api/programs", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: programId,
-              name: programPayload.name,
-              code: programPayload.code,
-              description: programPayload.description,
-              duration_weeks: programPayload.duration_weeks,
-              default_faculty_supervisor_id: supervisorUserId,
-              default_external_evaluator_id: formData.default_external_evaluator_id || null,
-              is_active: programPayload.is_active,
-            }),
-          });
-
-          const linkJson = await linkRes.json();
-          if (!linkRes.ok || !linkJson?.success) {
-            console.error("Failed to link supervisor to program:", linkJson?.error);
-            supervisorWarning =
-              (supervisorWarning ? supervisorWarning + " " : "") +
-              `Supervisor account created but failed to link to program: ${linkJson?.error || linkRes.status}. You can link them manually via Edit.`;
-          }
-        }
-
-        if (supervisorWarning) {
-          toast.error("Program created (with warning)", { description: supervisorWarning });
-        } else {
-          toast.success("Program created", { description: `\"${formData.name}\" and its supervisor account were created successfully.` });
-        }
+      // The API auto-creates a Program Coordinator account when a new
+      // program is created. Show that info in the success toast.
+      if (!editingProgram) {
+        toast.success("Program created", {
+          description: data.message || `\"${formData.name}\" was created. A Program Coordinator account has been auto-provisioned.`,
+        });
+      } else {
+        toast.success("Program updated", { description: `\"${formData.name}\" was updated successfully.` });
       }
 
       await fetchPrograms();
-      // Refresh the supervisors list so the newly-created supervisor
-      // appears in the edit-mode dropdown if the coordinator edits
-      // the program later.
-      await fetchSupervisors();
       setIsDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -423,17 +287,9 @@ export default function ProgramsPage() {
       name: program.name,
       code: program.code,
       description: program.description || "",
-      duration_weeks: program.duration_weeks,
       default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
       default_external_evaluator_id: program.default_external_evaluator_id || "",
       is_active: program.is_active,
-      // Cascading-account-creation fields are CREATE-mode only. They're
-      // initialized to empty so the form state is well-typed; the
-      // dialog hides them when editing.
-      supervisorEmail: "",
-      supervisorPassword: "",
-      supervisorName: "",
-      supervisorSpecialization: "",
     });
     setIsDialogOpen(true);
   };
@@ -539,29 +395,8 @@ export default function ProgramsPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="duration">Duration (Weeks) *</Label>
-                  <Select
-                    value={formData.duration_weeks.toString()}
-                    onValueChange={(val) =>
-                      setFormData({
-                        ...formData,
-                        duration_weeks: parseInt(val),
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select duration" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[4, 6, 8, 12, 16, 24].map((weeks) => (
-                        <SelectItem key={weeks} value={weeks.toString()}>
-                          {weeks} weeks
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Duration (weeks) field REMOVED — programs no longer have
+                    a fixed week count per InternHub spec (migration 0076). */}
 
                 {editingProgram ? (
                   // EDIT mode: show dropdowns for both the default
@@ -630,64 +465,26 @@ export default function ProgramsPage() {
                     </div>
                   </div>
                 ) : (
-                  // CREATE mode: cascading account creation. The
-                  // coordinator fills in the new faculty_supervisor's
-                  // credentials here. On submit, the program is created
-                  // AND the supervisor auth account is created and
-                  // auto-linked as the default supervisor.
+                  // CREATE mode: NO supervisor cascade creation.
+                  // Per InternHub spec, Department Coordinators must NOT
+                  // create supervisors — the Program Coordinator (auto-
+                  // created by the API) is responsible for adding
+                  // supervisors and assigning students to them.
                   <>
-                  <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <div className="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
                     <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-primary" />
-                      <h4 className="text-sm font-semibold">Faculty Supervisor Account</h4>
+                      <Info className="h-4 w-4 text-blue-600" />
+                      <h4 className="text-sm font-semibold">Program Coordinator Auto-Creation</h4>
                     </div>
-                    <p className="text-xs text-muted-foreground -mt-2">
-                      This supervisor will be created automatically and assigned as the default supervisor for this program. They can sign in immediately with the email and password below, and can then assign students to the program.
+                    <p className="text-xs text-muted-foreground">
+                      When you create this program, a Program Coordinator
+                      account will be automatically provisioned (separate
+                      from supervisors). The Program Coordinator is
+                      responsible for adding students, supervisors, and
+                      assigning students to supervisors. You can add a
+                      default faculty supervisor and external evaluator
+                      later via Edit once they exist.
                     </p>
-                    <div className="space-y-2">
-                      <Label htmlFor="supervisorName">Supervisor Name *</Label>
-                      <Input
-                        id="supervisorName"
-                        placeholder="e.g., Prof. Ahmed Raza"
-                        value={formData.supervisorName}
-                        onChange={(e) => setFormData({ ...formData, supervisorName: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="supervisorSpecialization">Specialization</Label>
-                      <Input
-                        id="supervisorSpecialization"
-                        placeholder="e.g., Software Engineering, Data Science"
-                        value={formData.supervisorSpecialization}
-                        onChange={(e) => setFormData({ ...formData, supervisorSpecialization: e.target.value })}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Shown on the Supervisors page. If left blank, the program name is used.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="supervisorEmail">Supervisor Email *</Label>
-                      <Input
-                        id="supervisorEmail"
-                        type="email"
-                        placeholder="supervisor@university.edu"
-                        value={formData.supervisorEmail}
-                        onChange={(e) => setFormData({ ...formData, supervisorEmail: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="supervisorPassword">Supervisor Password *</Label>
-                      <Input
-                        id="supervisorPassword"
-                        type="text"
-                        placeholder="At least 8 characters"
-                        value={formData.supervisorPassword}
-                        onChange={(e) => setFormData({ ...formData, supervisorPassword: e.target.value })}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Share this password with the supervisor. They can change it after first sign-in.
-                      </p>
-                    </div>
                   </div>
 
                   {/* CREATE mode: optional external evaluator picker.
@@ -878,10 +675,6 @@ export default function ProgramsPage() {
 
                       <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
                         <span className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {program.duration_weeks} weeks
-                        </span>
-                        <span className="flex items-center gap-1">
                           <Users className="h-4 w-4" />
                           {program.student_count || 0} students
                         </span>
@@ -934,7 +727,6 @@ export default function ProgramsPage() {
                   <TableHead>Program</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Supervisor</TableHead>
-                  <TableHead>Duration</TableHead>
                   <TableHead>Students</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[70px]"></TableHead>
@@ -994,7 +786,7 @@ export default function ProgramsPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{program.duration_weeks} weeks</TableCell>
+                      {/* Duration column removed — programs no longer have a fixed week count */}
                       <TableCell>
                         <span className="inline-flex items-center gap-1">
                           <Users className="h-4 w-4 text-muted-foreground" />

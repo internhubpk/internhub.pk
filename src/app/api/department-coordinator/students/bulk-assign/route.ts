@@ -76,11 +76,17 @@ export async function POST(request: NextRequest) {
       program_id,
       faculty_supervisor_id,
       external_evaluator_id,
+      // When true, students who ALREADY have a faculty_supervisor_id assigned
+      // are SKIPPED (not overwritten). Default: false (overwrite — original
+      // behavior). Per InternHub spec: "Bulk assignment must never silently
+      // overwrite existing assignments."
+      skip_if_assigned = true,
     } = body as {
       student_user_ids?: string[];
       program_id?: string | null;
       faculty_supervisor_id?: string | null;
       external_evaluator_id?: string | null;
+      skip_if_assigned?: boolean;
     };
 
     if (!Array.isArray(student_user_ids) || student_user_ids.length === 0) {
@@ -191,6 +197,57 @@ export async function POST(request: NextRequest) {
       updatePayload.faculty_supervisor_id = faculty_supervisor_id || null;
     }
 
+    // Per InternHub spec: "Bulk assignment must never silently overwrite
+    // existing assignments." When skip_if_assigned is true (default), we
+    // query the existing students first and split the list into:
+    //   - already_assigned: students who already have a faculty_supervisor_id
+    //     (when assigning, not clearing). These are SKIPPED.
+    //   - to_update: students who don't have one yet (or we're clearing).
+    let effectiveStudentIds = student_user_ids;
+    let alreadyAssignedCount = 0;
+    const alreadyAssignedNames: string[] = [];
+
+    if (skip_if_assigned && faculty_supervisor_id) {
+      const { data: existingStudents } = await supabase
+        .from("students")
+        .select(`
+          user_id,
+          profiles:user_id (full_name)
+        `)
+        .in("user_id", student_user_ids)
+        .not("faculty_supervisor_id", "is", null);
+
+      const alreadyAssignedIds = new Set(
+        (existingStudents || []).map((s: any) => s.user_id)
+      );
+      alreadyAssignedCount = alreadyAssignedIds.size;
+
+      // Collect names for the response message
+      for (const s of (existingStudents || []) as any[]) {
+        const name = s.profiles?.full_name || s.user_id;
+        alreadyAssignedNames.push(name);
+      }
+
+      effectiveStudentIds = student_user_ids.filter(
+        (id) => !alreadyAssignedIds.has(id)
+      );
+
+      if (effectiveStudentIds.length === 0) {
+        // All selected students already have a supervisor assigned.
+        return NextResponse.json({
+          success: true,
+          data: {
+            updated: 0,
+            skipped: student_user_ids.length,
+            already_assigned: alreadyAssignedCount,
+            already_assigned_names: alreadyAssignedNames,
+            errors: [],
+          },
+          message: `All ${alreadyAssignedCount} student(s) already have a faculty supervisor assigned. No changes made (use skip_if_assigned=false to force-overwrite).`,
+        });
+      }
+    }
+
     // Update the students table for the selected user_ids. Use the caller's
     // department_id as an extra filter so cross-department students in the
     // array are silently skipped (defense in depth, even though RLS would
@@ -198,7 +255,7 @@ export async function POST(request: NextRequest) {
     let query = supabase
       .from("students")
       .update(updatePayload)
-      .in("user_id", student_user_ids);
+      .in("user_id", effectiveStudentIds);
 
     if (profile.role === "department_coordinator") {
       query = query.eq("department_id", profile.department_id);
@@ -215,7 +272,7 @@ export async function POST(request: NextRequest) {
     }
 
     const updatedCount = updated?.length || 0;
-    const skippedCount = student_user_ids.length - updatedCount;
+    const skippedCount = student_user_ids.length - updatedCount - alreadyAssignedCount;
 
     // Second pass: external_evaluator_id. The `students` table has no such
     // column, so we update each student's `student_internships` row instead.
@@ -281,7 +338,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Best-effort: send a notification to each student whose supervisor
-    // changed, so they know who their new supervisor is.
+    // changed, so they know who their new supervisor is. Uses the shared
+    // sendNotification helper so push notifications are also fired.
     if (faculty_supervisor_id && updatedCount > 0) {
       try {
         const { data: supervisorProfile } = await supabase
@@ -291,25 +349,29 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
 
         const supervisorName = supervisorProfile?.full_name || "a new supervisor";
+        const { sendNotification } = await import("@/lib/notifications");
 
-        const notifRows = (updated || []).map((row: any) => ({
-          user_id: row.user_id,
-          sender_id: user.id,
-          title: "Faculty supervisor assigned",
-          message: `You have been assigned to ${supervisorName} as your faculty supervisor.`,
-          category: "system",
-          priority: "medium",
-          is_read: false,
-        }));
-
-        await supabase.from("notifications").insert(notifRows);
+        await Promise.all(
+          (updated || []).map((row: any) =>
+            sendNotification(supabase, {
+              userId: row.user_id,
+              senderId: user.id,
+              title: "Faculty supervisor assigned",
+              message: `You have been assigned to ${supervisorName} as your faculty supervisor.`,
+              category: "system",
+              priority: "medium",
+              actionUrl: "/student/internships",
+              metadata: { type: "supervisor_assigned", supervisor_user_id: faculty_supervisor_id, supervisor_name: supervisorName },
+            })
+          )
+        );
       } catch (notifErr) {
         console.warn("[bulk-assign] notifications failed (non-fatal):", notifErr);
       }
     }
 
     // Best-effort: send a notification to each student whose external
-    // evaluator changed.
+    // evaluator changed. Uses the shared sendNotification helper.
     if (external_evaluator_id && evaluatorUpdatedCount > 0) {
       try {
         const { data: evaluatorProfile } = await supabase
@@ -319,18 +381,22 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
 
         const evaluatorName = evaluatorProfile?.full_name || "a new external evaluator";
+        const { sendNotification } = await import("@/lib/notifications");
 
-        const notifRows = (updated || []).map((row: any) => ({
-          user_id: row.user_id,
-          sender_id: user.id,
-          title: "External evaluator assigned",
-          message: `You have been assigned to ${evaluatorName} as your external evaluator.`,
-          category: "system",
-          priority: "medium",
-          is_read: false,
-        }));
-
-        await supabase.from("notifications").insert(notifRows);
+        await Promise.all(
+          (updated || []).map((row: any) =>
+            sendNotification(supabase, {
+              userId: row.user_id,
+              senderId: user.id,
+              title: "External evaluator assigned",
+              message: `You have been assigned to ${evaluatorName} as your external evaluator.`,
+              category: "system",
+              priority: "medium",
+              actionUrl: "/student/evaluations",
+              metadata: { type: "evaluator_assigned", evaluator_user_id: external_evaluator_id, evaluator_name: evaluatorName },
+            })
+          )
+        );
       } catch (notifErr) {
         console.warn("[bulk-assign] evaluator notifications failed (non-fatal):", notifErr);
       }
@@ -359,9 +425,14 @@ export async function POST(request: NextRequest) {
       data: {
         updated: updatedCount,
         skipped: skippedCount,
+        already_assigned: alreadyAssignedCount,
+        already_assigned_names: alreadyAssignedNames,
         errors: [] as string[],
       },
-      message: `Updated ${updatedCount} student(s)`,
+      message:
+        alreadyAssignedCount > 0
+          ? `Updated ${updatedCount} student(s). ${alreadyAssignedCount} student(s) were skipped because they already have a supervisor assigned.`
+          : `Updated ${updatedCount} student(s).`,
     });
   } catch (err) {
     console.error("[bulk-assign] unhandled:", err);

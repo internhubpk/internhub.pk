@@ -8,7 +8,6 @@ import {
   BookOpen,
   Filter,
   X,
-  Clock,
   CheckCircle2,
   XCircle,
   ChevronDown,
@@ -38,7 +37,7 @@ interface Program {
   name: string;
   code: string;
   description: string | null;
-  duration_weeks: number;
+  // duration_weeks was REMOVED from the programs table in migration 0076.
   is_active: boolean;
   university_id: string;
   department_id: string;
@@ -85,7 +84,7 @@ export default function UniversityAdminProgramsPage() {
       let query = supabase
         .from("programs")
         .select(
-          `id, name, code, description, duration_weeks, is_active,
+          `id, name, code, description, is_active,
            university_id, department_id, default_faculty_supervisor_id,
            created_at, updated_at,
            departments:department_id ( name, code ),
@@ -362,10 +361,6 @@ export default function UniversityAdminProgramsPage() {
 
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {program.duration_weeks} weeks
-                        </span>
-                        <span className="flex items-center gap-1">
                           <Users className="h-4 w-4" />
                           {program.student_count || 0} students
                         </span>
@@ -393,7 +388,7 @@ export default function UniversityAdminProgramsPage() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Program</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Department</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Supervisor</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Duration</th>
+                    {/* Duration column removed — programs no longer have a fixed week count */}
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Students</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
                   </tr>
@@ -451,7 +446,7 @@ export default function UniversityAdminProgramsPage() {
                             </Badge>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-sm">{program.duration_weeks} weeks</td>
+                        {/* Duration column removed — programs no longer have a fixed week count */}
                         <td className="py-3 px-4">
                           <span className="inline-flex items-center gap-1 text-sm">
                             <Users className="h-4 w-4 text-muted-foreground" />
