@@ -299,7 +299,7 @@ export default function UniversityAdminDashboard() {
   const statCards = [
     {
       title: "Total Students",
-      value: stats?.totalStudents.toLocaleString() || "0",
+      value: stats?.totalStudents != null ? stats.totalStudents.toLocaleString() : "—",
       description: "Enrolled students",
       icon: Users,
       color: "text-emerald-600 dark:text-emerald-400",
@@ -308,7 +308,7 @@ export default function UniversityAdminDashboard() {
     },
     {
       title: "Active Internships",
-      value: stats?.activeInternships.toLocaleString() || "0",
+      value: stats?.activeInternships != null ? stats.activeInternships.toLocaleString() : "—",
       description: "Currently ongoing",
       icon: Briefcase,
       color: "text-blue-600 dark:text-blue-400",
@@ -317,7 +317,7 @@ export default function UniversityAdminDashboard() {
     },
     {
       title: "Pending Applications",
-      value: stats?.pendingApplications.toLocaleString() || "0",
+      value: stats?.pendingApplications != null ? stats.pendingApplications.toLocaleString() : "—",
       description: "Awaiting review",
       icon: Clock,
       color: "text-amber-600 dark:text-amber-400",
@@ -326,8 +326,8 @@ export default function UniversityAdminDashboard() {
     },
     {
       title: "Completion Rate",
-      value: `${stats?.completionRate || 0}%`,
-      description: `${stats?.completedInternships || 0} completed`,
+      value: stats?.completionRate != null ? `${stats.completionRate}%` : "—",
+      description: stats?.completedInternships != null ? `${stats.completedInternships} completed` : "—",
       icon: TrendingUp,
       color: "text-purple-600 dark:text-purple-400",
       bgColor: "bg-purple-50 dark:bg-purple-950/50",
@@ -769,25 +769,25 @@ export default function UniversityAdminDashboard() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stats?.totalDepartments || 0}</p>
+                <p className="text-2xl font-bold text-primary">{stats?.totalDepartments ?? "—"}</p>
                 <p className="text-xs text-muted-foreground mt-1">Total Departments</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stats?.totalCoordinators || 0}</p>
+                <p className="text-2xl font-bold text-primary">{stats?.totalCoordinators ?? "—"}</p>
                 <p className="text-xs text-muted-foreground mt-1">Coordinators</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stats?.completedInternships || 0}</p>
+                <p className="text-2xl font-bold text-primary">{stats?.completedInternships ?? "—"}</p>
                 <p className="text-xs text-muted-foreground mt-1">Completed</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-primary">{stats?.completionRate || 0}%</p>
+                <p className="text-2xl font-bold text-primary">{stats?.completionRate != null ? `${stats.completionRate}%` : "—"}</p>
                 <p className="text-xs text-muted-foreground mt-1">Success Rate</p>
               </CardContent>
             </Card>

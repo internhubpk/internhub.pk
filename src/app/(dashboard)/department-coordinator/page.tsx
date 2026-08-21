@@ -187,26 +187,26 @@ export default function DepartmentCoordinatorDashboard() {
   const statCards = [
     {
       title: "Total Students",
-      value: stats?.totalStudents.toString() || "0",
+      value: stats?.totalStudents != null ? stats.totalStudents.toString() : "—",
       icon: GraduationCap,
       color: "text-emerald-600 dark:text-emerald-400",
       bgColor: "bg-emerald-50 dark:bg-emerald-950",
-      trend: stats?.activeStudents && stats.totalStudents > 0 
+      trend: stats?.activeStudents != null && stats.totalStudents > 0 
         ? { value: Math.round((stats.activeStudents / stats.totalStudents) * 100), isPositive: true }
         : undefined,
-      description: `${stats?.activeStudents || 0} active`,
+      description: stats?.activeStudents != null ? `${stats.activeStudents} active` : "—",
     },
     {
       title: "Active Programs",
-      value: stats?.activePrograms.toString() || "0",
+      value: stats?.activePrograms != null ? stats.activePrograms.toString() : "—",
       icon: BookOpen,
       color: "text-blue-600 dark:text-blue-400",
       bgColor: "bg-blue-50 dark:bg-blue-950",
-      description: `of ${stats?.totalPrograms || 0} total`,
+      description: stats?.totalPrograms != null ? `of ${stats.totalPrograms} total` : "—",
     },
     {
       title: "Supervisors",
-      value: stats?.totalSupervisors.toString() || "0",
+      value: stats?.totalSupervisors != null ? stats.totalSupervisors.toString() : "—",
       icon: UserCheck,
       color: "text-violet-600 dark:text-violet-400",
       bgColor: "bg-violet-50 dark:bg-violet-950",
@@ -216,14 +216,16 @@ export default function DepartmentCoordinatorDashboard() {
       // coordinator sees the REAL pipeline — students in 'assigned' status
       // haven't started the actual internship yet but ARE in the program.
       title: "In-Progress Internships",
-      value: (stats?.inProgressInternships ?? stats?.activeInternships ?? 0).toString(),
+      value: (stats?.inProgressInternships ?? stats?.activeInternships) != null
+        ? (stats!.inProgressInternships ?? stats!.activeInternships!).toString()
+        : "—",
       icon: Briefcase,
       color: "text-orange-600 dark:text-orange-400",
       bgColor: "bg-orange-50 dark:bg-orange-950",
       trend: stats?.completedInternships !== undefined 
         ? { value: stats.completedInternships, isPositive: true }
         : undefined,
-      description: `${stats?.completedInternships || 0} completed`,
+      description: stats?.completedInternships != null ? `${stats.completedInternships} completed` : "—",
     },
   ];
 
@@ -290,11 +292,11 @@ export default function DepartmentCoordinatorDashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Total Students</p>
-                  <p className="font-medium">{stats?.totalStudents ?? 0}</p>
+                  <p className="font-medium">{stats?.totalStudents ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Active Programs</p>
-                  <p className="font-medium">{stats?.activePrograms ?? 0}</p>
+                  <p className="font-medium">{stats?.activePrograms ?? "—"}</p>
                 </div>
               </div>
               {department.description && (
@@ -576,25 +578,26 @@ export default function DepartmentCoordinatorDashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <GraduationCap className="h-8 w-8 mx-auto text-emerald-600" />
-                <p className="text-2xl font-bold">{stats?.totalStudents || 0}</p>
+                <p className="text-2xl font-bold">{stats?.totalStudents ?? "—"}</p>
                 <p className="text-sm text-muted-foreground">Total Enrolled</p>
               </div>
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <Briefcase className="h-8 w-8 mx-auto text-blue-600" />
-                <p className="text-2xl font-bold">{stats?.inProgressInternships ?? stats?.activeInternships ?? 0}</p>
+                <p className="text-2xl font-bold">{(stats?.inProgressInternships ?? stats?.activeInternships) ?? "—"}</p>
                 <p className="text-sm text-muted-foreground">In-Progress Internships</p>
               </div>
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <CheckCircle2 className="h-8 w-8 mx-auto text-violet-600" />
-                <p className="text-2xl font-bold">{stats?.completedInternships || 0}</p>
+                <p className="text-2xl font-bold">{stats?.completedInternships ?? "—"}</p>
                 <p className="text-sm text-muted-foreground">Completed</p>
               </div>
               <div className="p-4 rounded-xl bg-muted/50 text-center space-y-2">
                 <TrendingUp className="h-8 w-8 mx-auto text-orange-600" />
                 <p className="text-2xl font-bold">
-                  {(stats?.inProgressInternships ?? stats?.activeInternships ?? 0) > 0 && (stats?.totalStudents ?? 0) > 0
-                    ? Math.round(((stats?.inProgressInternships ?? stats?.activeInternships ?? 0) / (stats?.totalStudents ?? 1) * 100))
-                    : 0}%
+                  {(stats?.inProgressInternships ?? stats?.activeInternships) != null
+                    && (stats?.totalStudents ?? 0) > 0
+                    ? `${Math.round(((stats!.inProgressInternships ?? stats!.activeInternships!) / stats!.totalStudents) * 100)}%`
+                    : "—"}
                 </p>
                 <p className="text-sm text-muted-foreground">Participation Rate</p>
               </div>

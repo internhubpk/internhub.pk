@@ -188,28 +188,28 @@ export default function ProgramCoordinatorDashboard() {
             <StatCard
               icon={<GraduationCap className="h-5 w-5" />}
               label="Students"
-              value={stats?.totalStudents || 0}
+              value={stats?.totalStudents ?? "—"}
               description="In your program"
               color="text-blue-500"
             />
             <StatCard
               icon={<Users className="h-5 w-5" />}
               label="Supervisors"
-              value={stats?.totalSupervisors || 0}
+              value={stats?.totalSupervisors ?? "—"}
               description="Assigned to your program"
               color="text-purple-500"
             />
             <StatCard
               icon={<Briefcase className="h-5 w-5" />}
               label="Active Internships"
-              value={stats?.activeInternships || 0}
+              value={stats?.activeInternships ?? "—"}
               description="Currently running"
               color="text-green-500"
             />
             <StatCard
               icon={<FileText className="h-5 w-5" />}
               label="Weekly Reports"
-              value={stats?.totalReports || 0}
+              value={stats?.totalReports ?? "—"}
               description="Submitted by your students"
               color="text-orange-500"
             />
@@ -266,7 +266,7 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  value: number | string;
   description: string;
   color: string;
 }) {

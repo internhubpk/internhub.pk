@@ -145,6 +145,12 @@ export default function CompanyHRDashboard() {
   const activePrograms = data?.activePrograms || [];
   const internPerformance = data?.internPerformance || [];
 
+  // Sentinel for "data not yet loaded" — when loading is true OR data is
+  // null, stat cards display "—" instead of the DEFAULT_STATS zeros so the
+  // user doesn't see misleading fake zeros while waiting for the API.
+  const displayValue = (v: number | string): number | string =>
+    loading || !data ? "—" : v;
+
   const fmtDate = (d?: string | null) =>
     d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
@@ -163,7 +169,7 @@ export default function CompanyHRDashboard() {
   const statCards = [
     {
       label: "Active Programs",
-      value: stats.activeInternships,
+      value: displayValue(stats.activeInternships),
       icon: Briefcase,
       color: "text-blue-600",
       bg: "bg-blue-50",
@@ -171,7 +177,7 @@ export default function CompanyHRDashboard() {
     },
     {
       label: "Total Applications",
-      value: stats.totalApplications,
+      value: displayValue(stats.totalApplications),
       icon: ClipboardCheck,
       color: "text-purple-600",
       bg: "bg-purple-50",
@@ -179,7 +185,7 @@ export default function CompanyHRDashboard() {
     },
     {
       label: "Pending Reviews",
-      value: stats.pendingReviews,
+      value: displayValue(stats.pendingReviews),
       icon: Clock,
       color: "text-amber-600",
       bg: "bg-amber-50",
@@ -187,7 +193,7 @@ export default function CompanyHRDashboard() {
     },
     {
       label: "Active Interns",
-      value: stats.activeInterns,
+      value: displayValue(stats.activeInterns),
       icon: Users,
       color: "text-emerald-600",
       bg: "bg-emerald-50",
@@ -195,7 +201,7 @@ export default function CompanyHRDashboard() {
     },
     {
       label: "Site Supervisors",
-      value: stats.totalSupervisors,
+      value: displayValue(stats.totalSupervisors),
       icon: UserCheck,
       color: "text-indigo-600",
       bg: "bg-indigo-50",
@@ -203,7 +209,7 @@ export default function CompanyHRDashboard() {
     },
     {
       label: "Completion Rate",
-      value: `${stats.completionRate}%`,
+      value: displayValue(`${stats.completionRate}%`),
       icon: TrendingUp,
       color: "text-rose-600",
       bg: "bg-rose-50",
@@ -271,7 +277,7 @@ export default function CompanyHRDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Average Attendance</p>
-                <p className="text-2xl font-bold mt-1">{stats.avgAttendanceRate}%</p>
+                <p className="text-2xl font-bold mt-1">{displayValue(`${stats.avgAttendanceRate}%`)}</p>
               </div>
               <div className="p-3 rounded-full bg-emerald-50">
                 <CheckCircle2 className="h-6 w-6 text-emerald-600" />
@@ -284,7 +290,7 @@ export default function CompanyHRDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Average Rating</p>
-                <p className="text-2xl font-bold mt-1">{stats.avgRating.toFixed(1)} / 5.0</p>
+                <p className="text-2xl font-bold mt-1">{displayValue(`${stats.avgRating.toFixed(1)} / 5.0`)}</p>
               </div>
               <div className="p-3 rounded-full bg-amber-50">
                 <Star className="h-6 w-6 text-amber-500" />
@@ -298,9 +304,9 @@ export default function CompanyHRDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Total Interns</p>
                 <p className="text-2xl font-bold mt-1">
-                  {stats.totalInterns}{" "}
+                  {displayValue(stats.totalInterns)}{" "}
                   <span className="text-sm font-normal text-muted-foreground">
-                    ({stats.completedInterns} completed)
+                    ({displayValue(stats.completedInterns)} completed)
                   </span>
                 </p>
               </div>

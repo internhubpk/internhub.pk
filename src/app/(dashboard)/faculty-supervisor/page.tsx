@@ -406,7 +406,7 @@ export default function FacultySupervisorDashboard() {
   const statCards = [
     {
       title: "Supervised Students",
-      value: stats?.supervisedStudents.toString() || "0",
+      value: stats?.supervisedStudents != null ? stats.supervisedStudents.toString() : "—",
       icon: GraduationCap,
       color: "text-emerald-600",
       bgColor: "bg-emerald-50",
@@ -415,7 +415,7 @@ export default function FacultySupervisorDashboard() {
     },
     {
       title: "Active Internships",
-      value: stats?.activeInternships.toString() || "0",
+      value: stats?.activeInternships != null ? stats.activeInternships.toString() : "—",
       icon: Briefcase,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
@@ -424,7 +424,7 @@ export default function FacultySupervisorDashboard() {
     },
     {
       title: "Pending Reviews",
-      value: stats?.pendingReviews.toString() || "0",
+      value: stats?.pendingReviews != null ? stats.pendingReviews.toString() : "—",
       icon: Clock,
       color: "text-amber-600",
       bgColor: "bg-amber-50",
@@ -433,7 +433,7 @@ export default function FacultySupervisorDashboard() {
     },
     {
       title: "Tasks Completed",
-      value: stats?.tasksCompleted.toString() || "0",
+      value: stats?.tasksCompleted != null ? stats.tasksCompleted.toString() : "—",
       icon: CheckCircle2,
       color: "text-purple-600",
       bgColor: "bg-purple-50",

@@ -573,7 +573,7 @@ export default function StudentDashboard() {
                 <div className="p-2 rounded-full bg-blue-50 w-fit mx-auto mb-2">
                   <FileText className="h-5 w-5 text-blue-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.applicationsCount || 0}</p>
+                <p className="text-2xl font-bold">{stats?.applicationsCount ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">Applications</p>
               </CardContent>
             </Card>
@@ -590,7 +590,7 @@ export default function StudentDashboard() {
               <div className="p-2 rounded-full bg-amber-50 w-fit mx-auto mb-2">
                 <Target className="h-5 w-5 text-amber-600" />
               </div>
-              <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>
+              <p className="text-2xl font-bold">{stats?.pendingTasks ?? "—"}</p>
               <p className="text-xs text-muted-foreground">Pending Tasks</p>
             </CardContent>
           </Card>
@@ -606,7 +606,7 @@ export default function StudentDashboard() {
               <div className="p-2 rounded-full bg-green-50 w-fit mx-auto mb-2">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               </div>
-              <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
+              <p className="text-2xl font-bold">{stats?.completedTasks ?? "—"}</p>
               <p className="text-xs text-muted-foreground">Completed</p>
             </CardContent>
           </Card>
@@ -623,7 +623,7 @@ export default function StudentDashboard() {
                 <div className="p-2 rounded-full bg-purple-50 w-fit mx-auto mb-2">
                   <Upload className="h-5 w-5 text-purple-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.documentsSubmitted || 0}</p>
+                <p className="text-2xl font-bold">{stats?.documentsSubmitted ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">Documents</p>
               </CardContent>
             </Card>
@@ -641,7 +641,7 @@ export default function StudentDashboard() {
                 <div className="p-2 rounded-full bg-cyan-50 w-fit mx-auto mb-2">
                   <Clock className="h-5 w-5 text-cyan-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.attendanceRate || 0}%</p>
+                <p className="text-2xl font-bold">{stats?.attendanceRate != null ? `${stats.attendanceRate}%` : "—"}</p>
                 <p className="text-xs text-muted-foreground">Attendance</p>
               </CardContent>
             </Card>
@@ -976,29 +976,29 @@ export default function StudentDashboard() {
                       strokeLinecap="round"
                       className="text-primary"
                       strokeDasharray={`${2 * Math.PI * 36}`}
-                      strokeDashoffset={`${2 * Math.PI * 36 * (1 - ((stats?.attendanceRate || 0) / 100))}`}
+                      strokeDashoffset={`${2 * Math.PI * 36 * (1 - ((stats?.attendanceRate ?? 0) / 100))}`}
                     />
                   </svg>
-                  <span className="absolute text-xl font-bold">{stats?.attendanceRate || 0}%</span>
+                  <span className="absolute text-xl font-bold">{stats?.attendanceRate != null ? `${stats.attendanceRate}%` : "—"}</span>
                 </div>
                 <p className="mt-2 text-sm font-medium">Attendance</p>
                 <p className="text-xs text-muted-foreground">This month</p>
               </div>
 
               <div className="text-center">
-                <div className="text-3xl font-bold text-primary">{stats?.completedTasks || 0}</div>
+                <div className="text-3xl font-bold text-primary">{stats?.completedTasks ?? "—"}</div>
                 <p className="mt-1 text-sm font-medium">Tasks Done</p>
-                <p className="text-xs text-muted-foreground">of {stats?.totalTasks || 0} total</p>
+                <p className="text-xs text-muted-foreground">of {stats?.totalTasks ?? "—"} total</p>
               </div>
 
               <div className="text-center">
-                <div className="text-3xl font-bold text-emerald-600">{stats?.documentsSubmitted || 0}</div>
+                <div className="text-3xl font-bold text-emerald-600">{stats?.documentsSubmitted ?? "—"}</div>
                 <p className="mt-1 text-sm font-medium">Documents</p>
                 <p className="text-xs text-muted-foreground">Uploaded</p>
               </div>
 
               <div className="text-center">
-                <div className="text-3xl font-bold text-amber-600">{stats?.attendanceStreak || 0}</div>
+                <div className="text-3xl font-bold text-amber-600">{stats?.attendanceStreak ?? "—"}</div>
                 <p className="mt-1 text-sm font-medium">Day Streak</p>
                 <p className="text-xs text-muted-foreground">Keep it up!</p>
               </div>

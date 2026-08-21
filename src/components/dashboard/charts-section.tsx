@@ -65,19 +65,28 @@ const CustomTooltip = ({ active, payload, label, formatter }: {
 
   return (
     <div className="bg-background border rounded-lg shadow-lg p-3 min-w-[140px]">
-      <p className="text-sm font-medium mb-2">{label}</p>
-      {payload.map((entry, index) => (
-        <div key={index} className="flex items-center gap-2 text-sm">
-          <span
-            className="w-2.5 h-2.5 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="font-medium">
-            {formatter ? formatter(entry.value, entry.name) : entry.value.toLocaleString()}
-          </span>
-        </div>
-      ))}
+      <p className="text-sm font-medium mb-2">{String(label ?? "")}</p>
+      {payload.map((entry, index) => {
+        // Guard against NaN / undefined / null — display "—" instead of
+        // "NaN" or "0" when the underlying value is missing.
+        const rawValue = entry.value;
+        const isInvalid = typeof rawValue !== "number" || Number.isNaN(rawValue);
+        const displayValue = isInvalid
+          ? "—"
+          : formatter
+            ? formatter(rawValue, entry.name)
+            : rawValue.toLocaleString();
+        return (
+          <div key={index} className="flex items-center gap-2 text-sm">
+            <span
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="text-muted-foreground">{entry.name}:</span>
+            <span className="font-medium">{displayValue}</span>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -105,6 +114,40 @@ interface LineChartCardProps {
   showLegend?: boolean;
   className?: string;
   index?: number;
+  /** Message shown when `data` is empty. Defaults to "No data available yet". */
+  emptyMessage?: string;
+}
+
+// Shared empty-state block — used by every chart type when there's no data
+// to render. Replaces the previous pattern of injecting fake `[{ name: "No
+// data", value: 1 }]` rows, which made charts look populated when they
+// actually weren't.
+function ChartEmptyState({ message, height }: { message?: string; height: number }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center text-center text-muted-foreground"
+      style={{ height }}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-12 w-12 opacity-30 mb-3"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+        />
+      </svg>
+      <p className="text-sm font-medium">{message || "No data available yet"}</p>
+      <p className="text-xs text-muted-foreground/70 mt-1">
+        Data will appear here as activity is recorded.
+      </p>
+    </div>
+  );
 }
 
 export function LineChartCard({
@@ -118,7 +161,9 @@ export function LineChartCard({
   showLegend = true,
   className,
   index = 0,
+  emptyMessage,
 }: LineChartCardProps) {
+  const hasData = Array.isArray(data) && data.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -137,36 +182,40 @@ export function LineChartCard({
           </div>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={height}>
-            <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-              {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
-              <XAxis
-                dataKey={xAxisKey}
-                className="text-xs"
-                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                axisLine={{ stroke: "var(--border)" }}
-              />
-              <YAxis
-                className="text-xs"
-                tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                axisLine={{ stroke: "var(--border)" }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              {showLegend && <Legend />}
-              {lines.map((line, i) => (
-                <Line
-                  key={line.dataKey}
-                  type="monotone"
-                  dataKey={line.dataKey}
-                  name={line.name || line.dataKey}
-                  stroke={line.color || PALETTE[i % PALETTE.length]}
-                  strokeWidth={line.strokeWidth || 2}
-                  dot={line.dot !== undefined ? line.dot : false}
-                  activeDot={{ r: 4, strokeWidth: 2 }}
+          {hasData ? (
+            <ResponsiveContainer width="100%" height={height}>
+              <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
+                <XAxis
+                  dataKey={xAxisKey}
+                  className="text-xs"
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                  axisLine={{ stroke: "var(--border)" }}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+                <YAxis
+                  className="text-xs"
+                  tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                  axisLine={{ stroke: "var(--border)" }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                {showLegend && <Legend />}
+                {lines.map((line, i) => (
+                  <Line
+                    key={line.dataKey}
+                    type="monotone"
+                    dataKey={line.dataKey}
+                    name={line.name || line.dataKey}
+                    stroke={line.color || PALETTE[i % PALETTE.length]}
+                    strokeWidth={line.strokeWidth || 2}
+                    dot={line.dot !== undefined ? line.dot : false}
+                    activeDot={{ r: 4, strokeWidth: 2 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <ChartEmptyState message={emptyMessage} height={height} />
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -197,6 +246,8 @@ interface BarChartCardProps {
   stacked?: boolean;
   className?: string;
   index?: number;
+  /** Message shown when `data` is empty. */
+  emptyMessage?: string;
 }
 
 export function BarChartCard({
@@ -212,7 +263,9 @@ export function BarChartCard({
   stacked = false,
   className,
   index = 0,
+  emptyMessage,
 }: BarChartCardProps) {
+  const hasData = Array.isArray(data) && data.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -231,46 +284,50 @@ export function BarChartCard({
           </div>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={height}>
-            <BarChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }} layout={layout}>
-              {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
-              {layout === "horizontal" ? (
-                <>
-                  <XAxis 
-                    dataKey={xAxisKey} 
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                    axisLine={{ stroke: "var(--border)" }}
+          {hasData ? (
+            <ResponsiveContainer width="100%" height={height}>
+              <BarChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }} layout={layout}>
+                {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />}
+                {layout === "horizontal" ? (
+                  <>
+                    <XAxis 
+                      dataKey={xAxisKey} 
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                    />
+                    <YAxis 
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <XAxis type="number" tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
+                    <YAxis 
+                      dataKey={xAxisKey} 
+                      type="category" 
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
+                      axisLine={{ stroke: "var(--border)" }}
+                    />
+                  </>
+                )}
+                <Tooltip content={<CustomTooltip />} />
+                {showLegend && <Legend />}
+                {bars.map((bar, i) => (
+                  <Bar
+                    key={bar.dataKey}
+                    dataKey={bar.dataKey}
+                    name={bar.name || bar.dataKey}
+                    fill={bar.color || PALETTE[i % PALETTE.length]}
+                    radius={bar.radius || [4, 4, 0, 0]}
+                    stackId={stacked ? "stack" : undefined}
                   />
-                  <YAxis 
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                    axisLine={{ stroke: "var(--border)" }}
-                  />
-                </>
-              ) : (
-                <>
-                  <XAxis type="number" tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
-                  <YAxis 
-                    dataKey={xAxisKey} 
-                    type="category" 
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                    axisLine={{ stroke: "var(--border)" }}
-                  />
-                </>
-              )}
-              <Tooltip content={<CustomTooltip />} />
-              {showLegend && <Legend />}
-              {bars.map((bar, i) => (
-                <Bar
-                  key={bar.dataKey}
-                  dataKey={bar.dataKey}
-                  name={bar.name || bar.dataKey}
-                  fill={bar.color || PALETTE[i % PALETTE.length]}
-                  radius={bar.radius || [4, 4, 0, 0]}
-                  stackId={stacked ? "stack" : undefined}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <ChartEmptyState message={emptyMessage} height={height} />
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -295,6 +352,8 @@ interface PieChartCardProps {
   donut?: boolean;
   className?: string;
   index?: number;
+  /** Message shown when `data` is empty. */
+  emptyMessage?: string;
 }
 
 export function PieChartCard({
@@ -308,7 +367,15 @@ export function PieChartCard({
   donut = false,
   className,
   index = 0,
+  emptyMessage,
 }: PieChartCardProps) {
+  // Filter out zero-value entries so the chart doesn't render empty slices.
+  // Also filter out rows whose `value` is NaN (which can sneak in from
+  // upstream calculations that divide by zero).
+  const cleanData = (data || []).filter(
+    (d) => typeof d.value === "number" && !Number.isNaN(d.value) && d.value > 0
+  );
+  const hasData = cleanData.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -327,31 +394,35 @@ export function PieChartCard({
           </div>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={height}>
-            <PieChart>
-              <Pie
-                data={data}
-                cx="50%"
-                cy="50%"
-                innerRadius={donut ? outerRadius * 0.6 : innerRadius}
-                outerRadius={outerRadius}
-                paddingAngle={donut ? 2 : 0}
-                dataKey="value"
-                nameKey="name"
-              >
-                {data.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.color || PALETTE[index % PALETTE.length]} 
-                  />
-                ))}
-              </Pie>
-              <Tooltip 
-                formatter={(value: number) => [`${value.toLocaleString()}`, '']}
-              />
-              {showLegend && <Legend />}
-            </PieChart>
-          </ResponsiveContainer>
+          {hasData ? (
+            <ResponsiveContainer width="100%" height={height}>
+              <PieChart>
+                <Pie
+                  data={cleanData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={donut ? outerRadius * 0.6 : innerRadius}
+                  outerRadius={outerRadius}
+                  paddingAngle={donut ? 2 : 0}
+                  dataKey="value"
+                  nameKey="name"
+                >
+                  {cleanData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color || PALETTE[index % PALETTE.length]} 
+                    />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  formatter={(value: number) => [`${value.toLocaleString()}`, '']}
+                />
+                {showLegend && <Legend />}
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <ChartEmptyState message={emptyMessage} height={height} />
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -363,6 +434,8 @@ interface AreaChartCardProps extends Omit<LineChartCardProps, 'index'> {
   areas?: LineChartCardProps['lines'];
   gradientId?: string;
   index?: number;
+  /** Message shown when `data` is empty. */
+  emptyMessage?: string;
 }
 
 export function AreaChartCard({
@@ -377,12 +450,14 @@ export function AreaChartCard({
   showLegend = true,
   className,
   index = 0,
+  emptyMessage,
 }: AreaChartCardProps) {
   // Default `areas` to `lines` after destructuring — TS doesn't allow
   // `areas = lines` in the destructuring pattern because `lines` is
   // declared after `areas` (TS2373). Resolving it here is equivalent
   // and clearer about the fallback intent.
   const chartAreas = areas || lines;
+  const hasData = Array.isArray(data) && data.length > 0;
 
   return (
     <motion.div
@@ -402,8 +477,9 @@ export function AreaChartCard({
           </div>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={height}>
-            <AreaChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+          {hasData ? (
+            <ResponsiveContainer width="100%" height={height}>
+              <AreaChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
               <defs>
                 {chartAreas?.map((area, i) => (
                   <linearGradient key={area.dataKey} id={`gradient-${area.dataKey}`} x1="0" y1="0" x2="0" y2="1">
@@ -437,6 +513,9 @@ export function AreaChartCard({
               ))}
             </AreaChart>
           </ResponsiveContainer>
+          ) : (
+            <ChartEmptyState message={emptyMessage} height={height} />
+          )}
         </CardContent>
       </Card>
     </motion.div>

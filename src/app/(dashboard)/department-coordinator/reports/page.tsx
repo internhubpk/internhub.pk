@@ -750,11 +750,11 @@ export default function ReportsPage() {
       <StatsGrid columns={4}>
         <StatsCard
           title="Total Students"
-          value={stats?.totalStudents.toString() || "0"}
+          value={stats?.totalStudents != null ? stats.totalStudents.toString() : "—"}
           icon={Users}
-          description={`${stats?.activeStudents || 0} active`}
+          description={stats?.activeStudents != null ? `${stats.activeStudents} active` : "—"}
           trend={
-            stats?.activeStudents && stats.totalStudents > 0
+            stats?.activeStudents != null && stats.totalStudents > 0
               ? { value: Math.round((stats.activeStudents / stats.totalStudents) * 100), isPositive: true }
               : undefined
           }
@@ -762,7 +762,9 @@ export default function ReportsPage() {
         />
         <StatsCard
           title="In-Progress Internships"
-          value={(stats?.inProgressInternships ?? stats?.activeInternships ?? 0).toString()}
+          value={(stats?.inProgressInternships ?? stats?.activeInternships) != null
+            ? (stats!.inProgressInternships ?? stats!.activeInternships!).toString()
+            : "—"}
           icon={BookOpen}
           description={`${participationRate}% participation`}
           index={1}
@@ -771,7 +773,7 @@ export default function ReportsPage() {
           title="Completion Rate"
           value={`${completionRate}%`}
           icon={CheckCircle2}
-          description={`${stats?.completedInternships || 0} completed`}
+          description={stats?.completedInternships != null ? `${stats.completedInternships} completed` : "—"}
           trend={{
             value: completionRate,
             isPositive: completionRate >= 50,
@@ -780,7 +782,7 @@ export default function ReportsPage() {
         />
         <StatsCard
           title="Pending Actions"
-          value={stats?.pendingAssignments.toString() || "0"}
+          value={stats?.pendingAssignments != null ? stats.pendingAssignments.toString() : "—"}
           icon={AlertCircle}
           description="Need attention"
           index={3}
@@ -859,22 +861,22 @@ export default function ReportsPage() {
                   <div className="grid grid-cols-2 gap-3 pt-4 border-t">
                     <div className="p-3 rounded-lg bg-muted/50 text-center">
                       <Users className="h-5 w-5 mx-auto mb-1 text-primary" />
-                      <p className="text-lg font-bold">{stats?.totalStudents || 0}</p>
+                      <p className="text-lg font-bold">{stats?.totalStudents ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">Total Students</p>
                     </div>
                     <div className="p-3 rounded-lg bg-muted/50 text-center">
                       <UserCheck className="h-5 w-5 mx-auto mb-1 text-emerald-600" />
-                      <p className="text-lg font-bold">{stats?.totalSupervisors || 0}</p>
+                      <p className="text-lg font-bold">{stats?.totalSupervisors ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">Supervisors</p>
                     </div>
                     <div className="p-3 rounded-lg bg-muted/50 text-center">
                       <BookOpen className="h-5 w-5 mx-auto mb-1 text-blue-600" />
-                      <p className="text-lg font-bold">{stats?.activePrograms || 0}</p>
+                      <p className="text-lg font-bold">{stats?.activePrograms ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">Active Programs</p>
                     </div>
                     <div className="p-3 rounded-lg bg-muted/50 text-center">
                       <Clock className="h-5 w-5 mx-auto mb-1 text-amber-600" />
-                      <p className="text-lg font-bold">{stats?.pendingAssignments || 0}</p>
+                      <p className="text-lg font-bold">{stats?.pendingAssignments ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">Pending</p>
                     </div>
                   </div>

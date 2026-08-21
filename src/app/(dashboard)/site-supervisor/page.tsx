@@ -387,39 +387,39 @@ export default function SiteSupervisorDashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Assigned Students"
-          value={stats.assignedStudents}
+          value={loading ? "—" : stats.assignedStudents}
           icon={GraduationCap}
           variant="info"
         />
         <StatCard
           label="Active Internships"
-          value={stats.activeInternships}
+          value={loading ? "—" : stats.activeInternships}
           icon={CheckSquare}
           variant="success"
         />
         <StatCard
           label="Tasks Due Today"
-          value={stats.tasksDueToday}
+          value={loading ? "—" : stats.tasksDueToday}
           icon={Clock}
-          variant={stats.tasksDueToday > 0 ? "warning" : "default"}
+          variant={!loading && stats.tasksDueToday > 0 ? "warning" : "default"}
         />
         <StatCard
           label="Pending Submissions"
-          value={stats.pendingSubmissions}
+          value={loading ? "—" : stats.pendingSubmissions}
           icon={Inbox}
-          variant={stats.pendingSubmissions > 0 ? "warning" : "default"}
+          variant={!loading && stats.pendingSubmissions > 0 ? "warning" : "default"}
         />
         <StatCard
           label="Tasks Awaiting Review"
-          value={stats.tasksAwaitingReview}
+          value={loading ? "—" : stats.tasksAwaitingReview}
           icon={ClipboardList}
-          variant={stats.tasksAwaitingReview > 0 ? "danger" : "default"}
+          variant={!loading && stats.tasksAwaitingReview > 0 ? "danger" : "default"}
         />
         <StatCard
           label="Weekly Evals Due"
-          value={stats.weeklyEvaluationsDue}
+          value={loading ? "—" : stats.weeklyEvaluationsDue}
           icon={CalendarClock}
-          variant={stats.weeklyEvaluationsDue > 0 ? "warning" : "default"}
+          variant={!loading && stats.weeklyEvaluationsDue > 0 ? "warning" : "default"}
         />
       </div>
 

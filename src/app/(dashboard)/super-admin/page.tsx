@@ -652,21 +652,23 @@ export default function SuperAdminDashboard() {
           <LineChartCard
             title="Platform Growth"
             description="User registrations over time"
-            data={monthlyGrowthData.length > 0 ? monthlyGrowthData : [{ month: "No data", users: 0 }]}
+            data={monthlyGrowthData}
             lines={[{ dataKey: "users", name: "New Users", color: CHART_COLORS.primary }]}
             xAxisKey="month"
             height={280}
             index={0}
+            emptyMessage="No user registrations recorded yet"
           />
 
           {/* Role Distribution Chart */}
           <PieChartCard
             title="User Role Distribution"
             description="Breakdown by user roles"
-            data={roleDistribution.length > 0 ? roleDistribution : [{ name: "No data", value: 1 }]}
+            data={roleDistribution}
             donut
             height={280}
             index={1}
+            emptyMessage="No users registered yet"
           />
 
           {/* Top Universities Chart */}
@@ -878,10 +880,18 @@ function OverviewItem({
   );
 }
 
-function formatTimeAgo(timestamp: string): string {
-  const now = new Date();
+function formatTimeAgo(timestamp: string | null | undefined): string {
+  // Use the shared safe formatter — returns "—" for invalid timestamps
+  // instead of "Invalid Date" or negative "ago" values.
+  if (!timestamp) return "—";
   const date = new Date(timestamp);
-  const diffMs = now.getTime() - date.getTime();
+  if (Number.isNaN(date.getTime())) return "—";
+  const diffMs = Date.now() - date.getTime();
+  if (Number.isNaN(diffMs)) return "—";
+  if (diffMs < 0) {
+    // Future timestamp — show the actual date.
+    return date.toLocaleDateString();
+  }
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);

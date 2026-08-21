@@ -454,23 +454,23 @@ export default function UniversityAdminReportsPage() {
   const statCards = [
     {
       title: "Total Students",
-      value: stats?.totalStudents ?? 0,
-      subtitle: `${stats?.activeStudents ?? 0} active`,
+      value: stats?.totalStudents ?? "—",
+      subtitle: stats?.activeStudents != null ? `${stats.activeStudents} active` : "—",
       icon: Users,
       color: "text-emerald-600 dark:text-emerald-400",
       bgColor: "bg-emerald-50 dark:bg-emerald-950/50",
     },
     {
       title: "Departments",
-      value: stats?.totalDepartments ?? 0,
-      subtitle: `${stats?.totalCoordinators ?? 0} coordinators`,
+      value: stats?.totalDepartments ?? "—",
+      subtitle: stats?.totalCoordinators != null ? `${stats.totalCoordinators} coordinators` : "—",
       icon: Building2,
       color: "text-indigo-600 dark:text-indigo-400",
       bgColor: "bg-indigo-50 dark:bg-indigo-950/50",
     },
     {
       title: "Host Companies",
-      value: stats?.totalCompanies ?? 0,
+      value: stats?.totalCompanies ?? "—",
       subtitle: "Tied to university",
       icon: Briefcase,
       color: "text-blue-600 dark:text-blue-400",
@@ -478,8 +478,8 @@ export default function UniversityAdminReportsPage() {
     },
     {
       title: "Active Internships",
-      value: stats?.activeInternships ?? 0,
-      subtitle: `${stats?.completedInternships ?? 0} completed`,
+      value: stats?.activeInternships ?? "—",
+      subtitle: stats?.completedInternships != null ? `${stats.completedInternships} completed` : "—",
       icon: Activity,
       color: "text-purple-600 dark:text-purple-400",
       bgColor: "bg-purple-50 dark:bg-purple-950/50",
@@ -528,7 +528,7 @@ export default function UniversityAdminReportsPage() {
                     <p className="text-sm font-medium text-muted-foreground">
                       {card.title}
                     </p>
-                    <p className="text-3xl font-bold mt-1">{card.value.toLocaleString()}</p>
+                    <p className="text-3xl font-bold mt-1">{typeof card.value === "number" ? card.value.toLocaleString() : card.value}</p>
                     <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
                   </div>
                   <div className={`p-3 rounded-xl ${card.bgColor}`}>
@@ -558,7 +558,7 @@ export default function UniversityAdminReportsPage() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">Completion Rate</span>
                 <span className="text-2xl font-bold">
-                  {stats?.completionRate ?? 0}%
+                  {stats?.completionRate != null ? `${stats.completionRate}%` : "—"}
                 </span>
               </div>
               <Progress value={stats?.completionRate ?? 0} className="h-2" />
@@ -573,21 +573,21 @@ export default function UniversityAdminReportsPage() {
                 <div className="flex items-center justify-center mb-1">
                   <Activity className="h-4 w-4 text-blue-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.activeInternships ?? 0}</p>
+                <p className="text-2xl font-bold">{stats?.activeInternships ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">Active</p>
               </div>
               <div className="text-center">
                 <div className="flex items-center justify-center mb-1">
                   <Clock className="h-4 w-4 text-amber-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.pendingApplications ?? 0}</p>
+                <p className="text-2xl font-bold">{stats?.pendingApplications ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">Pending Apps</p>
               </div>
               <div className="text-center">
                 <div className="flex items-center justify-center mb-1">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
                 </div>
-                <p className="text-2xl font-bold">{stats?.completedInternships ?? 0}</p>
+                <p className="text-2xl font-bold">{stats?.completedInternships ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">Completed</p>
               </div>
             </div>
@@ -598,19 +598,19 @@ export default function UniversityAdminReportsPage() {
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3">
                   <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
-                    {stats?.pendingApplications ?? 0}
+                    {stats?.pendingApplications ?? "—"}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
                 </div>
                 <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3">
                   <p className="text-xl font-bold text-green-700 dark:text-green-400">
-                    {stats?.acceptedApplications ?? 0}
+                    {stats?.acceptedApplications ?? "—"}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">Accepted</p>
                 </div>
                 <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3">
                   <p className="text-xl font-bold text-red-700 dark:text-red-400">
-                    {stats?.rejectedApplications ?? 0}
+                    {stats?.rejectedApplications ?? "—"}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">Rejected</p>
                 </div>
@@ -657,7 +657,7 @@ export default function UniversityAdminReportsPage() {
                 %
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {stats?.activeStudents ?? 0} of {stats?.totalStudents ?? 0} students active
+                {stats?.activeStudents ?? "—"} of {stats?.totalStudents ?? "—"} students active
               </p>
             </div>
 
@@ -665,7 +665,7 @@ export default function UniversityAdminReportsPage() {
               <p className="text-xs text-muted-foreground">Coordinator Coverage</p>
               <p className="font-semibold mt-1 flex items-center gap-2">
                 <UserCog className="h-4 w-4 text-indigo-600" />
-                {stats?.totalCoordinators ?? 0} / {stats?.totalDepartments ?? 0}
+                {stats?.totalCoordinators ?? "—"} / {stats?.totalDepartments ?? "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 coordinators per department (avg)
