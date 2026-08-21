@@ -6,7 +6,6 @@ import {
   Search,
   Filter,
   UserCog,
-  Info,
   Mail,
   BookOpen,
   Calendar,
@@ -162,22 +161,6 @@ export default function CoordinatorsPage() {
         title="Program Coordinators"
         description="Program coordinators in your department"
       />
-
-      {/* Info banner */}
-      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
-        <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="text-sm font-medium">
-            Program Coordinators are auto-created with programs
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            When you create a Program, a Program Coordinator account is
-            automatically provisioned and linked to that program. Each program
-            has exactly one coordinator. You cannot manually create, edit, or
-            delete coordinators from this page.
-          </p>
-        </div>
-      </div>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

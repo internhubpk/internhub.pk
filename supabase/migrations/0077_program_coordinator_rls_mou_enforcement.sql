@@ -8,70 +8,111 @@
 --    require an active MOU between the company and that university.
 -- 3. Department/program targeting for internship visibility.
 -- ============================================================
--- IMPORTANT FIX: All policies use internhub.current_role() (a
--- SECURITY DEFINER function reading from auth.users metadata)
--- instead of bare `role`, which would fail with
--- "column 'role' does not exist" on every table except profiles.
+-- IMPORTANT: All policies use internhub.current_role() / current_university_id()
+-- / current_department_id() (SECURITY DEFINER functions reading from
+-- auth.users metadata) instead of querying the profiles table directly.
+-- This avoids RLS recursion cycles between profiles and other tables.
 -- ============================================================
 
 BEGIN;
 
 -- ============================================================
--- 1. PROGRAM COORDINATOR RLS on original tables
+-- 1a. Add PC branch to profiles_select (must exist BEFORE other PC
+--     policies that might trigger profiles reads via FK joins).
+--     Uses internhub.current_department_id() to avoid recursion.
 -- ============================================================
--- Pattern: PC accesses data through profiles.program_id.
--- A PC's profile has program_id set, university_id, and department_id.
+DROP POLICY IF EXISTS profiles_select ON profiles;
+
+CREATE POLICY profiles_select ON profiles
+  FOR SELECT TO authenticated
+  USING (
+    -- Self: always see own profile
+    user_id = auth.uid()
+    OR internhub.is_super_admin()
+    -- University admin: see all profiles in their university
+    OR (internhub.current_role() = 'university_admin'
+      AND university_id = internhub.current_university_id())
+    -- Department coordinator: see all profiles in their department
+    OR (internhub.current_role() = 'department_coordinator'
+      AND department_id = internhub.current_department_id())
+    -- Company HR: see their company's profiles + applicant profiles
+    OR (internhub.current_role() = 'company_hr' AND (
+      company_id = internhub.current_company_id()
+      OR EXISTS (
+        SELECT 1 FROM internship_applications a
+        WHERE a.student_user_id = profiles.user_id
+          AND a.company_id = internhub.current_company_id()
+      )
+    ))
+    -- Faculty/site evaluators: see assigned students' profiles
+    OR (internhub.current_role() IN ('faculty_supervisor','site_supervisor')
+      AND internhub.is_assigned_supervisor(user_id))
+    -- External evaluator: see assigned students + evaluated students
+    OR (internhub.current_role() = 'external_evaluator' AND (
+      internhub.is_assigned_supervisor(user_id)
+      OR EXISTS (
+        SELECT 1 FROM evaluations e
+        WHERE e.evaluator_id = auth.uid() AND e.student_user_id = profiles.user_id
+      )
+    ))
+    -- Student: see own supervisors' profiles
+    OR (internhub.current_role() = 'student' AND user_id IN (
+      SELECT si.faculty_supervisor_id FROM student_internships si
+      WHERE si.student_user_id = auth.uid() AND si.faculty_supervisor_id IS NOT NULL
+      UNION
+      SELECT si.site_supervisor_id FROM student_internships si
+      WHERE si.student_user_id = auth.uid() AND si.site_supervisor_id IS NOT NULL
+      UNION
+      SELECT si.external_evaluator_id FROM student_internships si
+      WHERE si.student_user_id = auth.uid() AND si.external_evaluator_id IS NOT NULL
+    ))
+    -- Program coordinator: see profiles in their department
+    -- (uses metadata helper to avoid recursion — no profiles subquery)
+    OR (internhub.current_role() = 'program_coordinator'
+      AND department_id = internhub.current_department_id()
+    )
+  );
+
+-- ============================================================
+-- 1b. PROGRAM COORDINATOR RLS on all other tables
+--     All use internhub.current_*() metadata helpers to avoid
+--     querying profiles (which would trigger profiles_select and
+--     potentially recurse back to these tables via FK joins).
 -- ============================================================
 
--- programs: PC can view own program
+-- programs: PC can view programs in their department
 CREATE POLICY programs_pc_select ON programs
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid()
-        AND pr.role = 'program_coordinator'
-        AND pr.program_id IS NOT NULL
-    )
+    AND university_id = internhub.current_university_id()
+    AND department_id = internhub.current_department_id()
   );
 
--- students: PC can see students in their program
+-- students: PC can see students in their program (via metadata)
 CREATE POLICY students_pc_select ON students
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND program_id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND department_id = internhub.current_department_id()
   );
 
 CREATE POLICY students_pc_insert ON students
   FOR INSERT TO authenticated
   WITH CHECK (
     internhub.current_role() = 'program_coordinator'
-    AND program_id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND department_id = internhub.current_department_id()
   );
 
 CREATE POLICY students_pc_update ON students
   FOR UPDATE TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND program_id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND department_id = internhub.current_department_id()
   )
   WITH CHECK (
     internhub.current_role() = 'program_coordinator'
-    AND program_id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND department_id = internhub.current_department_id()
   );
 
 -- supervisors: PC can view supervisors in their university (to assign)
@@ -79,87 +120,54 @@ CREATE POLICY supervisors_pc_select ON supervisors
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND university_id IN (
-      SELECT pr.university_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND university_id = internhub.current_university_id()
   );
 
 CREATE POLICY supervisors_pc_insert ON supervisors
   FOR INSERT TO authenticated
   WITH CHECK (
     internhub.current_role() = 'program_coordinator'
-    AND university_id IN (
-      SELECT pr.university_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND university_id = internhub.current_university_id()
   );
 
 CREATE POLICY supervisors_pc_update ON supervisors
   FOR UPDATE TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND university_id IN (
-      SELECT pr.university_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND university_id = internhub.current_university_id()
   )
   WITH CHECK (
     internhub.current_role() = 'program_coordinator'
-    AND university_id IN (
-      SELECT pr.university_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND university_id = internhub.current_university_id()
   );
 
--- student_internships: PC can view internships of their program's students
+-- student_internships: PC can view internships of their department's students
 CREATE POLICY student_internships_pc_select ON student_internships
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND student_user_id IN (
-      SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
-    )
+    AND department_id = internhub.current_department_id()
   );
 
 CREATE POLICY student_internships_pc_update ON student_internships
   FOR UPDATE TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND student_user_id IN (
-      SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
-    )
+    AND department_id = internhub.current_department_id()
   )
   WITH CHECK (
     internhub.current_role() = 'program_coordinator'
-    AND student_user_id IN (
-      SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
-    )
+    AND department_id = internhub.current_department_id()
   );
 
--- weekly_logs: PC can view/update logs of their program's students
+-- weekly_logs: PC can view/update logs of their department's students
 CREATE POLICY weekly_logs_pc_select ON weekly_logs
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
@@ -169,105 +177,81 @@ CREATE POLICY weekly_logs_pc_update ON weekly_logs
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- evaluations: PC can view evaluations of their program's students
+-- evaluations: PC can view evaluations of their department's students
 CREATE POLICY evaluations_pc_select ON evaluations
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- attendance: PC can view attendance of their program's students
+-- attendance: PC can view attendance of their department's students
 CREATE POLICY attendance_pc_select ON attendance
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- tasks: PC can view tasks linked to their program
+-- tasks: PC can view tasks in their department
 CREATE POLICY tasks_pc_select ON tasks
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
-    AND program_id IN (
-      SELECT pr.program_id FROM profiles pr
-      WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-    )
+    AND department_id = internhub.current_department_id()
   );
 
--- task_assignments: PC can view task assignments for their program's students
+-- task_assignments: PC can view task assignments for their department's students
 CREATE POLICY task_assignments_pc_select ON task_assignments
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- certificates: PC can view certificates of their program's students
+-- certificates: PC can view certificates of their department's students
 CREATE POLICY certificates_pc_select ON certificates
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- documents: PC can view documents of their program's students
+-- documents: PC can view documents of their department's students
 CREATE POLICY documents_pc_select ON documents
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND uploaded_by IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
--- internship_applications: PC can view applications from their program's students
+-- internship_applications: PC can view applications from their department's students
 CREATE POLICY internship_applications_pc_select ON internship_applications
   FOR SELECT TO authenticated
   USING (
     internhub.current_role() = 'program_coordinator'
     AND student_user_id IN (
       SELECT s.user_id FROM students s
-      WHERE s.program_id IN (
-        SELECT pr.program_id FROM profiles pr
-        WHERE pr.user_id = auth.uid() AND pr.role = 'program_coordinator'
-      )
+      WHERE s.department_id = internhub.current_department_id()
     )
   );
 
@@ -296,15 +280,12 @@ CREATE POLICY internships_select_mou_aware ON internships
     internhub.current_role() = 'super_admin'
     OR
     -- Company HR sees own company's internships
-    (internhub.current_role() = 'company_hr' AND company_id = (
-      SELECT pr.company_id FROM profiles pr WHERE pr.user_id = auth.uid()
-    ))
+    (internhub.current_role() = 'company_hr' AND company_id = internhub.current_company_id())
     OR
     -- University-side roles: only see internships where either:
     --   (a) internship.university_id IS NULL (open marketplace), OR
     --   (b) internship.university_id matches their university AND
-    --       there is an active MOU, OR
-    --   (c) the internship has no specific university (null) and status is open
+    --       there is an active MOU
     (
       internhub.current_role() IN ('university_admin', 'department_coordinator', 'program_coordinator', 'faculty_supervisor', 'student')
       AND (
@@ -313,7 +294,7 @@ CREATE POLICY internships_select_mou_aware ON internships
         OR
         -- University-targeted internships: require active MOU
         (university_id IS NOT NULL
-          AND university_id = (SELECT pr.university_id FROM profiles pr WHERE pr.user_id = auth.uid())
+          AND university_id = internhub.current_university_id()
           AND EXISTS (
             SELECT 1 FROM company_university_mous mou
             WHERE mou.company_id = internships.company_id
@@ -327,7 +308,7 @@ CREATE POLICY internships_select_mou_aware ON internships
       -- the student/coordinator must be in that department
       AND (
         internships.department_id IS NULL
-        OR internships.department_id = (SELECT pr.department_id FROM profiles pr WHERE pr.user_id = auth.uid())
+        OR internships.department_id = internhub.current_department_id()
         OR internhub.current_role() IN ('university_admin', 'super_admin')
       )
     )
@@ -343,7 +324,7 @@ CREATE POLICY internships_insert_mou_check ON internships
     OR
     -- Company HR: if targeting a university, must have active MOU
     (internhub.current_role() = 'company_hr'
-      AND company_id = (SELECT pr.company_id FROM profiles pr WHERE pr.user_id = auth.uid())
+      AND company_id = internhub.current_company_id()
       AND (
         -- No university targeting: always allowed (marketplace)
         university_id IS NULL
@@ -380,12 +361,10 @@ UPDATE programs p
     AND p.program_coordinator_id IS NULL;
 
 -- ============================================================
--- 4. GRANT execute on RLS helper functions to program_coordinator
+-- 4. GRANT execute on RLS helper functions
 -- ============================================================
--- NOTE: program_coordinator is a user_role ENUM value, NOT a database ROLE.
--- All authenticated users (including PCs) already have EXECUTE on internhub.*
--- functions via the authenticated role grants. These GRANTs would fail with
--- 'role "program_coordinator" does not exist' (42704) because there is no
--- separate DB role for this user_type. Skipping intentionally.
+-- NOTE: program_coordinator is a user_role ENUM value, NOT a database
+-- ROLE. All authenticated users already have EXECUTE on internhub.*
+-- functions via the authenticated role grants. Skipping intentionally.
 
 COMMIT;
