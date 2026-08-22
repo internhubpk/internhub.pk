@@ -209,7 +209,7 @@ export default function FacultySupervisorReportsPage() {
   // University domain (used for the certificate verification URL —
   // previously hardcoded as "university.edu.pk/verify"). Fallback to
   // the platform apex domain if the university has no `domain` set.
-  const [universityDomain, setUniversityDomain] = useState<string>("internhub.pk");
+  const [universityDomain, setUniversityDomain] = useState<string>("careerstep.tech");
   const [departmentName, setDepartmentName] = useState<string>("Department");
 
   // Persist certificate to the `certificates` table via the
@@ -395,11 +395,11 @@ export default function FacultySupervisorReportsPage() {
             .maybeSingle();
           if (uni?.name) setUniversityName(uni.name);
           // Prefer the university's own domain; fall back to
-          // <slug>.internhub.pk so the verify URL is always valid.
+          // <slug>.careerstep.tech so the verify URL is always valid.
           if (uni?.domain) {
             setUniversityDomain(uni.domain);
           } else if (uni?.slug) {
-            setUniversityDomain(`${uni.slug}.internhub.pk`);
+            setUniversityDomain(`${uni.slug}.careerstep.tech`);
           }
         }
         if (profile?.department_id) {
@@ -627,7 +627,7 @@ export default function FacultySupervisorReportsPage() {
       generatePdf(
         {
           title: "Internship Completion Certificate",
-          subtitle: universityName || "InternHub.pk",
+          subtitle: universityName || "CareerStep",
           metadata: [
             { label: "Student Name", value: studentName },
             { label: "Student ID", value: selectedStudent.studentIdNumber || "—" },
@@ -659,7 +659,7 @@ export default function FacultySupervisorReportsPage() {
               ],
             },
           ],
-          footer: `InternHub.pk — Certificate generated on ${issuedAt}`,
+          footer: `CareerStep — Certificate generated on ${issuedAt}`,
         },
         `certificate-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );
@@ -713,7 +713,7 @@ export default function FacultySupervisorReportsPage() {
               ],
             },
           ],
-          footer: `InternHub.pk — Marksheet generated on ${new Date().toLocaleDateString()}`,
+          footer: `CareerStep — Marksheet generated on ${new Date().toLocaleDateString()}`,
         },
         `marksheet-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );

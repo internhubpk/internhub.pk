@@ -158,7 +158,7 @@ export default function UniversitiesPage() {
                   {universities.length}+
                 </span>{" "}
                 leading Pakistani universities offering internship opportunities
-                through InternHub.
+                through CareerStep.
               </p>
             </div>
             <Badge
@@ -373,7 +373,7 @@ export default function UniversitiesPage() {
             Is Your University Missing?
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto mb-6">
-            Join InternHub&apos;s growing network of partner universities and give your
+            Join CareerStep's growing network of partner universities and give your
             students access to premium internship opportunities.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">

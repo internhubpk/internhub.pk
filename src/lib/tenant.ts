@@ -1,5 +1,5 @@
 /**
- * InternHub Subdomain-Based Multi-Tenancy Service
+ * CareerStep Subdomain-Based Multi-Tenancy Service
  *
  * Provides centralized tenant (university) resolution based on subdomain.
  * Tenant records live in the `universities` table — this module only handles
@@ -7,10 +7,10 @@
  * the main domain.
  *
  * Architecture:
- *   internhub.pk (main platform)
- *     ├─ iiui.internhub.pk (IIUI portal)
- *     ├─ comsats.internhub.pk (COMSATS portal)
- *     └─ nust.internhub.pk (NUST portal)
+ *   careerstep.tech (main platform)
+ *     ├─ iiui.careerstep.tech (IIUI portal)
+ *     ├─ comsats.careerstep.tech (COMSATS portal)
+ *     └─ nust.careerstep.tech (NUST portal)
  *
  * To look up a tenant's brand/colors from the DB, call `getTenantConfig(slug)`
  * which returns the platform default synchronously — caller code can fetch
@@ -38,7 +38,7 @@ export interface TenantConfig extends BaseTenantConfig {
   primaryColor: string;
   /** Secondary/accent color (hex) */
   secondaryColor: string;
-  /** Full domain for this tenant (e.g., iiui.internhub.pk) */
+  /** Full domain for this tenant (e.g., iiui.careerstep.tech) */
   domain: string;
   /** Feature flags for this tenant */
   features: TenantFeatures;
@@ -73,14 +73,14 @@ export interface TenantFeatures {
  */
 export const PLATFORM_DEFAULT_TENANT: TenantConfig = {
   id: "main",
-  name: "InternHub",
+  name: "CareerStep",
   slug: "main",
   logo: "/logo.svg",
   logoUrl: "/logo.svg",
   favicon: "/favicon.ico",
   primaryColor: "#2563eb", // Blue-600
   secondaryColor: "#1e40af", // Blue-800
-  domain: "internhub.pk",
+  domain: "careerstep.tech",
   customDomain: null,
   features: {
     enableMarketplace: true,
@@ -95,8 +95,8 @@ export const PLATFORM_DEFAULT_TENANT: TenantConfig = {
   branding: {
     tagline: "Enterprise Internship Management Platform",
     description:
-      "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
-    supportEmail: "support@internhub.pk",
+      "CareerStep is a comprehensive multi-tenant SaaS platform for managing university internships.",
+    supportEmail: "support@careerstep.tech",
     supportPhone: "+92-300-1234567",
   },
 };

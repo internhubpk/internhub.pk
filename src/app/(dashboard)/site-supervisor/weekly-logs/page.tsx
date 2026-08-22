@@ -605,7 +605,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                                   lines: [log.supervisorFeedback || "(no feedback yet)"],
                                 },
                               ],
-                              footer: `InternHub.pk — Site Supervisor Weekly Log exported on ${new Date().toLocaleString()}`,
+                              footer: `CareerStep — Site Supervisor Weekly Log exported on ${new Date().toLocaleString()}`,
                             },
                             `weekly-log-${log.studentName.replace(/\s+/g, "-").toLowerCase()}-week-${log.weekNumber}.pdf`
                           );

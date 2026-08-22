@@ -131,16 +131,16 @@ function SidebarContent({
   const { user, profile, university, logout, isLoading } = useAuth();
   // BUG 4 FIX: Multi-tenant branding — sidebar is the one component visible
   // 100% of the time inside the app, so it must reflect the active tenant
-  // (university) brand rather than a hardcoded "InternHub" string.
+  // (university) brand rather than a hardcoded "CareerStep" string.
   // `useTenant` returns the resolved TenantConfig (subdomain-derived on
   // client, headers-derived on server). Falls back to PLATFORM_DEFAULT_TENANT
-  // on the main internhub.pk domain.
+  // on the main careerstep.tech domain.
   const { tenant } = useTenant();
   // Branding resolution priority:
   //   1. university.logo_url  — the per-university uploaded logo (DB).
   //      This is the ONLY source of truth for an actual branded logo.
   //   2. tenant.logoUrl/logo  — but ONLY if it differs from the platform
-  //      default `/logo.svg`. The platform default is the InternHub
+  //      default `/logo.svg`. The platform default is the CareerStep
   //      graduation-cap mark — it should NOT be shown on a university's
   //      sidebar (use the university's own logo or the Building2 fallback).
   //   3. No logo at all  →  render the <Building2/> Lucide icon as a
@@ -151,7 +151,7 @@ function SidebarContent({
   // which matches what a multi-tenant university sidebar should
   // communicate when no logo has been uploaded.
   const tenantName =
-    university?.name || tenant?.name || "InternHub";
+    university?.name || tenant?.name || "CareerStep";
   const PLATFORM_DEFAULT_LOGO = "/logo.svg";
   const tenantLogoOverride =
     tenant?.logoUrl && tenant.logoUrl !== PLATFORM_DEFAULT_LOGO

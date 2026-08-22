@@ -86,8 +86,8 @@ interface SystemHealth {
 }
 
 const defaultSettings: PlatformSettings = {
-  platform_name: "InternHub",
-  support_email: "support@internhub.pk",
+  platform_name: "CareerStep",
+  support_email: "support@careerstep.tech",
   default_language: "en",
   email_notifications: true,
   registration_alerts: true,

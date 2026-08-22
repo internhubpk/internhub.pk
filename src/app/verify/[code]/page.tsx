@@ -109,7 +109,7 @@ export async function generateMetadata({
     : canonicalPath;
 
   const title = `Certificate Verification — ${code}`;
-  const description = `Verify the authenticity of InternHub certificate ${code}. Public, no login required.`;
+  const description = `Verify the authenticity of CareerStep certificate ${code}. Public, no login required.`;
 
   return {
     title,
@@ -122,7 +122,7 @@ export async function generateMetadata({
       description,
       type: "website",
       url: canonicalUrl,
-      siteName: "InternHub",
+      siteName: "CareerStep",
     },
     twitter: {
       card: "summary",
@@ -152,7 +152,7 @@ export async function generateMetadata({
 //        in production, http in local dev)
 //
 //   This is ONLY used as a fallback when NEXT_PUBLIC_APP_URL is unset.
-//   In production, NEXT_PUBLIC_APP_URL=https://internhub.pk is set, so
+//   In production, NEXT_PUBLIC_APP_URL=https://careerstep.tech is set, so
 //   the canonical helper takes precedence and we never leak the
 //   deployment-derived host into the response.
 // ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ async function getRequestOrigin(): Promise<string> {
   const host =
     headerList.get("x-forwarded-host") ||
     headerList.get("host") ||
-    "internhub.pk";
+    "careerstep.tech";
   const proto =
     headerList.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
     (host.startsWith("localhost") ? "http" : "https");
@@ -218,7 +218,7 @@ export default async function CertificateVerificationPage({
             <div className="h-8 w-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
               <Award className="h-5 w-5" />
             </div>
-            InternHub
+            CareerStep
           </Link>
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" />
@@ -250,7 +250,7 @@ export default async function CertificateVerificationPage({
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to InternHub homepage
+              Go to CareerStep homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -274,13 +274,13 @@ export default async function CertificateVerificationPage({
             </p>
             <p className="text-sm text-slate-500 dark:text-slate-500">
               The certificate may have been revoked, the code may be mistyped,
-              or the certificate was not issued through InternHub.
+              or the certificate was not issued through CareerStep.
             </p>
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to InternHub homepage
+              Go to CareerStep homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -419,7 +419,7 @@ export default async function CertificateVerificationPage({
             {/* Footer */}
             <div className="text-center text-xs text-slate-500 dark:text-slate-500 px-4">
               <p>
-                <StableNow prefix="Verified by InternHub at " />
+                <StableNow prefix="Verified by CareerStep at " />
               </p>
               <p className="mt-1">
                 This verification is authoritative. For disputes, contact the

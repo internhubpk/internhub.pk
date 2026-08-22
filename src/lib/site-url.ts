@@ -1,5 +1,5 @@
 /**
- * Canonical public URL helper for InternHub.
+ * Canonical public URL helper for CareerStep.
  *
  * Used to generate STABLE, PUBLIC, CANONICAL URLs to the certificate
  * verification page (`/verify/<code>`) that are safe to share on
@@ -40,7 +40,7 @@
  * This helper resolves the canonical public URL with this priority:
  *
  *   1. `NEXT_PUBLIC_APP_URL`  (canonical production domain, e.g.
- *                              `https://internhub.pk`)
+ *                              `https://careerstep.tech`)
  *   2. `NEXT_PUBLIC_SITE_URL` (legacy alias, same purpose)
  *
  * It NEVER falls back to `VERCEL_URL` — that was the root cause of
@@ -73,8 +73,8 @@
  * resolves to the deployment URL — re-introducing the exact bug this
  * helper was created to fix.
  *
- * The canonical production domain of the InternHub platform is
- * `internhub.pk` (declared in `PLATFORM_DEFAULT_TENANT.domain` in
+ * The canonical production domain of the CareerStep platform is
+ * `careerstep.tech` (declared in `PLATFORM_DEFAULT_TENANT.domain` in
  * `src/lib/tenant.ts`). Using it as a last-resort fallback is NOT
  * "hardcoding a URL in the frontend" — it's a platform-level constant
  * that any `NEXT_PUBLIC_APP_URL` override (staging, custom tenant
@@ -86,7 +86,7 @@
  * `https://internhub.pk/verify/<code>` instead of either a relative
  * path or a Vercel deployment URL. That is the desired behavior.
  */
-const DEFAULT_PRODUCTION_URL = "https://internhub.pk";
+const DEFAULT_PRODUCTION_URL = "https://careerstep.tech";
 
 export function getCanonicalBaseUrl(): string {
   const fromEnv =
@@ -102,10 +102,10 @@ export function getCanonicalBaseUrl(): string {
  *
  * Usage:
  *   buildVerificationUrl("IH-VKSC-LIFT")
- *   // → "https://internhub.pk/verify/IH-VKSC-LIFT"
+ *   // → "https://careerstep.tech/verify/IH-VKSC-LIFT"
  *
  * Always returns an ABSOLUTE URL — uses the canonical env var if set,
- * otherwise the platform default `https://internhub.pk`. Callers in
+ * otherwise the platform default `https://careerstep.tech`. Callers in
  * server contexts that want to honor the request origin (e.g. for
  * internal API fetches on a staging deployment) should use
  * `buildVerificationUrlFromRequest` instead.
@@ -131,7 +131,7 @@ export function buildVerificationUrl(verificationCode: string): string {
  *
  * Priority:
  *   1. `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` (canonical)
- *   2. `DEFAULT_PRODUCTION_URL` (platform default: https://internhub.pk)
+ *   2. `DEFAULT_PRODUCTION_URL` (platform default: https://careerstep.tech)
  *   3. `requestOrigin` (only when both env vars AND the platform
  *      default are somehow unset — should never happen in practice)
  *
@@ -147,7 +147,7 @@ export function buildVerificationUrl(verificationCode: string): string {
  * redirected to `https://vercel.com/sso/access/request?...` — a
  * Vercel SSO login wall. That broke public verification entirely.
  *
- * The platform default `https://internhub.pk` is the correct
+ * The platform default `https://careerstep.tech` is the correct
  * canonical production domain (declared in
  * `PLATFORM_DEFAULT_TENANT.domain`). Certificates generated on a
  * preview deployment should still point to production — they're
@@ -182,7 +182,7 @@ export function buildVerificationUrlFromRequest(
  * NOTE: This deliberately does NOT use `DEFAULT_PRODUCTION_URL` —
  * server-to-server `fetch()` calls must hit the SAME origin the
  * request came in on (localhost in dev, the deployment URL on
- * Vercel). Defaulting to `https://internhub.pk` would route internal
+ * Vercel). Defaulting to `https://careerstep.tech` would route internal
  * API calls to production even from a local dev server, which would
  * break auth (cookies don't cross domains) and confuse debugging.
  */

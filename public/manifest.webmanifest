@@ -1,6 +1,6 @@
 {
-  "name": "InternHub — Internship Management Platform",
-  "short_name": "InternHub",
+  "name": "CareerStep — Internship Management Platform",
+  "short_name": "CareerStep",
   "description": "Multi-tenant university internship management: weekly logs, evaluations, certificates, reports.",
   "start_url": "/dashboard",
   "scope": "/",

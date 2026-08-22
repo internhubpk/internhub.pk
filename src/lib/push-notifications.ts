@@ -31,7 +31,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // ----------------------------------------------------------------------------
 let _vapidPublicKey: string | null = null;
 let _vapidPrivateKey: string | null = null;
-let _vapidSubject: string = "mailto:noreply@internhub.pk";
+let _vapidSubject: string = "mailto:noreply@careerstep.tech";
 let _vapidResolvedFromDb = false;
 
 /**
@@ -50,7 +50,7 @@ async function resolveVapidKeys(): Promise<{
     return {
       publicKey: process.env.VAPID_PUBLIC_KEY,
       privateKey: process.env.VAPID_PRIVATE_KEY,
-      subject: process.env.VAPID_SUBJECT || "mailto:noreply@internhub.pk",
+      subject: process.env.VAPID_SUBJECT || "mailto:noreply@careerstep.tech",
     };
   }
 
@@ -70,7 +70,7 @@ async function resolveVapidKeys(): Promise<{
         if (v.public_key && v.private_key) {
           _vapidPublicKey = v.public_key;
           _vapidPrivateKey = v.private_key;
-          _vapidSubject = v.subject || "mailto:noreply@internhub.pk";
+          _vapidSubject = v.subject || "mailto:noreply@careerstep.tech";
         }
       }
     } catch (err) {

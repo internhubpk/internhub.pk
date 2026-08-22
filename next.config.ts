@@ -3,7 +3,7 @@ import withSerwistInit from "@serwist/next";
 import pkg from "./package.json";
 
 // ============================================================================
-// InternHub Next.js Configuration
+// CareerStep Next.js Configuration
 // ----------------------------------------------------------------------------
 // PWA support is provided by Serwist (@serwist/next) — the maintained
 // successor to next-pwa. The service worker source is at src/sw.ts.
@@ -30,10 +30,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "myu.xirea.tech",
     "iiui.xirea.tech",
-    "internhub.pk",
+    "careerstep.tech",
     "myu.xirea.tech:3000",
     "iiui.xirea.tech:3000",
-    "internhub.pk:3000",
+    "careerstep.tech:3000",
   ],
   // PWA: add manifest headers so /manifest.webmanifest is served with the
   // correct MIME type (some browsers refuse to install the PWA otherwise).

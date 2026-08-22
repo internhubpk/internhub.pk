@@ -609,7 +609,7 @@ export default function StudentWeeklyLogsPage() {
                                     lines: [log.supervisor_feedback || "(no feedback yet)"],
                                   },
                                 ],
-                                footer: `InternHub.pk — Weekly Log exported on ${new Date().toLocaleString()}`,
+                                footer: `CareerStep — Weekly Log exported on ${new Date().toLocaleString()}`,
                               },
                               `weekly-log-week-${log.week_number ?? log.week_start_date}.pdf`
                             );

@@ -749,7 +749,7 @@ export default function SuperAdminUniversitiesPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used in subdomain: {formData.slug || 'slug'}.internhub.pk
+                  Used in subdomain: {formData.slug || 'slug'}.careerstep.tech
                 </p>
               </div>
 

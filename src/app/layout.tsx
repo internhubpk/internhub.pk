@@ -66,32 +66,32 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: {
       default: isMainPlatform 
-        ? "InternHub - Enterprise Internship Management Platform"
+        ? "CareerStep - Enterprise Internship Management Platform"
         : `${tenantConfig.name} - ${tenantConfig.branding.tagline || "Internship Portal"}`,
       template: isMainPlatform 
-        ? "%s | InternHub" 
+        ? "%s | CareerStep" 
         : `%s | ${tenantConfig.name}`,
     },
     description:
       tenantConfig.branding.description ||
-      "InternHub is a comprehensive multi-tenant SaaS platform for managing university internships.",
+      "CareerStep is a comprehensive multi-tenant SaaS platform for managing university internships.",
     keywords: [
       tenantConfig.name,
-      "InternHub",
+      "CareerStep",
       "internship management",
       "university internships",
       "student placements",
       ...(isMainPlatform ? ["enterprise SaaS", "education technology"] : []),
     ],
-    authors: [{ name: isMainPlatform ? "InternHub Team" : tenantConfig.name }],
-    creator: "InternHub",
+    authors: [{ name: isMainPlatform ? "CareerStep Team" : tenantConfig.name }],
+    creator: "CareerStep",
     publisher: tenantConfig.name,
     formatDetection: {
       email: false,
       address: false,
       telephone: false,
     },
-    metadataBase: new URL("https://internhub.pk"),
+    metadataBase: new URL("https://www.careerstep.tech"),
     alternates: {
       canonical: "/",
     },
@@ -122,10 +122,10 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: "en_US",
       url: tenantConfig.domain 
         ? `https://${tenantConfig.domain}` 
-        : "https://internhub.pk",
+        : "https://www.careerstep.tech",
       siteName: tenantConfig.name,
       title: isMainPlatform 
-        ? "InternHub - Enterprise Internship Management Platform"
+        ? "CareerStep - Enterprise Internship Management Platform"
         : `${tenantConfig.name} - ${tenantConfig.branding.tagline || "Internship Portal"}`,
       description: tenantConfig.branding.description,
       images: [
@@ -140,11 +140,11 @@ export async function generateMetadata(): Promise<Metadata> {
     twitter: {
       card: "summary_large_image",
       title: isMainPlatform 
-        ? "InternHub - Enterprise Internship Management Platform"
+        ? "CareerStep - Enterprise Internship Management Platform"
         : `${tenantConfig.name}`,
       description: tenantConfig.branding.description,
       images: ["/og-image.png"],
-      creator: "@internhub",
+      creator: "@careerstep",
     },
     robots: {
       index: true,
@@ -179,16 +179,16 @@ export default async function RootLayout({
     // (Build-time, missing env vars, or DB unavailable — silently fall back.)
     tenantConfig = {
       id: "default",
-      name: "InternHub",
+      name: "CareerStep",
       slug: "main",
       logo: "/icon.svg",
       favicon: "/icon.svg",
       primaryColor: "#2563eb",
       secondaryColor: "#1e40af",
-      domain: "internhub.pk",
+      domain: "careerstep.tech",
       branding: {
         tagline: "Internship Management Platform",
-        description: "InternHub is a comprehensive platform for managing university internships.",
+        description: "CareerStep is a comprehensive platform for managing university internships.",
       },
       features: {
         enableMarketplace: true,

@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StableLastUpdated } from "@/components/shared/stable-date";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - InternHub",
-  description: "Learn how InternHub collects, uses, and protects your data.",
+  title: "Privacy Policy - CareerStep",
+  description: "Learn how CareerStep collects, uses, and protects your data.",
 };
 
 export default function PrivacyPage() {
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-muted-foreground">
               <p>
-                InternHub collects information you provide directly to us, including:
+                CareerStep collects information you provide directly to us, including:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Account information (name, email address, role)</li>
@@ -117,7 +117,7 @@ export default function PrivacyPage() {
                 For privacy-related inquiries, please contact us at:
               </p>
               <p className="mt-2 font-medium text-foreground">
-                Email: privacy@internhub.pk
+                Email: privacy@careerstep.tech
               </p>
             </CardContent>
           </Card>

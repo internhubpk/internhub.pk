@@ -25,10 +25,10 @@ function buildWhatsAppUrl(message: string) {
 }
 
 const SUPPORT_MESSAGE =
-  "Hello InternHub Support, I need assistance with my account/platform. Please help me with my query.";
+  "Hello CareerStep Support, I need assistance with my account/platform. Please help me with my query.";
 
 const BOOK_A_CALL_MESSAGE =
-  "Hello InternHub, I would like to book a call to discuss internship management solutions for our organization.";
+  "Hello CareerStep, I would like to book a call to discuss internship management solutions for our organization.";
 
 type CtaProps = {
   className?: string;

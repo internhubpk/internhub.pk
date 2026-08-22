@@ -15,12 +15,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
+import { extractSubdomain, isInfraDomain } from "@/lib/tenant";
 
 // Role to dashboard path mapping
 const ROLE_DASHBOARD_PATHS: Record<string, string> = {
   super_admin: "/super-admin",
   university_admin: "/university-admin",
   department_coordinator: "/department-coordinator",
+  program_coordinator: "/program-coordinator",
   faculty_supervisor: "/faculty-supervisor",
   student: "/student",
   company_hr: "/company-hr",
@@ -32,12 +34,22 @@ const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   university_admin: "University Admin",
   department_coordinator: "Department Coordinator",
+  program_coordinator: "Program Coordinator",
   faculty_supervisor: "Faculty Supervisor",
   student: "Student",
   company_hr: "Company HR",
   site_supervisor: "Site Supervisor",
   external_evaluator: "External Evaluator",
 };
+
+// Roles that MUST be on their university's subdomain (not apex domain)
+const TENANT_SCOPED_ROLES = new Set([
+  "university_admin",
+  "department_coordinator", 
+  "program_coordinator",
+  "faculty_supervisor",
+  "student",
+]);
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -105,6 +117,72 @@ export default function OnboardingPage() {
         setStatus("redirecting");
         const path = ROLE_DASHBOARD_PATHS[foundRole];
         console.log(`Redirecting to ${path} for role: ${foundRole}`);
+        
+        // ================================================================
+        // TENANT-AWARE REDIRECT FOR UNIVERSITY ACCOUNTS
+        // ================================================================
+        // University admins, students, faculty, coordinators MUST be
+        // redirected to their university's subdomain (e.g., iiui.careerstep.tech)
+        // NOT the apex domain (careerstep.tech)
+        
+        if (TENANT_SCOPED_ROLES.has(foundRole) && typeof window !== "undefined") {
+          const currentHostname = window.location.hostname;
+          const currentSubdomain = extractSubdomain(currentHostname);
+          
+          // Get tenant info from user metadata first
+          let userTenantSlug = 
+            (user?.app_metadata?.tenant_slug as string | undefined) ||
+            (user?.user_metadata?.tenant_slug as string | undefined) ||
+            null;
+          
+          let userTenantDomain = 
+            (user?.app_metadata?.tenant_domain as string | undefined) ||
+            (user?.user_metadata?.tenant_domain as string | undefined) ||
+            null;
+
+          // If metadata missing, look up from DB
+          if ((!userTenantSlug || !userTenantDomain) && user) {
+            try {
+              const supabase = createClient();
+              if (supabase) {
+                const { data: profileData } = await supabase
+                  .from("profiles")
+                  .select("university_id, universities!inner(slug, domain)")
+                  .eq("user_id", user.id)
+                  .maybeSingle();
+                
+                if (profileData?.universities) {
+                  const uni = profileData.universities as { slug?: string; domain?: string };
+                  if (uni.slug) userTenantSlug = uni.slug;
+                  if (uni.domain) userTenantDomain = uni.domain;
+                }
+              }
+            } catch (e) {
+              console.error("[onboarding] Tenant lookup failed:", e);
+            }
+          }
+
+          // If user has tenant info AND is on wrong subdomain, redirect to tenant portal
+          if (
+            userTenantSlug && 
+            userTenantDomain &&
+            userTenantSlug !== currentSubdomain
+          ) {
+            console.log(`[onboarding] Redirecting ${foundRole} to tenant: ${userTenantSlug} (${userTenantDomain})`);
+            
+            // Use window.location.href for cross-domain redirect (router.push can't do this)
+            redirectTimerRef.current = setTimeout(() => {
+              const targetUrl = `https://${userTenantDomain}${path}`;
+              window.location.href = targetUrl;
+            }, 800);
+            return; // Early return - don't execute the normal router.push below
+          }
+          
+          // User is tenant-scoped but no tenant found - show warning
+          if (!userTenantSlug && !currentSubdomain) {
+            console.warn(`[onboarding] ${foundRole} has no tenant assigned - staying on apex`);
+          }
+        }
         
         // Brief delay so user sees the success state. Store the timer id
         // so the unmount cleanup can cancel it if the user navigates away

@@ -16,7 +16,7 @@ export default function OfflinePage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-bold">You&apos;re offline</h1>
           <p className="text-muted-foreground">
-            We can&apos;t reach InternHub right now. Please check your internet
+            We can&apos;t reach CareerStep right now. Please check your internet
             connection and try again.
           </p>
         </div>

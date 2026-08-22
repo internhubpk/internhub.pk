@@ -1353,7 +1353,7 @@ export default function SiteSupervisorEvaluationsPage() {
                                     sections: [
                                       { title: "Comments", lines: [evaluation.comments || "(no comments)"] },
                                     ],
-                                    footer: `InternHub.pk — Site Supervisor Evaluation exported on ${new Date().toLocaleString()}`,
+                                    footer: `CareerStep — Site Supervisor Evaluation exported on ${new Date().toLocaleString()}`
                                   },
                                   `evaluation-${evaluation.studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
                                 );
@@ -1560,7 +1560,7 @@ export default function SiteSupervisorEvaluationsPage() {
                           sections: [
                             { title: "Comments", lines: [selectedEvaluation.comments || "(no comments)"] },
                           ],
-                          footer: `InternHub.pk — Site Supervisor Evaluation exported on ${new Date().toLocaleString()}`,
+                          footer: `CareerStep — Site Supervisor Evaluation exported on ${new Date().toLocaleString()}`
                         },
                         `evaluation-${selectedEvaluation.studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
                       );

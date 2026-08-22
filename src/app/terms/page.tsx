@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Terms of Service - InternHub",
-  description: "Terms and conditions for using the InternHub platform.",
+  title: "Terms of Service - CareerStep",
+  description: "Terms and conditions for using the CareerStep platform.",
 };
 
 export default function TermsPage() {
@@ -26,7 +26,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-muted-foreground">
               <p>
-                By accessing and using InternHub ("the Platform"), you agree to be bound by these Terms of Service.
+                By accessing and using CareerStep ("the Platform"), you agree to be bound by these Terms of Service.
                 If you do not agree to these terms, please do not use the Platform.
               </p>
             </CardContent>
@@ -85,7 +85,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-muted-foreground">
               <p>
-                The Platform and its original content, features, and functionality are owned by InternHub
+                The Platform and its original content, features, and functionality are owned by CareerStep
                 and are protected by international copyright, trademark, and other intellectual property laws.
               </p>
               <p className="mt-2">
@@ -101,7 +101,7 @@ export default function TermsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-muted-foreground">
               <p>
-                InternHub is provided "as is" without warranties of any kind. We shall not be liable for:
+                CareerStep is provided "as is" without warranties of any kind. We shall not be liable for:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Indirect, incidental, or consequential damages</li>
@@ -145,7 +145,7 @@ export default function TermsPage() {
                 For questions about these terms, contact us at:
               </p>
               <p className="mt-2 font-medium text-foreground">
-                Email: legal@internhub.pk
+                Email: legal@careerstep.tech
               </p>
             </CardContent>
           </Card>

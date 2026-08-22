@@ -593,7 +593,7 @@ export async function POST(request: Request) {
       const verificationCode = generateVerificationCode();
       const verifyBaseUrl = process.env.NEXT_PUBLIC_SITE_URL
         || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\.supabase\.co$/, "")
-        || "https://internhub.pk";
+        || "https://careerstep.tech";
       const verificationUrl = `${verifyBaseUrl}/verify/${verificationCode}`;
 
       // Generate a real PDF on the server using the report_data so the

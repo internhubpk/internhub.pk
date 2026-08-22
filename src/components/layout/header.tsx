@@ -712,7 +712,7 @@ export function Header({ className }: HeaderProps) {
                   >
                     <Building2 className="h-4 w-4" />
                     <span className="text-xs font-medium">
-                      {university?.name?.split(" ")[0] || "InternHub"}
+                      {university?.name?.split(" ")[0] || "CareerStep"}
                     </span>
                   </Link>
                 </BreadcrumbLink>

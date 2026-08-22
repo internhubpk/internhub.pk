@@ -414,7 +414,7 @@ function TenantHero({ branding }: { branding: Branding }) {
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />
-                <span>Powered by <strong className="text-foreground">InternHub</strong></span>
+                <span>Powered by <strong className="text-foreground">CareerStep</strong></span>
               </div>
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />
@@ -724,7 +724,7 @@ export default function LandingPage() {
           adoption stats (10K+ students, 500+ companies, 200+ universities,
           95% satisfaction) and entirely fictional named testimonials
           (including one falsely attributed to "Dean of Engineering, MIT").
-          Neither reflected real InternHub.pk customers, so both were
+          Neither reflected real CareerStep customers, so both were
           removed rather than restyled. This section describes real,
           shipped platform capability per audience instead. */}
       <AnimatedSection className="bg-background" id="audiences">

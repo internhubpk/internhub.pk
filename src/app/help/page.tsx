@@ -63,7 +63,7 @@ const helpCategories: HelpCategory[] = [
     id: "getting-started",
     name: "Getting Started",
     icon: Lightbulb,
-    description: "New to InternHub? Learn the basics and get up and running quickly.",
+    description: "New to CareerStep? Learn the basics and get up and running quickly.",
     color: "text-blue-600 dark:text-blue-400",
     bgColor: "bg-blue-50 dark:bg-blue-950/40",
   },
@@ -106,21 +106,21 @@ const faqData: FAQItem[] = [
   // Getting Started
   {
     category: "getting-started",
-    question: "What is InternHub and how does it work?",
+    question: "What is CareerStep and how does it work?",
     answer:
-      "InternHub is a comprehensive internship management platform that connects students with companies for internship opportunities. Students can browse available positions, submit applications, track their progress, and complete required documentation. Companies can post openings, review candidates, and manage the entire hiring process. Universities can oversee all activities related to their students' internships.",
+      "CareerStep is a comprehensive internship management platform that connects students with companies for internship opportunities. Students can browse available positions, submit applications, track their progress, and complete required documentation. Companies can post openings, review candidates, and manage the entire hiring process. Universities can oversee all activities related to their students' internships.",
   },
   {
     category: "getting-started",
-    question: "How do I create an account on InternHub?",
+    question: "How do I create an account on CareerStep?",
     answer:
       "Click the 'Get Started' or 'Register' button on the homepage. Select your role (Student, Company HR, or University Admin), fill in your details including email and password, and verify your email address. Once verified, you can complete your profile and start using the platform.",
   },
   {
     category: "getting-started",
-    question: "Is InternHub free to use?",
+    question: "Is CareerStep free to use?",
     answer:
-      "InternHub offers different tiers: Free tier includes basic features for individuals. Professional tier (for universities) adds advanced analytics and priority support. Enterprise tier provides full customization, dedicated account management, and unlimited features. Contact our sales team for detailed pricing.",
+      "CareerStep offers different tiers: Free tier includes basic features for individuals. Professional tier (for universities) adds advanced analytics and priority support. Enterprise tier provides full customization, dedicated account management, and unlimited features. Contact our sales team for detailed pricing.",
   },
 
   // For Students
@@ -164,9 +164,9 @@ const faqData: FAQItem[] = [
   },
   {
     category: "companies",
-    question: "Can I conduct interviews through InternHub?",
+    question: "Can I conduct interviews through CareerStep?",
     answer:
-      "Currently, InternHub facilitates the initial application process. For interviews, you can coordinate directly with candidates via email or phone. We're working on integrating video interview capabilities in a future update.",
+      "Currently, CareerStep facilitates the initial application process. For interviews, you can coordinate directly with candidates via email or phone. We're working on integrating video interview capabilities in a future update.",
   },
 
   // For Universities
@@ -200,7 +200,7 @@ const faqData: FAQItem[] = [
     category: "technical",
     question: "Why am I not receiving email notifications?",
     answer:
-      "First, check your spam/junk folder. Then ensure notifications are enabled in your Profile Settings. Whitelist emails from @internhub.pk domain. If issues persist, contact support with your registered email address.",
+      "First, check your spam/junk folder. Then ensure notifications are enabled in your Profile Settings. Whitelist emails from @careerstep.tech domain. If issues persist, contact support with your registered email address.",
   },
   {
     category: "technical",
@@ -311,7 +311,7 @@ export default function HelpPage() {
             Help Center
           </h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-8">
-            Find answers, learn how to use InternHub, and get in touch with our
+            Find answers, learn how to use CareerStep, and get in touch with our
             support team.
           </p>
 
@@ -523,14 +523,14 @@ export default function HelpPage() {
                   <div className="space-y-3">
                     {/* Email */}
                     <a
-                      href="mailto:support@internhub.pk"
+                      href="mailto:support@careerstep.tech"
                       className="flex items-center gap-3 p-3 rounded-lg bg-background/60 border border-border/30 hover:border-primary/30 transition-colors group"
                     >
                       <Mail className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                       <div>
                         <p className="text-sm font-medium">Email Support</p>
                         <p className="text-xs text-muted-foreground">
-                          support@internhub.pk
+                          support@careerstep.tech
                         </p>
                       </div>
                       <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -558,7 +558,7 @@ export default function ReportsPage() {
 
       // -------- Section 1: Report metadata --------
       sections.push(rowsToCsv([
-        ["InternHub.pk — Department Coordinator Full Report"],
+        ["CareerStep — Department Coordinator Full Report"],
         ["Generated At", now],
         ["Scope", profile?.role === "department_coordinator" ? "Department" : "University"],
         ["Report Year", selectedYear],
@@ -680,7 +680,7 @@ export default function ReportsPage() {
       }
 
       const fullCsv = sections.join("\n");
-      downloadCsv(`internhub_full_report_${today}.csv`, fullCsv);
+      downloadCsv(`careerstep_full_report_${today}.csv`, fullCsv);
     } catch (error) {
       console.error("Error generating full report:", error);
     } finally {

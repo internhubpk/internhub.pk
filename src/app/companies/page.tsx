@@ -189,7 +189,7 @@ export default function CompaniesPage() {
                 <span className="font-semibold text-foreground">
                   {companies.length}+
                 </span>{" "}
-                leading Pakistani companies hiring interns through InternHub.
+                leading Pakistani companies hiring interns through CareerStep.
               </p>
             </div>
             <Badge variant="secondary" className="w-fit text-sm py-1.5 px-4">
@@ -500,7 +500,7 @@ export default function CompaniesPage() {
             Want to Hire Interns?
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto mb-6">
-            Join thousands of companies using InternHub to find talented students
+            Join thousands of companies using CareerStep to find talented students
             from Pakistan&apos;s top universities.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">

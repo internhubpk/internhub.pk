@@ -1,6 +1,6 @@
 {
-  "name": "InternHub",
-  "short_name": "InternHub",
+  "name": "CareerStep",
+  "short_name": "CareerStep",
   "description": "Enterprise Internship Management Platform",
   "start_url": "/",
   "display": "standalone",

@@ -41,7 +41,7 @@ import {
 //   the same card; a tab toggle at the top switches between them.
 //
 // Removed (per user request):
-//   - "InternHub / Enterprise Internship Management Platform" tagline
+//   - "CareerStep / Enterprise Internship Management Platform" tagline
 //     (also removed from the auth layout).
 //   - The blue "Students & Super Admins: Sign in with email / Staff:
 //     Sign in with username" info banner — both fields now accept email

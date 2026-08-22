@@ -16,7 +16,7 @@ import {
 /**
  * Not Found Page (404)
  * 
- * Professional 404 page with InternHub branding.
+ * Professional 404 page with CareerStep branding.
  * Provides helpful navigation suggestions and links back to dashboard or login.
  */
 
@@ -177,7 +177,7 @@ export default function NotFound() {
         <p className="text-xs text-muted-foreground">
           {/* Hardcoded year — new Date().getFullYear() in a "use client"
               page is a hydration-mismatch anti-pattern. */}
-          © 2026 InternHub. All rights reserved.
+          © 2026 CareerStep. All rights reserved.
         </p>
       </footer>
     </div>

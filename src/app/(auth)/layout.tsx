@@ -52,7 +52,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             <span className="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-              InternHub
+              CareerStep
             </span>
           </h1>
         </div>
@@ -64,7 +64,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         {/* Footer text */}
         <p className="mt-5 sm:mt-6 text-center text-xs text-muted-foreground px-4">
-          © {new Date().getFullYear()} InternHub. All rights reserved.
+          © {new Date().getFullYear()} CareerStep. All rights reserved.
         </p>
       </div>
     </div>

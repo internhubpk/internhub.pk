@@ -717,7 +717,7 @@ export default function StudentsPage() {
             { label: "Total Hours", value: String(totalHours) },
           ],
           sections,
-          footer: `InternHub.pk — Weekly Logs export for ${studentName} on ${new Date().toLocaleString()}`,
+          footer: `CareerStep — Weekly Logs export for ${studentName} on ${new Date().toLocaleString()}`,
         },
         `weekly-logs-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );
@@ -887,7 +887,7 @@ export default function StudentsPage() {
             { label: "Evaluations Count", value: String(evals.length) },
           ],
           sections,
-          footer: `InternHub.pk — Final Report export for ${studentName} on ${new Date().toLocaleString()}`,
+          footer: `CareerStep — Final Report export for ${studentName} on ${new Date().toLocaleString()}`,
         },
         `final-report-${studentName.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );

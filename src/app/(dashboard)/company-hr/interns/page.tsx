@@ -313,7 +313,7 @@ export default function CompanyHRInternsPage() {
             { label: "Total Hours", value: String(totalHours) },
           ],
           sections,
-          footer: `InternHub.pk — Weekly Logs export for ${intern.student_name} on ${new Date().toLocaleString()}`,
+          footer: `CareerStep — Weekly Logs export for ${intern.student_name} on ${new Date().toLocaleString()}`,
         },
         `weekly-logs-${intern.student_name.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );
@@ -481,7 +481,7 @@ export default function CompanyHRInternsPage() {
             { label: "Evaluations Count", value: String(evals.length) },
           ],
           sections,
-          footer: `InternHub.pk — Final Report export for ${intern.student_name} on ${new Date().toLocaleString()}`,
+          footer: `CareerStep — Final Report export for ${intern.student_name} on ${new Date().toLocaleString()}`,
         },
         `final-report-${intern.student_name.replace(/\s+/g, "-").toLowerCase()}.pdf`
       );

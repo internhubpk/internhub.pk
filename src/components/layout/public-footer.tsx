@@ -69,14 +69,14 @@ export function PublicFooter({
                 <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
               <span className="text-lg sm:text-xl font-bold tracking-tight">
-                {isTenant ? branding.name : "InternHub"}
+                {isTenant ? branding.name : "CareerStep"}
               </span>
             </Link>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4 sm:mb-6 max-w-[220px] sm:max-w-xs">
               {isTenant ? (
                 <>
                   {branding.name}&apos;s official internship management portal, powered by
-                  InternHub&rsquo;s enterprise platform.
+                  CareerStep&rsquo;s enterprise platform.
                 </>
               ) : (
                 <>
@@ -137,7 +137,7 @@ export function PublicFooter({
             {/* Hardcoded year — new Date().getFullYear() in a "use client"
                 footer is a hydration-mismatch anti-pattern at the year
                 boundary across timezones (server UTC vs client TZ). */}
-            © 2026 {isTenant ? branding.name : "InternHub"}. All rights reserved.
+            © 2026 {isTenant ? branding.name : "CareerStep"}. All rights reserved.
           </p>
           <p className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
             <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
