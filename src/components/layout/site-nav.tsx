@@ -7,9 +7,9 @@ import {
   Menu, 
   LogIn, 
   Compass, 
-  Building2,
   ArrowRight,
-  Briefcase,
+  PlayCircle,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +21,9 @@ import {
 import { ThemeToggle } from "./theme-toggle";
 
 const navLinks = [
-  { href: "/marketplace", label: "Internships", icon: Compass, description: "Find opportunities" },
-  { href: "/internships", label: "Programs", icon: Briefcase, description: "Internship programs" },
+  { href: "/#how-it-works", label: "How it Works", icon: PlayCircle, description: "See how it works" },
+  { href: "/marketplace", label: "Marketplace", icon: Compass, description: "Find opportunities" },
+  { href: "/support", label: "Contact", icon: MessageSquare, description: "Get in touch" },
 ];
 
 export function SiteNav() {
