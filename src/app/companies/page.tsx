@@ -151,14 +151,28 @@ export default function CompaniesPage() {
   // Filter companies
   const filteredCompanies = useMemo(() => {
     return companies.filter((company) => {
+      const searchLower = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        company.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        company.city.toLowerCase().includes(searchQuery.toLowerCase());
+        !searchLower ||
+        company.name.toLowerCase().includes(searchLower) ||
+        company.industry.toLowerCase().includes(searchLower) ||
+        company.city.toLowerCase().includes(searchLower);
+      
       const matchesIndustry =
         selectedIndustry === "all" || company.industry === selectedIndustry;
+      
+      const provinceNormalized = (company.province || '').trim();
       const matchesProvince =
-        selectedProvince === "all" || company.province === selectedProvince;
+        selectedProvince === "all" || provinceNormalized === selectedProvince;
+
+      console.log('Filtering company:', company.name, { 
+        industry: company.industry,
+        province: provinceNormalized,
+        matchesIndustry, 
+        matchesProvince,
+        matchesSearch 
+      });
+      
       return matchesSearch && matchesIndustry && matchesProvince;
     });
   }, [searchQuery, selectedIndustry, selectedProvince]);

@@ -88,11 +88,13 @@ export default function UniversitiesPage() {
       if (error) throw error;
       
       if (data && data.length > 0) {
+        console.log('Raw university data from DB:', JSON.stringify(data, null, 2));
+        
         const uniList: UniversityData[] = data
           .filter((u: any) => u.name !== 'My University') // Filter out test entries
           .map((u: any) => {
             const settings = u.settings || {};
-            return {
+            const mapped = {
               id: u.id,
               name: u.name,
               slug: u.slug || u.name.toLowerCase().replace(/\s+/g, '-'),
@@ -106,7 +108,10 @@ export default function UniversitiesPage() {
               description: settings.description || u.description || `${u.name} - A partner university on CareerStep.`,
               website: u.website,
             };
+            console.log('Mapped university:', mapped.name, { province: mapped.province, type: mapped.type });
+            return mapped;
           });
+        console.log('Final uniList:', uniList.length, 'universities');
         setUniversities(uniList);
       }
     } catch (error) {
@@ -120,13 +125,29 @@ export default function UniversitiesPage() {
   // Filter universities
   const filteredUniversities = useMemo(() => {
     return universities.filter((uni) => {
+      const searchLower = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        uni.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        uni.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        uni.description.toLowerCase().includes(searchQuery.toLowerCase());
+        !searchLower ||
+        uni.name.toLowerCase().includes(searchLower) ||
+        uni.city.toLowerCase().includes(searchLower) ||
+        uni.description.toLowerCase().includes(searchLower);
+      
+      const provinceNormalized = (uni.province || '').trim();
       const matchesProvince =
-        selectedProvince === "all" || uni.province === selectedProvince;
-      const matchesType = selectedType === "all" || uni.type === selectedType;
+        selectedProvince === "all" || provinceNormalized === selectedProvince;
+      
+      const typeNormalized = (uni.type || 'public').trim().toLowerCase();
+      const matchesType =
+        selectedType === "all" || typeNormalized === selectedType;
+
+      console.log('Filtering:', uni.name, { 
+        province: provinceNormalized, 
+        type: typeNormalized,
+        matchesProvince, 
+        matchesType,
+        matchesSearch 
+      });
+      
       return matchesSearch && matchesProvince && matchesType;
     });
   }, [searchQuery, selectedProvince, selectedType]);
