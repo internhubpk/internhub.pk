@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const requestUrl = new URL(request.url);
     const token_hash = requestUrl.searchParams.get("token_hash");
     const type = requestUrl.searchParams.get("type");
-    const next = requestUrl.searchParams.get("next") || "/dashboard";
+    const next = safeRedirectPath(requestUrl.searchParams.get("next"));
     
     if (token_hash && type === "email") {
       const cookieStore = await cookies();

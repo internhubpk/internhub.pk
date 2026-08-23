@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeRedirectPath, resolveSameOrigin } from "@/lib/safe-redirect";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
@@ -49,20 +50,16 @@ export async function GET(request: NextRequest) {
       // NOT the apex domain (careerstep.tech)
       
       if (data?.user) {
-        const userRole = 
-          (data.user.app_metadata?.role as string | undefined) ||
-          (data.user.user_metadata?.role as string | undefined) ||
-          null;
+        // SECURITY (2026-08-23 audit): app_metadata only — user_metadata is
+        // user-writable and must never influence routing/tenant redirects.
+        const userRole =
+          (data.user.app_metadata?.role as string | undefined) || null;
         
         let userTenantSlug = 
-          (data.user.app_metadata?.tenant_slug as string | undefined) ||
-          (data.user.user_metadata?.tenant_slug as string | undefined) ||
-          null;
+          (data.user.app_metadata?.tenant_slug as string | undefined) || null;
         
         let userTenantDomain = 
-          (data.user.app_metadata?.tenant_domain as string | undefined) ||
-          (data.user.user_metadata?.tenant_domain as string | undefined) ||
-          null;
+          (data.user.app_metadata?.tenant_domain as string | undefined) || null;
 
         // If metadata missing but user is tenant-scoped, look up from DB
         if ((!userTenantSlug || !userTenantDomain) && userRole && TENANT_SCOPED_ROLES.has(userRole)) {
@@ -93,7 +90,8 @@ export async function GET(request: NextRequest) {
           console.log(`[auth/callback] Redirecting ${userRole} to tenant: ${userTenantSlug} (${userTenantDomain})`);
           
           // Build the target URL - go directly to dashboard on tenant domain
-          const redirectTo = requestUrl.searchParams.get("redirect_to") || "/dashboard";
+          // SECURITY: same-origin path validation prevents open redirects.
+          const redirectTo = safeRedirectPath(requestUrl.searchParams.get("redirect_to"));
           const targetUrl = `https://${userTenantDomain}${redirectTo}`;
           
           return NextResponse.redirect(targetUrl);
@@ -102,10 +100,10 @@ export async function GET(request: NextRequest) {
     }
     
     // Get redirect URL from query params or default to dashboard
-    const redirectTo = requestUrl.searchParams.get("redirect_to") || "/dashboard";
-    
-    // Redirect to dashboard after successful auth (non-tenant users or fallback)
-    return NextResponse.redirect(new URL(redirectTo, requestUrl.origin));
+    // SECURITY: same-origin path validation prevents open redirects.
+    return NextResponse.redirect(
+      resolveSameOrigin(requestUrl.searchParams.get("redirect_to"), requestUrl.origin)
+    );
     
   } catch (error) {
     console.error("Auth callback error:", error);
