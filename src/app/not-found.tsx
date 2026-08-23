@@ -9,48 +9,50 @@ import {
   Search,
   ArrowLeft,
   GraduationCap,
-  Building2,
-  Users,
+  Compass,
+  PlayCircle,
+  MessageSquare,
+  LifeBuoy,
 } from "lucide-react";
 
 /**
  * Not Found Page (404)
- * 
+ *
  * Professional 404 page with CareerStep branding.
- * Provides helpful navigation suggestions and links back to dashboard or login.
+ * Provides helpful navigation suggestions and links back to main pages.
  */
 
-// Quick navigation links for common destinations
+// Quick navigation links for common destinations - all working routes
 const quickLinks = [
   {
-    title: "Dashboard",
-    description: "Go to your main dashboard",
-    href: "/dashboard",
+    title: "Homepage",
+    description: "Go to the main page",
+    href: "/",
     icon: Home,
     color: "text-blue-500",
     bgColor: "bg-blue-500/10",
   },
   {
-    title: "Internships",
-    description: "Browse available internships",
-    href: "/internships",
-    icon: Search,
+    title: "Marketplace",
+    description: "Browse internships",
+    href: "/marketplace",
+    icon: Compass,
     color: "text-emerald-500",
     bgColor: "bg-emerald-500/10",
   },
   {
-    title: "Universities",
-    description: "View university partners",
-    href: "/universities",
-    icon: GraduationCap,
+    title: "How It Works",
+    description: "Learn about CareerStep",
+    href: "/#how-it-works",
+    icon: PlayCircle,
     color: "text-purple-500",
     bgColor: "bg-purple-500/10",
   },
   {
-    title: "Companies",
-    description: "Explore hiring companies",
-    href: "/companies",
-    icon: Building2,
+    title: "Contact Support",
+    description: "Get help from our team",
+    href: "/support",
+    icon: MessageSquare,
     color: "text-orange-500",
     bgColor: "bg-orange-500/10",
   },
@@ -67,13 +69,13 @@ export default function NotFound() {
           <div className="absolute inset-0 flex items-center justify-center opacity-5">
             <FileQuestion className="h-64 w-64" />
           </div>
-          
+
           {/* 404 Number */}
           <div className="relative">
             <h1 className="text-[10rem] md:text-[14rem] font-bold leading-none tracking-tighter text-muted-foreground/20 select-none">
               404
             </h1>
-            
+
             {/* Icon overlay */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background shadow-lg border">
@@ -115,6 +117,9 @@ export default function NotFound() {
                     <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
                       {link.title}
                     </p>
+                    <p className="text-xs text-muted-foreground mt-1 hidden sm:block">
+                      {link.description}
+                    </p>
                   </CardContent>
                 </Card>
               </Link>
@@ -130,18 +135,18 @@ export default function NotFound() {
               Go to Homepage
             </Button>
           </Link>
-          
-          <Link href="/dashboard" className="w-full sm:w-auto">
+
+          <Link href="/marketplace" className="w-full sm:w-auto">
             <Button
               variant="outline"
               size="lg"
               className="w-full sm:w-auto gap-2"
             >
-              <Users className="h-4 w-4" />
-              Dashboard
+              <Compass className="h-4 w-4" />
+              Browse Marketplace
             </Button>
           </Link>
-          
+
           <Button
             variant="ghost"
             size="lg"
@@ -162,21 +167,13 @@ export default function NotFound() {
           >
             Contact our support team
           </Link>{" "}
-          or{" "}
-          <Link
-            href="/help"
-            className="text-primary underline underline-offset-4 hover:text-primary/80"
-          >
-            visit our help center
-          </Link>
+          and we&apos;ll help you find what you&apos;re looking for.
         </p>
       </div>
 
       {/* Footer */}
       <footer className="mt-16 pb-8 text-center">
         <p className="text-xs text-muted-foreground">
-          {/* Hardcoded year — new Date().getFullYear() in a "use client"
-              page is a hydration-mismatch anti-pattern. */}
           © 2026 CareerStep. All rights reserved.
         </p>
       </footer>
