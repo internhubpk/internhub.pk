@@ -414,7 +414,7 @@ function TenantHero({ branding }: { branding: Branding }) {
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />
-                <span>Powered by <strong className="text-foreground">InternHub</strong></span>
+                <span>Powered by <strong className="text-foreground">CareerStep</strong></span>
               </div>
               <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
                 <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" style={{ color: branding.primaryColor }} />

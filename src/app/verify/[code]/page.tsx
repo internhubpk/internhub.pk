@@ -217,7 +217,7 @@ export default async function CertificateVerificationPage({
             className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"
           >
             <ThemeAwareLogo iconOnly height={32} />
-            InternHub
+            CareerStep
           </Link>
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" />
@@ -249,7 +249,7 @@ export default async function CertificateVerificationPage({
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to InternHub homepage
+              Go to CareerStep homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -273,13 +273,13 @@ export default async function CertificateVerificationPage({
             </p>
             <p className="text-sm text-slate-500 dark:text-slate-500">
               The certificate may have been revoked, the code may be mistyped,
-              or the certificate was not issued through InternHub.
+              or the certificate was not issued through CareerStep.
             </p>
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to InternHub homepage
+              Go to CareerStep homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -418,7 +418,7 @@ export default async function CertificateVerificationPage({
             {/* Footer */}
             <div className="text-center text-xs text-slate-500 dark:text-slate-500 px-4">
               <p>
-                <StableNow prefix="Verified by InternHub at " />
+                <StableNow prefix="Verified by CareerStep at " />
               </p>
               <p className="mt-1">
                 This verification is authoritative. For disputes, contact the

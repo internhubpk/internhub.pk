@@ -48,8 +48,8 @@ export function SiteNav() {
         <div className="flex h-14 items-center justify-between">
           {/* Logo - Full logo on desktop, icon only on mobile */}
           <Link href="/" className="flex items-center gap-2 group">
-            <ThemeAwareLogo height={36} className="hidden sm:block" priority={true} />
-            <ThemeAwareLogo iconOnly height={28} className="sm:hidden" priority={true} />
+            <ThemeAwareLogo height={26} className="hidden sm:block" priority={true} />
+            <ThemeAwareLogo iconOnly height={20} className="sm:hidden" priority={true} />
           </Link>
 
           {/* Desktop Navigation - Center */}
@@ -100,7 +100,7 @@ export function SiteNav() {
                   {/* Header with Full Logo */}
                   <div className="px-5 pb-4 border-b border-border/50">
                     <div className="flex items-center gap-2.5">
-                      <ThemeAwareLogo height={44} priority={true} />
+                      <ThemeAwareLogo height={32} priority={true} />
                     </div>
                   </div>
 

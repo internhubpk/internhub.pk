@@ -384,7 +384,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                                     { title: "Learnings", lines: [log.learnings || "(none)"] },
                                     { title: "Supervisor Feedback", lines: [log.supervisor_feedback || "(none)"] },
                                   ],
-                                  footer: `InternHub.pk — Weekly Log exported on ${new Date().toLocaleString()}`,
+                                  footer: `CareerStep — Weekly Log exported on ${new Date().toLocaleString()}`,
                                 },
                                 `weekly-log-${log.student_name.replace(/\s+/g, "-").toLowerCase()}-week-${log.week_number}.pdf`
                               );

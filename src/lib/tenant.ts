@@ -75,8 +75,8 @@ export const PLATFORM_DEFAULT_TENANT: TenantConfig = {
   id: "main",
   name: "CareerStep",
   slug: "main",
-  logo: "/logo.svg",
-  logoUrl: "/logo.svg",
+  logo: "/logo-icon-light.png",
+  logoUrl: "/logo-icon-light.png",
   favicon: "/favicon.ico",
   primaryColor: "#2563eb", // Blue-600
   secondaryColor: "#1e40af", // Blue-800
@@ -358,8 +358,8 @@ export function getTenantPageTitle(tenant: TenantConfig, pageTitle?: string): st
  */
 export function getTenantOpenGraph(tenant: TenantConfig) {
   return {
-    title: `${tenant.name} - ${tenant.branding.tagline ?? "InternHub"}`,
-    description: tenant.branding.description ?? "InternHub Platform",
+    title: `${tenant.name} - ${tenant.branding.tagline ?? "CareerStep"}`,
+    description: tenant.branding.description ?? "CareerStep Platform",
     siteName: tenant.name,
   };
 }

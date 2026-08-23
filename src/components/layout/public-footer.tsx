@@ -60,13 +60,13 @@ export function PublicFooter({
           {/* Brand column - full width on mobile */}
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6 group">
-              <ThemeAwareLogo height={48} className="shadow-lg group-hover:shadow-xl transition-shadow" />
+              <ThemeAwareLogo iconOnly height={40} />
             </Link>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4 sm:mb-6 max-w-[220px] sm:max-w-xs">
               {isTenant ? (
                 <>
                   {branding.name}&apos;s official internship management portal, powered by
-                  InternHub&rsquo;s enterprise platform.
+                  CareerStep&rsquo;s enterprise platform.
                 </>
               ) : (
                 <>
@@ -127,7 +127,7 @@ export function PublicFooter({
             {/* Hardcoded year — new Date().getFullYear() in a "use client"
                 footer is a hydration-mismatch anti-pattern at the year
                 boundary across timezones (server UTC vs client TZ). */}
-            © 2026 {isTenant ? branding.name : "InternHub"}. All rights reserved.
+            © 2026 {isTenant ? branding.name : "CareerStep"}. All rights reserved.
           </p>
           <p className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
             <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />

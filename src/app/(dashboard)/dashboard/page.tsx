@@ -99,6 +99,6 @@ export default async function DashboardPage() {
  * Metadata for SEO
  */
 export const metadata = {
-  title: "Dashboard | InternHub",
+  title: "Dashboard | CareerStep",
   description: "Redirecting to your personalized dashboard...",
 };

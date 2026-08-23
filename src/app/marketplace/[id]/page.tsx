@@ -1445,7 +1445,7 @@ export default function InternshipDetailPage() {
       {/* Footer */}
       <footer className="border-t mt-16 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} InternHub Marketplace. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} CareerStep Marketplace. All rights reserved.</p>
           <div className="flex justify-center gap-6 mt-4">
             <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
             <a href="#" className="hover:text-foreground transition-colors">Terms of Service</a>

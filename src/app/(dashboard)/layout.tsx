@@ -142,7 +142,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 render is a hydration-mismatch anti-pattern (server and
                 client can disagree at the Dec 31 → Jan 1 boundary,
                 especially across timezones). */}
-            <p>© 2026 InternHub. All rights reserved.</p>
+            <p>© 2026 CareerStep. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <a
                 href="/privacy"

@@ -141,8 +141,8 @@ function SidebarContent({
   //   1. university.logo_url  — the per-university uploaded logo (DB).
   //      This is the ONLY source of truth for an actual branded logo.
   //   2. tenant.logoUrl/logo  — but ONLY if it differs from the platform
-  //      default `/logo.svg`. The platform default is the CareerStep
-  //      graduation-cap mark — it should NOT be shown on a university's
+  //      default `/logo-icon-light.png`. The platform default is the
+  //      CareerStep mark — it should NOT be shown on a university's
   //      sidebar (use the university's own logo or the Building2 fallback).
   //   3. No logo at all  →  render the <Building2/> Lucide icon as a
   //      neutral university-themed fallback.
@@ -152,8 +152,8 @@ function SidebarContent({
   // which matches what a multi-tenant university sidebar should
   // communicate when no logo has been uploaded.
   const tenantName =
-    university?.name || tenant?.name || "InternHub";
-  const PLATFORM_DEFAULT_LOGO = "/logo.svg";
+    university?.name || tenant?.name || "CareerStep";
+  const PLATFORM_DEFAULT_LOGO = "/logo-icon-light.png";
   const tenantLogoOverride =
     tenant?.logoUrl && tenant.logoUrl !== PLATFORM_DEFAULT_LOGO
       ? tenant.logoUrl
@@ -360,7 +360,7 @@ function SidebarContent({
           >
             {brandLogo ? (
               // Real uploaded logo (university.logo_url or tenant
-              // override). NOT the platform default /logo.svg (graduation cap).
+              // override). NOT the platform default /logo-icon-light.png (CareerStep mark).
               <img
                 src={brandLogo}
                 alt={`${tenantName} logo`}

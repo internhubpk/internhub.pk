@@ -51,7 +51,7 @@ const code: Token[][] = [
     ["const ", "keyword"],
     ["platform", "variable"],
     [" = ", "operator"],
-    ['"InternHub"', "string"],
+    ['"CareerStep"', "string"],
     [";", "plain"],
   ],
   [

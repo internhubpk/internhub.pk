@@ -713,7 +713,7 @@ export function Header({ className }: HeaderProps) {
                   >
                     <ThemeAwareLogo iconOnly height={16} className="shrink-0" />
                     <span className="text-xs font-medium truncate max-w-[100px]">
-                      {university?.name?.split(" ")[0] || "InternHub"}
+                      {university?.name?.split(" ")[0] || "CareerStep"}
                     </span>
                   </Link>
                 </BreadcrumbLink>

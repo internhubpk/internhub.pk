@@ -39,7 +39,7 @@ export function ThemeAwareLogo({
   height = 40,
   className,
   priority = false,
-  alt = "InternHub Logo",
+  alt = "CareerStep Logo",
 }: ThemeAwareLogoProps) {
   const { resolvedTheme, systemTheme } = useTheme();
   const [mounted, setMounted] = useState(false);

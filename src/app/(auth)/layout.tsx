@@ -65,7 +65,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         {/* Footer */}
         <p className="mt-4 text-center text-xs text-muted-foreground/60">
-          © {new Date().getFullYear()} InternHub
+          © {new Date().getFullYear()} CareerStep
         </p>
       </div>
     </div>
