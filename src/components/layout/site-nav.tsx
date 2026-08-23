@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { 
-  GraduationCap, 
   Menu, 
   LogIn, 
   Compass, 
@@ -19,6 +18,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { ThemeToggle } from "./theme-toggle";
+import { ThemeAwareLogo } from "./theme-aware-logo";
 
 const navLinks = [
   { href: "/#how-it-works", label: "How it Works", icon: PlayCircle, description: "See how it works" },
@@ -46,14 +46,10 @@ export function SiteNav() {
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between">
-          {/* Logo */}
+          {/* Logo - Icon only in navbar for compact look */}
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-sm group-hover:shadow-md transition-all">
-              <GraduationCap className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-lg font-semibold tracking-tight hidden sm:block">
-              CareerStep
-            </span>
+            <ThemeAwareLogo iconOnly height={32} className="hidden sm:block" />
+            <ThemeAwareLogo height={36} className="sm:hidden" priority={true} />
           </Link>
 
           {/* Desktop Navigation - Center */}
@@ -101,16 +97,10 @@ export function SiteNav() {
               <SheetContent side="right" className="w-[280px] p-0 focus-visible:ring-0">
                 {/* Mobile Menu Content - No extra close button (Sheet has built-in one) */}
                 <div className="flex flex-col h-full pt-6">
-                  {/* Header with Logo only */}
+                  {/* Header with Logo */}
                   <div className="px-5 pb-4 border-b border-border/50">
                     <div className="flex items-center gap-2.5">
-                      <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-sm">
-                        <GraduationCap className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-base">CareerStep</span>
-                        <span className="text-xs text-muted-foreground">Internship Platform</span>
-                      </div>
+                      <ThemeAwareLogo height={40} priority={true} />
                     </div>
                   </div>
 

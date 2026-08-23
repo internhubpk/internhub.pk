@@ -53,6 +53,7 @@ import { getNavigationForRole } from "@/config/navigation";
 import type { UserRole } from "@/types";
 import { cn } from "@/lib/utils";
 import { NotificationsPopover } from "@/components/shared/notifications-popover";
+import { ThemeAwareLogo } from "./theme-aware-logo";
 
 interface HeaderProps {
   className?: string;
@@ -710,9 +711,9 @@ export function Header({ className }: HeaderProps) {
                     href="/dashboard"
                     className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <Building2 className="h-4 w-4" />
-                    <span className="text-xs font-medium">
-                      {university?.name?.split(" ")[0] || "CareerStep"}
+                    <ThemeAwareLogo iconOnly height={16} className="shrink-0" />
+                    <span className="text-xs font-medium truncate max-w-[100px]">
+                      {university?.name?.split(" ")[0] || "InternHub"}
                     </span>
                   </Link>
                 </BreadcrumbLink>

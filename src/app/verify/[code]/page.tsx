@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { StableNow } from "@/components/shared/stable-date";
+import { ThemeAwareLogo } from "@/components/layout/theme-aware-logo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -215,10 +216,8 @@ export default async function CertificateVerificationPage({
             href="/"
             className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"
           >
-            <div className="h-8 w-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
-              <Award className="h-5 w-5" />
-            </div>
-            CareerStep
+            <ThemeAwareLogo iconOnly height={32} />
+            InternHub
           </Link>
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" />
@@ -250,7 +249,7 @@ export default async function CertificateVerificationPage({
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to CareerStep homepage
+              Go to InternHub homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -274,13 +273,13 @@ export default async function CertificateVerificationPage({
             </p>
             <p className="text-sm text-slate-500 dark:text-slate-500">
               The certificate may have been revoked, the code may be mistyped,
-              or the certificate was not issued through CareerStep.
+              or the certificate was not issued through InternHub.
             </p>
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 mt-8 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
-              Go to CareerStep homepage
+              Go to InternHub homepage
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -419,7 +418,7 @@ export default async function CertificateVerificationPage({
             {/* Footer */}
             <div className="text-center text-xs text-slate-500 dark:text-slate-500 px-4">
               <p>
-                <StableNow prefix="Verified by CareerStep at " />
+                <StableNow prefix="Verified by InternHub at " />
               </p>
               <p className="mt-1">
                 This verification is authoritative. For disputes, contact the

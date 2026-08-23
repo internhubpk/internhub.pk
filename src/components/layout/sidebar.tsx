@@ -57,6 +57,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { useTenant } from "@/components/providers/tenant-provider";
 import { getNavigationForRole, roleLabels, type NavItem } from "@/config/navigation";
 import { cn } from "@/lib/utils";
+import { ThemeAwareLogo } from "./theme-aware-logo";
 
 // Context for sidebar state management
 interface SidebarContextType {
@@ -151,7 +152,7 @@ function SidebarContent({
   // which matches what a multi-tenant university sidebar should
   // communicate when no logo has been uploaded.
   const tenantName =
-    university?.name || tenant?.name || "CareerStep";
+    university?.name || tenant?.name || "InternHub";
   const PLATFORM_DEFAULT_LOGO = "/logo.svg";
   const tenantLogoOverride =
     tenant?.logoUrl && tenant.logoUrl !== PLATFORM_DEFAULT_LOGO
@@ -366,14 +367,7 @@ function SidebarContent({
                 className="h-10 w-10 rounded-xl object-cover"
               />
             ) : (
-              <div
-                className={cn(
-                  "flex items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60",
-                  collapsed && !isMobile ? "h-10 w-10" : "h-10 w-10"
-                )}
-              >
-                <Building2 className="h-6 w-6 text-white" />
-              </div>
+              <ThemeAwareLogo iconOnly height={40} className="rounded-xl" />
             )}
           </motion.div>
 

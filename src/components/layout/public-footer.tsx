@@ -24,9 +24,10 @@
  */
 
 import Link from "next/link";
-import { GraduationCap, ChevronRight, Lock } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { ContactSupportButton } from "@/components/shared/whatsapp-cta";
 import { useTenantBranding } from "@/components/providers/tenant-provider";
+import { ThemeAwareLogo } from "./theme-aware-logo";
 
 // Only real routes are listed. Placeholder ("#") links are intentionally
 // omitted so the footer never advertises pages that don't exist. Add new
@@ -59,24 +60,16 @@ export function PublicFooter({
           {/* Brand column - full width on mobile */}
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6 group">
-              <div
-                className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl text-primary-foreground shadow-lg group-hover:shadow-xl transition-shadow cursor-pointer"
-                style={{
-                  background: `linear-gradient(to bottom right, ${branding.primaryColor}, ${branding.secondaryColor || branding.primaryColor})`,
-                  boxShadow: `0 4px 15px -3px ${branding.primaryColor}40`,
-                }}
-              >
-                <GraduationCap className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
+              <ThemeAwareLogo iconOnly height={40} className="shadow-lg group-hover:shadow-xl transition-shadow rounded-lg" />
               <span className="text-lg sm:text-xl font-bold tracking-tight">
-                {isTenant ? branding.name : "CareerStep"}
+                {isTenant ? branding.name : "InternHub"}
               </span>
             </Link>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4 sm:mb-6 max-w-[220px] sm:max-w-xs">
               {isTenant ? (
                 <>
                   {branding.name}&apos;s official internship management portal, powered by
-                  CareerStep&rsquo;s enterprise platform.
+                  InternHub&rsquo;s enterprise platform.
                 </>
               ) : (
                 <>
@@ -137,7 +130,7 @@ export function PublicFooter({
             {/* Hardcoded year — new Date().getFullYear() in a "use client"
                 footer is a hydration-mismatch anti-pattern at the year
                 boundary across timezones (server UTC vs client TZ). */}
-            © 2026 {isTenant ? branding.name : "CareerStep"}. All rights reserved.
+            © 2026 {isTenant ? branding.name : "InternHub"}. All rights reserved.
           </p>
           <p className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
             <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />

@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { GraduationCap, Home, ArrowLeft, Sun, Moon } from "lucide-react";
+import { Home, ArrowLeft, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
+import { ThemeAwareLogo } from "@/components/layout/theme-aware-logo";
 
 /**
  * Auth layout (wraps /login and /register — /register just redirects here
@@ -52,11 +53,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       <div className="relative z-10 w-full max-w-[420px] mt-8">
         {/* Logo */}
         <div className="text-center mb-6">
-          <Link href="/" className="inline-flex flex-col items-center gap-2 group">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25 flex items-center justify-center group-hover:shadow-primary/40 group-hover:scale-105 transition-all duration-300">
-              <GraduationCap className="h-7 w-7 text-primary-foreground" strokeWidth={2} />
-            </div>
-            <span className="text-xl font-bold tracking-tight">CareerStep</span>
+          <Link href="/" className="inline-flex items-center justify-center group">
+            <ThemeAwareLogo height={56} priority={true} className="group-hover:scale-105 transition-transform duration-300" />
           </Link>
         </div>
 

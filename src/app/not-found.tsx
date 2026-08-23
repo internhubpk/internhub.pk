@@ -174,7 +174,7 @@ export default function NotFound() {
       {/* Footer */}
       <footer className="mt-16 pb-8 text-center">
         <p className="text-xs text-muted-foreground">
-          © 2026 CareerStep. All rights reserved.
+          © 2026 InternHub. All rights reserved.
         </p>
       </footer>
     </div>
