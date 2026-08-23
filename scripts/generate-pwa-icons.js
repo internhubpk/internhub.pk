@@ -32,7 +32,10 @@ const sizes = [
   { name: "icon-maskable-512.png", size: 512, padding: 64 },
 ];
 
-const BG_COLOR = "#0a0a0a";
+// apple-touch-icon and maskable icons need an opaque background (no
+// transparency support on iOS home screen / Android adaptive icons).
+// Everything else stays transparent so it sits cleanly in browser tabs.
+const BG_COLOR = "#ffffff";
 
 (async () => {
   for (const { name, size, padding } of sizes) {
@@ -40,17 +43,18 @@ const BG_COLOR = "#0a0a0a";
     try {
       const innerSize = size - padding * 2;
       const svgBuf = await sharp(svg).resize(innerSize, innerSize).toBuffer();
+      const needsOpaqueBg = name.includes("apple-touch") || name.includes("maskable");
 
       await sharp({
         create: {
           width: size,
           height: size,
           channels: 4,
-          background: BG_COLOR,
+          background: needsOpaqueBg ? BG_COLOR : { r: 0, g: 0, b: 0, alpha: 0 },
         },
       })
         .composite([{ input: svgBuf, gravity: "center" }])
-        .png()
+        .png({ palette: true, compressionLevel: 9 })
         .toFile(outPath);
       console.log(`Generated ${name} (${size}x${size})`);
     } catch (err) {
