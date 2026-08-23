@@ -66,7 +66,7 @@ export function SiteNav() {
               >
                 <span className="relative">
                   {link.label}
-                  <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-primary rounded-full transition-all duration-300 ease-out group-hover:w-full" />
+                  <span className="absolute left-0 -bottom-1.5 h-[2px] w-0 bg-primary rounded-full transition-all duration-300 ease-out group-hover:w-full" />
                 </span>
               </Link>
             ))}
