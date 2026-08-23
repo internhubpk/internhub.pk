@@ -46,10 +46,10 @@ export function SiteNav() {
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between">
-          {/* Logo - Icon only in navbar for compact look */}
+          {/* Logo - Full logo on desktop, icon only on mobile */}
           <Link href="/" className="flex items-center gap-2 group">
-            <ThemeAwareLogo iconOnly height={32} className="hidden sm:block" />
-            <ThemeAwareLogo height={36} className="sm:hidden" priority={true} />
+            <ThemeAwareLogo height={36} className="hidden sm:block" priority={true} />
+            <ThemeAwareLogo iconOnly height={28} className="sm:hidden" priority={true} />
           </Link>
 
           {/* Desktop Navigation - Center */}
@@ -97,10 +97,10 @@ export function SiteNav() {
               <SheetContent side="right" className="w-[280px] p-0 focus-visible:ring-0">
                 {/* Mobile Menu Content - No extra close button (Sheet has built-in one) */}
                 <div className="flex flex-col h-full pt-6">
-                  {/* Header with Logo */}
+                  {/* Header with Full Logo */}
                   <div className="px-5 pb-4 border-b border-border/50">
                     <div className="flex items-center gap-2.5">
-                      <ThemeAwareLogo height={40} priority={true} />
+                      <ThemeAwareLogo height={44} priority={true} />
                     </div>
                   </div>
 

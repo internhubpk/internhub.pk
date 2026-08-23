@@ -60,10 +60,7 @@ export function PublicFooter({
           {/* Brand column - full width on mobile */}
           <div className="col-span-2">
             <Link href="/" className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6 group">
-              <ThemeAwareLogo iconOnly height={40} className="shadow-lg group-hover:shadow-xl transition-shadow rounded-lg" />
-              <span className="text-lg sm:text-xl font-bold tracking-tight">
-                {isTenant ? branding.name : "InternHub"}
-              </span>
+              <ThemeAwareLogo height={48} className="shadow-lg group-hover:shadow-xl transition-shadow" />
             </Link>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mb-4 sm:mb-6 max-w-[220px] sm:max-w-xs">
               {isTenant ? (

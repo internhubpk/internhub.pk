@@ -367,7 +367,7 @@ function SidebarContent({
                 className="h-10 w-10 rounded-xl object-cover"
               />
             ) : (
-              <ThemeAwareLogo iconOnly height={40} className="rounded-xl" />
+              <ThemeAwareLogo iconOnly height={32} className="rounded-xl" />
             )}
           </motion.div>
 
