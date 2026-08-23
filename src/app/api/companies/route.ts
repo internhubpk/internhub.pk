@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+// Use service role client for PUBLIC endpoint - bypasses RLS so public pages can show data
+import { createServiceRoleClient } from "@/utils/supabase/service-role";
+// Use regular server client for authenticated operations (POST)
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import {
@@ -32,8 +35,9 @@ const CREATE_ROLES: UserRole[] = ["super_admin", "university_admin", "company_hr
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = await createClient(cookieStore);
+    // Use service role client to bypass RLS for public company listings
+    // This ensures public pages can always display company data
+    const supabase = await createServiceRoleClient();
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }

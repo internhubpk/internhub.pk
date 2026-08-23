@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/headers";
+// Use service role client for PUBLIC endpoint - bypasses RLS so public pages can show data
+import { createServiceRoleClient } from "@/utils/supabase/service-role";
 import type { ApiResponse, PaginatedResponse, University } from "@/types";
 
 /**
@@ -11,12 +11,9 @@ import type { ApiResponse, PaginatedResponse, University } from "@/types";
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = await createClient(cookieStore);
-    
-    if (!supabase) {
-      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
-    }
+    // Use service role client to bypass RLS for public university listings
+    // This ensures public pages can always display university data
+    const supabase = await createServiceRoleClient();
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
