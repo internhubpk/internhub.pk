@@ -386,15 +386,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   const hasRole = useCallback((roles: UserRole[]): boolean => {
-    // Check multiple sources for role
+    // SECURITY (2026-08-23 audit): DB profile role first, then app_metadata.
+    // user_metadata is user-writable via auth.updateUser and must never be
+    // trusted for role decisions.
     if (profile?.role && roles.includes(profile.role)) return true;
-    
-    // Also check user metadata
-    if (user?.user_metadata?.role && roles.includes(user.user_metadata.role as UserRole)) return true;
+
     if (user?.app_metadata?.role && roles.includes(user.app_metadata.role as UserRole)) return true;
-    
+
     return false;
-  }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
+  }, [profile?.role, user?.app_metadata?.role]);
 
   // Determine role from multiple sources for the context value.
   // Priority:
@@ -406,17 +406,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   //   3. user.user_metadata.role (set at signup; also synced by the
   //      trigger as of 0011, but kept last for legacy accounts)
   const getEffectiveRole = useCallback((): UserRole | null => {
-    // Priority 1: From profile (DB or fallback)
+    // SECURITY (2026-08-23 audit): DB profile first, then app_metadata.
+    // user_metadata is user-writable and excluded from role resolution.
+    // Priority 1: From profile (DB)
     if (profile?.role) return profile.role;
 
     // Priority 2: From app_metadata (system-managed, kept in sync by trigger)
     if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
 
-    // Priority 3: From user_metadata (set at signup)
-    if (user?.user_metadata?.role) return user.user_metadata.role as UserRole;
-
     return null;
-  }, [profile?.role, user?.user_metadata?.role, user?.app_metadata?.role]);
+  }, [profile?.role, user?.app_metadata?.role]);
 
   // Compute the effective role once per render. The value is a primitive
   // (string or null), so identical inputs produce identical outputs — this

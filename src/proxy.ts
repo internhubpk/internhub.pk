@@ -159,16 +159,17 @@ function getDashboardPath(role: UserRole | null): string {
 /**
  * Get role from JWT metadata ONLY - NO DATABASE CALLS!
  *
- * PRIORITY: app_metadata FIRST, then user_metadata.
+ * SECURITY: app_metadata ONLY.
  *   - app_metadata is system-managed: our profiles_sync_auth_metadata trigger
  *     (migration 0011/0013/0038) keeps auth.users.raw_app_meta_data->>'role'
- *     in lockstep with profiles.role, and raw_app_meta_data->>'tenant_slug'
- *     in lockstep with universities.slug. When an admin changes someone's
- *     role or university in the DB, app_metadata is updated automatically.
- *   - user_metadata is set once at signup (raw_user_meta_data) and is also
- *     synced by the trigger, but historically was NOT updated on role
- *     changes. Reading app_metadata first protects us from stale
- *     user_metadata on accounts whose role was changed before 0011.
+ *     in lockstep with profiles.role. When an admin changes someone's role
+ *     in the DB, app_metadata is updated automatically.
+ *   - user_metadata is USER-WRITABLE via PUT /auth/v1/user
+ *     (auth.updateUser). It must NEVER be trusted for authorization:
+ *     production testing (2026-08-23 audit) proved an attacker could set
+ *     user_metadata.role='super_admin' and, on accounts whose
+ *     app_metadata.role was null, obtain full super_admin access. The
+ *     user_metadata fallback was removed everywhere (migration 0084).
  */
 function getRoleFromUser(user: any): UserRole | null {
   const appRole = user?.app_metadata?.role;
@@ -176,46 +177,30 @@ function getRoleFromUser(user: any): UserRole | null {
     return appRole as UserRole;
   }
 
-  const metaRole = user?.user_metadata?.role;
-  if (metaRole && ROLE_DASHBOARDS[metaRole as UserRole]) {
-    return metaRole as UserRole;
-  }
-
   return null;
 }
 
 /**
  * Get the user's tenant slug from JWT metadata (NO DB CALLS).
- * Reads app_metadata.tenant_slug (synced by migration 0038 trigger) with
- * a user_metadata fallback. Returns null if not set (e.g. legacy JWT
- * issued before 0038 was applied, or the user has no university_id).
+ * SECURITY: app_metadata only — user_metadata is user-writable and must
+ * never influence tenant routing (migration 0084).
  */
 function getTenantSlugFromUser(user: any): string | null {
   const appSlug = user?.app_metadata?.tenant_slug;
   if (typeof appSlug === "string" && appSlug.length > 0) {
     return appSlug;
   }
-  const metaSlug = user?.user_metadata?.tenant_slug;
-  if (typeof metaSlug === "string" && metaSlug.length > 0) {
-    return metaSlug;
-  }
   return null;
 }
 
 /**
- * Extract tenant_domain (e.g. "myu.xirea.tech") from the JWT app_metadata,
- * with user_metadata fallback. Set by migration 0038's trigger + backfill.
- * Returns null if not set (e.g. legacy JWT issued before 0038 was applied,
- * or the user has no university_id).
+ * Extract tenant_domain (e.g. "myu.xirea.tech") from the JWT app_metadata.
+ * SECURITY: app_metadata only — user_metadata is user-writable (migration 0084).
  */
 function getTenantDomainFromUser(user: any): string | null {
   const appDomain = user?.app_metadata?.tenant_domain;
   if (typeof appDomain === "string" && appDomain.length > 0) {
     return appDomain;
-  }
-  const metaDomain = user?.user_metadata?.tenant_domain;
-  if (typeof metaDomain === "string" && metaDomain.length > 0) {
-    return metaDomain;
   }
   return null;
 }
