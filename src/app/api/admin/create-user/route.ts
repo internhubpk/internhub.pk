@@ -119,18 +119,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check role from app_metadata FIRST (kept in sync with profiles.role
-    // by the profiles_sync_role_to_auth trigger — migration 0011).
-    // Fall back to user_metadata for legacy accounts.
-    const callerRole =
-      (user.app_metadata?.role as UserRole | undefined) ??
-      (user.user_metadata?.role as UserRole | undefined);
+    // SECURITY (2026-08-23 audit): verify the caller's role from the
+    // profiles table (server-side source of truth). user_metadata is
+    // user-writable and must never authorize account creation.
+    const { data: callerProfile, error: callerProfileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
 
-    if (callerRole !== "super_admin" && callerRole !== "university_admin" && callerRole !== "department_coordinator") {
+    const callerRole = callerProfile?.role as UserRole | undefined;
+
+    if (
+      callerProfileError ||
+      !callerRole ||
+      (callerRole !== "super_admin" &&
+        callerRole !== "university_admin" &&
+        callerRole !== "department_coordinator")
+    ) {
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
-          error: "Forbidden: Super Admin, University Admin, or Department Coordinator access required",
+          error:
+            "Forbidden: Super Admin, University Admin, or Department Coordinator access required",
         },
         { status: 403 }
       );

@@ -47,11 +47,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const callerRole =
-      (user.app_metadata?.role as string | undefined) ??
-      (user.user_metadata?.role as string | undefined);
+    // SECURITY (2026-08-23 audit): DB-verified role check. This route can
+    // set ANY user's email/password — JWT metadata must never authorize it.
+    const { data: callerProfile, error: callerProfileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
 
-    if (callerRole !== "super_admin") {
+    const callerRole = callerProfile?.role as string | undefined;
+
+    if (callerProfileError || callerRole !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Forbidden: Super Admin access required" },
         { status: 403 }

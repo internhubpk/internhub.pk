@@ -171,19 +171,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const callerRole =
-      (user.app_metadata?.role as UserRole | undefined) ??
-      (user.user_metadata?.role as UserRole | undefined);
-
-    if (callerRole !== "department_coordinator" && callerRole !== "university_admin" && callerRole !== "super_admin") {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Department Coordinator, University Admin, or Super Admin access required" },
-        { status: 403 }
-      );
-    }
-
     // ==========================================================
-    // 2. Fetch caller's profile (university_id, department_id).
+    // 2. Fetch caller's profile (role, university_id, department_id).
+    // SECURITY (2026-08-23 audit): the role check uses the DB profile —
+    // JWT user_metadata is user-writable and must never authorize.
     // ==========================================================
     const { data: callerProfile, error: profileErr } = await supabase
       .from("profiles")
@@ -191,7 +182,22 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .single();
 
-    if (profileErr || !callerProfile?.university_id) {
+    const callerRole = callerProfile?.role as UserRole | undefined;
+
+    if (
+      profileErr ||
+      !callerRole ||
+      (callerRole !== "department_coordinator" &&
+        callerRole !== "university_admin" &&
+        callerRole !== "super_admin")
+    ) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: Department Coordinator, University Admin, or Super Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    if (!callerProfile?.university_id) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Your account is not linked to a university." },
         { status: 403 }

@@ -116,13 +116,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check role from app_metadata FIRST (synced with profiles.role by the
-    // profiles_sync_role_to_auth trigger — migration 0011).
-    const callerRole =
-      (user.app_metadata?.role as UserRole | undefined) ??
-      (user.user_metadata?.role as UserRole | undefined);
+    // SECURITY (2026-08-23 audit): verify the caller's role from the
+    // profiles table — the server-side source of truth. JWT user_metadata
+    // is user-writable via auth.updateUser and must never authorize
+    // privileged operations; app_metadata alone is acceptable for routing
+    // but the DB profile is authoritative here.
+    const { data: callerProfile, error: callerProfileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
 
-    if (callerRole !== "super_admin") {
+    const callerRole = callerProfile?.role as UserRole | undefined;
+
+    if (callerProfileError || !callerRole || callerRole !== "super_admin") {
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
