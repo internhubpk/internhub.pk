@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TenantProvider } from "@/components/providers/tenant-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
@@ -215,6 +216,22 @@ export default async function RootLayout({
         {/* Preconnect to external resources for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        
+        {/* Google Analytics - GA4 (G-FVLNLHJ8XR) */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-FVLNLHJ8XR"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-FVLNLHJ8XR', {
+              page_path: window.location.pathname,
+            });
+          `}
+        </Script>
         
         {/* Pass tenant data to client via meta tag for hydration */}
         <meta 
