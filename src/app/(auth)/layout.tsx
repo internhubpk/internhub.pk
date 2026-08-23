@@ -1,89 +1,71 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { GraduationCap, Home, ArrowLeft } from "lucide-react";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { GraduationCap, Home, ArrowLeft, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 
 /**
  * Auth layout (wraps /login and /register — /register just redirects here
  * with ?mode=register).
  *
  * Features:
- * - Back to home button in top-left corner
- * - Theme toggle (light/dark) button in top-right corner
- * - Clean gradient background with subtle grid pattern
- * - Centered auth card with logo and branding
+ * - Compact back to home button (top-left)
+ * - Small theme toggle button (top-right)
+ * - Clean gradient background
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 dark:from-gray-950 dark:via-blue-950/30 dark:to-purple-950/30 px-4 py-10 sm:py-12">
-      {/* Background decorative elements — pure CSS, no shader/canvas.
-          Sized so they never push the page wider than the viewport. */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -right-32 sm:-top-40 sm:-right-40 w-64 h-64 sm:w-80 sm:h-80 bg-blue-400/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 sm:-bottom-40 sm:-left-40 w-64 h-64 sm:w-80 sm:h-80 bg-purple-400/20 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 sm:w-96 sm:h-96 bg-indigo-300/10 rounded-full blur-3xl" />
+  const { theme, setTheme } = useTheme();
 
-        {/* Grid pattern overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.02] dark:opacity-[0.05]"
-          style={{
-            backgroundImage: `linear-gradient(rgba(59, 130, 246, 0.5) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(59, 130, 246, 0.5) 1px, transparent 1px)`,
-            backgroundSize: "60px 60px",
-          }}
-        />
+  return (
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50/50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 px-4 py-10 sm:py-12">
+      {/* Subtle background pattern */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-400/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Top navigation bar with back to home + theme toggle */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20">
-        {/* Back to Home Button */}
+      {/* Top bar - compact & minimal */}
+      <div className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-3 md:px-6 md:py-3">
+        {/* Back to Home - Small & Clean */}
         <Link 
           href="/" 
-          className="group flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg border border-border/50 hover:border-border shadow-sm hover:shadow-md transition-all duration-200"
+          className="group flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors duration-200"
         >
-          <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-          <Home className="h-4 w-4" />
-          <span className="hidden sm:inline">Back to Home</span>
-          <span className="sm:hidden">Home</span>
+          <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          <Home className="h-3.5 w-3.5 hidden xs:inline" />
+          <span>Home</span>
         </Link>
 
-        {/* Theme Toggle */}
-        <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg border border-border/50 p-2 shadow-sm">
-          <ThemeToggle />
-        </div>
+        {/* Theme Toggle - Tiny Icon Button */}
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="flex items-center justify-center h-7 w-7 rounded-md border border-border/50 bg-background/50 backdrop-blur-sm hover:bg-accent transition-colors duration-200"
+          aria-label="Toggle theme"
+        >
+          <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 absolute" />
+          <Moon className="h-3.5 w-3.5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        </button>
       </div>
 
-      {/* Main content card */}
-      <div className="relative z-10 w-full max-w-md mt-16">
-        {/* Logo — GraduationCap in a blue rounded box, matching site-nav
-            and public-footer. */}
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="inline-flex items-center justify-center mb-3 sm:mb-4">
-            <div className="relative group">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-xl shadow-blue-500/25 flex items-center justify-center group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
-                <GraduationCap className="w-8 h-8 sm:w-9 sm:h-9 text-white" strokeWidth={2} />
-              </div>
-              <div className="absolute inset-0 rounded-2xl bg-blue-600 opacity-0 blur-xl transition-opacity group-hover:opacity-20" />
+      {/* Main content */}
+      <div className="relative z-10 w-full max-w-[420px] mt-8">
+        {/* Logo */}
+        <div className="text-center mb-6">
+          <Link href="/" className="inline-flex flex-col items-center gap-2 group">
+            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25 flex items-center justify-center group-hover:shadow-primary/40 group-hover:scale-105 transition-all duration-300">
+              <GraduationCap className="h-7 w-7 text-primary-foreground" strokeWidth={2} />
             </div>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            <span className="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-              CareerStep
-            </span>
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Internship Management Platform
-          </p>
+            <span className="text-xl font-bold tracking-tight">CareerStep</span>
+          </Link>
         </div>
 
         {/* Auth card */}
-        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-gray-700/50 rounded-2xl shadow-2xl shadow-black/5 dark:shadow-black/20 p-5 sm:p-8">
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-xl p-5 sm:p-6">
           {children}
         </div>
 
-        {/* Footer text */}
-        <p className="mt-5 sm:mt-6 text-center text-xs text-muted-foreground px-4">
-          © {new Date().getFullYear()} CareerStep. All rights reserved.
+        {/* Footer */}
+        <p className="mt-4 text-center text-xs text-muted-foreground/60">
+          © {new Date().getFullYear()} CareerStep
         </p>
       </div>
     </div>
