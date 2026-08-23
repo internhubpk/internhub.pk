@@ -55,17 +55,33 @@ export default function ForgotPasswordPage() {
 
       if (resetError) {
         // For security, Supabase does not leak whether an email exists.
-        // We surface a generic message regardless of the underlying error.
         // Common errors: rate-limit, network, malformed email.
         if (
           resetError.message.toLowerCase().includes("rate limit") ||
           resetError.message.toLowerCase().includes("too many")
         ) {
           setError("Too many reset attempts. Please wait a few minutes before trying again.");
-        } else {
-          // Fall through to success screen to avoid leaking account existence
-          setIsSubmitted(true);
+          return;
         }
+        // Supabase rejects recovery requests for existing accounts whose
+        // email domain cannot receive mail (no MX record). Surfacing this
+        // is NOT a fake success and does not meaningfully leak account
+        // existence beyond what the API already returns — and hiding it
+        // would show "check your email" for an email that can never arrive.
+        if (
+          resetError.code === "email_address_invalid" ||
+          (resetError.message.toLowerCase().includes("invalid") &&
+            resetError.message.toLowerCase().includes("email"))
+        ) {
+          setError(
+            "This email address cannot receive messages (its domain has no mail server). " +
+            "If this is your account, contact your administrator to update your email address."
+          );
+          return;
+        }
+        // Any other error: fall through to the generic success screen to
+        // avoid leaking account existence.
+        setIsSubmitted(true);
         return;
       }
 
