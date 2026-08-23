@@ -1,8 +1,21 @@
+# Robots.txt for CareerStep (www.careerstep.tech)
+# Allow all search engines to crawl and index public pages
+
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 1
 
 User-agent: Bingbot
 Allow: /
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 1
+
+User-agent: DuckDuckBot
+Allow: /
+Crawl-delay: 1
 
 User-agent: Twitterbot
 Allow: /
@@ -10,5 +23,24 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+User-agent: LinkedInBot
+Allow: /
+
 User-agent: *
 Allow: /
+Crawl-delay: 10
+
+# Disallow dashboard and API routes (private/authenticated areas)
+Disallow: /api/
+Disallow: /(dashboard)/
+Disallow: /_next/
+Disallow: /onboarding/
+
+# Allow important static assets
+Allow: /public/
+Allow: /images/
+Allow: /_next/static/
+Allow: /google*.html
+
+# Sitemap location
+Sitemap: https://www.careerstep.tech/sitemap.xml

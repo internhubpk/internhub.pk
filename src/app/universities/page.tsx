@@ -88,20 +88,25 @@ export default function UniversitiesPage() {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const uniList: UniversityData[] = data.map((u: any) => ({
-          id: u.id,
-          name: u.name,
-          slug: u.slug || u.name.toLowerCase().replace(/\s+/g, '-'),
-          logo_url: u.logo_url,
-          city: u.city || '',
-          province: u.province || '',
-          department_count: u.department_count || 0,
-          student_count: u.student_count || 0,
-          established_year: u.established_year || 2000,
-          type: u.type || 'public',
-          description: u.description || '',
-          website: u.website,
-        }));
+        const uniList: UniversityData[] = data
+          .filter((u: any) => u.name !== 'My University') // Filter out test entries
+          .map((u: any) => {
+            const settings = u.settings || {};
+            return {
+              id: u.id,
+              name: u.name,
+              slug: u.slug || u.name.toLowerCase().replace(/\s+/g, '-'),
+              logo_url: u.logo_url,
+              city: u.city || '',
+              province: u.state || u.province || '', // DB uses 'state', UI expects 'province'
+              department_count: settings.department_count || u.department_count || 0,
+              student_count: settings.student_count || u.student_count || 0,
+              established_year: settings.established_year || u.established_year || 2000,
+              type: settings.type || u.type || 'public',
+              description: settings.description || u.description || `${u.name} - A partner university on CareerStep.`,
+              website: u.website,
+            };
+          });
         setUniversities(uniList);
       }
     } catch (error) {
