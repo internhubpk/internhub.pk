@@ -62,9 +62,12 @@ export function SiteNav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="relative px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent/50"
+                className="group relative px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-md"
               >
-                {link.label}
+                <span className="relative">
+                  {link.label}
+                  <span className="absolute left-0 -bottom-0.5 h-[2px] w-0 bg-primary rounded-full transition-all duration-300 ease-out group-hover:w-full" />
+                </span>
               </Link>
             ))}
           </div>
