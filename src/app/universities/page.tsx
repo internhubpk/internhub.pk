@@ -88,13 +88,11 @@ export default function UniversitiesPage() {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        console.log('Raw university data from DB:', JSON.stringify(data, null, 2));
-        
         const uniList: UniversityData[] = data
           .filter((u: any) => u.name !== 'My University') // Filter out test entries
           .map((u: any) => {
             const settings = u.settings || {};
-            const mapped = {
+            return {
               id: u.id,
               name: u.name,
               slug: u.slug || u.name.toLowerCase().replace(/\s+/g, '-'),
@@ -105,13 +103,10 @@ export default function UniversitiesPage() {
               student_count: settings.student_count || u.student_count || 0,
               established_year: settings.established_year || u.established_year || 2000,
               type: settings.type || u.type || 'public',
-              description: settings.description || u.description || `${u.name} - A partner university on CareerStep.`,
+              description: settings.description || u.description || `${u.name} - A partner university on CareerStep offering internship programs for students across multiple disciplines.`,
               website: u.website,
             };
-            console.log('Mapped university:', mapped.name, { province: mapped.province, type: mapped.type });
-            return mapped;
           });
-        console.log('Final uniList:', uniList.length, 'universities');
         setUniversities(uniList);
       }
     } catch (error) {
@@ -122,8 +117,13 @@ export default function UniversitiesPage() {
     }
   }
 
-  // Filter universities
+  // Filter universities - show all if no active filters
   const filteredUniversities = useMemo(() => {
+    // If no filters are active, show everything
+    const hasActiveFilters = searchQuery.trim() !== '' || selectedProvince !== 'all' || selectedType !== 'all';
+    
+    if (!hasActiveFilters) return universities;
+    
     return universities.filter((uni) => {
       const searchLower = searchQuery.toLowerCase().trim();
       const matchesSearch =
@@ -132,25 +132,23 @@ export default function UniversitiesPage() {
         uni.city.toLowerCase().includes(searchLower) ||
         uni.description.toLowerCase().includes(searchLower);
       
-      const provinceNormalized = (uni.province || '').trim();
+      // More flexible province matching (case-insensitive, partial match)
+      const provinceNormalized = (uni.province || '').toLowerCase().trim();
+      const selectedProvNormalized = selectedProvince.toLowerCase();
       const matchesProvince =
-        selectedProvince === "all" || provinceNormalized === selectedProvince;
+        selectedProvince === "all" || 
+        provinceNormalized === selectedProvNormalized ||
+        provinceNormalized.includes(selectedProvNormalized) ||
+        selectedProvNormalized.includes(provinceNormalized);
       
-      const typeNormalized = (uni.type || 'public').trim().toLowerCase();
+      // Flexible type matching
+      const typeNormalized = (uni.type || 'public').toLowerCase().trim();
       const matchesType =
         selectedType === "all" || typeNormalized === selectedType;
-
-      console.log('Filtering:', uni.name, { 
-        province: provinceNormalized, 
-        type: typeNormalized,
-        matchesProvince, 
-        matchesType,
-        matchesSearch 
-      });
       
       return matchesSearch && matchesProvince && matchesType;
     });
-  }, [searchQuery, selectedProvince, selectedType]);
+  }, [searchQuery, selectedProvince, selectedType, universities]);
 
   const clearFilters = () => {
     setSearchQuery("");

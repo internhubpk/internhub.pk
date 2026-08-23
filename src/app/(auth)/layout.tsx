@@ -1,20 +1,17 @@
 import type { ReactNode } from "react";
-import { GraduationCap } from "lucide-react";
+import Link from "next/link";
+import { GraduationCap, Home, ArrowLeft } from "lucide-react";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 /**
  * Auth layout (wraps /login and /register — /register just redirects here
  * with ?mode=register).
  *
- * Shader removed per direct feedback: pure CSS ambient glow only, no
- * canvas/WebGPU dependency. Padding reworked — the previous inner form
- * wrapper (login/page.tsx) used px-1 py-2 (4px/8px), crushing the form
- * against the card edge. Padding now lives on the card shell here
- * instead, applied generously and consistently at every breakpoint.
- *
- * Brand mark: uses the same GraduationCap icon (in a blue rounded box)
- * that appears in site-nav, public-footer, and the favicon. This unifies
- * the auth page with the rest of the app's identity — previously it had
- * a unique "stacked chevrons" SVG that didn't match any other surface.
+ * Features:
+ * - Back to home button in top-left corner
+ * - Theme toggle (light/dark) button in top-right corner
+ * - Clean gradient background with subtle grid pattern
+ * - Centered auth card with logo and branding
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -37,14 +34,33 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         />
       </div>
 
+      {/* Top navigation bar with back to home + theme toggle */}
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20">
+        {/* Back to Home Button */}
+        <Link 
+          href="/" 
+          className="group flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg border border-border/50 hover:border-border shadow-sm hover:shadow-md transition-all duration-200"
+        >
+          <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+          <Home className="h-4 w-4" />
+          <span className="hidden sm:inline">Back to Home</span>
+          <span className="sm:hidden">Home</span>
+        </Link>
+
+        {/* Theme Toggle */}
+        <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg border border-border/50 p-2 shadow-sm">
+          <ThemeToggle />
+        </div>
+      </div>
+
       {/* Main content card */}
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-md mt-16">
         {/* Logo — GraduationCap in a blue rounded box, matching site-nav
             and public-footer. */}
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center mb-3 sm:mb-4">
             <div className="relative group">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-xl shadow-blue-500/25 flex items-center justify-center">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-xl shadow-blue-500/25 flex items-center justify-center group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
                 <GraduationCap className="w-8 h-8 sm:w-9 sm:h-9 text-white" strokeWidth={2} />
               </div>
               <div className="absolute inset-0 rounded-2xl bg-blue-600 opacity-0 blur-xl transition-opacity group-hover:opacity-20" />
@@ -55,6 +71,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               CareerStep
             </span>
           </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Internship Management Platform
+          </p>
         </div>
 
         {/* Auth card */}

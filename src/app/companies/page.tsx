@@ -148,8 +148,13 @@ export default function CompaniesPage() {
     }
   }
 
-  // Filter companies
+  // Filter companies - show all if no active filters
   const filteredCompanies = useMemo(() => {
+    // If no filters are active, show everything
+    const hasActiveFilters = searchQuery.trim() !== '' || selectedIndustry !== 'all' || selectedProvince !== 'all';
+    
+    if (!hasActiveFilters) return companies;
+    
     return companies.filter((company) => {
       const searchLower = searchQuery.toLowerCase().trim();
       const matchesSearch =
@@ -161,21 +166,17 @@ export default function CompaniesPage() {
       const matchesIndustry =
         selectedIndustry === "all" || company.industry === selectedIndustry;
       
-      const provinceNormalized = (company.province || '').trim();
+      const provinceNormalized = (company.province || '').toLowerCase().trim();
+      const selectedProvNormalized = selectedProvince.toLowerCase();
       const matchesProvince =
-        selectedProvince === "all" || provinceNormalized === selectedProvince;
+        selectedProvince === "all" || 
+        provinceNormalized === selectedProvNormalized ||
+        provinceNormalized.includes(selectedProvNormalized) ||
+        selectedProvNormalized.includes(provinceNormalized);
 
-      console.log('Filtering company:', company.name, { 
-        industry: company.industry,
-        province: provinceNormalized,
-        matchesIndustry, 
-        matchesProvince,
-        matchesSearch 
-      });
-      
       return matchesSearch && matchesIndustry && matchesProvince;
     });
-  }, [searchQuery, selectedIndustry, selectedProvince]);
+  }, [searchQuery, selectedIndustry, selectedProvince, companies]);
 
   const clearFilters = () => {
     setSearchQuery("");
