@@ -9,6 +9,8 @@ import {
   Briefcase,
   BarChart3,
   CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Card,
@@ -34,6 +36,7 @@ export default function ProgramCoordinatorDashboard() {
     totalReports: number;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [programName, setProgramName] = useState<string>("");
 
   useEffect(() => {
@@ -93,6 +96,7 @@ export default function ProgramCoordinatorDashboard() {
       });
     } catch (err) {
       console.error("Error fetching PC stats:", err);
+      setError(err instanceof Error ? err.message : "Failed to load statistics");
     } finally {
       setIsLoading(false);
     }
@@ -136,6 +140,25 @@ export default function ProgramCoordinatorDashboard() {
 
       {/* Push notification enable prompt (shared, silent if not supported) */}
       <EnablePushNotificationsCard />
+
+      {/* Error State */}
+      {error && (
+        <Card className="border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-red-800 dark:text-red-200">Unable to Load Statistics</p>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => { setError(null); fetchStats(); }}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

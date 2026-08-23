@@ -96,6 +96,7 @@ export default function DepartmentCoordinatorDashboard() {
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -176,6 +177,7 @@ export default function DepartmentCoordinatorDashboard() {
       }
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
+      setError(error instanceof Error ? error.message : "Failed to load dashboard data");
     } finally {
       setIsLoading(false);
     }
@@ -260,6 +262,30 @@ export default function DepartmentCoordinatorDashboard() {
 
       {/* Push notifications enable prompt (silent if not supported/configured) */}
       <EnablePushNotificationsCard />
+
+      {/* Error State */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium text-red-800 dark:text-red-200">Unable to Load Dashboard</p>
+                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => { setError(null); fetchDashboardData(); }}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                    Try Again
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Department Info Card (View-Only) */}
       {department && (

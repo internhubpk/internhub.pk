@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle, GraduationCap, CheckSquare, ScrollText, Send, Settings } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle, GraduationCap, CheckSquare, ScrollText, Send, Settings, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,6 +66,7 @@ export default function ExternalEvaluatorDashboard() {
     studentsAssigned: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,113 +75,124 @@ export default function ExternalEvaluatorDashboard() {
       // Without an authenticated user there is nothing to fetch. Bail out of
       // the loading state so the page doesn't spin forever.
       if (!user) {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setError(null);
+        }
         return;
       }
 
-      const supabase = createClient();
+      setError(null);
+      
+      try {
+        const supabase = createClient();
 
-      const evaluatorId = user.id;
-      const evaluatorRole = "external_evaluator";
+        const evaluatorId = user.id;
+        const evaluatorRole = "external_evaluator";
 
-      // All queries are scoped by evaluator_id = user.id (which matches
-      // profiles.user_id, which evaluations.evaluator_id references) and
-      // evaluator_role = 'external_evaluator'. RLS will further enforce this.
-      //
-      // We ALSO query student_internships.external_evaluator_id (migration
-      // 0071) to count students who are assigned to this external
-      // evaluator but may not yet have an evaluation row. This gives a
-      // more accurate "Students Assigned" count than the evaluations-only
-      // query below.
-      const [pendingRes, completedRes, studentsRes, recentRes, assignedStudentsRes] = await Promise.allSettled([
-        supabase
-          .from("evaluations")
-          .select("id", { count: "exact", head: true })
-          .eq("evaluator_id", evaluatorId)
-          .eq("evaluator_role", evaluatorRole)
-          .in("status", ["pending", "in_progress"]),
-        supabase
-          .from("evaluations")
-          .select("id", { count: "exact", head: true })
-          .eq("evaluator_id", evaluatorId)
-          .eq("evaluator_role", evaluatorRole)
-          .in("status", ["submitted", "approved"]),
-        supabase
-          .from("evaluations")
-          .select("student_user_id")
-          .eq("evaluator_id", evaluatorId)
-          .eq("evaluator_role", evaluatorRole),
-        supabase
-          .from("evaluations")
-          .select(
-            `
-            id,
-            type,
-            status,
-            rating,
-            submitted_at,
-            created_at,
-            student_user_id,
-            student_profile:student_user_id(full_name, email, avatar_url)
-          `
-          )
-          .eq("evaluator_id", evaluatorId)
-          .eq("evaluator_role", evaluatorRole)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        // New: also fetch students assigned via student_internships.external_evaluator_id
-        supabase
-          .from("student_internships")
-          .select("student_user_id, status")
-          .eq("external_evaluator_id", evaluatorId)
-          .in("status", ["assigned", "active"]),
-      ]);
+        // All queries are scoped by evaluator_id = user.id (which matches
+        // profiles.user_id, which evaluations.evaluator_id references) and
+        // evaluator_role = 'external_evaluator'. RLS will further enforce this.
+        //
+        // We ALSO query student_internships.external_evaluator_id (migration
+        // 0071) to count students who are assigned to this external
+        // evaluator but may not yet have an evaluation row. This gives a
+        // more accurate "Students Assigned" count than the evaluations-only
+        // query below.
+        const [pendingRes, completedRes, studentsRes, recentRes, assignedStudentsRes] = await Promise.allSettled([
+          supabase
+            .from("evaluations")
+            .select("id", { count: "exact", head: true })
+            .eq("evaluator_id", evaluatorId)
+            .eq("evaluator_role", evaluatorRole)
+            .in("status", ["pending", "in_progress"]),
+          supabase
+            .from("evaluations")
+            .select("id", { count: "exact", head: true })
+            .eq("evaluator_id", evaluatorId)
+            .eq("evaluator_role", evaluatorRole)
+            .in("status", ["submitted", "approved"]),
+          supabase
+            .from("evaluations")
+            .select("student_user_id")
+            .eq("evaluator_id", evaluatorId)
+            .eq("evaluator_role", evaluatorRole),
+          supabase
+            .from("evaluations")
+            .select(`
+              id,
+              type,
+              status,
+              rating,
+              submitted_at,
+              created_at,
+              student_user_id,
+              student_profile:student_user_id(full_name, email, avatar_url)
+            `)
+            .eq("evaluator_id", evaluatorId)
+            .eq("evaluator_role", evaluatorRole)
+            .order("created_at", { ascending: false })
+            .limit(5),
+          // New: also fetch students assigned via student_internships.external_evaluator_id
+          supabase
+            .from("student_internships")
+            .select("student_user_id, status")
+            .eq("external_evaluator_id", evaluatorId)
+            .in("status", ["assigned", "active"]),
+        ]);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const evaluationsAssigned =
-        pendingRes.status === "fulfilled" ? pendingRes.value.count ?? 0 : 0;
-      const evaluationsCompleted =
-        completedRes.status === "fulfilled" ? completedRes.value.count ?? 0 : 0;
-      // Distinct student count — UNION of:
-      //   (a) students with an evaluation row for this evaluator
-      //   (b) students assigned via student_internships.external_evaluator_id
-      // This gives an accurate count of "students this external evaluator
-      // is responsible for" — including those who haven't been evaluated
-      // yet but are formally assigned.
-      const evalStudentRows =
-        studentsRes.status === "fulfilled" ? (studentsRes.value.data ?? []) : [];
-      const assignedStudentRows =
-        assignedStudentsRes.status === "fulfilled" ? (assignedStudentsRes.value.data ?? []) : [];
-      const distinctStudents = new Set<string>();
-      evalStudentRows.forEach((row: { student_user_id: string }) => {
-        if (row.student_user_id) distinctStudents.add(row.student_user_id);
-      });
-      assignedStudentRows.forEach((row: { student_user_id: string }) => {
-        if (row.student_user_id) distinctStudents.add(row.student_user_id);
-      });
+        const evaluationsAssigned =
+          pendingRes.status === "fulfilled" ? pendingRes.value.count ?? 0 : 0;
+        const evaluationsCompleted =
+          completedRes.status === "fulfilled" ? completedRes.value.count ?? 0 : 0;
+        // Distinct student count — UNION of:
+        //   (a) students with an evaluation row for this evaluator
+        //   (b) students assigned via student_internships.external_evaluator_id
+        // This gives an accurate count of "students this external evaluator
+        // is responsible for" — including those who haven't been evaluated
+        // yet but are formally assigned.
+        const evalStudentRows =
+          studentsRes.status === "fulfilled" ? (studentsRes.value.data ?? []) : [];
+        const assignedStudentRows =
+          assignedStudentsRes.status === "fulfilled" ? (assignedStudentsRes.value.data ?? []) : [];
+        const distinctStudents = new Set<string>();
+        evalStudentRows.forEach((row: { student_user_id: string }) => {
+          if (row.student_user_id) distinctStudents.add(row.student_user_id);
+        });
+        assignedStudentRows.forEach((row: { student_user_id: string }) => {
+          if (row.student_user_id) distinctStudents.add(row.student_user_id);
+        });
 
-      setStats({
-        evaluationsAssigned,
-        evaluationsCompleted,
-        studentsAssigned: distinctStudents.size,
-      });
+        setStats({
+          evaluationsAssigned,
+          evaluationsCompleted,
+          studentsAssigned: distinctStudents.size,
+        });
 
-      const recentRows =
-        recentRes.status === "fulfilled" ? (recentRes.value.data ?? []) : [];
-      const recent: Evaluation[] = recentRows.map((row: any) => ({
-        id: row.id,
-        student_name: row.student_profile?.full_name || "Unknown Student",
-        student_email: row.student_profile?.email,
-        type: row.type,
-        status: (row.status as EvaluationStatus) ?? "pending",
-        rating: typeof row.rating === "number" ? row.rating : null,
-        submitted_at: row.submitted_at ?? null,
-        created_at: row.created_at ?? null,
-      }));
+        const recentRows =
+          recentRes.status === "fulfilled" ? (recentRes.value.data ?? []) : [];
+        const recent: Evaluation[] = recentRows.map((row: any) => ({
+          id: row.id,
+          student_name: row.student_profile?.full_name || "Unknown Student",
+          student_email: row.student_profile?.email,
+          type: row.type,
+          status: (row.status as EvaluationStatus) ?? "pending",
+          rating: typeof row.rating === "number" ? row.rating : null,
+          submitted_at: row.submitted_at ?? null,
+          created_at: row.created_at ?? null,
+        }));
 
-      setEvaluations(recent);
-      setIsLoading(false);
+        setEvaluations(recent);
+        setIsLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Error fetching evaluator dashboard:", err);
+          setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+          setIsLoading(false);
+        }
+      }
     }
 
     fetchData();
@@ -204,38 +216,76 @@ export default function ExternalEvaluatorDashboard() {
       {/* Push notifications enable prompt (silent if not supported/configured) */}
       <EnablePushNotificationsCard />
 
+      {/* Error State */}
+      {error && (
+        <Card className="border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-red-800 dark:text-red-200">Unable to Load Dashboard</p>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">{error}</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => { setError(null); setIsLoading(true); }}>
+                  <Clock className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Evaluations</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.evaluationsAssigned}</div>
-            <p className="text-xs text-muted-foreground">Awaiting your review</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.evaluationsCompleted}</div>
-            <p className="text-xs text-muted-foreground">Successfully evaluated</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Students Assigned</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.studentsAssigned}</div>
-            <p className="text-xs text-muted-foreground">Distinct students</p>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          <>
+            {[...Array(3)].map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-4" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-16 mb-1" />
+                  <Skeleton className="h-3 w-32" />
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Evaluations</CardTitle>
+                <Clock className="h-4 w-4 text-yellow-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.evaluationsAssigned}</div>
+                <p className="text-xs text-muted-foreground">Awaiting your review</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.evaluationsCompleted}</div>
+                <p className="text-xs text-muted-foreground">Successfully evaluated</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Students Assigned</CardTitle>
+                <Users className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.studentsAssigned}</div>
+                <p className="text-xs text-muted-foreground">Distinct students</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Quick Actions — link to the full site-supervisor feature set */}
