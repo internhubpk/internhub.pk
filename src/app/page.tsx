@@ -45,7 +45,6 @@ import {
   Shield,
   Sparkles,
   Zap,
-  Lock,
   Globe,
   Users,
   TrendingUp,
@@ -316,7 +315,7 @@ function TenantHero({ branding }: { branding: Branding }) {
           desktop, and on mobile the gradient background + content alone
           keep the hero clean and professional. */}
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 pb-10 sm:pb-16 relative z-10 w-full">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 lg:pt-44 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
@@ -463,7 +462,7 @@ function MainHero() {
           desktop, and on mobile the gradient background + content alone
           keep the hero clean and professional. */}
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 pb-10 sm:pb-16 relative z-10 w-full">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 lg:pt-44 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
@@ -841,12 +840,6 @@ export default function LandingPage() {
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </InteractiveButton>
-
-            {/* Trust text - responsive sizing and wrapping */}
-            <p className="mt-5 sm:mt-6 text-xs sm:text-sm text-white/60 flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap px-4">
-              <Lock className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-              <span>No credit card required • Free 14-day trial • Cancel anytime</span>
-            </p>
           </motion.div>
         </div>
       </section>
