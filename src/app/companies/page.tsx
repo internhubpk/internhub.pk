@@ -30,7 +30,6 @@ import {
   CheckCircle2,
   TrendingUp,
 } from "lucide-react";
-import { createClient } from "@/utils/supabase/client";
 
 // ============ TYPES ============
 interface CompanyData {
@@ -102,14 +101,16 @@ export default function CompaniesPage() {
 
   async function fetchCompanies() {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('is_verified', true)
-        .order('created_at', { ascending: false });
+      // Use public API endpoint instead of direct Supabase client
+      const response = await fetch('/api/companies');
+      const result = await response.json();
       
-      if (error) throw error;
+      if (!response.ok || !result.success) {
+        console.error("API error:", result.error);
+        return; // Keep empty state on API error
+      }
+      
+      const data = result.data?.data;
       
       if (data && data.length > 0) {
         const companyList: CompanyData[] = data.map((c: any) => {
@@ -143,7 +144,6 @@ export default function CompaniesPage() {
       }
     } catch (error) {
       console.error("Error fetching companies:", error);
-      // Keep empty state on error
     } finally {
       setIsLoading(false);
     }
