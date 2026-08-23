@@ -17,12 +17,23 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimiter, RATE_LIMITS, extractClientInfo } from "@/lib/api-security";
 import { createClient } from "@/utils/supabase/server";
 import { createLoginHandoff } from "@/lib/login-handoff";
 import type { ApiResponse } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit (2026-08-23 audit).
+    const { ipAddress: ip } = extractClientInfo(request);
+    const rl = rateLimiter.check(`handoff-create:${ip}`, RATE_LIMITS.authentication);
+    if (!rl.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 60) } }
+      );
+    }
+
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (!user || authError) {

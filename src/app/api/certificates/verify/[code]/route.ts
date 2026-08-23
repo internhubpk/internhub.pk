@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { rateLimiter, RATE_LIMITS, extractClientInfo } from "@/lib/api-security";
 
 /**
  * /api/certificates/verify/[code]
@@ -73,6 +74,16 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
+    // Rate limit (2026-08-23 audit): public code-probing protection.
+    const { ipAddress: ip } = extractClientInfo(_request);
+    const rl = rateLimiter.check(`cert-verify:${ip}`, RATE_LIMITS.general);
+    if (!rl.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 60) } }
+      );
+    }
+
     const { code } = await params;
 
     if (!code || !/^[A-Z0-9-]+$/i.test(code)) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { rateLimiter, RATE_LIMITS, extractClientInfo } from "@/lib/api-security";
 
 // Roles permitted to look up arbitrary users (staff who need this for
 // sending notifications, assigning supervisors, etc.). Students may
@@ -25,6 +26,20 @@ const ALLOWED_LOOKUP_ROLES = new Set([
  */
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: authenticated callers could otherwise enumerate
+    // usernames/emails at high frequency (2026-08-23 audit).
+    const { ipAddress: ip } = extractClientInfo(request);
+    const rl = rateLimiter.check(`lookup-user:${ip}`, RATE_LIMITS.general);
+    if (!rl.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfter ?? 60) },
+        }
+      );
+    }
+
     const body = await request.json();
     const { username } = body;
 
@@ -33,6 +48,12 @@ export async function POST(request: NextRequest) {
         { error: "Username is required" },
         { status: 400 }
       );
+    }
+    // Validate shape: username must be a plain token (no PostgREST filter
+    // injection characters). 2026-08-23 audit.
+    const uname = username.trim();
+    if (uname.length > 100 || !/^[A-Za-z0-9@._\- ]+$/.test(uname)) {
+      return NextResponse.json({ error: "Invalid username format" }, { status: 400 });
     }
 
     const supabase = await createClient();

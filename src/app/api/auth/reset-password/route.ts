@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimiter, RATE_LIMITS, extractClientInfo } from "@/lib/api-security";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
@@ -9,6 +10,16 @@ import { cookies } from "next/headers";
  */
 export async function GET(request: NextRequest) {
   try {
+    // Rate limit (2026-08-23 audit).
+    const { ipAddress: ip } = extractClientInfo(request);
+    const rl = rateLimiter.check(`reset-password:${ip}`, RATE_LIMITS.authentication);
+    if (!rl.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 60) } }
+      );
+    }
+
     const requestUrl = new URL(request.url);
     const token_hash = requestUrl.searchParams.get("token_hash");
     const type = requestUrl.searchParams.get("type");

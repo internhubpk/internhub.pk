@@ -19,11 +19,22 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimiter, RATE_LIMITS, extractClientInfo } from "@/lib/api-security";
 import { createClient as createServiceRoleClient } from "@supabase/supabase-js";
 import type { ApiResponse } from "@/types";
 
 export async function GET(request: NextRequest) {
   try {
+    // Rate limit (2026-08-23 audit).
+    const { ipAddress: ip } = extractClientInfo(request);
+    const rl = rateLimiter.check(`handoff-consume:${ip}`, RATE_LIMITS.authentication);
+    if (!rl.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 60) } }
+      );
+    }
+
     const token = new URL(request.url).searchParams.get("token");
     if (!token) {
       return NextResponse.json<ApiResponse<never>>(
