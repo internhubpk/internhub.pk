@@ -126,14 +126,30 @@ export default function ProgramCoordinatorSettingsPage() {
   ]);
 
   const handleSaveProfile = async () => {
+    if (!profile) return;
     setIsSaving(true);
     try {
-      // TODO: Implement profile update API when ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Persist the display name to the user's own profiles row (RLS
+      // restricts the update to the caller's row). The previous
+      // implementation was a fake setTimeout + success toast — the edit was
+      // silently discarded (2026-08-23 production audit).
+      const supabase = createClient();
+      const trimmed = displayName.trim();
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: trimmed || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", profile.user_id);
+
+      if (error) throw error;
+
       toast.success("Profile Updated", {
         description: "Your changes have been saved successfully.",
       });
     } catch (error) {
+      console.error("Error updating profile:", error);
       toast.error("Update Failed", {
         description: "Could not save your changes. Please try again.",
       });
