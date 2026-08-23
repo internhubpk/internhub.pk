@@ -296,7 +296,7 @@ export default function HelpPage() {
     <div className="min-h-screen bg-background">
       <SiteNav />
 
-      <main className="container mx-auto px-4 md:px-6 py-8 md:py-12">
+      <main className="container mx-auto px-4 md:px-6 pt-24 pb-8 md:pt-28 md:pb-12">
         {/* Header Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
