@@ -51,11 +51,21 @@ import {
 // =====================================================================
 
 // Tenant-scoped roles — must sign in on their own tenant subdomain.
+// These roles CANNOT log in on the main domain (careerstep.tech)
 const TENANT_SCOPED_ROLES = new Set([
   "university_admin",
   "department_coordinator",
   "faculty_supervisor",
   "student",
+]);
+
+// Roles that CAN log in on the main domain (platform-level users)
+const MAIN_DOMAIN_ALLOWED_ROLES = new Set([
+  "super_admin",
+  "company_hr",
+  "site_supervisor",
+  "external_evaluator",
+  "program_coordinator",
 ]);
 
 // Compute the apex domain for tenant-subdomain redirect construction.
@@ -480,6 +490,53 @@ function LoginForm() {
         // an infra hostname). Fall through to normal login completion —
         // the per-request proxy guard will handle tenant scoping on
         // subsequent navigation.
+      }
+
+      // ============================================================
+      // DOMAIN-BASED LOGIN RESTRICTION
+      // ============================================================
+      // Block university/tenant-scoped accounts from logging in on the
+      // MAIN domain (careerstep.tech). They MUST use their university
+      // subdomain (e.g., nust.careerstep.tech).
+      
+      const isMainDomain = !currentSubdomain; // No subdomain = main domain
+      
+      if (isMainDomain && userRole && TENANT_SCOPED_ROLES.has(userRole)) {
+        // User is trying to log in on main domain with a university account
+        await supabase.auth.signOut();
+        
+        // Construct the correct subdomain URL for the error message
+        let targetSubdomain = userTenantSlug || "your-university";
+        const apex = getApexDomain(currentHostname);
+        const targetDomain = userTenantDomain || (apex ? `${targetSubdomain}.${apex}` : null);
+        
+        toast.error("Use your university portal", {
+          description: targetDomain 
+            ? `University accounts must log in at ${targetDomain}`
+            : "Please use your university's subdomain to sign in. Main domain is for platform admins only.",
+          duration: 6000,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Block cross-university login: if user belongs to tenant A but is
+      // trying to log in on tenant B's subdomain, block them.
+      if (
+        currentSubdomain &&
+        userRole &&
+        TENANT_SCOPED_ROLES.has(userRole) &&
+        userTenantSlug &&
+        userTenantSlug !== currentSubdomain
+      ) {
+        await supabase.auth.signOut();
+        
+        toast.error("Wrong university portal", {
+          description: `This account belongs to "${userTenantSlug}", not "${currentSubdomain}". Please use your correct portal.`,
+          duration: 6000,
+        });
+        setIsLoading(false);
+        return;
       }
 
       if (

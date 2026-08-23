@@ -28,6 +28,7 @@ import {
   Heart,
   SlidersHorizontal,
   Loader2,
+  ArrowLeft,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { InternshipCard, InternshipCardSkeleton } from "@/components/marketplace/internship-card";
@@ -308,7 +309,18 @@ function MarketplacePageContent() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-primary/10 via-background to-primary/5 py-12 md:py-20 px-4">
+      <section className="bg-gradient-to-br from-primary/10 via-background to-primary/5 py-12 md:py-20 px-4 relative">
+        {/* Back Button - Top Left */}
+        <div className="max-w-4xl mx-auto mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
+          >
+            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
+            Back to Home
+          </Link>
+        </div>
+
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <Badge variant="secondary" className="px-3 py-1">
             Find Your Perfect Internship
