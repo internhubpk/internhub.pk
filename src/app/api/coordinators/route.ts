@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createServiceRoleClient } from "@/utils/supabase/service-role";
 import { cookies } from "next/headers";
 import {
   PaginationSchema,
@@ -262,19 +263,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if email already exists
-    const { data: existingUser } = await supabase.auth.admin.listUsers({
+    // Check if email already exists + create the auth user with the
+    // SERVICE-ROLE client (2026-08-23 audit fix): the previous code called
+    // auth.admin.* on the cookie-bound publishable-key client, which
+    // Supabase always rejects ("Only service role can use admin endpoints")
+    // — the university-admin "create coordinator" workflow was broken.
+    // Role assignment stays DB-driven: user_metadata carries only display
+    // fields; the profile row below + assign flow set the actual role.
+    let adminClient;
+    try {
+      adminClient = await createServiceRoleClient();
+    } catch (cfgErr) {
+      console.error("[/api/coordinators] service role client unavailable:", cfgErr);
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Server is not configured for user creation (SUPABASE_SERVICE_ROLE_KEY missing). Contact the platform administrator.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data: existingUser } = await adminClient.auth.admin.listUsers({
       page: 1,
       perPage: 1,
     });
 
-    // Create the auth user using admin API
-    const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
+    const { data: newUser, error: createUserError } = await adminClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: {
         full_name,
+      },
+      app_metadata: {
+        // system-managed; the DB trigger + profile upsert below keep
+        // profiles.role in sync with this value
         role: "department_coordinator",
       },
     });
@@ -324,7 +349,7 @@ export async function POST(request: NextRequest) {
     if (profileError) {
       console.error("Error creating profile:", profileError);
       // Clean up the auth user if profile creation fails
-      await supabase.auth.admin.deleteUser(newUser.user.id);
+      await adminClient.auth.admin.deleteUser(newUser.user.id);
       
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Failed to create coordinator profile" },
