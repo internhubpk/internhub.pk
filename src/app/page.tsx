@@ -315,7 +315,7 @@ function TenantHero({ branding }: { branding: Branding }) {
           desktop, and on mobile the gradient background + content alone
           keep the hero clean and professional. */}
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 lg:pt-44 pb-10 sm:pb-16 relative z-10 w-full">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-32 lg:pt-40 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
@@ -462,7 +462,7 @@ function MainHero() {
           desktop, and on mobile the gradient background + content alone
           keep the hero clean and professional. */}
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-36 lg:pt-44 pb-10 sm:pb-16 relative z-10 w-full">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-32 lg:pt-40 pb-10 sm:pb-16 relative z-10 w-full">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           {/* Left Content — mobile-first centered, lg: left-aligned */}
           <motion.div
