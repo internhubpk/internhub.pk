@@ -128,13 +128,14 @@ export default function CompaniesPage() {
             industry: c.industry || 'Technology',
             city: c.city || '',
             province: c.province || '',
-            open_positions: c.open_positions || Math.floor(Math.random() * 8) + 2,
-            rating: c.rating || (4.0 + Math.random()).toFixed(1),
-            review_count: c.review_count || Math.floor(Math.random() * 50) + 5,
+            // Only use REAL data - no fake random values
+            open_positions: c.open_positions || null,
+            rating: c.rating || null,
+            review_count: c.review_count || null,
             employee_count: employeeCount,
             is_verified: c.is_verified ?? true,
-            is_featured: c.is_featured ?? ['Systems Limited', 'NetSol Technologies', 'Engro Corporation'].includes(c.name),
-            description: c.description || `${c.name} - Leading ${c.industry || 'technology'} company hiring interns through CareerStep.`,
+            is_featured: ['Systems Limited', 'NetSol Technologies', 'Engro Corporation'].includes(c.name),
+            description: c.description || `${c.name} is a ${c.industry || 'technology'} company based in ${c.city || 'Pakistan'}.`,
             website: c.website,
           };
         });
@@ -218,7 +219,7 @@ export default function CompaniesPage() {
             </div>
             <Badge variant="secondary" className="w-fit text-sm py-1.5 px-4">
               <TrendingUp className="h-4 w-4 mr-2" />
-              {companies.reduce((acc, c) => acc + c.open_positions, 0)}+
+              {companies.reduce((acc, c) => acc + (c.open_positions || 0), 0)}+
               Open Positions
             </Badge>
           </div>
@@ -349,30 +350,25 @@ export default function CompaniesPage() {
                         {company.description}
                       </p>
 
-                      {/* Stats Row */}
-                      <div className="grid grid-cols-3 gap-3 pt-2">
-                        <div className="bg-background/60 rounded-lg p-3 text-center border border-border/30">
-                          <Briefcase className="h-4 w-4 mx-auto mb-1 text-green-600" />
-                          <p className="text-lg font-bold text-foreground">
-                            {company.open_positions}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Open</p>
+                      {/* Stats Row - Only show if we have real data */}
+                      {(company.open_positions || company.rating) && (
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          {company.open_positions && (
+                            <div className="bg-background/60 rounded-lg p-3 text-center border border-border/30">
+                              <Briefcase className="h-4 w-4 mx-auto mb-1 text-green-600" />
+                              <p className="text-lg font-bold text-foreground">{company.open_positions}</p>
+                              <p className="text-xs text-muted-foreground">Open</p>
+                            </div>
+                          )}
+                          {company.rating && (
+                            <div className="bg-background/60 rounded-lg p-3 text-center border border-border/30">
+                              <Star className="h-4 w-4 mx-auto mb-1 fill-yellow-400 text-yellow-400" />
+                              <p className="text-lg font-bold text-foreground">{company.rating}</p>
+                              <p className="text-xs text-muted-foreground">Rating{company.review_count ? ` (${company.review_count})` : ''}</p>
+                            </div>
+                          )}
                         </div>
-                        <div className="bg-background/60 rounded-lg p-3 text-center border border-border/30">
-                          <Star className="h-4 w-4 mx-auto mb-1 fill-yellow-400 text-yellow-400" />
-                          <p className="text-lg font-bold text-foreground">
-                            {company.rating}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Rating</p>
-                        </div>
-                        <div className="bg-background/60 rounded-lg p-3 text-center border border-border/30">
-                          <Users className="h-4 w-4 mx-auto mb-1 text-primary/70" />
-                          <p className="text-sm font-bold text-foreground">
-                            {company.employee_count.split("+")[0]}+
-                          </p>
-                          <p className="text-xs text-muted-foreground">Staff</p>
-                        </div>
-                      </div>
+                      )}
 
                       {/* Footer */}
                       <div className="flex items-center justify-between pt-2 border-t border-border/30">
@@ -444,24 +440,32 @@ export default function CompaniesPage() {
                       {company.description}
                     </p>
 
-                    {/* Stats Row */}
-                    <div className="flex items-center gap-4 py-2 px-3 bg-muted/40 rounded-lg border border-border/30">
-                      <div className="flex items-center gap-1.5">
-                        <Briefcase className="h-4 w-4 text-green-600 shrink-0" />
-                        <span className="text-sm font-medium text-foreground">
-                          {company.open_positions} positions
-                        </span>
+                    {/* Stats Row - Only show if we have real data */}
+                    {(company.open_positions || company.rating) && (
+                      <div className="flex items-center gap-4 py-2 px-3 bg-muted/40 rounded-lg border border-border/30">
+                        {company.open_positions && (
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase className="h-4 w-4 text-green-600 shrink-0" />
+                            <span className="text-sm font-medium text-foreground">
+                              {company.open_positions} positions
+                            </span>
+                          </div>
+                        )}
+                        {company.rating && (
+                          <div className="flex items-center gap-1.5">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 shrink-0" />
+                            <span className="text-sm font-medium text-foreground">
+                              {company.rating}
+                            </span>
+                            {company.review_count && (
+                              <span className="text-xs text-muted-foreground">
+                                ({company.review_count})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 shrink-0" />
-                        <span className="text-sm font-medium text-foreground">
-                          {company.rating}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          ({company.review_count})
-                        </span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* Footer */}
                     <div className="flex items-center justify-between pt-2">
