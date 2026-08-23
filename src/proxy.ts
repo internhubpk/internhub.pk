@@ -43,6 +43,7 @@ const PUBLIC_ROUTES: string[] = [
   "/login",
   "/register",
   "/forgot-password",
+  "/reset-password",
   "/auth",
   "/auth/callback",
   "/auth/confirm",

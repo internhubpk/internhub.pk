@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       }
       
       // Token valid - redirect to reset password page
-      return NextResponse.redirect(new URL("/forgot-password?mode=update", requestUrl.origin));
+      return NextResponse.redirect(new URL("/reset-password", requestUrl.origin));
     }
     
     // If no valid params, redirect to forgot password

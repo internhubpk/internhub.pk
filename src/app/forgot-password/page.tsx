@@ -38,9 +38,14 @@ export default function ForgotPasswordPage() {
       // Determine the redirect URL for the password reset landing page.
       // This must be a route on the same origin that Supabase will redirect
       // the user back to after they click the link in the email.
+      // Route recovery links through the PKCE callback, which exchanges
+      // the code for a recovery session and then forwards the user to
+      // /reset-password (redirect_to survives the tenant-subdomain branch
+      // too). The target origin must be in the Supabase URL allow-list
+      // (configured in the project's auth settings).
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/auth/confirm?next=/login`
+          ? `${window.location.origin}/api/auth/callback?redirect_to=/reset-password`
           : undefined;
 
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
