@@ -9,6 +9,7 @@ import {
   Compass, 
   Building2,
   ArrowRight,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +22,7 @@ import { ThemeToggle } from "./theme-toggle";
 
 const navLinks = [
   { href: "/marketplace", label: "Internships", icon: Compass, description: "Find opportunities" },
-  { href: "/universities", label: "Universities", icon: GraduationCap, description: "Partner institutions" },
-  { href: "/companies", label: "Companies", icon: Building2, description: "Hiring employers" },
+  { href: "/internships", label: "Programs", icon: Briefcase, description: "Internship programs" },
 ];
 
 export function SiteNav() {

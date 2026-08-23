@@ -12,18 +12,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1.0,
     },
     {
-      url: `${BASE_URL}/universities`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    {
-      url: `${BASE_URL}/companies`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    {
       url: `${BASE_URL}/marketplace`,
       lastModified: new Date(),
       changeFrequency: 'daily',
