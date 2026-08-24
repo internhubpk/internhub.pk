@@ -25,7 +25,7 @@ import type { ApiResponse, UserRole } from "@/types";
 //
 // The route:
 //   1. Authenticates the caller via cookie-bound SSR client.
-//   2. Verifies role = department_coordinator (or university_admin / super_admin).
+//   2. Verifies role = university_admin or super_admin (DC removed 2026-08-24).
 //   3. Fetches the caller's profile (university_id, department_id).
 //   4. Validates the optional program_id (must belong to caller's university).
 //   5. Validates the password (required, min 6 chars).
@@ -184,15 +184,19 @@ export async function POST(request: NextRequest) {
 
     const callerRole = callerProfile?.role as UserRole | undefined;
 
+    // SECURITY (2026-08-24): department_coordinator REMOVED from this gate.
+    // Business rule: student creation belongs to the Program Coordinator
+    // workflow (see /api/program-coordinator/students/bulk). Department
+    // Coordinators must not be able to create students through any path —
+    // the RLS policies on `students` already deny DC INSERT, and this
+    // service-role route must not widen it.
     if (
       profileErr ||
       !callerRole ||
-      (callerRole !== "department_coordinator" &&
-        callerRole !== "university_admin" &&
-        callerRole !== "super_admin")
+      (callerRole !== "university_admin" && callerRole !== "super_admin")
     ) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Department Coordinator, University Admin, or Super Admin access required" },
+        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
         { status: 403 }
       );
     }
@@ -206,16 +210,6 @@ export async function POST(request: NextRequest) {
 
     const effectiveUniversityId = callerProfile.university_id;
     let effectiveDepartmentId: string | null = callerProfile.department_id;
-
-    // Coordinators MUST have a department. University admins / super_admin
-    // can leave department_id NULL (students will be created without a
-    // department — they can be assigned later).
-    if (callerRole === "department_coordinator" && !effectiveDepartmentId) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Your coordinator account is not linked to a department." },
-        { status: 403 }
-      );
-    }
 
     // ==========================================================
     // 3. Build admin client (service_role).
@@ -359,13 +353,9 @@ export async function POST(request: NextRequest) {
       const programId: string | null = effectiveProgramId;
 
       // Determine the department_id for this student.
-      // - Coordinator: always their own department.
-      // - University admin / super_admin: use the program's department if
-      //   available, otherwise leave NULL.
-      let studentDepartmentId: string | null = effectiveDepartmentId;
-      if (callerRole !== "department_coordinator") {
-        studentDepartmentId = programDepartmentId || effectiveDepartmentId;
-      }
+      // University admin / super_admin: use the program's department if
+      // available, otherwise the caller's own department (may be NULL).
+      let studentDepartmentId: string | null = programDepartmentId || effectiveDepartmentId;
 
       // Check for duplicate email
       const { data: existingProfile } = await adminClient

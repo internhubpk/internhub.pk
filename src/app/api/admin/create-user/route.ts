@@ -82,7 +82,12 @@ const UNI_ADMIN_TARGET_ROLES: UserRole[] = [
 // supervisors, both forced into the coordinator's own department +
 // university. (Coordinators manage faculty supervisors in their
 // department, per the InternHub role matrix.)
-const COORD_TARGET_ROLES: UserRole[] = ["student", "faculty_supervisor"];
+// SECURITY (2026-08-24): "student" removed — Department Coordinators no
+// longer create student accounts. Student onboarding belongs to the Program
+// Coordinator (via /api/students and the CSV bulk import) and University
+// Admins (via /api/students). The only UI that called this route with
+// role=student was the DC "Add Student" dialog, which was removed.
+const COORD_TARGET_ROLES: UserRole[] = ["faculty_supervisor"];
 
 export async function POST(request: NextRequest) {
   try {
