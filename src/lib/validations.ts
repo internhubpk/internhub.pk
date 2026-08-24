@@ -35,19 +35,38 @@ export const CreateStudentSchema = z.object({
   university_id: z.string().uuid("Invalid university ID").optional(),
   department_id: z.string().uuid("Invalid department ID").optional().nullable(),
   program_id: z.string().uuid("Invalid program ID").optional().nullable(),
+  // Per the product spec, "Roll No" is the student's roll number — stored in
+  // the `student_id_number` column. The PC UI marks it as REQUIRED, but the
+  // schema keeps it optional+min(3) so other callers (super-admin bulk paths)
+  // that legitimately omit it are not blocked at the schema layer.
   student_id_number: z.string()
-    .min(3, "Student ID number must be at least 3 characters")
-    .max(50),
+    .min(3, "Roll number must be at least 3 characters")
+    .max(50)
+    .optional()
+    .or(z.literal("")),
+  // Semester — added in migration 0089. Nullable integer 1..12. The PC
+  // form requires it; the schema allows omitting it for callers that don't
+  // collect semester (e.g. legacy CSV imports without a semester column).
+  semester: z.number()
+    .int("Semester must be an integer")
+    .min(1, "Semester must be between 1 and 12")
+    .max(12, "Semester must be between 1 and 12")
+    .optional()
+    .nullable(),
   enrollment_year: z.number()
     .int("Enrollment year must be an integer")
     .min(1990, "Enrollment year must be at least 1990")
     .max(2100, "Enrollment year cannot exceed 2100")
-    .optional(),
-  expected_graduation: z.string().optional(),
+    .optional()
+    .nullable(),
+  expected_graduation: z.string()
+    .optional()
+    .nullable(),
   cgpa: z.number()
     .min(0, "CGPA cannot be negative")
     .max(4, "CGPA cannot exceed 4.0")
-    .optional(),
+    .optional()
+    .nullable(),
 });
 
 export const UpdateStudentSchema = CreateStudentSchema.partial();

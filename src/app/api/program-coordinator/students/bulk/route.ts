@@ -37,7 +37,7 @@ import type { UserRole } from "@/types";
 //
 // CSV COLUMNS (header row required, case-insensitive):
 //   first_name*, last_name*, email*, student_id_number*
-//   enrollment_year, expected_graduation, cgpa   (optional)
+//   semester, enrollment_year, expected_graduation, cgpa   (optional)
 //   (* = required)
 // ============================================================================
 
@@ -46,6 +46,7 @@ interface CsvRowInput {
   last_name: string;
   email: string;
   student_id_number: string;
+  semester: string | null;
   enrollment_year: string | null;
   expected_graduation: string | null;
   cgpa: string | null;
@@ -123,6 +124,7 @@ function rowsToObjects(rows: string[][]): { inputs: CsvRowInput[]; headerError?:
   const lastIdx = idx("last_name") >= 0 ? idx("last_name") : idx("lastname");
   const emailIdx = idx("email") >= 0 ? idx("email") : idx("email_address");
   const sidIdx = idx("student_id_number") >= 0 ? idx("student_id_number") : idx("student_id");
+  const semesterIdx = idx("semester");
   const enrollIdx = idx("enrollment_year");
   const gradIdx = idx("expected_graduation");
   const cgpaIdx = idx("cgpa");
@@ -131,7 +133,7 @@ function rowsToObjects(rows: string[][]): { inputs: CsvRowInput[]; headerError?:
     return {
       inputs: [],
       headerError:
-        "CSV header must include: first_name,last_name,email,student_id_number (optional: enrollment_year,expected_graduation,cgpa)",
+        "CSV header must include: first_name,last_name,email,student_id_number (optional: semester,enrollment_year,expected_graduation,cgpa)",
     };
   }
 
@@ -143,6 +145,7 @@ function rowsToObjects(rows: string[][]): { inputs: CsvRowInput[]; headerError?:
       last_name: (row[lastIdx] || "").trim(),
       email: (row[emailIdx] || "").trim().toLowerCase(),
       student_id_number: (row[sidIdx] || "").trim(),
+      semester: semesterIdx >= 0 ? (row[semesterIdx] || "").trim() || null : null,
       enrollment_year: enrollIdx >= 0 ? (row[enrollIdx] || "").trim() || null : null,
       expected_graduation: gradIdx >= 0 ? (row[gradIdx] || "").trim() || null : null,
       cgpa: cgpaIdx >= 0 ? (row[cgpaIdx] || "").trim() || null : null,
@@ -364,6 +367,14 @@ export async function POST(request: NextRequest) {
         reports.push(report);
         continue;
       }
+      if (input.semester !== null && input.semester !== "") {
+        const sem = parseInt(input.semester, 10);
+        if (Number.isNaN(sem) || sem < 1 || sem > 12) {
+          report.error = "semester must be an integer between 1 and 12";
+          reports.push(report);
+          continue;
+        }
+      }
       if (input.cgpa !== null && input.cgpa !== "") {
         const cgpa = parseFloat(input.cgpa);
         if (Number.isNaN(cgpa) || cgpa < 0 || cgpa > 4) {
@@ -444,7 +455,8 @@ export async function POST(request: NextRequest) {
           last_name: input.last_name,
         },
         app_metadata: {
-          role: "student",
+          app_role: "student",  // migration 0090: app_role, not role
+
           university_id: pcUniversityId,
           department_id: pcDepartmentId,
         },
@@ -504,6 +516,12 @@ export async function POST(request: NextRequest) {
           department_id: pcDepartmentId,
           program_id: pcProgramId, // ALWAYS the PC's own program
           student_id_number: input.student_id_number,
+          semester: input.semester
+            ? (() => {
+                const s = parseInt(input.semester, 10);
+                return Number.isNaN(s) || s < 1 || s > 12 ? null : s;
+              })()
+            : null,
           enrollment_year: input.enrollment_year
             ? parseInt(input.enrollment_year, 10)
             : new Date().getFullYear(),

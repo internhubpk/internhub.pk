@@ -64,6 +64,9 @@ interface StudentRow {
   full_name: string | null;
   email: string;
   student_id_number: string | null;
+  semester: number | null;
+  program_id: string | null;
+  program_name: string | null;
   faculty_supervisor_id: string | null;
   faculty_supervisor_name: string | null;
   has_internship: boolean;
@@ -73,6 +76,12 @@ interface SupervisorOption {
   user_id: string;
   full_name: string | null;
   email: string;
+}
+
+interface ProgramOption {
+  id: string;
+  name: string;
+  code: string | null;
 }
 
 export default function ProgramCoordinatorStudentsPage() {
@@ -95,11 +104,20 @@ export default function ProgramCoordinatorStudentsPage() {
     email: "",
     password: "",
     student_id_number: "",
+    semester: "",
+    program_id: "",
     enrollment_year: "",
     expected_graduation: "",
     cgpa: "",
   });
+  const [programs, setPrograms] = useState<ProgramOption[]>([]);
 
+  // Always filter by department_id (the PC is department-scoped) — never by a
+  // single program_id, because the PC can create students in ANY program in
+  // their department (the form shows a program dropdown).
+  const departmentId = profile?.department_id;
+  // Kept for backwards-compat with the CSV template generator which lists the
+  // expected column names.
   const programId = profile?.program_id;
 
   // ===== CSV Bulk Import state =====
@@ -124,9 +142,9 @@ export default function ProgramCoordinatorStudentsPage() {
 
   const downloadCsvTemplate = () => {
     const template =
-      "first_name,last_name,email,student_id_number,enrollment_year,expected_graduation,cgpa\n" +
-      "Ayesha,Khan,ayesha.khan@university.edu,BSCS-2026-001,2026,2030-06-30,3.2\n" +
-      "Bilal,Ahmed,bilal.ahmed@university.edu,BSCS-2026-002,2026,2030-06-30,\n";
+      "first_name,last_name,email,student_id_number,semester,enrollment_year,expected_graduation,cgpa\n" +
+      "Ayesha,Khan,ayesha.khan@university.edu,BSCS-2026-001,5,2026,2030-06-30,3.2\n" +
+      "Bilal,Ahmed,bilal.ahmed@university.edu,BSCS-2026-002,5,2026,2030-06-30,\n";
     const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -222,7 +240,7 @@ export default function ProgramCoordinatorStudentsPage() {
   };
 
   const fetchStudents = useCallback(async () => {
-    if (!profile?.department_id && !programId) {
+    if (!departmentId) {
       setIsLoading(false);
       return;
     }
@@ -230,27 +248,20 @@ export default function ProgramCoordinatorStudentsPage() {
       setIsLoading(true);
       const supabase = createClient();
 
-      // Fetch students in this program OR department
+      // Fetch students in this PC's department.
       // (some students may not have program_id assigned yet)
-      let query = supabase
+      const { data: studentRows, error } = await supabase
         .from("students")
         .select(`
           user_id,
           student_id_number,
+          semester,
+          program_id,
           faculty_supervisor_id,
           department_id,
-          program_id,
           profiles:user_id (full_name, email)
-        `);
-
-      // Filter by program_id if available, otherwise by department_id
-      if (programId) {
-        query = query.eq("program_id", programId);
-      } else if (profile?.department_id) {
-        query = query.eq("department_id", profile.department_id);
-      }
-      
-      const { data: studentRows, error } = await query
+        `)
+        .eq("department_id", departmentId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -286,13 +297,31 @@ export default function ProgramCoordinatorStudentsPage() {
         }
       }
 
+      // Fetch program names for the students' program_ids
+      const programIds = (studentRows || [])
+        .map((s: any) => s.program_id)
+        .filter(Boolean) as string[];
+      let programMap: Record<string, string> = {};
+      if (programIds.length > 0) {
+        const { data: programRows } = await supabase
+          .from("programs")
+          .select("id, name")
+          .in("id", programIds);
+        for (const p of (programRows || []) as any[]) {
+          programMap[p.id] = p.name || "Unnamed";
+        }
+      }
+
       const enriched: StudentRow[] = (studentRows || []).map((s: any) => {
-        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        const profileRow = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
         return {
           user_id: s.user_id,
-          full_name: profile?.full_name || null,
-          email: profile?.email || "",
+          full_name: profileRow?.full_name || null,
+          email: profileRow?.email || "",
           student_id_number: s.student_id_number,
+          semester: s.semester ?? null,
+          program_id: s.program_id || null,
+          program_name: s.program_id ? programMap[s.program_id] || null : null,
           faculty_supervisor_id: s.faculty_supervisor_id,
           faculty_supervisor_name: s.faculty_supervisor_id
             ? supervisorMap[s.faculty_supervisor_id] || null
@@ -308,7 +337,27 @@ export default function ProgramCoordinatorStudentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [programId, profile?.department_id]);
+  }, [departmentId]);
+
+  // Fetch the programs that belong to this PC's department so the Add-Student
+  // dialog can show them in a dropdown (spec §8: "Program have a dropdown of
+  // all the programs added by the department coordinator").
+  const fetchPrograms = useCallback(async () => {
+    if (!departmentId) return;
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("programs")
+        .select("id, name, code")
+        .eq("department_id", departmentId)
+        .eq("is_active", true)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      setPrograms((data || []) as ProgramOption[]);
+    } catch (err) {
+      console.error("Error fetching programs:", err);
+    }
+  }, [departmentId]);
 
   // Fetch available faculty supervisors (from the PC's university)
   const fetchSupervisors = useCallback(async () => {
@@ -333,7 +382,8 @@ export default function ProgramCoordinatorStudentsPage() {
   useEffect(() => {
     fetchStudents();
     fetchSupervisors();
-  }, [fetchStudents, fetchSupervisors]);
+    fetchPrograms();
+  }, [fetchStudents, fetchSupervisors, fetchPrograms]);
 
   // Filter students
   const filteredStudents = students.filter((s) => {
@@ -404,13 +454,13 @@ export default function ProgramCoordinatorStudentsPage() {
     }
   };
 
-  if (!programId) {
+  if (!departmentId) {
     return (
       <div className="space-y-6">
         <PageHeader title="Students" />
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            Your account is not linked to a program yet.
+            Your account is not linked to a department yet. Ask your University Admin / Department Coordinator to assign you to a department.
           </CardContent>
         </Card>
       </div>
@@ -525,7 +575,9 @@ export default function ProgramCoordinatorStudentsPage() {
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead>
                   <TableHead>Student</TableHead>
-                  <TableHead>Reg. No.</TableHead>
+                  <TableHead>Roll No.</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead>Sem.</TableHead>
                   <TableHead>Supervisor</TableHead>
                   <TableHead>Internship</TableHead>
                 </TableRow>
@@ -549,6 +601,22 @@ export default function ProgramCoordinatorStudentsPage() {
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                         {s.student_id_number || "—"}
                       </code>
+                    </TableCell>
+                    <TableCell>
+                      {s.program_name ? (
+                        <span className="text-sm">{s.program_name}</span>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Not set
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {s.semester ? (
+                        <span className="text-sm">Sem {s.semester}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {s.faculty_supervisor_name ? (
@@ -580,7 +648,7 @@ export default function ProgramCoordinatorStudentsPage() {
           <DialogHeader>
             <DialogTitle>Add Student</DialogTitle>
             <DialogDescription>
-              Create a new student in your program.
+              Create a new student in your department. The student will be assigned to the selected program.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -594,16 +662,28 @@ export default function ProgramCoordinatorStudentsPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="student-email">Email *</Label>
-              <Input
-                id="student-email"
-                type="email"
-                placeholder="e.g. ahmed@university.edu.pk"
-                value={studentForm.email}
-                onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value }))}
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="student-email">Email *</Label>
+                <Input
+                  id="student-email"
+                  type="email"
+                  placeholder="e.g. ahmed@university.edu.pk"
+                  value={studentForm.email}
+                  onChange={(e) => setStudentForm((f) => ({ ...f, email: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="student-id-number">Roll No *</Label>
+                <Input
+                  id="student-id-number"
+                  placeholder="e.g. 2022-CS-001"
+                  value={studentForm.student_id_number}
+                  onChange={(e) => setStudentForm((f) => ({ ...f, student_id_number: e.target.value }))}
+                  required
+                />
+              </div>
             </div>
             <PasswordField
               id="student-password"
@@ -613,49 +693,96 @@ export default function ProgramCoordinatorStudentsPage() {
               hint="The student will use this password to sign in. They can change it after first login."
               required
             />
-            <div className="space-y-2">
-              <Label htmlFor="student-id-number">Student ID Number</Label>
-              <Input
-                id="student-id-number"
-                placeholder="e.g. 2022-CS-001"
-                value={studentForm.student_id_number}
-                onChange={(e) => setStudentForm((f) => ({ ...f, student_id_number: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="enrollment-year">Enrollment Year</Label>
-                <Input
-                  id="enrollment-year"
-                  type="number"
-                  placeholder="e.g. 2022"
-                  value={studentForm.enrollment_year}
-                  onChange={(e) => setStudentForm((f) => ({ ...f, enrollment_year: e.target.value }))}
-                />
+                <Label htmlFor="student-program">Program *</Label>
+                <Select
+                  value={studentForm.program_id}
+                  onValueChange={(v) => setStudentForm((f) => ({ ...f, program_id: v }))}
+                >
+                  <SelectTrigger id="student-program">
+                    <SelectValue placeholder={
+                      programs.length === 0
+                        ? "No programs in your department"
+                        : "Select a program"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}{p.code ? ` (${p.code})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {programs.length === 0 && (
+                  <p className="text-xs text-destructive">
+                    No active programs in your department. Ask your Department Coordinator to create one first.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="student-cgpa">CGPA</Label>
-                <Input
-                  id="student-cgpa"
-                  type="number"
-                  min="0"
-                  max="4"
-                  step="0.01"
-                  placeholder="0 - 4"
-                  value={studentForm.cgpa}
-                  onChange={(e) => setStudentForm((f) => ({ ...f, cgpa: e.target.value }))}
-                />
+                <Label htmlFor="student-semester">Semester *</Label>
+                <Select
+                  value={studentForm.semester}
+                  onValueChange={(v) => setStudentForm((f) => ({ ...f, semester: v }))}
+                >
+                  <SelectTrigger id="student-semester">
+                    <SelectValue placeholder="Select semester (1–12)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
+                      <SelectItem key={s} value={String(s)}>
+                        Semester {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="expected-graduation">Expected Graduation</Label>
-              <Input
-                id="expected-graduation"
-                type="date"
-                value={studentForm.expected_graduation}
-                onChange={(e) => setStudentForm((f) => ({ ...f, expected_graduation: e.target.value }))}
-              />
-            </div>
+            {/* Optional details — collapsed-style section so the required
+                fields stay above the fold. CGPA, enrollment year, and
+                expected graduation are not in the product spec's required
+                fields but are kept for backwards-compat with existing rows. */}
+            <details className="rounded-md border bg-muted/30 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium select-none">
+                Optional details
+              </summary>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="enrollment-year">Enrollment Year</Label>
+                  <Input
+                    id="enrollment-year"
+                    type="number"
+                    placeholder="e.g. 2022"
+                    value={studentForm.enrollment_year}
+                    onChange={(e) => setStudentForm((f) => ({ ...f, enrollment_year: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-cgpa">CGPA</Label>
+                  <Input
+                    id="student-cgpa"
+                    type="number"
+                    min="0"
+                    max="4"
+                    step="0.01"
+                    placeholder="0 - 4"
+                    value={studentForm.cgpa}
+                    onChange={(e) => setStudentForm((f) => ({ ...f, cgpa: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 mt-4">
+                <Label htmlFor="expected-graduation">Expected Graduation</Label>
+                <Input
+                  id="expected-graduation"
+                  type="date"
+                  value={studentForm.expected_graduation}
+                  onChange={(e) => setStudentForm((f) => ({ ...f, expected_graduation: e.target.value }))}
+                />
+              </div>
+            </details>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddStudentOpen(false)}>
@@ -663,8 +790,39 @@ export default function ProgramCoordinatorStudentsPage() {
             </Button>
             <Button
               onClick={async () => {
-                if (!studentForm.full_name.trim() || !studentForm.email.trim() || !studentForm.password) {
-                  toast.error("Full name, email, and password are required");
+                // Validate required fields per the product spec:
+                // Full name, Roll No, Semester, Program, Email, Password.
+                if (!studentForm.full_name.trim()) {
+                  toast.error("Full name is required");
+                  return;
+                }
+                if (!studentForm.email.trim()) {
+                  toast.error("Email is required");
+                  return;
+                }
+                if (!studentForm.password) {
+                  toast.error("Password is required");
+                  return;
+                }
+                if (studentForm.password.length < 8) {
+                  toast.error("Password must be at least 8 characters");
+                  return;
+                }
+                if (!studentForm.student_id_number.trim()) {
+                  toast.error("Roll No is required");
+                  return;
+                }
+                if (!studentForm.program_id) {
+                  toast.error("Please select a program");
+                  return;
+                }
+                if (!studentForm.semester) {
+                  toast.error("Please select a semester");
+                  return;
+                }
+                const sem = parseInt(studentForm.semester, 10);
+                if (Number.isNaN(sem) || sem < 1 || sem > 12) {
+                  toast.error("Semester must be between 1 and 12");
                   return;
                 }
                 setIsAdding(true);
@@ -675,13 +833,15 @@ export default function ProgramCoordinatorStudentsPage() {
                     body: JSON.stringify({
                       full_name: studentForm.full_name.trim(),
                       email: studentForm.email.trim(),
-                      student_id_number: studentForm.student_id_number.trim() || null,
+                      password: studentForm.password,
+                      student_id_number: studentForm.student_id_number.trim(),
+                      semester: sem,
+                      program_id: studentForm.program_id,
+                      department_id: profile?.department_id,
+                      university_id: profile?.university_id,
                       enrollment_year: studentForm.enrollment_year ? parseInt(studentForm.enrollment_year, 10) : null,
                       expected_graduation: studentForm.expected_graduation || null,
                       cgpa: studentForm.cgpa ? parseFloat(studentForm.cgpa) : null,
-                      department_id: profile?.department_id,
-                      program_id: profile?.program_id,
-                      university_id: profile?.university_id,
                     }),
                   });
                   const data = await resp.json();
@@ -696,6 +856,8 @@ export default function ProgramCoordinatorStudentsPage() {
                     email: "",
                     password: "",
                     student_id_number: "",
+                    semester: "",
+                    program_id: "",
                     enrollment_year: "",
                     expected_graduation: "",
                     cgpa: "",
@@ -834,7 +996,7 @@ export default function ProgramCoordinatorStudentsPage() {
 
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>student_id_number</code></p>
-                <p>Optional columns: <code>enrollment_year</code> (e.g. 2026), <code>expected_graduation</code> (YYYY-MM-DD), <code>cgpa</code> (0–4)</p>
+                <p>Optional columns: <code>semester</code> (1–12), <code>enrollment_year</code> (e.g. 2026), <code>expected_graduation</code> (YYYY-MM-DD), <code>cgpa</code> (0–4)</p>
                 <p>Header row required (case-insensitive). Maximum 500 rows per import.</p>
               </div>
 

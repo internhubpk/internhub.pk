@@ -272,7 +272,7 @@ export default function FacultySupervisorStudentsPage() {
           missingProfiles = mp || [];
         }
 
-        // Fetch the `students` rows (program_id, cgpa, student_id_number) for
+        // Fetch the `students` rows (program_id, cgpa, student_id_number, semester) for
         // these users in a separate query — PostgREST can't traverse
         // student_internships → students directly (no FK).
         let studentRecords: any[] = [];
@@ -280,7 +280,7 @@ export default function FacultySupervisorStudentsPage() {
         if (studentUserIds.length > 0) {
           const { data: records } = await supabase
             .from("students")
-            .select("user_id, cgpa, student_id_number, program_id")
+            .select("user_id, cgpa, student_id_number, program_id, semester")
             .in("user_id", studentUserIds);
           studentRecords = records || [];
           const programIds = Array.from(
@@ -324,6 +324,7 @@ export default function FacultySupervisorStudentsPage() {
           const progress = meta.total > 0 ? Math.round((meta.approved / meta.total) * 100) : 0;
           const record = recordByUser.get(s.student_user_id);
           const programName = record?.program_id ? programMap[record.program_id] || "Unknown Program" : "Unknown Program";
+          const semVal = typeof record?.semester === "number" ? record.semester : 0;
           const weeklyStatus =
             meta.latestStatus === "submitted"
               ? "submitted"
@@ -343,7 +344,7 @@ export default function FacultySupervisorStudentsPage() {
             university: "", // not on profile; could fetch via students.university_id
             program: programName,
             major: "", // not a column on students
-            semester: 0, // not a column on students
+            semester: semVal, // read from students table (migration 0089), 0 when unknown
             internshipTitle: s.internship?.title || "N/A",
             company: s.company?.name || "N/A",
             companyLocation: s.internship?.location || (s.internship?.remote ? "Remote" : "N/A"),
@@ -370,6 +371,7 @@ export default function FacultySupervisorStudentsPage() {
         for (const p of missingProfiles) {
           const record = recordByUser.get(p.user_id);
           const programName = record?.program_id ? programMap[record.program_id] || "Unknown Program" : "Unknown Program";
+          const semVal = typeof record?.semester === "number" ? record.semester : 0;
           studentList.push({
             id: p.user_id,
             name:
@@ -381,7 +383,7 @@ export default function FacultySupervisorStudentsPage() {
             university: "",
             program: programName,
             major: "",
-            semester: 0,
+            semester: semVal,
             internshipTitle: "Not yet placed",
             company: "N/A",
             companyLocation: "N/A",
@@ -838,7 +840,9 @@ export default function FacultySupervisorStudentsPage() {
                     <TableCell>
                       <div>
                         <p className="text-sm font-medium">{student.major}</p>
-                        <p className="text-xs text-muted-foreground">Semester {student.semester}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {student.semester ? `Semester ${student.semester}` : "Semester not set"}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>{student.internshipTitle}</TableCell>
@@ -913,7 +917,7 @@ export default function FacultySupervisorStudentsPage() {
                   </div>
                 </DialogTitle>
                 <DialogDescription>
-                  Program: {selectedStudent.program} • Semester {selectedStudent.semester}
+                  Program: {selectedStudent.program} • Semester {selectedStudent.semester || "—"}
                 </DialogDescription>
               </DialogHeader>
 

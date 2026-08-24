@@ -172,6 +172,14 @@ export async function GET(request: NextRequest) {
     } else if (userRole === "faculty_supervisor" && userUniversityId) {
       // Faculty supervisors see their university's students
       query = query.eq("university_id", userUniversityId);
+    } else if (userRole === "program_coordinator" && userDepartmentId) {
+      // Program coordinators see students in their department (they can
+      // manage students across all programs in their department — see the
+      // PC students page for the form with a program dropdown).
+      query = query.eq("department_id", userDepartmentId);
+      if (userUniversityId) {
+        query = query.eq("university_id", userUniversityId);
+      }
     } else {
       // Other roles get empty results or denied
       return authorizationError("Insufficient permissions");
@@ -348,24 +356,51 @@ export async function POST(request: NextRequest) {
     }
 
     if (userRole === "program_coordinator") {
-      // Program coordinators can create students ONLY within their own program.
+      // Program coordinators can create students ONLY within their own
+      // university + department. They may pick ANY program that belongs
+      // to their department (a dropdown in the UI lists those programs).
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account");
       }
-      const userProgramId = (authContext.profile as any)?.program_id;
-      if (!userProgramId) {
+      const userDepartmentId = (authContext.profile as any)?.department_id;
+      if (!userDepartmentId) {
         return authorizationError(
-          "No program assigned to your account. Ask a Department Coordinator to assign you to a program first."
+          "No department assigned to your account. Ask a University Admin to assign you to a department first."
         );
       }
-      // Force university_id from caller's profile (cannot spoof).
+      // Force university_id + department_id from caller's profile (cannot spoof).
       studentData.university_id = userUniversityId;
-      // Force program_id from caller's profile (cannot spoof) — spec §8:
-      // "Do NOT trust a client-supplied program_id." Any body value is
-      // overridden here.
-      studentData.program_id = userProgramId;
-      // Force department_id from caller's profile too (PC is department-scoped).
-      studentData.department_id = (authContext.profile as any)?.department_id || null;
+      studentData.department_id = userDepartmentId;
+
+      // Trust but VERIFY the client-supplied program_id: it must exist AND
+      // belong to the caller's department (defense in depth — UI filters
+      // by department but RLS/server must enforce it).
+      if (studentData.program_id) {
+        const { data: prog, error: progErr } = await admin
+          .from("programs")
+          .select("id, department_id, university_id")
+          .eq("id", studentData.program_id)
+          .maybeSingle();
+        if (progErr || !prog) {
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "Referenced program does not exist" },
+            { status: 400 }
+          );
+        }
+        if (prog.department_id !== userDepartmentId) {
+          return authorizationError(
+            "Program does not belong to your department"
+          );
+        }
+        if (prog.university_id !== userUniversityId) {
+          return authorizationError(
+            "Program does not belong to your university"
+          );
+        }
+      }
+      // If program_id was not supplied, leave it null — the UI requires it
+      // but the API stays permissive so other valid PC callers (e.g. legacy
+      // paths) aren't broken.
     }
 
     // ================================================================
@@ -412,9 +447,10 @@ export async function POST(request: NextRequest) {
           last_name: lastName,
         },
         app_metadata: {
-          // Authoritative role + tenant scope (migration 0084: ensure_profile_exists
-          // reads ONLY app_metadata for role/tenant).
-          role: "student",
+          // Authoritative role + tenant scope (migration 0090: use `app_role`,
+          // NOT `role`, so GoTrue doesn't expose it as the JWT top-level
+          // `role` claim which PostgREST misinterprets as a Postgres role).
+          app_role: "student",
           university_id: studentData.university_id,
           department_id: studentData.department_id || undefined,
           program_id: studentData.program_id || undefined,
@@ -496,18 +532,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if student_id_number is unique within the university.
-    const { data: existingEnrollment } = await admin
-      .from("students")
-      .select("user_id")
-      .eq("student_id_number", studentData.student_id_number)
-      .eq("university_id", studentData.university_id)
-      .maybeSingle();
+    // Only run the check when a non-empty roll number was supplied — otherwise
+    // .eq("student_id_number", null) would either match nothing (good) or, with
+    // maybeSingle(), surface a 409 if any student already exists in the same
+    // university. Skipping the check when roll_number is empty is the correct
+    // behavior (the schema allows null/empty for non-PC callers).
+    const normalizedRollNo =
+      studentData.student_id_number && studentData.student_id_number.trim().length > 0
+        ? studentData.student_id_number.trim()
+        : null;
 
-    if (existingEnrollment) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "A student with this student ID number already exists" },
-        { status: 409 }
-      );
+    if (normalizedRollNo) {
+      const { data: existingEnrollment } = await admin
+        .from("students")
+        .select("user_id")
+        .eq("student_id_number", normalizedRollNo)
+        .eq("university_id", studentData.university_id)
+        .maybeSingle();
+
+      if (existingEnrollment) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "A student with this roll number already exists" },
+          { status: 409 }
+        );
+      }
     }
 
     // Verify department + program belong to the same university (only if set).
@@ -564,7 +612,8 @@ export async function POST(request: NextRequest) {
         university_id: studentData.university_id,
         department_id: studentData.department_id,
         program_id: studentData.program_id,
-        student_id_number: studentData.student_id_number,
+        student_id_number: studentData.student_id_number || null,
+        semester: studentData.semester ?? null,
         enrollment_year: studentData.enrollment_year,
         expected_graduation: studentData.expected_graduation,
         cgpa: studentData.cgpa,

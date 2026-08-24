@@ -633,10 +633,13 @@ export interface Student {
   university_id: string;
   department_id: string | null;
   program_id: string | null;
+  // Current semester (1..12). Added in migration 0089. Nullable for legacy rows.
+  semester: number | null;
   enrollment_year: number | null;
   expected_graduation: string | null;
   cgpa: number | null;
   student_id_number: string | null;
+  faculty_supervisor_id?: string | null;
   created_at: string;
   updated_at: string;
   // Joined profile fields (common)

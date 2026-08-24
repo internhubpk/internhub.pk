@@ -248,10 +248,12 @@ export interface StudentRow {
   university_id: string;
   department_id: string | null;
   program_id: string | null;
+  semester: number | null;
   enrollment_year: number | null;
   expected_graduation: string | null;
   cgpa: number | null;
   student_id_number: string | null;
+  faculty_supervisor_id?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1170,7 +1170,13 @@ export default function StudentsPage() {
                         )}
                       </TableCell>
                       <TableCell>{student.cgpa?.toFixed(2) || "-"}</TableCell>
-                      <TableCell>{student.enrollment_year || student.semester || "-"}</TableCell>
+                      <TableCell>
+                        {student.semester
+                          ? `Sem ${student.semester}`
+                          : student.enrollment_year
+                          ? `${student.enrollment_year}`
+                          : "-"}
+                      </TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
