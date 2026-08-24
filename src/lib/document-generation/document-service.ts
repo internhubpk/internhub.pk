@@ -53,6 +53,9 @@ export interface WeeklyReportData {
   // University branding
   universityName: string;
   universityLogoBuffer: Buffer | null;
+  // Department / faculty branding (header also has "Faculty of Computer Science" —
+  // replaced per-student per spec "for every uni logo and name should be different").
+  departmentName: string;
   // Program info
   programName: string;
   // Student info
@@ -209,15 +212,29 @@ export async function assembleWeeklyReportData(
   const supabase = await createClient();
 
   // 1. Fetch the weekly log with student + internship info.
+  //    weekly_logs uses `student_user_id` (NOT `student_id`) — confirmed live
+  //    via Supabase Management API. The earlier code used the wrong column
+  //    name + wrong FK hint (`students:student_id`), which silently broke
+  //    document generation against the live DB. Fixed here.
+  //
+  //    weekly_logs also carries snapshotted program_name / department_name /
+  //    university_logo_url / *_signature_url / *_remarks columns (migrations
+  //    0058, 0071) — included so the Word template's "Faculty of Computer
+  //    Science" header text can be substituted per-student per spec.
   const { data: weeklyLog, error: wlErr } = await supabase
     .from("weekly_logs")
     .select(
       `
       id, week_number, week_start_date, week_end_date, status,
-      student_id, internship_id, supervisor_id,
+      student_user_id, internship_id, supervisor_id,
       tasks_completed, challenges, learnings, next_week_goals, hours_worked,
       supervisor_feedback, submitted_at,
-      students:student_id (
+      program_name, department_name, university_logo_url,
+      learning_outcomes, challenges_solutions,
+      supporting_evidence,
+      student_signature_url, site_supervisor_signature_url, faculty_supervisor_signature_url,
+      site_supervisor_remarks, faculty_supervisor_remarks,
+      students:student_user_id (
         user_id, student_id_number, program_id, department_id,
         profiles:user_id ( full_name, email, university_id, program_id, signature_url )
       ),
@@ -242,7 +259,10 @@ export async function assembleWeeklyReportData(
     throw new Error("Weekly log is missing required student/internship/profile data");
   }
 
-  // 2. Fetch university + department.
+  // 2. Fetch university + department + program (used for header + body population).
+  //    The Word template header has BOTH "Ibadat International University Islamabad"
+  //    AND "Faculty of Computer Science" hardcoded — both must be substituted per
+  //    the user's instruction ("for every uni logo and name should be different").
   const { data: university } = await supabase
     .from("universities")
     .select("id, name, slug, logo_url")
@@ -251,6 +271,20 @@ export async function assembleWeeklyReportData(
 
   if (!university) {
     throw new Error("Student's university not found");
+  }
+
+  // Prefer the weekly_log's snapshotted department_name (migration 0058) when present;
+  // otherwise fall back to the live departments row.
+  let departmentName: string | null = (weeklyLog as any).department_name || null;
+  if (!departmentName && student.department_id) {
+    const { data: departmentRow } = await supabase
+      .from("departments")
+      .select("name, code")
+      .eq("id", student.department_id)
+      .single();
+    if (departmentRow?.name) {
+      departmentName = departmentRow.name;
+    }
   }
 
   // 3. Fetch the daily entries (Monday-Friday structured data).
@@ -322,56 +356,105 @@ export async function assembleWeeklyReportData(
   }
 
   // 6. Fetch logo + signatures (in parallel).
+  //    Prefer the weekly_log's denormalized columns (snapshotted at submit
+  //    time — migrations 0058, 0071) when available; fall back to live
+  //    relationship queries for legacy rows / missing snapshots.
+  const weeklyLogAny = weeklyLog as any;
+
   const [universityLogoBuffer, studentSignatureBuffer, industrySupervisorSignatureBuffer, facultySupervisorSignatureBuffer] =
     await Promise.all([
-      fetchUniversityLogo(university.logo_url),
-      fetchSignatureImage(profile.signature_url || null),
-      // Industry supervisor = site supervisor
-      weeklyLog.supervisor_id
-        ? (async () => {
-            const { data: ss } = await supabase
+      // University logo: prefer weekly_log.university_logo_url, fall back to universities.logo_url
+      weeklyLogAny.university_logo_url
+        ? fetchUniversityLogo(weeklyLogAny.university_logo_url)
+        : fetchUniversityLogo(university.logo_url),
+      // Student signature: prefer weekly_log.student_signature_url, fall back to profile.signature_url
+      weeklyLogAny.student_signature_url
+        ? fetchSignatureImage(weeklyLogAny.student_signature_url)
+        : fetchSignatureImage(profile.signature_url || null),
+      // Industry supervisor (site supervisor) signature
+      weeklyLogAny.site_supervisor_signature_url
+        ? fetchSignatureImage(weeklyLogAny.site_supervisor_signature_url)
+        : weeklyLog.supervisor_id
+          ? (async () => {
+              const { data: ss } = await supabase
+                .from("supervisors")
+                .select("user_id, profiles:user_id ( signature_url )")
+                .eq("id", weeklyLog.supervisor_id)
+                .single();
+              return fetchSignatureImage((ss?.profiles as any)?.signature_url || null);
+            })()
+          : Promise.resolve(null),
+      // Faculty supervisor signature: prefer weekly_log.faculty_supervisor_signature_url,
+      // fall back to lookup via student_internships (which also uses student_user_id).
+      weeklyLogAny.faculty_supervisor_signature_url
+        ? fetchSignatureImage(weeklyLogAny.faculty_supervisor_signature_url)
+        : (async () => {
+            const { data: si } = await supabase
+              .from("student_internships")
+              .select("faculty_supervisor_id")
+              .eq("internship_id", weeklyLog.internship_id)
+              .eq("student_user_id", weeklyLog.student_user_id)
+              .single();
+            if (!si?.faculty_supervisor_id) return null;
+            const { data: fs } = await supabase
               .from("supervisors")
               .select("user_id, profiles:user_id ( signature_url )")
-              .eq("id", weeklyLog.supervisor_id)
+              .eq("id", si.faculty_supervisor_id)
               .single();
-            return fetchSignatureImage((ss?.profiles as any)?.signature_url || null);
-          })()
-        : Promise.resolve(null),
-      // Faculty supervisor — look up via student_internships
-      (async () => {
-        const { data: si } = await supabase
-          .from("student_internships")
-          .select("faculty_supervisor_id")
-          .eq("internship_id", weeklyLog.internship_id)
-          .eq("student_id", weeklyLog.student_id)
-          .single();
-        if (!si?.faculty_supervisor_id) return null;
-        const { data: fs } = await supabase
-          .from("supervisors")
-          .select("user_id, profiles:user_id ( signature_url )")
-          .eq("id", si.faculty_supervisor_id)
-          .single();
-        return fetchSignatureImage((fs?.profiles as any)?.signature_url || null);
-      })(),
+            return fetchSignatureImage((fs?.profiles as any)?.signature_url || null);
+          })(),
     ]);
 
   // 7. Build the final data object.
+  //    Prefer the weekly_log's denormalized snapshot columns (migrations
+  //    0058/0071) when populated; fall back to the legacy `learnings` /
+  //    `challenges` / `next_week_goals` / `supervisor_feedback` columns.
+  const supportingEvidenceSummary: string = (() => {
+    if (weeklyLogAny.supporting_evidence && Array.isArray(weeklyLogAny.supporting_evidence)) {
+      const list = weeklyLogAny.supporting_evidence as Array<{ name?: string; url?: string }>;
+      if (list.length > 0) {
+        return list
+          .map((e, i) => `${i + 1}. ${e.name || e.url || "evidence"}`)
+          .join("\n");
+      }
+    }
+    return weeklyLog.next_week_goals || "See attached evidence files.";
+  })();
+
+  // Supervisor remarks: prefer site_supervisor_remarks (Industry Supervisor),
+  // then faculty_supervisor_remarks (Faculty Supervisor), then the legacy
+  // `supervisor_feedback` column. For the Word template's "Supervisor Remarks"
+  // section, the Industry Supervisor's remarks are most appropriate.
+  const supervisorRemarks =
+    weeklyLogAny.site_supervisor_remarks ||
+    weeklyLogAny.faculty_supervisor_remarks ||
+    weeklyLog.supervisor_feedback ||
+    "";
+
   const data: WeeklyReportData = {
     universityName: university.name,
     universityLogoBuffer,
-    programName: internship.programs?.name || "—",
+    departmentName: departmentName || "Faculty of Computer Science",
+    programName: internship.programs?.name || weeklyLogAny.program_name || "—",
     studentName: profile.full_name || "—",
-    studentRegistrationNumber: student.student_id_number || "—",
+    studentRegistrationNumber:
+      weeklyLogAny.student_registration_no ||
+      student.student_id_number ||
+      "—",
     hostOrganization: internship.companies?.name || "—",
     weekNumber: weeklyLog.week_number,
     reportingPeriodStart: weeklyLog.week_start_date,
     reportingPeriodEnd: weeklyLog.week_end_date,
     supervisorName,
     dailyEntries,
-    learningOutcomes: weeklyLog.learnings || "",
-    challengesFaced: weeklyLog.challenges || "",
-    supportingEvidence: weeklyLog.next_week_goals || "See attached evidence files.",
-    supervisorRemarks: weeklyLog.supervisor_feedback || "",
+    // Learning Outcomes / Skills Gained
+    learningOutcomes: weeklyLogAny.learning_outcomes || weeklyLog.learnings || "",
+    // Challenges Faced and Solutions
+    challengesFaced: weeklyLogAny.challenges_solutions || weeklyLog.challenges || "",
+    // Supporting Evidence (Mandatory)
+    supportingEvidence: supportingEvidenceSummary,
+    // Supervisor Remarks
+    supervisorRemarks,
     studentSignatureBuffer,
     industrySupervisorSignatureBuffer,
     facultySupervisorSignatureBuffer,
@@ -541,67 +624,108 @@ function detectImageFormat(buf: Buffer): { ext: string; mime: string } {
  *
  * We find the label cell, then find the NEXT <w:tc> after it, and inject
  * the value into its <w:p>.
+ *
+ * SPLIT-LABEL HANDLING:
+ * Word frequently splits a logical label (e.g. "Student Name") across
+ * multiple <w:r><w:t>...</w:t></w:r> runs (e.g. "Student" + " Name"). The
+ * naive single-regex `<w:t>...Student Name...</w:t>` therefore misses most
+ * of the labels in this template. We instead walk every <w:tc>...</w:tc>
+ * chunk in the document, extract its plain text (concatenation of all
+ * <w:t>...</w:t> contents), and compare against the supplied label.
  */
 function injectValueAfterLabel(
   documentXml: string,
   labelText: string,
   value: string
 ): { xml: string; replaced: boolean } {
-  // Find the label position
-  const labelPattern = `<w:t[^>]*>${escapeXml(labelText)}</w:t>`;
-  const labelMatch = documentXml.match(labelPattern);
-  if (!labelMatch) {
-    return { xml: documentXml, replaced: false };
-  }
-  const labelIdx = documentXml.indexOf(labelMatch[0]);
-  if (labelIdx === -1) {
-    return { xml: documentXml, replaced: false };
+  // Walk every <w:tc>...</w:tc> chunk and find the one whose plain text
+  // matches the label. The match is case-sensitive + whitespace-collapsed.
+  const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
+  const tcRegex = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+  let match: RegExpExecArray | null;
+  let labelCellEndIdx = -1;
+
+  while ((match = tcRegex.exec(documentXml)) !== null) {
+    const cellXml = match[0];
+    const plain = extractCellPlainText(cellXml);
+    if (plain.replace(/\s+/g, " ").trim() === normalizedLabel) {
+      labelCellEndIdx = match.index + cellXml.length;
+      break;
+    }
   }
 
-  // Find the next <w:tc> after the label (this is the value cell).
-  const afterLabel = documentXml.slice(labelIdx);
-  const tcStartMatch = afterLabel.match(/<w:tc[ >]/);
-  if (!tcStartMatch) {
-    return { xml: documentXml, replaced: false };
-  }
-  const tcStartOffset = afterLabel.indexOf(tcStartMatch[0]);
-  const tcStartIdx = labelIdx + tcStartOffset;
-
-  // Find the first <w:p> inside this <w:tc>
-  const tcSegment = documentXml.slice(tcStartIdx);
-  const pStartMatch = tcSegment.match(/<w:p[ >]/);
-  if (!pStartMatch) {
-    return { xml: documentXml, replaced: false };
-  }
-  const pStartOffset = tcSegment.indexOf(pStartMatch[0]);
-  const pStartIdx = tcStartIdx + pStartOffset;
-
-  // Find the closing </w:p> for this paragraph
-  const pEndIdx = documentXml.indexOf("</w:p>", pStartIdx);
-  if (pEndIdx === -1) {
+  if (labelCellEndIdx === -1) {
     return { xml: documentXml, replaced: false };
   }
 
-  // Replace the entire paragraph content with a fresh paragraph containing
-  // just our injected value (preserves the paragraph's properties because
-  // we re-create the <w:pPr> if it exists).
-  // Strategy: insert a new <w:r><w:t>VALUE</w:t></w:r> just before </w:p>.
-  // But first, remove any existing <w:r>...</w:r> elements inside this <w:p>
-  // (so we don't end up with leftover placeholder text).
-  const pContent = documentXml.slice(pStartIdx, pEndIdx + 6); // includes </w:p>
+  // Find the NEXT <w:tc>...</w:tc> after the label cell.
+  const afterLabel = documentXml.slice(labelCellEndIdx);
+  const nextTcMatch = afterLabel.match(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/);
+  if (!nextTcMatch) {
+    return { xml: documentXml, replaced: false };
+  }
+  const nextTcAbsIdx = labelCellEndIdx + afterLabel.indexOf(nextTcMatch[0]);
+  const nextTcEnd = nextTcAbsIdx + nextTcMatch[0].length;
 
-  // Extract <w:pPr>...</w:pPr> if present (paragraph properties — must preserve)
-  const pPrMatch = pContent.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+  // Find the first <w:p>...</w:p> inside the value cell.
+  const pMatch = nextTcMatch[0].match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+  if (!pMatch) {
+    // Cell has no paragraph — create a fresh one and inject.
+    const newCell = `<w:tc>${buildParagraphWithText(value)}</w:tc>`;
+    const newXml =
+      documentXml.slice(0, nextTcAbsIdx) +
+      newCell +
+      documentXml.slice(nextTcEnd);
+    return { xml: newXml, replaced: true };
+  }
+  const pAbsIdx = nextTcAbsIdx + nextTcMatch[0].indexOf(pMatch[0]);
+  const pEndIdx = pAbsIdx + pMatch[0].length;
+
+  // Preserve the paragraph's <w:pPr> if present, drop everything else.
+  const pPrMatch = pMatch[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
+  const newP = `<w:p>${pPr}${buildTextRun(value)}</w:p>`;
 
-  // Build the new paragraph: <w:p><w:pPr>?<w:r><w:t>VALUE</w:t></w:r></w:p>
-  const newParagraph = `<w:p>${pPr}${buildTextRun(value)}</w:p>`;
-
-  // Replace the old paragraph with the new one.
   const newXml =
-    documentXml.slice(0, pStartIdx) + newParagraph + documentXml.slice(pEndIdx + 6);
-
+    documentXml.slice(0, pAbsIdx) + newP + documentXml.slice(pEndIdx);
   return { xml: newXml, replaced: true };
+}
+
+/**
+ * Concatenate the text content of every <w:t>...</w:t> in the supplied XML
+ * fragment. Used to read a Word table cell's plain text even when the cell's
+ * label is split across multiple runs.
+ */
+function extractCellPlainText(cellXml: string): string {
+  const parts: string[] = [];
+  const tRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+  let m: RegExpExecArray | null;
+  while ((m = tRegex.exec(cellXml)) !== null) {
+    parts.push(unescapeXml(m[1]));
+  }
+  return parts.join("");
+}
+
+/**
+ * Reverse the escapeXml() transformation (entities → characters).
+ * Used when reading text out of <w:t> elements.
+ */
+function unescapeXml(s: string): string {
+  if (!s) return "";
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Build a fresh <w:p> paragraph containing a single text run.
+ * Word inserts a blank <w:pPr/> for empty paragraphs; we mimic this.
+ */
+function buildParagraphWithText(text: string): string {
+  return `<w:p>${buildTextRun(text)}</w:p>`;
 }
 
 /**
@@ -617,26 +741,17 @@ function populateWeeklyActivitiesTable(
   let xml = documentXml;
   let replacedCount = 0;
 
+  // Walk every <w:tr>...</w:tr> in the document. For each day (Mon-Fri),
+  // find the row whose FIRST cell's plain text equals the day name, then
+  // mutate that row's 3 cells in place: (0) day label + date, (1) tasks,
+  // (2) hours. This is far more reliable than the prior approach which
+  // modified the day-label run in flight and then failed to locate the
+  // adjacent tasks/hours cells.
   for (const entry of dailyEntries) {
-    // Find the row containing the day name (e.g. "Monday")
     const dayLabel = entry.dayName;
-    // The pattern in the XML is roughly:
-    //   <w:tc><w:p>...<w:t>Monday</w:t>...</w:p></w:tc>
-    //   <w:tc><w:p>...<w:t></w:t>...</w:p></w:tc>  ← tasks performed
-    //   <w:tc><w:p>...<w:t></w:t>...</w:p></w:tc>  ← hours
-    //
-    // The day label cell may contain a date too. We'll append the date to
-    // the day name in the same cell, and inject tasks/hours into the next two.
 
-    const labelPattern = `<w:t[^>]*>${escapeXml(dayLabel)}</w:t>`;
-    const labelMatch = xml.match(labelPattern);
-    if (!labelMatch) continue;
-
-    const labelIdx = xml.indexOf(labelMatch[0]);
-    if (labelIdx === -1) continue;
-
-    // Update the day label to include the date (e.g. "Monday\nAug 25, 2026")
-    // OR mark as holiday: "Monday (Holiday: Independence Day)"
+    // Build the new label text for the first cell:
+    //   "Monday\nAug 25, 2026" or "Monday — HOLIDAY\nAug 25, 2026"
     let dayLabelText: string = dayLabel;
     if (entry.isHoliday) {
       dayLabelText = `${dayLabel} — HOLIDAY`;
@@ -645,118 +760,181 @@ function populateWeeklyActivitiesTable(
       dayLabelText = `${dayLabelText}\n${formatDate(entry.date)}`;
     }
 
-    // Replace just the day label text (preserving the run structure)
-    const newLabelRun = `<w:r><w:t xml:space="preserve">${escapeXml(dayLabelText)}</w:t></w:r>`;
-    // Find the <w:r> that contains the label and replace its <w:t>
-    const runStart = xml.lastIndexOf("<w:r>", labelIdx);
-    const runEnd = xml.indexOf("</w:r>", labelIdx);
-    if (runStart !== -1 && runEnd !== -1) {
-      xml =
-        xml.slice(0, runStart) +
-        newLabelRun +
-        xml.slice(runEnd + 6); // 6 = "</w:r>".length
+    const trRegex = /<w:tr\b[^>]*>[\s\S]*?<\/w:tr>/g;
+    let trMatch: RegExpExecArray | null;
+    let targetRowXml: string | null = null;
+    let targetRowStartIdx = -1;
+    let targetRowEndIdx = -1;
+
+    while ((trMatch = trRegex.exec(xml)) !== null) {
+      const rowXml = trMatch[0];
+      const firstTc = rowXml.match(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/);
+      if (!firstTc) continue;
+      const firstCellPlain = extractCellPlainText(firstTc[0]).replace(/\s+/g, " ").trim();
+      if (firstCellPlain === dayLabel) {
+        targetRowXml = rowXml;
+        targetRowStartIdx = trMatch.index;
+        targetRowEndIdx = trMatch.index + rowXml.length;
+        break;
+      }
     }
 
-    // Recompute labelIdx after the replacement.
-    const newLabelMatch = xml.match(`<w:t[^>]*>${escapeXml(dayLabelText).replace(/\n/g, "[^<]*")}</w:t>`);
-    // Instead of relying on a complex regex, find the next 2 <w:tc> cells
-    // after the day label position and inject tasks + hours.
-    const updatedLabelIdx = xml.indexOf(newLabelRun);
-    if (updatedLabelIdx === -1) continue;
+    if (targetRowXml === null) continue;
 
-    // Inject tasks performed into the NEXT <w:tc> after the day label
-    const tasksResult = injectValueAfterLabel(xml, dayLabelText.split("\n")[0], entry.tasksPerformed);
-    if (tasksResult.replaced) {
-      xml = tasksResult.xml;
+    // Collect ALL <w:tc>...</w:tc> cells in this row in order.
+    const cellRegex = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+    const cells: Array<{ start: number; end: number; xml: string }> = [];
+    let cm: RegExpExecArray | null;
+    while ((cm = cellRegex.exec(targetRowXml)) !== null) {
+      cells.push({ start: cm.index, end: cm.index + cm[0].length, xml: cm[0] });
+    }
+    if (cells.length < 3) continue;
+
+    // Build the new (possibly modified) cell XMLs.
+    const newRowParts: string[] = [];
+
+    // Cell 0: day label + date
+    {
+      const cell0Xml = cells[0].xml;
+      const pMatch = cell0Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+      const newP = `<w:p>${pPr}${buildTextRun(dayLabelText)}</w:p>`;
+      let newCell0: string;
+      if (pMatch) {
+        const pStart = cell0Xml.indexOf(pMatch[0]);
+        const pEnd = pStart + pMatch[0].length;
+        newCell0 = cell0Xml.slice(0, pStart) + newP + cell0Xml.slice(pEnd);
+      } else {
+        const tcOpenEnd = cell0Xml.indexOf(">") + 1;
+        newCell0 = cell0Xml.slice(0, tcOpenEnd) + newP + cell0Xml.slice(tcOpenEnd);
+      }
+      newRowParts.push(newCell0);
       replacedCount++;
     }
 
-    // Inject hours into the NEXT-NEXT <w:tc> after tasks
-    // This is trickier — injectValueAfterLabel finds the FIRST <w:tc> after the label.
-    // We need the SECOND <w:tc> after the day label.
-    // Strategy: find the day label position again, find the 2nd <w:tc> after it,
-    // and inject hours there.
-    const hoursLabelIdx = xml.indexOf(escapeXml(dayLabelText));
-    if (hoursLabelIdx !== -1) {
-      // Find the 2nd <w:tc> after this position
-      const afterLabel2 = xml.slice(hoursLabelIdx);
-      let tcCount = 0;
-      let tcPos = -1;
-      let searchFrom = 0;
-      while (tcCount < 2) {
-        const m = afterLabel2.slice(searchFrom).match(/<w:tc[ >]/);
-        if (!m) break;
-        tcPos = searchFrom + afterLabel2.slice(searchFrom).indexOf(m[0]);
-        searchFrom = tcPos + 1;
-        tcCount++;
+    // Cell 1: tasks performed
+    {
+      const cell1Xml = cells[1].xml;
+      const pMatch = cell1Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+      const newP = `<w:p>${pPr}${buildTextRun(entry.tasksPerformed || "")}</w:p>`;
+      let newCell1: string;
+      if (pMatch) {
+        const pStart = cell1Xml.indexOf(pMatch[0]);
+        const pEnd = pStart + pMatch[0].length;
+        newCell1 = cell1Xml.slice(0, pStart) + newP + cell1Xml.slice(pEnd);
+      } else {
+        const tcOpenEnd = cell1Xml.indexOf(">") + 1;
+        newCell1 = cell1Xml.slice(0, tcOpenEnd) + newP + cell1Xml.slice(tcOpenEnd);
       }
-      if (tcPos !== -1) {
-        // Find the <w:p> inside this 2nd <w:tc>
-        const segment = xml.slice(hoursLabelIdx + tcPos);
-        const pMatch = segment.match(/<w:p[ >]/);
-        if (pMatch) {
-          const pIdx = hoursLabelIdx + tcPos + segment.indexOf(pMatch[0]);
-          const pEndIdx = xml.indexOf("</w:p>", pIdx);
-          if (pEndIdx !== -1) {
-            const pContent = xml.slice(pIdx, pEndIdx + 6);
-            const pPrMatch = pContent.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-            const pPr = pPrMatch ? pPrMatch[0] : "";
-            const hoursText = entry.isHoliday ? "—" : String(entry.hoursWorked || 0);
-            const newPara = `<w:p>${pPr}${buildTextRun(hoursText)}</w:p>`;
-            xml = xml.slice(0, pIdx) + newPara + xml.slice(pEndIdx + 6);
-            replacedCount++;
-          }
-        }
-      }
+      newRowParts.push(newCell1);
+      replacedCount++;
     }
+
+    // Cell 2: hours worked
+    {
+      const cell2Xml = cells[2].xml;
+      const pMatch = cell2Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+      const hoursText = entry.isHoliday ? "—" : String(entry.hoursWorked || 0);
+      const newP = `<w:p>${pPr}${buildTextRun(hoursText)}</w:p>`;
+      let newCell2: string;
+      if (pMatch) {
+        const pStart = cell2Xml.indexOf(pMatch[0]);
+        const pEnd = pStart + pMatch[0].length;
+        newCell2 = cell2Xml.slice(0, pStart) + newP + cell2Xml.slice(pEnd);
+      } else {
+        const tcOpenEnd = cell2Xml.indexOf(">") + 1;
+        newCell2 = cell2Xml.slice(0, tcOpenEnd) + newP + cell2Xml.slice(tcOpenEnd);
+      }
+      newRowParts.push(newCell2);
+      replacedCount++;
+    }
+
+    // Rebuild the row: interleave the (possibly modified) cells with the
+    // non-cell text fragments between them.
+    let newRow = "";
+    let lastEnd = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      newRow += targetRowXml.slice(lastEnd, c.start);
+      newRow += i < newRowParts.length ? newRowParts[i] : c.xml;
+      lastEnd = c.end;
+    }
+    newRow += targetRowXml.slice(lastEnd);
+
+    // Splice the new row back into the global xml.
+    xml = xml.slice(0, targetRowStartIdx) + newRow + xml.slice(targetRowEndIdx);
   }
 
   return { xml, replacedCount };
 }
 
 /**
- * Find a label like "Learning Outcomes" and inject the supplied text into
- * the paragraph that FOLLOWS the label paragraph.
+ * Find a label like "Learning Outcomes / Skills Gained" and inject the
+ * supplied text into the paragraph that FOLLOWS the label paragraph.
+ *
+ * SPLIT-LABEL HANDLING:
+ * Word frequently splits a logical label (e.g. "Learning Outcomes /
+ * Skills Gained") across multiple <w:r><w:t>...</w:t></w:r> runs. The
+ * naive single-regex `<w:t>...Learning Outcomes...</w:t>` therefore
+ * misses the label. We instead walk every <w:p>...</w:p> in the
+ * document, extract its plain text, and compare against the supplied
+ * label — then target the NEXT paragraph for injection.
  */
 function injectParagraphAfterLabel(
   documentXml: string,
   labelText: string,
   value: string
 ): { xml: string; replaced: boolean } {
-  // Find the paragraph that contains the label
-  const labelPattern = `<w:t[^>]*>${escapeXml(labelText)}</w:t>`;
-  const labelMatch = documentXml.match(labelPattern);
-  if (!labelMatch) {
+  const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
+  // Walk every <w:p>...</w:p> chunk; locate the one whose plain text matches.
+  const pRegex = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+  let match: RegExpExecArray | null;
+  let labelPStartIdx = -1;
+  let labelPEndIdx = -1;
+
+  while ((match = pRegex.exec(documentXml)) !== null) {
+    const pXml = match[0];
+    // Extract paragraph plain text — concatenate all <w:t>...</w:t> contents.
+    const parts: string[] = [];
+    let tExec: RegExpExecArray | null;
+    const tRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+    while ((tExec = tRe.exec(pXml)) !== null) {
+      parts.push(unescapeXml(tExec[1]));
+    }
+    const plain = parts.join("").replace(/\s+/g, " ").trim();
+    if (plain === normalizedLabel) {
+      labelPStartIdx = match.index;
+      labelPEndIdx = match.index + pXml.length;
+      break;
+    }
+  }
+
+  if (labelPStartIdx === -1) {
     return { xml: documentXml, replaced: false };
   }
-  const labelIdx = documentXml.indexOf(labelMatch[0]);
-  // Find the end of the paragraph containing the label
-  const pEndIdx = documentXml.indexOf("</w:p>", labelIdx);
-  if (pEndIdx === -1) {
-    return { xml: documentXml, replaced: false };
-  }
-  // Find the NEXT <w:p> after this one
-  const nextPStartMatch = documentXml.slice(pEndIdx + 6).match(/<w:p[ >]/);
-  if (!nextPStartMatch) {
+
+  // Find the NEXT <w:p>...</w:p> after the label paragraph.
+  const afterLabel = documentXml.slice(labelPEndIdx);
+  const nextPMatch = afterLabel.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+  if (!nextPMatch) {
     // No next paragraph — append a new paragraph right after the label's paragraph
     const newPara = `<w:p>${buildTextRun(value)}</w:p>`;
     return {
-      xml: documentXml.slice(0, pEndIdx + 6) + newPara + documentXml.slice(pEndIdx + 6),
+      xml: documentXml.slice(0, labelPEndIdx) + newPara + documentXml.slice(labelPEndIdx),
       replaced: true,
     };
   }
-  const nextPStartIdx = pEndIdx + 6 + documentXml.slice(pEndIdx + 6).indexOf(nextPStartMatch[0]);
-  const nextPEndIdx = documentXml.indexOf("</w:p>", nextPStartIdx);
-  if (nextPEndIdx === -1) {
-    return { xml: documentXml, replaced: false };
-  }
-  // Replace the next paragraph's content with our value
-  const pContent = documentXml.slice(nextPStartIdx, nextPEndIdx + 6);
-  const pPrMatch = pContent.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+  const nextPStartIdx = labelPEndIdx + afterLabel.indexOf(nextPMatch[0]);
+  const nextPEndIdx = nextPStartIdx + nextPMatch[0].length;
+
+  // Preserve the paragraph's <w:pPr> if present, drop everything else.
+  const pPrMatch = nextPMatch[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
   const newPara = `<w:p>${pPr}${buildTextRun(value)}</w:p>`;
   return {
-    xml: documentXml.slice(0, nextPStartIdx) + newPara + documentXml.slice(nextPEndIdx + 6),
+    xml: documentXml.slice(0, nextPStartIdx) + newPara + documentXml.slice(nextPEndIdx),
     replaced: true,
   };
 }
@@ -765,6 +943,13 @@ function injectParagraphAfterLabel(
  * Append a signature image inline after a "Signature" label.
  * Returns the modified XML + the relationship ID that was added (so the
  * caller can register it in document.xml.rels).
+ *
+ * SPLIT-LABEL HANDLING:
+ * Word frequently splits a logical label like "Student Signature" across
+ * multiple <w:r><w:t>...</w:t></w:r> runs. We walk every <w:tc>...</w:tc>
+ * chunk and match its plain text against the label, then insert a new
+ * paragraph with the inline drawing immediately after that cell's last
+ * paragraph (or just inside the cell, before </w:tc>).
  */
 function appendSignatureAfterLabel(
   documentXml: string,
@@ -775,15 +960,21 @@ function appendSignatureAfterLabel(
     return { xml: documentXml, imageAdded: false };
   }
 
-  const labelPattern = `<w:t[^>]*>${escapeXml(labelText)}</w:t>`;
-  const labelMatch = documentXml.match(labelPattern);
-  if (!labelMatch) {
-    return { xml: documentXml, imageAdded: false };
+  const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
+  const tcRegex = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+  let match: RegExpExecArray | null;
+  let targetCellEndIdx = -1;
+
+  while ((match = tcRegex.exec(documentXml)) !== null) {
+    const cellXml = match[0];
+    const plain = extractCellPlainText(cellXml);
+    if (plain.replace(/\s+/g, " ").trim() === normalizedLabel) {
+      targetCellEndIdx = match.index + cellXml.length;
+      break;
+    }
   }
-  const labelIdx = documentXml.indexOf(labelMatch[0]);
-  // Find the end of the paragraph containing the label
-  const pEndIdx = documentXml.indexOf("</w:p>", labelIdx);
-  if (pEndIdx === -1) {
+
+  if (targetCellEndIdx === -1) {
     return { xml: documentXml, imageAdded: false };
   }
 
@@ -793,9 +984,29 @@ function appendSignatureAfterLabel(
   const drawingXml = buildInlineImageXml(relId, 150, 60);
   const newPara = `<w:p><w:r>${drawingXml}</w:r></w:p>`;
 
+  // Insert the new paragraph immediately after the cell's last paragraph
+  // (i.e. right before the cell's closing </w:tc>).
+  // Find the last </w:p> before targetCellEndIdx.
+  const cellEndRelativeIdx = documentXml.lastIndexOf("</w:tc>", targetCellEndIdx - 1);
+  if (cellEndRelativeIdx === -1) {
+    return { xml: documentXml, imageAdded: false };
+  }
+  // Find the last </w:p> before cellEndRelativeIdx.
+  const lastPEndIdx = documentXml.lastIndexOf("</w:p>", cellEndRelativeIdx);
+  if (lastPEndIdx === -1) {
+    // No <w:p> in cell — insert one right inside <w:tc>
+    const tcStartIdx = documentXml.lastIndexOf("<w:tc", cellEndRelativeIdx);
+    const tcOpenEnd = documentXml.indexOf(">", tcStartIdx) + 1;
+    const newXml =
+      documentXml.slice(0, tcOpenEnd) +
+      newPara +
+      documentXml.slice(tcOpenEnd);
+    return { xml: newXml, relId, imageAdded: true };
+  }
+  // Insert after the last </w:p>
+  const insertAt = lastPEndIdx + "</w:p>".length;
   const newXml =
-    documentXml.slice(0, pEndIdx + 6) + newPara + documentXml.slice(pEndIdx + 6);
-
+    documentXml.slice(0, insertAt) + newPara + documentXml.slice(insertAt);
   return { xml: newXml, relId, imageAdded: true };
 }
 
@@ -827,42 +1038,98 @@ export async function populateWeeklyReportTemplate(
   let documentXml = await zip.file("word/document.xml")!.async("string");
   let headerXml = await zip.file("word/header1.xml")!.async("string");
 
-  // 4. HEADER: Replace the placeholder university name with the real one.
-  // The header currently contains "Ibadat International University Islamabad"
-  // (or similar). We replace it with the student's actual university name.
-  // Strategy: find all <w:t> elements containing "Ibadat" or "University"
-  // and replace the text with the real university name.
-  const placeholderPatterns = [
-    /Ibadat\s+International\s+University\s+Islamabad/gi,
-    /International\s+Islamic\s+University\s+Islamabad/gi,
-    /\[UNIVERSITY_NAME\]/g,
-    /\{university_name\}/gi,
-    /IIUI/g,  // abbreviation form
-  ];
+  // 4. HEADER: Replace the placeholder university name + faculty/department name
+  // with the student's actual values.
+  //
+  // The supplied IIUI template hardcodes TWO things in the header that must
+  // be substituted per-student so each university's report carries that
+  // university's own branding:
+  //
+  //   (a) "Ibadat International University Islamabad" -> data.universityName
+  //   (b) "Faculty of Computer Science"              -> data.departmentName
+  //
+  // Per the user's explicit instruction: "The wordfile is just a template
+  // for every uni logo and name should be different." This is enforced both
+  // here (text) and at step 5 below (logo image bytes).
+  //
+  // SPLIT-LABEL HANDLING:
+  // The header stores the placeholders inside a textbox (`<wps:txbx>` +
+  // `<v:textbox>` legacy fallback). Word splits each logical label across
+  // multiple <w:r><w:t>...</w:t></w:r> runs — e.g. "Ibadat" + " " +
+  // "International" + " " + "University" + " Islamabad". The naive
+  // single-regex approach misses every split label. We instead walk every
+  // <w:p>...</w:p> in the header XML, extract its plain text, and replace
+  // matching paragraphs wholesale.
 
-  let headerModified = false;
-  for (const pattern of placeholderPatterns) {
-    if (pattern.test(headerXml)) {
-      headerXml = headerXml.replace(pattern, escapeXml(data.universityName));
-      headerModified = true;
-    }
-  }
-  // Always set the university name in the header — even if no placeholder
-  // was matched, replace the first text run with the university name.
-  // Find the first <w:t>...</w:t> in the header and replace its text.
-  if (!headerModified) {
-    headerXml = headerXml.replace(
-      /<w:t[^>]*>([^<]*)<\/w:t>/,
-      (match, content) => {
-        // Only replace if the content looks like a university name placeholder
-        if (content && content.length > 5 && !content.includes("@")) {
-          return match.replace(content, escapeXml(data.universityName));
-        }
-        return match;
-      }
+  // Set of (matcher, replacement) pairs.
+  const headerReplacements: Array<{ match: RegExp; replacement: string; tag: string }> = [
+    { match: /^Ibadat\s+International\s+University\s+Islamabad\s*$/i, replacement: data.universityName, tag: "university_name (header)" },
+    { match: /^International\s+Islamic\s+University\s+Islamabad\s*$/i, replacement: data.universityName, tag: "university_name (header)" },
+    { match: /\[UNIVERSITY_NAME\]/, replacement: data.universityName, tag: "university_name (header)" },
+    { match: /\{university_name\}/i, replacement: data.universityName, tag: "university_name (header)" },
+  ];
+  if (data.departmentName && data.departmentName.trim().length > 0) {
+    headerReplacements.push(
+      { match: /^Faculty\s+of\s+Computer\s+Science\s*$/i, replacement: data.departmentName, tag: "department_name (header)" },
+      { match: /\[DEPARTMENT_NAME\]/, replacement: data.departmentName, tag: "department_name (header)" },
+      { match: /\[FACULTY_NAME\]/, replacement: data.departmentName, tag: "department_name (header)" },
+      { match: /\{department_name\}/i, replacement: data.departmentName, tag: "department_name (header)" },
+      { match: /\{faculty_name\}/i, replacement: data.departmentName, tag: "department_name (header)" }
     );
   }
-  fieldsPopulated.push("university_name (header)");
+
+  let headerXmlWork = headerXml;
+  const headerReplacedTags = new Set<string>();
+
+  // Walk every <w:p>...</w:p> in the header. Re-execute the regex after each
+  // replacement because indices shift.
+  let safetyCounter = 0;
+  while (safetyCounter++ < 200) {
+    const pRegex = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+    let pMatch: RegExpExecArray | null;
+    let didReplace = false;
+
+    while ((pMatch = pRegex.exec(headerXmlWork)) !== null) {
+      const pXml = pMatch[0];
+      const plain = extractCellPlainText(pXml).replace(/\s+/g, " ").trim();
+      if (!plain) continue;
+
+      // Try each replacement matcher.
+      for (const { match, replacement, tag } of headerReplacements) {
+        // Test against the whole plain text (for the strict matchers) OR
+        // search for the bracket-placeholder substring.
+        const isStrict = match.source.startsWith("^");
+        const matched = isStrict ? match.test(plain) : match.test(plain);
+        if (!matched) continue;
+
+        // Replace this paragraph's content: keep <w:pPr>, replace all
+        // <w:r>...</w:r> with a single new run containing the replacement.
+        const pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+        const pPr = pPrMatch ? pPrMatch[0] : "";
+        const newP = `<w:p>${pPr}${buildTextRun(replacement)}</w:p>`;
+
+        const pStart = pMatch.index;
+        const pEnd = pStart + pXml.length;
+        headerXmlWork =
+          headerXmlWork.slice(0, pStart) + newP + headerXmlWork.slice(pEnd);
+        headerReplacedTags.add(tag);
+        didReplace = true;
+        break; // re-execute the regex from start since indices shifted.
+      }
+      if (didReplace) break;
+    }
+    if (!didReplace) break;
+  }
+
+  for (const tag of headerReplacedTags) {
+    fieldsPopulated.push(tag);
+  }
+
+  // Final sweep for any IIUI abbreviation tokens that survived (e.g. "IIUI"
+  // appearing standalone as a single run somewhere).
+  headerXmlWork = headerXmlWork.replace(/\bIIUI\b/g, escapeXml(data.universityName));
+
+  headerXml = headerXmlWork;
 
   // 5. Replace the university logo in word/media/image1.png.
   if (data.universityLogoBuffer) {
@@ -899,10 +1166,13 @@ export async function populateWeeklyReportTemplate(
   }
 
   // 8. Inject reflection paragraphs.
+  //    NOTE: the supplied template's "Supporting Evidence" section is labelled
+  //    "Supporting Evidence (Mandatory)" — match the actual label so the
+  //    substitution locates the paragraph correctly.
   const reflectionsFields: Array<[string, string]> = [
     ["Learning Outcomes / Skills Gained", data.learningOutcomes],
     ["Challenges Faced and Solutions", data.challengesFaced],
-    ["Supporting Evidence", data.supportingEvidence],
+    ["Supporting Evidence (Mandatory)", data.supportingEvidence],
     ["Supervisor Remarks", data.supervisorRemarks],
   ];
 

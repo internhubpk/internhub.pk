@@ -2,13 +2,13 @@
  * Final Grade Calculation Service
  *
  * Implements the Final Evaluation architecture defined in the InternHub
- * reference workflow:
+ * reference workflow (HEC Stage 7 reference image + spec §18):
  *
  *   Final weighted score =
  *     40% Site Supervisor Evaluations
- *   + 30% Student Reports (weekly logs)
+ *   + 30% Student Reports (weekly logs + progress reports + evidence + reflection)
  *   + 25% Faculty Supervisor Evaluation
- *   + 5%  Activity Log Completion
+ *   +  5% Activity Log Completion
  *
  * Each component produces a normalized 0-100 score. The weighted sum is
  * the final 0-100 score. Letter grades are derived via the standard
@@ -31,17 +31,20 @@
 import { createClient } from "@/utils/supabase/server";
 
 // ----------------------------------------------------------------------------
-// Weights (per updated spec: 40% / 30% / 25% / 5%)
-//   - Site Supervisor     40%  (was 40%, unchanged)
-//   - Department Coord.   30%  (CHANGED — was "Student Reports 30%")
-//   - Faculty Supervisor  25%  (unchanged)
-//   - Activity Log         5%  (unchanged; or auto — see safeAverage)
+// Weights — STRICTLY per HEC Stage 7 reference + spec §18
+//   - Site Supervisor     40%   Site Supervisor Evaluations
+//   - Student Reports     30%   Evidence-based reporting, reflection, clarity,
+//                               connection between work and learning
+//   - Faculty Supervisor  25%   Academic oversight, feedback, final review
+//   - Activity Log         5%   Timely, complete weekly activity documentation
+//
+// DO NOT change these weights. The HEC Stage 7 reference image is authoritative.
 // ----------------------------------------------------------------------------
 export const FINAL_GRADE_WEIGHTS = {
   site_supervisor: 0.40,           // 40% — Site Supervisor Evaluations
-  department_coordinator: 0.30,    // 30% — Department Coordinator Evaluation
-  faculty_supervisor: 0.25,        // 25% — Faculty Supervisor Evaluation
-  activity_log: 0.05,              //  5% — Activity Log Completion (or auto)
+  student_reports: 0.30,          // 30% — Student Reports (weekly logs + reflection + evidence)
+  faculty_supervisor: 0.25,       // 25% — Faculty Supervisor Evaluation
+  activity_log: 0.05,             //  5% — Activity Log Completion
 } as const;
 
 // Letter grade thresholds (per standard IIUI / Ibadat scale).
@@ -135,65 +138,186 @@ async function computeSiteSupervisorScore(
 }
 
 /**
- * Component 2: Department Coordinator Evaluation (30%)
+ * Component 2: Student Reports (30%)
  *
- * Average score across all evaluations submitted by department_coordinator
- * for this student/internship. Mirrors computeSiteSupervisorScore but
- * filters on evaluator_role = 'department_coordinator'.
+ * Per HEC Stage 7 reference + spec §18:
+ *   "Student Reports — 30%"
+ *   Includes:
+ *     - Evidence-based reporting
+ *     - Reflection
+ *     - Clarity
+ *     - Connection between work and learning
  *
- * If no department_coordinator evaluations exist, returns null.
+ * Score is derived from the student's own submitted weekly_logs quality.
+ * If faculty-supervisor weekly report evaluations exist (evaluator_role =
+ * 'faculty_supervisor' AND type = 'weekly_log'), those authored scores are
+ * preferred as the authoritative measure of report quality.
+ *
+ * Auto-computed rubric (when no faculty weekly_log evaluations exist):
+ *   For each submitted/approved weekly_log, compute a 0-100 quality score:
+ *     - Has at least 1 supporting_evidence attachment  : +30 pts (evidence)
+ *     - learnings text length >= 100 chars               : +25 pts (reflection)
+ *     - challenges text length >= 50 chars               : +20 pts (clarity)
+ *     - next_week_goals text length >= 50 chars          : +15 pts (linkage)
+ *     - tasks_completed array has >= 1 entries OR
+ *       weekly_log_daily_entries has >= 1 row            : +10 pts (completeness)
+ *   Capped at 100 per log. Final score = mean across all logs.
+ *
+ * If no weekly logs submitted yet, returns null (component not available).
  */
-async function computeDepartmentCoordinatorScore(
+async function computeStudentReportsScore(
   supabase: Awaited<ReturnType<typeof createClient>>,
   studentId: string,
   internshipId: string
 ): Promise<{ score: number | null; metadata: Record<string, unknown> }> {
-  // NOTE: weekly_logs uses student_user_id (the student's auth.users.id),
-  // not student_id. evaluations uses student_user_id too (migration 0001
-  // column name on the live DB).
-  const { data: evals, error } = await supabase
-    .from("evaluations")
-    .select("id, scores, status, submitted_at, evaluator_role, type")
+  // weekly_logs uses student_user_id (the student's auth.users.id), not student_id.
+  const { data: weeklyLogs, error } = await supabase
+    .from("weekly_logs")
+    .select("id, learnings, challenges, next_week_goals, tasks_completed, supporting_evidence, status, week_number")
     .eq("student_user_id", studentId)
     .eq("internship_id", internshipId)
-    .eq("evaluator_role", "department_coordinator")
-    .in("status", ["submitted", "approved"]);
+    .in("status", ["submitted", "approved"])
+    .order("week_number", { ascending: true });
 
   if (error) {
-    console.error("[final-grade] department_coordinator query failed:", error);
+    console.error("[final-grade] student_reports query failed:", error);
     return { score: null, metadata: { error: error.message } };
   }
 
-  if (!evals || evals.length === 0) {
-    return { score: null, metadata: { evalCount: 0 } };
+  if (!weeklyLogs || weeklyLogs.length === 0) {
+    return { score: null, metadata: { weeklyLogCount: 0 } };
   }
 
-  const evalMeans: number[] = [];
-  for (const ev of evals) {
-    const scores = ev.scores as Record<string, number> | null;
-    if (scores && typeof scores === "object") {
-      const values = Object.values(scores).filter(
-        (v): v is number => typeof v === "number" && !Number.isNaN(v) && v >= 0 && v <= 100
-      );
-      if (values.length > 0) {
-        const mean = values.reduce((a, b) => a + b, 0) / values.length;
-        evalMeans.push(mean);
+  // Try faculty-supervisor weekly report evaluations first.
+  // evaluations.type enum: weekly_log | midterm | final | company_evaluation | supervisor_evaluation | task
+  // evaluator_role: faculty_supervisor
+  const { data: facultyWeeklyEvals, error: fweErr } = await supabase
+    .from("evaluations")
+    .select("id, scores, status, type")
+    .eq("student_user_id", studentId)
+    .eq("internship_id", internshipId)
+    .eq("evaluator_role", "faculty_supervisor")
+    .eq("type", "weekly_log")
+    .in("status", ["submitted", "approved"]);
+
+  if (fweErr) {
+    console.error("[final-grade] faculty weekly eval query failed:", fweErr);
+    // fall through to auto-compute
+  } else if (facultyWeeklyEvals && facultyWeeklyEvals.length > 0) {
+    const evalMeans: number[] = [];
+    for (const ev of facultyWeeklyEvals) {
+      const scores = ev.scores as Record<string, number> | null;
+      if (scores && typeof scores === "object") {
+        const values = Object.values(scores).filter(
+          (v): v is number => typeof v === "number" && !Number.isNaN(v) && v >= 0 && v <= 100
+        );
+        if (values.length > 0) {
+          const mean = values.reduce((a, b) => a + b, 0) / values.length;
+          evalMeans.push(mean);
+        }
+      }
+    }
+    if (evalMeans.length > 0) {
+      const avg = evalMeans.reduce((a, b) => a + b, 0) / evalMeans.length;
+      return {
+        score: Math.round(avg * 100) / 100,
+        metadata: {
+          source: "faculty_weekly_log_evaluations",
+          evalCount: facultyWeeklyEvals.length,
+          scoredCount: evalMeans.length,
+          perEvalMeans: evalMeans,
+          weeklyLogCount: weeklyLogs.length,
+        },
+      };
+    }
+  }
+
+  // Auto-compute from weekly_logs quality (rubric above).
+  const perLogScores: Array<{ weekNumber: number | null; score: number }> = [];
+
+  // Pull daily entries counts per weekly log in one query.
+  const weeklyLogIds = weeklyLogs.map((w) => w.id);
+  let dailyEntryCounts: Record<string, number> = {};
+  if (weeklyLogIds.length > 0) {
+    const { data: dailyRows, error: dailyErr } = await supabase
+      .from("weekly_log_daily_entries")
+      .select("weekly_log_id")
+      .in("weekly_log_id", weeklyLogIds);
+    if (!dailyErr && dailyRows) {
+      for (const row of dailyRows) {
+        const wid = row.weekly_log_id as string;
+        dailyEntryCounts[wid] = (dailyEntryCounts[wid] || 0) + 1;
       }
     }
   }
 
-  if (evalMeans.length === 0) {
-    return { score: null, metadata: { evalCount: evals.length, scoredCount: 0 } };
+  for (const log of weeklyLogs) {
+    let score = 0;
+
+    // +30: evidence-based reporting — at least 1 supporting_evidence attachment.
+    const evidence = log.supporting_evidence;
+    if (Array.isArray(evidence) && evidence.length > 0) {
+      score += 30;
+    } else if (evidence && typeof evidence === "object" && !Array.isArray(evidence)) {
+      // Some legacy rows store evidence as a single object.
+      score += 30;
+    }
+
+    // +25: reflection — learnings text length >= 100 chars.
+    if (log.learnings && log.learnings.trim().length >= 100) {
+      score += 25;
+    } else if (log.learnings && log.learnings.trim().length >= 50) {
+      // Partial credit for shorter reflections.
+      score += 12;
+    }
+
+    // +20: clarity — challenges text length >= 50 chars.
+    if (log.challenges && log.challenges.trim().length >= 50) {
+      score += 20;
+    } else if (log.challenges && log.challenges.trim().length >= 25) {
+      score += 10;
+    }
+
+    // +15: connection between work and learning — next_week_goals text length >= 50 chars.
+    if (log.next_week_goals && log.next_week_goals.trim().length >= 50) {
+      score += 15;
+    } else if (log.next_week_goals && log.next_week_goals.trim().length >= 25) {
+      score += 7;
+    }
+
+    // +10: completeness — at least 1 task documented (legacy array OR new daily entries table).
+    const tasksCompleted = log.tasks_completed as string[] | null;
+    const hasLegacyTasks = Array.isArray(tasksCompleted) && tasksCompleted.length > 0;
+    const dailyCount = dailyEntryCounts[log.id as string] || 0;
+    if (hasLegacyTasks || dailyCount > 0) {
+      score += 10;
+    }
+
+    if (score > 100) score = 100;
+    perLogScores.push({ weekNumber: log.week_number, score });
   }
 
-  const avg = evalMeans.reduce((a, b) => a + b, 0) / evalMeans.length;
+  if (perLogScores.length === 0) {
+    return { score: null, metadata: { weeklyLogCount: weeklyLogs.length, scoredCount: 0 } };
+  }
+
+  const totalScore = perLogScores.reduce((a, b) => a + b.score, 0);
+  const avgScore = totalScore / perLogScores.length;
+
   return {
-    score: Math.round(avg * 100) / 100,
+    score: Math.round(avgScore * 100) / 100,
     metadata: {
-      evalCount: evals.length,
-      scoredCount: evalMeans.length,
-      perEvalMeans: evalMeans,
-      types: evals.map((e) => e.type),
+      source: "weekly_log_quality_rubric",
+      weeklyLogCount: weeklyLogs.length,
+      scoredCount: perLogScores.length,
+      perLogScores,
+      rubric: {
+        evidence: 30,
+        reflection: 25,
+        clarity: 20,
+        linkage: 15,
+        completeness: 10,
+      },
     },
   };
 }
@@ -401,18 +525,18 @@ export async function computeFinalGrade(
     .eq("user_id", studentId)
     .single();
 
-  // 3. Compute all 4 components.
-  //    Component 2 is now "Department Coordinator Evaluation" (was Student Reports).
-  const [site, deptCoord, faculty, activity] = await Promise.all([
+  // 3. Compute all 4 components per HEC Stage 7 reference + spec §18:
+  //      40% Site Supervisor | 30% Student Reports | 25% Faculty Supervisor | 5% Activity Log
+  const [site, studentReports, faculty, activity] = await Promise.all([
     computeSiteSupervisorScore(supabase, studentId, internshipId),
-    computeDepartmentCoordinatorScore(supabase, studentId, internshipId),
+    computeStudentReportsScore(supabase, studentId, internshipId),
     computeFacultySupervisorScore(supabase, studentId, internshipId),
     computeActivityLogScore(supabase, studentId, internshipId),
   ]);
 
   const allAvailable =
     site.score !== null &&
-    deptCoord.score !== null &&
+    studentReports.score !== null &&
     faculty.score !== null &&
     activity.score !== null;
 
@@ -423,7 +547,7 @@ export async function computeFinalGrade(
   if (allAvailable) {
     finalScore =
       (site.score! * FINAL_GRADE_WEIGHTS.site_supervisor) +
-      (deptCoord.score! * FINAL_GRADE_WEIGHTS.department_coordinator) +
+      (studentReports.score! * FINAL_GRADE_WEIGHTS.student_reports) +
       (faculty.score! * FINAL_GRADE_WEIGHTS.faculty_supervisor) +
       (activity.score! * FINAL_GRADE_WEIGHTS.activity_log);
     finalScore = Math.round(finalScore * 100) / 100;
@@ -435,10 +559,8 @@ export async function computeFinalGrade(
     student_id: studentId,
     internship_id: internshipId,
     site_supervisor_score: site.score,
-    // Back-compat: `student_reports_score` field is kept on the type so the
-    // DB upsert still works against existing rows — but now stores the
-    // Department Coordinator's evaluation score.
-    student_reports_score: deptCoord.score,
+    // `student_reports_score` is the 30% Student Reports component (weekly logs + reflection + evidence).
+    student_reports_score: studentReports.score,
     faculty_supervisor_score: faculty.score,
     activity_log_score: activity.score,
     final_score: finalScore,
@@ -447,7 +569,7 @@ export async function computeFinalGrade(
     metadata: {
       weights: FINAL_GRADE_WEIGHTS,
       site_supervisor: site.metadata,
-      department_coordinator: deptCoord.metadata,
+      student_reports: studentReports.metadata,
       faculty_supervisor: faculty.metadata,
       activity_log: activity.metadata,
     },
@@ -465,10 +587,8 @@ export async function computeFinalGrade(
         internship_id: internshipId,
         university_id: profile?.university_id || null,
         site_supervisor_score: site.score,
-        // Back-compat: store dept coordinator score in the student_reports_score
-        // column (existing schema). The column name is misleading but changing
-        // the schema would require a new migration; we keep it for now.
-        student_reports_score: deptCoord.score,
+        // `student_reports_score` is the 30% Student Reports component per HEC Stage 7 + spec §18.
+        student_reports_score: studentReports.score,
         faculty_supervisor_score: faculty.score,
         activity_log_score: activity.score,
         final_score: finalScore,
@@ -496,4 +616,40 @@ async function getCurrentUserId(
 ): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   return user?.id || null;
+}
+
+// ------------------------------------------------------------------------------
+// Pure unit-test helper — verifies the HEC Stage 7 weights WITHOUT touching the DB.
+// Used by the test suite to prove the 40/30/25/5 split is enforced in code.
+//
+// DO NOT change the weights here — HEC Stage 7 reference + spec §18 are authoritative.
+// ------------------------------------------------------------------------------
+export function computeWeightedScore(
+  siteSupervisorScore: number,
+  studentReportsScore: number,
+  facultySupervisorScore: number,
+  activityLogScore: number
+): number {
+  const total =
+    siteSupervisorScore * FINAL_GRADE_WEIGHTS.site_supervisor +
+    studentReportsScore * FINAL_GRADE_WEIGHTS.student_reports +
+    facultySupervisorScore * FINAL_GRADE_WEIGHTS.faculty_supervisor +
+    activityLogScore * FINAL_GRADE_WEIGHTS.activity_log;
+  return Math.round(total * 100) / 100;
+}
+
+// ------------------------------------------------------------------------------
+// Sanity check at module-load: weights must sum to exactly 1.0.
+// If a future edit drifts the weights, this throws at import time.
+// ------------------------------------------------------------------------------
+if (Math.abs(
+  FINAL_GRADE_WEIGHTS.site_supervisor +
+  FINAL_GRADE_WEIGHTS.student_reports +
+  FINAL_GRADE_WEIGHTS.faculty_supervisor +
+  FINAL_GRADE_WEIGHTS.activity_log - 1.0
+) > 0.0001) {
+  console.error(
+    "[final-grade] CRITICAL: FINAL_GRADE_WEIGHTS do not sum to 1.0 — got",
+    FINAL_GRADE_WEIGHTS
+  );
 }

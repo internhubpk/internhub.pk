@@ -48,9 +48,10 @@ export async function POST(
     }
 
     // 1. Fetch the weekly log (RLS-enforced — only authorized users can see it).
+    //    weekly_logs uses `student_user_id` (NOT `student_id`) on the live DB.
     const { data: weeklyLog, error: wlErr } = await supabase
       .from("weekly_logs")
-      .select("id, student_id, internship_id, status, week_number, students:student_id ( user_id, profiles:user_id ( university_id ) )")
+      .select("id, student_user_id, internship_id, status, week_number, students:student_user_id ( user_id, profiles:user_id ( university_id ) )")
       .eq("id", weeklyLogId)
       .single();
 
@@ -101,14 +102,15 @@ export async function POST(
       callerProfile.role === "department_coordinator" &&
       callerProfile.department_id === studentProfile?.department_id;
 
-    // Supervisors: check via student_internships assignments
+    // Supervisors: check via student_internships assignments.
+    //    student_internships uses `student_user_id` (NOT `student_id`).
     let isAssignedSupervisor = false;
     if (callerProfile.role === "faculty_supervisor" || callerProfile.role === "site_supervisor") {
       const { data: si } = await supabase
         .from("student_internships")
         .select("faculty_supervisor_id, site_supervisor_id")
         .eq("internship_id", weeklyLog.internship_id)
-        .eq("student_id", weeklyLog.student_id)
+        .eq("student_user_id", weeklyLog.student_user_id)
         .single();
       if (si) {
         const { data: sup } = await supabase
@@ -146,7 +148,7 @@ export async function POST(
     const safeStudentName = (data.studentName || "student").replace(/\s+/g, "-").toLowerCase();
     const filename = `${safeStudentName}-weekly-report-week-${data.weekNumber}.docx`;
     const saveResult = await saveGeneratedReport({
-      studentId: weeklyLog.student_id,
+      studentId: weeklyLog.student_user_id,
       internshipId: weeklyLog.internship_id,
       weeklyLogId,
       weekNumber: data.weekNumber,
