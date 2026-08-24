@@ -49,6 +49,7 @@ interface AvatarUploaderProps {
   currentUrl: string | null | undefined;
   fullName?: string | null;
   onUploaded?: (url: string) => void;
+  onRemoved?: () => void;
   size?: "sm" | "md" | "lg" | "xl";
   disabled?: boolean;
   className?: string;
@@ -69,12 +70,14 @@ export function AvatarUploader({
   currentUrl,
   fullName,
   onUploaded,
+  onRemoved,
   size = "lg",
   disabled = false,
   className,
 }: AvatarUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -209,6 +212,84 @@ export function AvatarUploader({
     [handleFile]
   );
 
+  // Remove the user's avatar — both the file in the `avatars` bucket AND
+  // the `profiles.avatar_url` column. Without this, users could upload
+  // many avatars over time, all stored in the bucket forever, bloating
+  // storage usage.
+  const handleRemove = useCallback(async () => {
+    if (!userId || removing || disabled) return;
+    if (!currentUrl) {
+      toast.error("No profile picture to remove.");
+      return;
+    }
+    setRemoving(true);
+    try {
+      const supabase = createClient();
+
+      // Extract the storage path from the public URL.
+      // Public URL format:
+      //   https://<project>.supabase.co/storage/v1/object/public/avatars/<user_id>/avatar_<ts>.<ext>
+      // We need just the path AFTER `/avatars/` → `<user_id>/avatar_<ts>.<ext>`
+      let objectPath: string | null = null;
+      try {
+        const url = new URL(currentUrl);
+        const parts = url.pathname.split("/avatars/");
+        if (parts.length === 2 && parts[1]) {
+          objectPath = decodeURIComponent(parts[1]);
+        }
+      } catch {
+        // currentUrl is not a valid URL — skip the storage delete (the
+        // avatar_url column will still be cleared, which is the user-visible
+        // outcome).
+      }
+
+      // Delete the file from Storage (best-effort — the file might already
+      // be gone, or path extraction might have failed).
+      if (objectPath) {
+        try {
+          const { error: removeError } = await supabase.storage
+            .from("avatars")
+            .remove([objectPath]);
+          if (removeError) {
+            // Don't fail the whole operation — the profile.avatar_url
+            // cleanup is the user-visible outcome. A dangling file in
+            // storage is a minor issue compared to a stuck UI.
+            console.warn(
+              "[AvatarUploader] storage.remove() returned an error (non-fatal):",
+              removeError.message
+            );
+          }
+        } catch (removeErr) {
+          console.warn(
+            "[AvatarUploader] storage.remove() threw (non-fatal):",
+            removeErr
+          );
+        }
+      }
+
+      // Clear the avatar_url column on the profile.
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+
+      if (updateError) throw updateError;
+
+      toast.success("Profile picture removed.");
+      onRemoved?.();
+    } catch (error) {
+      console.error("[AvatarUploader] remove failed:", error);
+      toast.error("Failed to remove profile picture.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Please try again.",
+      });
+    } finally {
+      setRemoving(false);
+    }
+  }, [userId, removing, disabled, currentUrl, onRemoved]);
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -299,26 +380,50 @@ export function AvatarUploader({
       </div>
 
       {!disabled && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="text-xs"
-        >
-          {uploading ? (
-            <>
-              <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
-              Uploading...
-            </>
-          ) : (
-            <>
-              <Upload className="h-3 w-3 mr-1.5" />
-              Change Photo
-            </>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading || removing}
+            className="text-xs"
+          >
+            {uploading ? (
+              <>
+                <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Upload className="h-3 w-3 mr-1.5" />
+                {currentUrl ? "Change Photo" : "Upload Photo"}
+              </>
+            )}
+          </Button>
+          {currentUrl && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRemove}
+              disabled={uploading || removing}
+              className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {removing ? (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <X className="h-3 w-3 mr-1.5" />
+                  Remove
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       )}
 
       {!disabled && (
