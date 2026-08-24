@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
           userTenantSlug &&
           userTenantDomain
         ) {
-          console.log(`[auth/callback] Redirecting ${userRole} to tenant: ${userTenantSlug} (${userTenantDomain})`);
+          // (debug removed — auth callback tenant redirect)
           
           // Build the target URL - go directly to dashboard on tenant domain
           // SECURITY: same-origin path validation prevents open redirects.

@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(new URL("/student", requestUrl.origin));
         } catch (profileError) {
           // Profile fetch failed - still log them in, go to default
-          console.log("Profile fetch failed after confirmation, using default:", profileError);
+          console.error("Profile fetch failed after confirmation, using default:", profileError);
           return NextResponse.redirect(new URL("/student", requestUrl.origin));
         }
       }

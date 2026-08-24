@@ -197,13 +197,12 @@ export function InternshipCard({
                       </Link>
                     </h3>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Link 
-                        href="#" 
-                        className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                      <span
+                        className="text-sm text-muted-foreground flex items-center gap-1"
                       >
                         <Building2 className="h-3.5 w-3.5" />
                         {company_name || "Company"}
-                      </Link>
+                      </span>
                       {rating && (
                         <span className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
@@ -375,13 +374,12 @@ export function InternshipCard({
               
               {/* Company Name with Rating */}
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <Link 
-                  href="#" 
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 truncate max-w-[160px]"
+                <span
+                  className="text-sm text-muted-foreground flex items-center gap-1 truncate max-w-[160px]"
                 >
                   <Building2 className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{company_name || "Company"}</span>
-                </Link>
+                </span>
                 {rating && (
                   <span className="flex items-center gap-0.5 text-xs text-muted-foreground shrink-0">
                     <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />

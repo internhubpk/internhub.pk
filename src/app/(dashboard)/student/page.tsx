@@ -143,7 +143,7 @@ export default function StudentDashboard() {
       const supabase = createClient();
       
       if (!supabase) {
-        console.log("Supabase client not available");
+        console.error("Supabase client not available");
         setStats(DEFAULT_STATS);
         setHasDbError(true);
         setIsLoading(false);

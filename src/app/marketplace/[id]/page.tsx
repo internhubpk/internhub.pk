@@ -358,7 +358,7 @@ export default function InternshipDetailPage() {
       });
     } else {
       navigator.clipboard.writeText(window.location.href);
-      alert("Link copied to clipboard!");
+      toast.success("Link copied to clipboard!");
     }
   }, [internship]);
 
@@ -1433,8 +1433,16 @@ export default function InternshipDetailPage() {
                     ...similar,
                     is_saved: false,
                   }}
-                  onApply={() => alert("Please log in to apply")}
-                  onSave={() => {}}
+                  onApply={() => {
+                    toast.info("Please log in to apply", {
+                      description: "You'll be redirected to the login page.",
+                      action: {
+                        label: "Log in",
+                        onClick: () => router.push("/login"),
+                      },
+                    });
+                  }}
+                  onSave={undefined}
                 />
               </motion.div>
             ))}
@@ -1447,9 +1455,9 @@ export default function InternshipDetailPage() {
         <div className="max-w-7xl mx-auto text-center text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} CareerStep Marketplace. All rights reserved.</p>
           <div className="flex justify-center gap-6 mt-4">
-            <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-foreground transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-foreground transition-colors">Contact Support</a>
+            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
+            <Link href="/help" className="hover:text-foreground transition-colors">Contact Support</Link>
           </div>
         </div>
       </footer>

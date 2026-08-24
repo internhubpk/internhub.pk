@@ -2,7 +2,9 @@
  * POST /api/final-grades/compute
  *
  * Computes the final weighted grade (40/30/25/5) for a student/internship.
- * Requires university_admin, program_coordinator, or super_admin role.
+ * Requires university_admin, program_coordinator, department_coordinator,
+ * or super_admin role (scoped to the caller's university / program /
+ * department).
  *
  * Body: { student_id, internship_id }
  */
@@ -26,13 +28,13 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, university_id, program_id")
+      .select("role, university_id, program_id, department_id")
       .eq("user_id", user.id)
       .single();
 
-    if (!profile || !["super_admin", "university_admin", "program_coordinator"].includes(profile.role)) {
+    if (!profile || !["super_admin", "university_admin", "program_coordinator", "department_coordinator"].includes(profile.role)) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: only Super Admin, University Admin, or Program Coordinator can compute final grades" },
+        { success: false, error: "Forbidden: only Super Admin, University Admin, Program Coordinator, or Department Coordinator can compute final grades" },
         { status: 403 }
       );
     }
@@ -70,6 +72,12 @@ export async function POST(request: NextRequest) {
     if (profile.role === "program_coordinator" && studentProfile.program_id !== profile.program_id) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Cross-program access denied" },
+        { status: 403 }
+      );
+    }
+    if (profile.role === "department_coordinator" && studentProfile.department_id !== profile.department_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Cross-department access denied" },
         { status: 403 }
       );
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Users,
   Search,
@@ -339,9 +340,9 @@ export default function SuperAdminCompanyHrPage() {
                 <p className="text-amber-700 dark:text-amber-300 mt-1">
                   You need to add at least one company before you can create HR
                   accounts. Visit{" "}
-                  <a href="/super-admin/companies" className="underline font-medium">
+                  <Link href="/super-admin/companies" className="underline font-medium">
                     Companies
-                  </a>{" "}
+                  </Link>{" "}
                   to add one.
                 </p>
               </div>

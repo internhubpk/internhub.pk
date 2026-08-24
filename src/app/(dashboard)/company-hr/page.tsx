@@ -466,12 +466,13 @@ export default function CompanyHRDashboard() {
               <p className="text-sm">No active interns yet.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Intern</TableHead>
-                  <TableHead>Attendance</TableHead>
-                  <TableHead>Rating</TableHead>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Intern</TableHead>
+                    <TableHead>Attendance</TableHead>
+                    <TableHead>Rating</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -513,6 +514,7 @@ export default function CompanyHRDashboard() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

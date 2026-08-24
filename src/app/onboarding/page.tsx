@@ -116,7 +116,7 @@ export default function OnboardingPage() {
       if (foundRole && ROLE_DASHBOARD_PATHS[foundRole]) {
         setStatus("redirecting");
         const path = ROLE_DASHBOARD_PATHS[foundRole];
-        console.log(`Redirecting to ${path} for role: ${foundRole}`);
+        // (debug removed)
         
         // ================================================================
         // TENANT-AWARE REDIRECT FOR UNIVERSITY ACCOUNTS
@@ -168,7 +168,7 @@ export default function OnboardingPage() {
             userTenantDomain &&
             userTenantSlug !== currentSubdomain
           ) {
-            console.log(`[onboarding] Redirecting ${foundRole} to tenant: ${userTenantSlug} (${userTenantDomain})`);
+            // (debug removed — tenant redirect)
             
             // Use window.location.href for cross-domain redirect (router.push can't do this)
             redirectTimerRef.current = setTimeout(() => {

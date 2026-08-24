@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Building2,
@@ -336,7 +337,7 @@ export default function SuperAdminDashboard() {
         }))
       );
     } catch (e) {
-      console.log("Could not generate growth data:", e);
+      console.error("Could not generate growth data:", e);
       // Set empty data
       setMonthlyGrowthData([]);
     }
@@ -647,7 +648,7 @@ export default function SuperAdminDashboard() {
                 action.disabled ? "opacity-50 pointer-events-none" : ""
               }`}
             >
-              <a href={action.href} className="block p-6">
+              <Link href={action.href} className="block p-6">
                 <div className="flex items-center gap-4">
                   <div className={`p-3 rounded-xl ${action.color}`}>
                     <action.icon className="h-6 w-6" />
@@ -658,7 +659,7 @@ export default function SuperAdminDashboard() {
                   </div>
                   <ArrowRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                 </div>
-              </a>
+              </Link>
             </Card>
           </motion.div>
         ))}
@@ -804,10 +805,10 @@ export default function SuperAdminDashboard() {
                   Your platform is ready! Start by adding your first university.
                 </p>
                 <Button size="sm" asChild>
-                  <a href="/super-admin/universities">
+                  <Link href="/super-admin/universities">
                     <Plus className="h-4 w-4 mr-1" />
                     Add First University
-                  </a>
+                  </Link>
                 </Button>
               </div>
             ) : (
@@ -847,10 +848,10 @@ export default function SuperAdminDashboard() {
                 </div>
 
                 <Button variant="outline" className="w-full" asChild>
-                  <a href="/super-admin/settings">
+                  <Link href="/super-admin/settings">
                     <Settings className="h-4 w-4 mr-2" />
                     Platform Settings
-                  </a>
+                  </Link>
                 </Button>
               </div>
             )}

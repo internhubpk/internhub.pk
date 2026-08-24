@@ -434,7 +434,7 @@ export async function assembleWeeklyReportData(
   const data: WeeklyReportData = {
     universityName: university.name,
     universityLogoBuffer,
-    departmentName: departmentName || "Faculty of Computer Science",
+    departmentName: departmentName || "—",
     programName: internship.programs?.name || weeklyLogAny.program_name || "—",
     studentName: profile.full_name || "—",
     studentRegistrationNumber:

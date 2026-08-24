@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   GraduationCap,
@@ -215,7 +216,7 @@ export default function ProgramCoordinatorDashboard() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <a href="/program-coordinator/students">Open</a>
+              <Link href="/program-coordinator/students">Open</Link>
             </Button>
           </CardContent>
         </Card>
@@ -226,7 +227,7 @@ export default function ProgramCoordinatorDashboard() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <a href="/program-coordinator/supervisors">Open</a>
+              <Link href="/program-coordinator/supervisors">Open</Link>
             </Button>
           </CardContent>
         </Card>
@@ -237,7 +238,7 @@ export default function ProgramCoordinatorDashboard() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <a href="/program-coordinator/reports">Open</a>
+              <Link href="/program-coordinator/reports">Open</Link>
             </Button>
           </CardContent>
         </Card>

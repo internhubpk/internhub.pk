@@ -80,6 +80,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { toast } from "sonner";
 
 // Types
 interface Student {
@@ -172,7 +173,9 @@ export default function FacultySupervisorStudentsPage() {
   // company-hr/attendance/page.tsx.
   const handleExport = useCallback(() => {
     if (!students || students.length === 0) {
-      alert("No students to export.");
+      toast.error("No students to export.", {
+        description: "There are no student records matching the current filters.",
+      });
       return;
     }
     const headers = [

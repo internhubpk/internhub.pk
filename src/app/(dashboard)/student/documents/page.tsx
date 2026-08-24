@@ -360,7 +360,7 @@ export default function StudentDocumentsPage() {
       try {
         await supabase.storage.from('documents').remove([filePath]);
       } catch (e) {
-        console.log("Storage deletion skipped or failed:", e);
+        console.error("Storage deletion skipped or failed:", e);
       }
 
       // Delete from database

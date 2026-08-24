@@ -154,12 +154,6 @@ export default function UniversityAdminCompaniesPage() {
       <PageHeader
         title="Companies"
         description="Manage partner companies for your university. Add new host organizations, manage their details, and create HR accounts."
-        actions={
-          <Button onClick={() => toast.info("Coming soon", { description: "The company creation form will be available here shortly." })}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Company
-          </Button>
-        }
       />
 
       {/* Filters */}

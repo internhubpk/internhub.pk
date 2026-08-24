@@ -173,6 +173,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: GraduationCap,
     },
     {
+      title: "Report Evaluation",
+      href: "/department-coordinator/evaluations",
+      icon: ClipboardList,
+    },
+    {
       title: "Reports",
       href: "/department-coordinator/reports",
       icon: BarChart3,
@@ -287,6 +292,11 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       title: "Evaluations",
       href: "/student/evaluations",
       icon: ClipboardCheck,
+    },
+    {
+      title: "Final Evaluation",
+      href: "/student/final-evaluation",
+      icon: Award,
     },
     {
       title: "Certificates",

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Generate PWA icons from src/app/icon.svg
  * Outputs to public/: icon-96.png, icon-192.png, icon-512.png,

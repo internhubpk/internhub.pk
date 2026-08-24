@@ -138,38 +138,120 @@ async function computeSiteSupervisorScore(
 }
 
 /**
- * Component 2: Student Reports (30%)
+ * Component 2: Student Reports — Department Coordinator Evaluation (30%)
  *
  * Per HEC Stage 7 reference + spec §18:
- *   "Student Reports — 30%"
- *   Includes:
- *     - Evidence-based reporting
- *     - Reflection
- *     - Clarity
- *     - Connection between work and learning
+ *   "Student Reports — Department Coordinator Evaluation — 30%"
  *
- * Score is derived from the student's own submitted weekly_logs quality.
- * If faculty-supervisor weekly report evaluations exist (evaluator_role =
- * 'faculty_supervisor' AND type = 'weekly_log'), those authored scores are
- * preferred as the authoritative measure of report quality.
+ * The 30% slot represents the Department Coordinator's evaluation of the
+ * student's submitted weekly logs / daily entries / supporting evidence /
+ * reflection. The 4 subcriteria are:
+ *   - evidence_score          Evidence-based reporting
+ *   - reflection_score        Reflection
+ *   - clarity_score           Clarity
+ *   - work_learning_score     Connection between work and learning
+ * Each subcriterion is 0..25, combined total 0..100.
  *
- * Auto-computed rubric (when no faculty weekly_log evaluations exist):
- *   For each submitted/approved weekly_log, compute a 0-100 quality score:
- *     - Has at least 1 supporting_evidence attachment  : +30 pts (evidence)
- *     - learnings text length >= 100 chars               : +25 pts (reflection)
- *     - challenges text length >= 50 chars               : +20 pts (clarity)
- *     - next_week_goals text length >= 50 chars          : +15 pts (linkage)
- *     - tasks_completed array has >= 1 entries OR
- *       weekly_log_daily_entries has >= 1 row            : +10 pts (completeness)
- *   Capped at 100 per log. Final score = mean across all logs.
+ * SOURCE PRIORITY (highest first):
+ *   1. Department Coordinator report evaluation
+ *      (evaluator_role = 'department_coordinator', type =
+ *      'department_coordinator_report'). This is the AUTHORITATIVE source
+ *      per the spec. Total = sum of 4 subcriteria from `scores` JSONB.
  *
- * If no weekly logs submitted yet, returns null (component not available).
+ *   2. (FALLBACK) Faculty-supervisor weekly_log evaluations
+ *      (evaluator_role = 'faculty_supervisor', type = 'weekly_log').
+ *      Kept for back-compat with previous behavior. Average of per-eval mean
+ *      of `scores` values.
+ *
+ *   3. (LAST RESORT) Auto-computed weekly_log quality rubric
+ *      For each submitted/approved weekly_log, compute a 0-100 quality score:
+ *        - Has at least 1 supporting_evidence attachment  : +30 pts (evidence)
+ *        - learnings text length >= 100 chars             : +25 pts (reflection)
+ *        - challenges text length >= 50 chars             : +20 pts (clarity)
+ *        - next_week_goals text length >= 50 chars        : +15 pts (linkage)
+ *        - tasks_completed array has >= 1 entries OR
+ *          weekly_log_daily_entries has >= 1 row          : +10 pts (completeness)
+ *      Capped at 100 per log. Final score = mean across all logs.
+ *
+ * If no weekly logs submitted yet AND no DC eval exists, returns null
+ * (component not available — final grade cannot be computed).
  */
 async function computeStudentReportsScore(
   supabase: Awaited<ReturnType<typeof createClient>>,
   studentId: string,
   internshipId: string
 ): Promise<{ score: number | null; metadata: Record<string, unknown> }> {
+  // ---------------------------------------------------------------------
+  // STEP 1 (PREFERRED): Try the Department Coordinator report evaluation.
+  // The unique index guarantees at most one row per
+  // (student_user_id, internship_id) for DC report evaluations.
+  // ---------------------------------------------------------------------
+  const { data: dcEvals, error: dcErr } = await supabase
+    .from("evaluations")
+    .select("id, scores, status, comments, submitted_at, updated_at")
+    .eq("student_user_id", studentId)
+    .eq("internship_id", internshipId)
+    .eq("evaluator_role", "department_coordinator")
+    .eq("type", "department_coordinator_report")
+    .in("status", ["submitted", "approved"])
+    .order("updated_at", { ascending: false });
+
+  if (dcErr) {
+    console.error("[final-grade] dc_report query failed:", dcErr);
+    // fall through to the next source
+  } else if (dcEvals && dcEvals.length > 0) {
+    // Use the most-recent DC report evaluation. The total is the sum of the
+    // 4 subcriteria (each 0..25). We compute it from `scores.total_score`
+    // if present, else from the 4 subcriteria keys.
+    const ev = dcEvals[0];
+    const scores = ev.scores as Record<string, number> | null;
+    if (scores && typeof scores === "object") {
+      const totalFromScores =
+        typeof scores.total_score === "number" && scores.total_score >= 0 && scores.total_score <= 100
+          ? scores.total_score
+          : null;
+
+      let total = totalFromScores;
+      if (total === null) {
+        const evidence = typeof scores.evidence_score === "number" ? scores.evidence_score : 0;
+        const reflection = typeof scores.reflection_score === "number" ? scores.reflection_score : 0;
+        const clarity = typeof scores.clarity_score === "number" ? scores.clarity_score : 0;
+        const workLearning = typeof scores.work_learning_score === "number" ? scores.work_learning_score : 0;
+        total = evidence + reflection + clarity + workLearning;
+      }
+
+      if (total >= 0 && total <= 100) {
+        return {
+          score: Math.round(total * 100) / 100,
+          metadata: {
+            source: "department_coordinator_report_evaluation",
+            evaluation_id: ev.id,
+            evidence_score: scores.evidence_score ?? null,
+            reflection_score: scores.reflection_score ?? null,
+            clarity_score: scores.clarity_score ?? null,
+            work_learning_score: scores.work_learning_score ?? null,
+            total_score: total,
+            comments: ev.comments ?? null,
+            submitted_at: ev.submitted_at,
+            updated_at: ev.updated_at,
+            subcriteria: [
+              "Evidence-based reporting",
+              "Reflection",
+              "Clarity",
+              "Connection between work and learning",
+            ],
+          },
+        };
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // STEP 2 (FALLBACK): Faculty-supervisor weekly_log evaluations.
+  // Kept for back-compat. Preferred over the auto-rubric because it's an
+  // actual human-submitted evaluation, just authored by the faculty
+  // supervisor rather than the DC.
+  // ---------------------------------------------------------------------
   // weekly_logs uses student_user_id (the student's auth.users.id), not student_id.
   const { data: weeklyLogs, error } = await supabase
     .from("weekly_logs")
@@ -188,9 +270,6 @@ async function computeStudentReportsScore(
     return { score: null, metadata: { weeklyLogCount: 0 } };
   }
 
-  // Try faculty-supervisor weekly report evaluations first.
-  // evaluations.type enum: weekly_log | midterm | final | company_evaluation | supervisor_evaluation | task
-  // evaluator_role: faculty_supervisor
   const { data: facultyWeeklyEvals, error: fweErr } = await supabase
     .from("evaluations")
     .select("id, scores, status, type")
@@ -232,7 +311,9 @@ async function computeStudentReportsScore(
     }
   }
 
-  // Auto-compute from weekly_logs quality (rubric above).
+  // ---------------------------------------------------------------------
+  // STEP 3 (LAST RESORT): Auto-compute from weekly_logs quality rubric.
+  // ---------------------------------------------------------------------
   const perLogScores: Array<{ weekNumber: number | null; score: number }> = [];
 
   // Pull daily entries counts per weekly log in one query.
@@ -578,7 +659,17 @@ export async function computeFinalGrade(
 
   // 4. Persist (upsert). Note: this requires the caller to be authorized
   //    to write to final_grades (per RLS, only super_admin / university_admin
-  //    / program_coordinator).
+  //    / program_coordinator / department_coordinator-with-dept-scope).
+  const dcSubcriteria = (studentReports.metadata?.evidence_score !== undefined)
+    ? {
+        dc_evidence_score: studentReports.metadata.evidence_score as number | null,
+        dc_reflection_score: studentReports.metadata.reflection_score as number | null,
+        dc_clarity_score: studentReports.metadata.clarity_score as number | null,
+        dc_work_learning_score: studentReports.metadata.work_learning_score as number | null,
+        dc_evaluator_id: null as string | null, // not known here; set by the DC API on submit
+      }
+    : {};
+
   const { error: upsertErr } = await supabase
     .from("final_grades")
     .upsert(
@@ -598,6 +689,10 @@ export async function computeFinalGrade(
         computed_at: status === "computed" ? result.computed_at : null,
         computed_by: profile?.university_id ? (await getCurrentUserId(supabase)) : null,
         updated_at: new Date().toISOString(),
+        // Persist the DC subcriteria when a DC evaluation was the source of
+        // student_reports_score. When the source was the auto-rubric or
+        // faculty weekly_log evaluations, these columns stay NULL.
+        ...dcSubcriteria,
       },
       { onConflict: "student_id,internship_id" }
     );

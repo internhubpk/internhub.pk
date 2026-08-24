@@ -551,7 +551,8 @@ export default function UniversityAdminStudentsPage() {
           {viewMode === "table" ? (
             /* Table View */
             <Card>
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
@@ -610,6 +611,7 @@ export default function UniversityAdminStudentsPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </Card>
           ) : (
             /* Grid View */
