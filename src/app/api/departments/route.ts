@@ -20,6 +20,7 @@ const VIEW_ROLES: UserRole[] = [
   "department_coordinator",
   "faculty_supervisor",
   "student",
+  "company_hr",
 ];
 
 // Roles that can create departments
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Get user profile with university info
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, university_id, department_id")
+      .select("role, university_id, department_id, company_id")
       .eq("user_id", user.id)
       .single();
 
@@ -117,7 +118,30 @@ export async function GET(request: NextRequest) {
 
     // Apply additional filters
     if (filters.university_id) {
-      if (profile.role !== "super_admin") {
+      if (profile.role === "company_hr") {
+        // Company HR can only view departments from universities
+        // where they have an active MoU.
+        if (!profile.company_id) {
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "No company associated with this account" },
+            { status: 403 }
+          );
+        }
+        const now = new Date().toISOString();
+        const { count: mouCount } = await supabase
+          .from("company_university_mous")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", profile.company_id)
+          .eq("university_id", filters.university_id)
+          .eq("status", "active")
+          .or(`ends_at.gt.${now},ends_at.is.null`);
+        if ((mouCount || 0) === 0) {
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "No active MoU with this university" },
+            { status: 403 }
+          );
+        }
+      } else if (profile.role !== "super_admin") {
         // Non-super-admins can only access their own university
         if (filters.university_id !== profile.university_id) {
           return NextResponse.json<ApiResponse<never>>(

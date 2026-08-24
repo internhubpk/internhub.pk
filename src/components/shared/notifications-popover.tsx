@@ -187,8 +187,16 @@ function getViewAllLink(role?: string): string {
     case "company_hr":
       return "/company-hr/notifications";
     case "student":
-    default:
       return "/student/notifications";
+    // Roles without dedicated notifications pages link to a shared page.
+    case "super_admin":
+    case "university_admin":
+    case "department_coordinator":
+    case "program_coordinator":
+    case "external_evaluator":
+      return "/dashboard/notifications";
+    default:
+      return "/dashboard/notifications";
   }
 }
 

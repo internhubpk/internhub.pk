@@ -9,12 +9,9 @@ import {
   TrendingUp,
   GraduationCap,
   Building2,
-  FileText,
   UserCheck,
   BarChart3,
-  Calendar,
   CheckCircle2,
-  Clock,
   AlertCircle,
   Plus,
   RefreshCw,
@@ -22,14 +19,12 @@ import {
   BookOpen,
   AlertTriangle,
   UserPlus,
-  Settings,
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";

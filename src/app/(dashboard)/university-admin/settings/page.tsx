@@ -10,12 +10,10 @@ import {
   Phone,
   MapPin,
   Building2,
+  User,
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Eye,
-  EyeOff,
-  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +27,9 @@ import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { PasswordChangeCard } from "@/components/auth/password-change-card";
+import { Separator } from "@/components/ui/separator";
 
 interface UniversitySettings {
   name: string;
@@ -79,9 +80,8 @@ export default function UniversityAdminSettingsPage() {
   });
   const [notifications, setNotifications] = useState<NotificationPrefs>(defaultNotifications);
   const [notFound, setNotFound] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
-  const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [adminName, setAdminName] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const universityId = profile?.university_id || university?.id;
 
@@ -246,65 +246,33 @@ export default function UniversityAdminSettingsPage() {
     }
   };
 
-  // Change Password — uses supabase.auth.updateUser which works for
-  // any logged-in user without needing the service role key. The
-  // current password is verified by re-authenticating before the
-  // update (Supabase doesn't expose a "verify current password" API
-  // directly; we do a signInWithPassword and discard the result. If
-  // it fails, the current password was wrong.)
-  const handleChangePassword = async () => {
-    if (!passwordForm.next) {
-      toast.error("Validation Error", { description: "New password is required" });
-      return;
+  // Sync admin name from profile
+  useEffect(() => {
+    if (profile?.full_name) {
+      setAdminName(profile.full_name);
     }
-    if (passwordForm.next.length < 8) {
-      toast.error("Validation Error", { description: "New password must be at least 8 characters" });
-      return;
-    }
-    if (passwordForm.next !== passwordForm.confirm) {
-      toast.error("Validation Error", { description: "New password and confirmation don't match" });
-      return;
-    }
-    if (passwordForm.next === passwordForm.current) {
-      toast.error("Validation Error", { description: "New password must be different from the current one" });
-      return;
-    }
+  }, [profile?.full_name]);
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setIsSavingProfile(true);
     try {
-      setIsSavingPassword(true);
       const supabase = createClient();
-
-      // Step 1: verify the current password by signing in with it.
-      // We don't need to keep this session — Supabase will reuse the
-      // existing session cookies. If signInWithPassword fails, the
-      // current password was wrong.
-      if (passwordForm.current) {
-        const { error: verifyErr } = await supabase.auth.signInWithPassword({
-          email: profile?.email || "",
-          password: passwordForm.current,
-        });
-        if (verifyErr) {
-          toast.error("Current password incorrect", { description: "The current password you entered doesn't match." });
-          return;
-        }
-      }
-
-      // Step 2: update to the new password.
-      const { error: updateErr } = await supabase.auth.updateUser({
-        password: passwordForm.next,
-      });
-
-      if (updateErr) throw updateErr;
-
-      toast.success("Password updated", { description: "Your account password has been changed successfully." });
-
-      setPasswordForm({ current: "", next: "", confirm: "" });
-    } catch (error) {
-      console.error("Error changing password:", error);
-      const err = error as { message?: string } | null;
-      toast.error("Error", { description: err?.message || "Failed to change password. Please try again." });
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: adminName.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success("Profile saved", { description: "Your name has been updated." });
+      await refreshProfile();
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      toast.error("Failed to save profile", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
-      setIsSavingPassword(false);
+      setIsSavingProfile(false);
     }
   };
 
@@ -357,7 +325,7 @@ export default function UniversityAdminSettingsPage() {
       />
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
           <TabsTrigger value="general">
             <Globe className="mr-2 h-4 w-4" />
             General
@@ -365,6 +333,10 @@ export default function UniversityAdminSettingsPage() {
           <TabsTrigger value="notifications">
             <Bell className="mr-2 h-4 w-4" />
             Notifications
+          </TabsTrigger>
+          <TabsTrigger value="profile">
+            <User className="mr-2 h-4 w-4" />
+            Profile
           </TabsTrigger>
           <TabsTrigger value="security">
             <Shield className="mr-2 h-4 w-4" />
@@ -601,20 +573,74 @@ export default function UniversityAdminSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Security Settings */}
-        <TabsContent value="security">
+        {/* Profile Tab — personal info + avatar */}
+        <TabsContent value="profile" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Account Security
+                <User className="h-5 w-5" />
+                Your Profile
               </CardTitle>
               <CardDescription>
-                Manage your admin account password. These settings apply to
-                your account only — not to other users at your university.
+                Update your personal name and profile picture. These are visible to
+                coordinators and students at your university.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <AvatarUploader
+                userId={user?.id || ""}
+                currentUrl={profile?.avatar_url}
+                fullName={profile?.full_name}
+                onUploaded={() => refreshProfile()}
+                onRemoved={() => refreshProfile()}
+                size="md"
+              />
+              <Separator />
+              <div className="space-y-2">
+                <Label htmlFor="ua-name">Full Name</Label>
+                <Input
+                  id="ua-name"
+                  value={adminName}
+                  onChange={(e) => setAdminName(e.target.value)}
+                  placeholder="Your full name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ua-email">Account Email</Label>
+                <Input
+                  id="ua-email"
+                  value={profile?.email || ""}
+                  disabled
+                  className="bg-muted/50"
+                />
+                <p className="text-xs text-muted-foreground">
+                  To change your account email, contact a Super Admin.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="gap-2">
+                  {isSavingProfile ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save Changes
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Security Settings */}
+        <TabsContent value="security" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5" />
+                Account Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="rounded-lg border border-border p-4 bg-muted/30">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -626,151 +652,23 @@ export default function UniversityAdminSettingsPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label>Account Email</Label>
-                <Input
-                  value={profile?.email || ""}
-                  disabled
-                  className="bg-muted/30"
-                />
-                <p className="text-xs text-muted-foreground">
-                  To change your account email, contact a Super Admin.
-                </p>
-              </div>
-
-              <div className="space-y-3 pt-2 border-t">
-                <div className="flex items-center gap-2">
-                  <Key className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-base font-semibold">Change Password</Label>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="current-pw" className="text-xs">Current Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="current-pw"
-                        type={showPasswords.current ? "text" : "password"}
-                        placeholder="Enter your current password"
-                        value={passwordForm.current}
-                        onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                        className="pr-10"
-                        autoComplete="current-password"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                        onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
-                      >
-                        {showPasswords.current ? (
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="new-pw" className="text-xs">New Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="new-pw"
-                        type={showPasswords.next ? "text" : "password"}
-                        placeholder="Minimum 8 characters"
-                        value={passwordForm.next}
-                        onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
-                        className="pr-10"
-                        autoComplete="new-password"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                        onClick={() => setShowPasswords({ ...showPasswords, next: !showPasswords.next })}
-                      >
-                        {showPasswords.next ? (
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="confirm-pw" className="text-xs">Confirm New Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="confirm-pw"
-                        type={showPasswords.confirm ? "text" : "password"}
-                        placeholder="Re-enter the new password"
-                        value={passwordForm.confirm}
-                        onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
-                        className="pr-10"
-                        autoComplete="new-password"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !isSavingPassword) {
-                            handleChangePassword();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                        onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
-                      >
-                        {showPasswords.confirm ? (
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleChangePassword}
-                    disabled={isSavingPassword || !passwordForm.next || !passwordForm.confirm}
-                    className="gap-2"
-                  >
-                    {isSavingPassword ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <Key className="h-4 w-4" />
-                        Update Password
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm text-amber-900 dark:text-amber-200">
-                      Need bigger changes?
-                    </p>
-                    <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
-                      For changes to your university slug, license tier, or to
-                      deactivate the university, contact a Super Admin.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
+          <PasswordChangeCard />
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-sm text-amber-900 dark:text-amber-200">
+                  Need bigger changes?
+                </p>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                  For changes to your university slug, license tier, or to
+                  deactivate the university, contact a Super Admin.
+                </p>
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

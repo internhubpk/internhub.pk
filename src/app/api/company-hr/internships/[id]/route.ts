@@ -27,7 +27,7 @@ async function getCompanyProfile(supabase: any, userId: string) {
   return { profile, errorResponse: null };
 }
 
-// GET /api/company-hr/internships/[id] - Fetch a single internship (scoped to company)
+// GET /api/company-hr/internships/[id] - Fetch a single internship (scoped to company, with target departments)
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -50,7 +50,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: internship, error } = await supabase
       .from("internships")
-      .select("*")
+      .select(`
+        *,
+        internship_target_departments(
+          id,
+          university_id,
+          department_id,
+          departments:department_id(id, name),
+          universities:university_id(id, name)
+        )
+      `)
       .eq("id", id)
       .eq("company_id", profile.company_id)
       .single();
@@ -128,6 +137,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       benefits,
       status,
       image_url,
+      target_departments: newTargetDepartments,
     } = body;
 
     const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
@@ -155,6 +165,53 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.image_url = typeof image_url === "string" && image_url.trim() ? image_url.trim() : null;
     }
 
+    // Handle new-style target_departments: [{university_id, department_id}]
+    const newStyleTargets: Array<{ university_id: string; department_id: string }> =
+      Array.isArray(newTargetDepartments) && newTargetDepartments.length > 0 &&
+      typeof newTargetDepartments[0] === "object" && newTargetDepartments[0] !== null
+        ? newTargetDepartments
+        : [];
+
+    if (newStyleTargets.length > 0) {
+      const uniIds = [...new Set(newStyleTargets.map(t => t.university_id))];
+      const now = new Date().toISOString();
+
+      // Validate each university has an active MoU
+      for (const uniId of uniIds) {
+        const { count: mouCount } = await supabase
+          .from("company_university_mous")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", profile.company_id)
+          .eq("university_id", uniId)
+          .eq("status", "active")
+          .or(`ends_at.gt.${now},ends_at.is.null`);
+
+        if ((mouCount || 0) === 0) {
+          return NextResponse.json(
+            { error: { code: "VALIDATION_ERROR", message: `No active MoU found for university ${uniId}` } },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Verify departments belong to their universities
+      for (const target of newStyleTargets) {
+        const { data: dept } = await supabase
+          .from("departments")
+          .select("id, university_id")
+          .eq("id", target.department_id)
+          .eq("university_id", target.university_id)
+          .single();
+
+        if (!dept) {
+          return NextResponse.json(
+            { error: { code: "VALIDATION_ERROR", message: `Department ${target.department_id} does not belong to university ${target.university_id}` } },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const { data: internship, error } = await supabase
       .from("internships")
       .update(updateData)
@@ -169,6 +226,32 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         { error: { code: "DATABASE_ERROR", message: "Failed to update internship program" } },
         { status: 500 }
       );
+    }
+
+    // If new-style target_departments provided, replace them (delete + insert)
+    if (newStyleTargets.length >= 0 && newTargetDepartments !== undefined) {
+      // Delete existing target departments
+      await supabase
+        .from("internship_target_departments")
+        .delete()
+        .eq("internship_id", id);
+
+      // Insert new ones (if any)
+      if (newStyleTargets.length > 0) {
+        const targetRows = newStyleTargets.map(t => ({
+          internship_id: id,
+          university_id: t.university_id,
+          department_id: t.department_id,
+        }));
+
+        const { error: tdError } = await supabase
+          .from("internship_target_departments")
+          .insert(targetRows);
+
+        if (tdError) {
+          console.error("Error updating target departments:", tdError);
+        }
+      }
     }
 
     return NextResponse.json({
@@ -205,6 +288,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
     if (errorResponse) return errorResponse;
+
+    // Delete target departments first (they have CASCADE, but let's be explicit)
+    await supabase
+      .from("internship_target_departments")
+      .delete()
+      .eq("internship_id", id);
 
     const { error } = await supabase
       .from("internships")

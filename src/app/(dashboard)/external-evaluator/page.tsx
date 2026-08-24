@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, ClipboardCheck, Users, Clock, CheckCircle, GraduationCap, CheckSquare, ScrollText, Send, Settings, AlertCircle } from "lucide-react";
+import { ClipboardCheck, Users, Clock, CheckCircle, GraduationCap, CheckSquare, ScrollText, Send, Settings, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -349,7 +349,7 @@ export default function ExternalEvaluatorDashboard() {
               </div>
             </Link>
             <Link
-              href="/site-supervisor/notifications"
+              href="/dashboard/notifications"
               className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent transition-colors"
             >
               <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
@@ -357,7 +357,7 @@ export default function ExternalEvaluatorDashboard() {
               </div>
               <div>
                 <p className="font-medium">Notifications</p>
-                <p className="text-xs text-muted-foreground">Message your assigned students</p>
+                <p className="text-xs text-muted-foreground">View your notifications</p>
               </div>
             </Link>
             <Link

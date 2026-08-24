@@ -8,8 +8,6 @@ import {
   Users,
   FileText,
   Briefcase,
-  BarChart3,
-  CheckCircle2,
   AlertCircle,
   RefreshCw,
 } from "lucide-react";

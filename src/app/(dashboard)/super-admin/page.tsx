@@ -9,7 +9,6 @@ import {
   Activity,
   Plus,
   Settings,
-  TrendingUp,
   AlertCircle,
   RefreshCw,
   Database,
@@ -22,14 +21,12 @@ import {
   ArrowRight,
   Calendar,
   BarChart3,
-  PieChart as PieChartIcon,
 } from "lucide-react";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +35,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { StatsCard, StatsGrid } from "@/components/dashboard/stats-card";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { EnablePushNotificationsCard } from "@/components/shared/enable-push-notifications";
 import { 
   LineChartCard, 
   BarChartCard, 
@@ -549,6 +547,9 @@ export default function SuperAdminDashboard() {
           </Button>
         }
       />
+
+      {/* Push notification enable prompt (silent if not supported/configured) */}
+      <EnablePushNotificationsCard />
 
       {/* Database Setup Required Alert */}
       {dataState === "no_tables" && (

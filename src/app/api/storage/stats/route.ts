@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/headers";
+import { createServiceRoleClient } from "@/utils/supabase/service-role";
 import {
   getServerAuthContext,
   requireAuth,
@@ -25,6 +24,7 @@ interface StorageStats {
 interface UniversityStorageStats extends StorageStats {
   university_id: string;
   university_name: string | null;
+  student_count: number;
 }
 
 interface PlatformStorageStats {
@@ -42,15 +42,12 @@ const VIEW_ROLES: UserRole[] = ["super_admin", "university_admin"];
  * Get storage usage statistics
  * - Super Admin can see platform-wide and per-university stats
  * - University Admin can only see their own university's stats
+ *
+ * Uses the service-role client to bypass RLS and aggregate real document
+ * file sizes from the `documents` table.
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = await createClient(cookieStore);
-    if (!supabase) {
-      return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
-    }
-
     // Authenticate user
     const authContext = await getServerAuthContext();
 
@@ -66,28 +63,26 @@ export async function GET(request: NextRequest) {
     const userRole = authContext.profile?.role as UserRole;
 
     if (userRole === "super_admin") {
-      // Super Admin sees platform-wide stats with breakdown by university
-      return await getPlatformStorageStats(supabase);
+      return await getPlatformStorageStats();
     } else {
-      // University Admin sees only their university's stats
       const universityId = authContext.profile?.university_id;
-      
+
       if (!universityId) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "No university assigned to your account" },
           { status: 400 }
         );
       }
-      
-      return await getUniversityStorageStats(supabase, universityId);
+
+      return await getUniversityStorageStats(universityId);
     }
   } catch (error) {
     console.error("Error in GET /api/storage/stats:", error);
-    
+
     if (error instanceof Error && error.message.includes("Authentication")) {
       return authenticationError(error.message);
     }
-    
+
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }
@@ -96,201 +91,258 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Get platform-wide storage statistics (Super Admin only)
+ * Helper: convert bytes to human-readable units.
  */
-async function getPlatformStorageStats(
-  supabase: Awaited<ReturnType<typeof createClient>>
-): Promise<NextResponse<ApiResponse<PlatformStorageStats>>> {
-  try {
-    // Get all universities with their storage allocations
-    const { data: universities, error: uniError } = await supabase
-      .from("universities")
-      .select("id, name")
-      .eq("is_active", true)
-      .order("name");
+function bytesToMb(bytes: number): number {
+  return Math.round(bytes / (1024 * 1024));
+}
 
-    if (uniError) throw uniError;
-
-    // Get all storage allocations
-    const { data: allocations, error: allocError } = await supabase
-      .from("storage_allocations")
-      .select("*");
-
-    if (allocError) throw allocError;
-
-    // Calculate document counts and sizes per university
-    const { data: documents, error: docError } = await supabase
-      .from("documents")
-      .select("file_size, entity_id");
-
-    if (docError) throw docError;
-
-    // Aggregate data by university
-    const universityStatsMap = new Map<string, UniversityStorageStats & { 
-      raw_file_count: number; 
-      raw_used_bytes: number 
-    }>();
-
-    // Initialize with allocation data
-    for (const uni of universities || []) {
-      const allocation = allocations?.find(a => a.university_id === uni.id);
-      universityStatsMap.set(uni.id, {
-        university_id: uni.id,
-        university_name: uni.name,
-        used_bytes: allocation?.used_bytes || 0,
-        allocated_bytes: allocation?.allocated_bytes || 0,
-        file_count: 0,
-        usage_percentage: 0,
-        used_mb: 0,
-        allocated_mb: 0,
-        used_gb: 0,
-        allocated_gb: 0,
-        raw_file_count: 0,
-        raw_used_bytes: 0,
-      });
-    }
-
-    // Sum up document sizes by entity type (student or internship)
-    // This is a simplified aggregation - in production you'd join properly
-    for (const doc of documents || []) {
-      // For now, we'll use the stored allocation values which should be kept in sync
-      // In a real implementation, you might want to calculate this more precisely
-    }
-
-    // Calculate totals and percentages
-    let totalUsedBytes = 0;
-    let totalAllocatedBytes = 0;
-    let totalFileCount = 0;
-
-    const finalUniversityStats: UniversityStorageStats[] = [];
-
-    for (const [uniId, stats] of universityStatsMap) {
-      // Use allocation data as source of truth
-      const allocation = allocations?.find(a => a.university_id === uniId);
-      const usedBytes = allocation?.used_bytes || 0;
-      const allocatedBytes = allocation?.allocated_bytes || 0;
-      
-      // Count files for this university from documents table
-      // Note: In production, ensure documents have university_id or proper joins
-      const fileCount = 0; // Would need proper query with university context
-      
-      const percentage = allocatedBytes > 0 ? Math.round((usedBytes / allocatedBytes) * 100) : 0;
-
-      const finalStats: UniversityStorageStats = {
-        university_id: uniId,
-        university_name: stats.university_name,
-        used_bytes: usedBytes,
-        allocated_bytes: allocatedBytes,
-        file_count: fileCount,
-        usage_percentage: percentage,
-        used_mb: Math.round(usedBytes / (1024 * 1024)),
-        allocated_mb: Math.round(allocatedBytes / (1024 * 1024)),
-        used_gb: Math.round(usedBytes / (1024 * 1024 * 1024) * 100) / 100,
-        allocated_gb: Math.round(allocatedBytes / (1024 * 1024 * 1024) * 100) / 100,
-      };
-
-      finalUniversityStats.push(finalStats);
-      totalUsedBytes += usedBytes;
-      totalAllocatedBytes += allocatedBytes;
-      totalFileCount += fileCount;
-    }
-
-    // Sort by usage percentage descending
-    finalUniversityStats.sort((a, b) => b.usage_percentage - a.usage_percentage);
-
-    const platformStats: PlatformStorageStats = {
-      total_used_bytes: totalUsedBytes,
-      total_allocated_bytes: totalAllocatedBytes,
-      total_file_count: totalFileCount,
-      universities: finalUniversityStats,
-    };
-
-    return NextResponse.json<ApiResponse<PlatformStorageStats>>({
-      success: true,
-      data: platformStats,
-    });
-  } catch (error) {
-    console.error("Error calculating platform storage stats:", error);
-    throw error;
-  }
+function bytesToGb(bytes: number): number {
+  return Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100;
 }
 
 /**
- * Get single university's storage statistics
+ * Build a UniversityStorageStats object.
+ */
+function buildUniStats(
+  universityId: string,
+  universityName: string | null,
+  usedBytes: number,
+  fileCount: number,
+  studentCount: number,
+  allocatedBytes = 0
+): UniversityStorageStats {
+  const percentage = allocatedBytes > 0 ? Math.round((usedBytes / allocatedBytes) * 100) : 0;
+  return {
+    university_id: universityId,
+    university_name: universityName,
+    used_bytes: usedBytes,
+    allocated_bytes: allocatedBytes,
+    file_count: fileCount,
+    usage_percentage: percentage,
+    used_mb: bytesToMb(usedBytes),
+    allocated_mb: bytesToMb(allocatedBytes),
+    used_gb: bytesToGb(usedBytes),
+    allocated_gb: bytesToGb(allocatedBytes),
+    student_count: studentCount,
+  };
+}
+
+/**
+ * Get platform-wide storage statistics (Super Admin only).
+ *
+ * Strategy:
+ * 1. Fetch ALL active universities.
+ * 2. Fetch ALL documents (id, file_size, entity_id, entity_type).
+ * 3. Fetch students (user_id, university_id) to map documents → universities.
+ * 4. Aggregate per-university: file count, sum(file_size), student count.
+ * 5. Compute platform totals.
+ */
+async function getPlatformStorageStats(): Promise<NextResponse<ApiResponse<PlatformStorageStats>>> {
+  const supabase = await createServiceRoleClient();
+
+  // 1. Fetch all active universities
+  const { data: universities } = await supabase
+    .from("universities")
+    .select("id, name")
+    .eq("is_active", true);
+
+  const uniList = universities || [];
+
+  // 2. Fetch all documents with file sizes
+  const { data: documents } = await supabase
+    .from("documents")
+    .select("id, file_size, entity_id, entity_type, uploaded_by");
+
+  const docList = documents || [];
+
+  // 3. Fetch all students with university_id to build entity_id → university_id mapping
+  //    entity_id on documents can be a user_id (for student docs). Also try uploaded_by.
+  const { data: students } = await supabase
+    .from("students")
+    .select("user_id, university_id");
+
+  // Build a map: user_id → university_id from students table
+  const userToUniversity = new Map<string, string>();
+  for (const s of students || []) {
+    if (s.user_id && s.university_id) {
+      userToUniversity.set(s.user_id, s.university_id);
+    }
+  }
+
+  // Also map profiles (covers faculty, etc.)
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, university_id");
+
+  for (const p of profiles || []) {
+    if (p.user_id && p.university_id && !userToUniversity.has(p.user_id)) {
+      userToUniversity.set(p.user_id, p.university_id);
+    }
+  }
+
+  // 4. Aggregate per-university
+  const uniStatsMap = new Map<string, { usedBytes: number; fileCount: number; studentCount: number }>();
+
+  // Initialize all universities
+  for (const uni of uniList) {
+    uniStatsMap.set(uni.id, { usedBytes: 0, fileCount: 0, studentCount: 0 });
+  }
+
+  // Count students per university
+  for (const s of students || []) {
+    if (s.university_id && uniStatsMap.has(s.university_id)) {
+      uniStatsMap.get(s.university_id)!.studentCount += 1;
+    }
+  }
+
+  // Map each document to a university and accumulate
+  for (const doc of docList) {
+    const fileSize = doc.file_size || 0;
+    let universityId: string | undefined;
+
+    // Try entity_id first (for student docs, entity_id = user_id)
+    if (doc.entity_id) {
+      universityId = userToUniversity.get(doc.entity_id);
+    }
+
+    // Fallback to uploaded_by
+    if (!universityId && doc.uploaded_by) {
+      universityId = userToUniversity.get(doc.uploaded_by);
+    }
+
+    if (universityId && uniStatsMap.has(universityId)) {
+      const stats = uniStatsMap.get(universityId)!;
+      stats.usedBytes += fileSize;
+      stats.fileCount += 1;
+    }
+  }
+
+  // 5. Build final stats
+  let totalUsedBytes = 0;
+  let totalFileCount = 0;
+
+  const finalUniversityStats: UniversityStorageStats[] = [];
+
+  for (const uni of uniList) {
+    const stats = uniStatsMap.get(uni.id) || { usedBytes: 0, fileCount: 0, studentCount: 0 };
+    finalUniversityStats.push(
+      buildUniStats(uni.id, uni.name, stats.usedBytes, stats.fileCount, stats.studentCount)
+    );
+    totalUsedBytes += stats.usedBytes;
+    totalFileCount += stats.fileCount;
+  }
+
+  // Sort by used_bytes descending
+  finalUniversityStats.sort((a, b) => b.used_bytes - a.used_bytes);
+
+  const platformStats: PlatformStorageStats = {
+    total_used_bytes: totalUsedBytes,
+    total_allocated_bytes: 0, // No allocation tracking — real storage only
+    total_file_count: totalFileCount,
+    universities: finalUniversityStats,
+  };
+
+  return NextResponse.json<ApiResponse<PlatformStorageStats>>({
+    success: true,
+    data: platformStats,
+  });
+}
+
+/**
+ * Get single university's storage statistics.
  */
 async function getUniversityStorageStats(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   universityId: string
 ): Promise<NextResponse<ApiResponse<UniversityStorageStats>>> {
-  try {
-    // Get university info
-    const { data: university, error: uniError } = await supabase
-      .from("universities")
-      .select("id, name")
-      .eq("id", universityId)
-      .single();
+  const supabase = await createServiceRoleClient();
 
-    if (uniError || !university) {
-      return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "University not found" },
-        { status: 404 }
-      );
-    }
+  // Get university info
+  const { data: university } = await supabase
+    .from("universities")
+    .select("id, name")
+    .eq("id", universityId)
+    .single();
 
-    // Get storage allocation
-    const { data: allocation, error: allocError } = await supabase
-      .from("storage_allocations")
-      .select("*")
-      .eq("university_id", universityId)
-      .single();
-
-    // If no allocation record exists, return zeros
-    const usedBytes = allocation?.used_bytes || 0;
-    const allocatedBytes = allocation?.allocated_bytes || 0;
-
-    // Get file count - count documents associated with this university's entities
-    // This is a simplified approach - in production, optimize with proper indexing
-    let fileCount = 0;
-    
-    // Try to get students for this university and count their documents
-    const { data: students } = await supabase
-      .from("students")
-      .select("id")
-      .eq("university_id", universityId)
-      .limit(1000); // Limit to prevent huge queries
-
-    if (students && students.length > 0) {
-      const studentIds = students.map(s => s.id);
-      const { count } = await supabase
-        .from("documents")
-        .select("*", { count: "exact", head: true })
-        .in("entity_id", studentIds)
-        .eq("entity_type", "student");
-      
-      fileCount = count || 0;
-    }
-
-    const percentage = allocatedBytes > 0 ? Math.round((usedBytes / allocatedBytes) * 100) : 0;
-
-    const stats: UniversityStorageStats = {
-      university_id: universityId,
-      university_name: university.name,
-      used_bytes: usedBytes,
-      allocated_bytes: allocatedBytes,
-      file_count: fileCount,
-      usage_percentage: percentage,
-      used_mb: Math.round(usedBytes / (1024 * 1024)),
-      allocated_mb: Math.round(allocatedBytes / (1024 * 1024)),
-      used_gb: Math.round(usedBytes / (1024 * 1024 * 1024) * 100) / 100,
-      allocated_gb: Math.round(allocatedBytes / (1024 * 1024 * 1024) * 100) / 100,
-    };
-
-    return NextResponse.json<ApiResponse<UniversityStorageStats>>({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    console.error("Error calculating university storage stats:", error);
-    throw error;
+  if (!university) {
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: "University not found" },
+      { status: 404 }
+    );
   }
+
+  // Get students for this university
+  const { data: students } = await supabase
+    .from("students")
+    .select("user_id")
+    .eq("university_id", universityId);
+
+  const studentUserIds = new Set((students || []).map((s) => s.user_id));
+
+  // Fetch documents: match by entity_id or uploaded_by being one of the student user IDs
+  // We do two separate queries because Supabase JS doesn't support OR across columns easily
+  let allDocs: Array<{ id: string; file_size: number | null }> = [];
+
+  if (studentUserIds.size > 0) {
+ const ids = Array.from(studentUserIds);
+    // Query 1: entity_id IN studentUserIds
+    const { data: docsByEntity } = await supabase
+      .from("documents")
+      .select("id, file_size")
+      .in("entity_id", ids);
+
+    // Query 2: uploaded_by IN studentUserIds
+    const { data: docsByUploader } = await supabase
+      .from("documents")
+      .select("id, file_size")
+      .in("uploaded_by", ids);
+
+    // Merge and deduplicate by id
+    const seen = new Set<string>();
+    for (const doc of docsByEntity || []) {
+      if (!seen.has(doc.id)) {
+        seen.add(doc.id);
+        allDocs.push(doc);
+      }
+    }
+    for (const doc of docsByUploader || []) {
+      if (!seen.has(doc.id)) {
+        seen.add(doc.id);
+        allDocs.push(doc);
+      }
+    }
+  }
+
+  // Also fetch documents where entity_type = 'university' and entity_id = universityId
+  const { data: uniDocs } = await supabase
+    .from("documents")
+    .select("id, file_size")
+    .eq("entity_type", "university")
+    .eq("entity_id", universityId);
+
+  const seenUni = new Set(allDocs.map((d) => d.id));
+  for (const doc of uniDocs || []) {
+    if (!seenUni.has(doc.id)) {
+      allDocs.push(doc);
+    }
+  }
+
+  // Aggregate
+  let usedBytes = 0;
+  for (const doc of allDocs) {
+    usedBytes += doc.file_size || 0;
+  }
+
+  const stats: UniversityStorageStats = buildUniStats(
+    universityId,
+    university.name,
+    usedBytes,
+    allDocs.length,
+    studentUserIds.size
+  );
+
+  return NextResponse.json<ApiResponse<UniversityStorageStats>>({
+    success: true,
+    data: stats,
+  });
 }

@@ -776,7 +776,7 @@ export default function FacultySupervisorStudentsPage() {
                     <Building2 className="h-3 w-3" /> {student.company}
                   </span>
                   <span>•</span>
-                  <span>{student.major}</span>
+                  <span>{student.program}</span>
                 </div>
 
                 <div className="space-y-2">
@@ -839,7 +839,7 @@ export default function FacultySupervisorStudentsPage() {
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="text-sm font-medium">{student.major}</p>
+                        <p className="text-sm font-medium">{student.program}</p>
                         <p className="text-xs text-muted-foreground">
                           {student.semester ? `Semester ${student.semester}` : "Semester not set"}
                         </p>

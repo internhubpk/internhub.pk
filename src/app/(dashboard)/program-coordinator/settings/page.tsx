@@ -23,6 +23,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { toast } from "@/components/shared/toast";
 import { PasswordChangeCard } from "@/components/auth/password-change-card";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
 
 // Interface for fetched names
 interface EntityNames {
@@ -32,7 +33,7 @@ interface EntityNames {
 }
 
 export default function ProgramCoordinatorSettingsPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
   
   // Use state to prevent hydration mismatch - initialize with empty values
   const [displayName, setDisplayName] = useState("");
@@ -175,6 +176,15 @@ export default function ProgramCoordinatorSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <AvatarUploader
+              userId={user?.id || ""}
+              currentUrl={profile?.avatar_url}
+              fullName={profile?.full_name}
+              onUploaded={() => refreshProfile()}
+              onRemoved={() => refreshProfile()}
+              size="md"
+            />
+            <Separator />
             <div className="space-y-2">
               <Label htmlFor="display-name">Full Name</Label>
               <Input

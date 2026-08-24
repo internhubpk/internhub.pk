@@ -29,6 +29,8 @@ import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { Separator } from "@/components/ui/separator";
 
 interface CoordinatorProfile {
   user_id: string;
@@ -87,7 +89,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 };
 
 export default function CoordinatorSettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [profile, setProfile] = useState<CoordinatorProfile | null>(null);
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [university, setUniversity] = useState<UniversityInfo | null>(null);
@@ -363,6 +365,17 @@ export default function CoordinatorSettingsPage() {
             <CardContent className="space-y-4">
               {profileForm ? (
                 <>
+                  {/* Avatar upload */}
+                  <AvatarUploader
+                    userId={user?.id || ""}
+                    currentUrl={profileForm.avatar_url}
+                    fullName={profileForm.full_name || profileForm.first_name}
+                    onUploaded={() => { refreshProfile(); fetchSettings(); }}
+                    onRemoved={() => { refreshProfile(); fetchSettings(); }}
+                    size="md"
+                  />
+                  <Separator />
+
                   {/* Department & University assignment banner — always visible */}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-muted/50 border">
                     <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />

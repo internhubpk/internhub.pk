@@ -13,6 +13,13 @@ import {
   CheckCircle2,
   PlayCircle,
   PauseCircle,
+  Mail,
+  Send,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,6 +75,10 @@ type MOUStatus =
   | "terminated"
   | "expired";
 
+type InvitationStatus = "pending" | "accepted" | "rejected" | "expired" | "revoked";
+type TabKey = "mous" | "invitations";
+type InvitationDirection = "incoming" | "outgoing";
+
 interface CompanyOption {
   id: string;
   name: string;
@@ -91,6 +102,31 @@ interface MOU {
   updated_at: string;
   companies: { id: string; name: string; logo_url: string | null } | null;
   universities: { id: string; name: string; slug: string } | null;
+}
+
+interface InvitationInviter {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  company_id: string | null;
+  university_id: string | null;
+}
+
+interface MouInvitation {
+  id: string;
+  inviter_user_id: string;
+  company_id: string;
+  university_id: string;
+  invitee_email: string;
+  mou_id: string | null;
+  notes: string | null;
+  status: InvitationStatus;
+  created_at: string;
+  responded_at: string | null;
+  expires_at: string;
+  inviter: InvitationInviter | null;
+  companies: { id: string; name: string; logo_url: string | null } | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -135,16 +171,61 @@ function StatusBadge({ status }: { status: MOUStatus }) {
   }
 }
 
+function InvitationStatusBadge({ status }: { status: InvitationStatus }) {
+  switch (status) {
+    case "pending":
+      return (
+        <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Clock className="h-3 w-3 mr-1" />
+          Pending
+        </Badge>
+      );
+    case "accepted":
+      return (
+        <Badge variant="default" className="bg-green-600 hover:bg-green-600">
+          <UserCheck className="h-3 w-3 mr-1" />
+          Accepted
+        </Badge>
+      );
+    case "rejected":
+      return (
+        <Badge variant="destructive">
+          <UserX className="h-3 w-3 mr-1" />
+          Rejected
+        </Badge>
+      );
+    case "expired":
+      return <Badge variant="outline">Expired</Badge>;
+    case "revoked":
+      return <Badge variant="outline">Revoked</Badge>;
+    default:
+      return <Badge variant="secondary">{status}</Badge>;
+  }
+}
+
+function isExpired(expiresAt: string): boolean {
+  return new Date(expiresAt) < new Date();
+}
+
 // ── Page ───────────────────────────────────────────────────────────
 
 export default function UniversityAdminMOUsPage() {
   const { profile, university } = useAuth();
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabKey>("mous");
+
   // Data state
   const [mous, setMous] = useState<MOU[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
+  const [isLoadingMOUs, setIsLoadingMOUs] = useState(true);
+  const [isErrorMOUs, setIsErrorMOUs] = useState(false);
+
+  // Invitation state
+  const [invitations, setInvitations] = useState<MouInvitation[]>([]);
+  const [isLoadingInv, setIsLoadingInv] = useState(true);
+  const [isErrorInv, setIsErrorInv] = useState(false);
+  const [invDirection, setInvDirection] = useState<InvitationDirection>("incoming");
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -157,6 +238,12 @@ export default function UniversityAdminMOUsPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MOU | null>(null);
 
+  // Invite dialog state
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteNotes, setInviteNotes] = useState("");
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+
   // Create form state
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [formNotes, setFormNotes] = useState("");
@@ -165,22 +252,41 @@ export default function UniversityAdminMOUsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isRespondingInv, setIsRespondingInv] = useState(false);
+  const [isRevokingInv, setIsRevokingInv] = useState(false);
 
   // ── Fetch MOUs ─────────────────────────────────────────────────
   const fetchMOUs = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setIsError(false);
+      setIsLoadingMOUs(true);
+      setIsErrorMOUs(false);
       const res = await fetch("/api/mous");
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to fetch MOUs");
       setMous(json.data || []);
     } catch (err) {
       console.error("[mous/page] fetch error:", err);
-      setIsError(true);
+      setIsErrorMOUs(true);
       toast.error("Failed to load MOUs");
     } finally {
-      setIsLoading(false);
+      setIsLoadingMOUs(false);
+    }
+  }, []);
+
+  // ── Fetch invitations ──────────────────────────────────────────
+  const fetchInvitations = useCallback(async () => {
+    try {
+      setIsLoadingInv(true);
+      setIsErrorInv(false);
+      const res = await fetch("/api/mou-invitations");
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to fetch invitations");
+      setInvitations(json.data || []);
+    } catch (err) {
+      console.error("[university-admin/mous] fetch invitations error:", err);
+      setIsErrorInv(true);
+    } finally {
+      setIsLoadingInv(false);
     }
   }, []);
 
@@ -203,7 +309,23 @@ export default function UniversityAdminMOUsPage() {
   useEffect(() => {
     fetchMOUs();
     fetchCompanies();
-  }, [fetchMOUs, fetchCompanies]);
+    fetchInvitations();
+  }, [fetchMOUs, fetchCompanies, fetchInvitations]);
+
+  // ── Split invitations ──────────────────────────────────────────
+  const myEmail = profile?.email?.toLowerCase() || "";
+  const incomingInvitations = invitations.filter(
+    (inv) => inv.invitee_email.toLowerCase() === myEmail
+  );
+  const outgoingInvitations = invitations.filter(
+    (inv) => inv.inviter_user_id === profile?.user_id
+  );
+  const pendingIncomingCount = incomingInvitations.filter(
+    (inv) => inv.status === "pending" && !isExpired(inv.expires_at)
+  ).length;
+
+  const displayedInvitations =
+    invDirection === "incoming" ? incomingInvitations : outgoingInvitations;
 
   // ── Filtered MOUs ──────────────────────────────────────────────
   const filteredMOUs = mous.filter((mou) => {
@@ -255,6 +377,96 @@ export default function UniversityAdminMOUsPage() {
       toast.fromError(err, "Failed to create MOU");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // ── Send invitation ────────────────────────────────────────────
+  const handleSendInvite = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter an email address");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(inviteEmail.trim())) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    try {
+      setIsSendingInvite(true);
+      const res = await fetch("/api/mou-invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invitee_email: inviteEmail.trim(),
+          notes: inviteNotes || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error("Failed to send invitation", {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success("Invitation sent successfully");
+      setIsInviteOpen(false);
+      setInviteEmail("");
+      setInviteNotes("");
+      fetchInvitations();
+    } catch (err) {
+      toast.fromError(err, "Failed to send invitation");
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
+  // ── Respond to invitation ──────────────────────────────────────
+  const handleRespondInvitation = async (invId: string, action: "accepted" | "rejected") => {
+    try {
+      setIsRespondingInv(true);
+      const res = await fetch(`/api/mou-invitations/${invId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: action }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(`Failed to ${action} invitation`, {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success(json.message || `Invitation ${action}`);
+      fetchInvitations();
+      if (action === "accepted") fetchMOUs();
+    } catch (err) {
+      toast.fromError(err, `Failed to ${action} invitation`);
+    } finally {
+      setIsRespondingInv(false);
+    }
+  };
+
+  // ── Revoke invitation ──────────────────────────────────────────
+  const handleRevokeInvitation = async (invId: string) => {
+    try {
+      setIsRevokingInv(true);
+      const res = await fetch(`/api/mou-invitations/${invId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error("Failed to revoke invitation", {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success("Invitation revoked");
+      fetchInvitations();
+    } catch (err) {
+      toast.fromError(err, "Failed to revoke invitation");
+    } finally {
+      setIsRevokingInv(false);
     }
   };
 
@@ -341,11 +553,447 @@ export default function UniversityAdminMOUsPage() {
         actions.push({ label: "Reactivate", status: "active", icon: <PlayCircle className="h-4 w-4" /> });
         break;
     }
-    // Terminated and expired are terminal states — no further transitions
     return actions;
   };
 
+  // ── Render MOU tab content (avoids SWC top-level fragment issue) ─
+  function renderMouTab() {
+    const loadingContent = (
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-28" />
+              <div className="flex-1" />
+              <Skeleton className="h-8 w-8" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+
+    const errorContent = (
+      <ErrorState
+        message="Could not load MOUs. Please check your connection and try again."
+        onRetry={fetchMOUs}
+      />
+    );
+
+    const emptyContent = (
+      <EmptyState
+        icon={<FileText className="h-10 w-10 text-muted-foreground" />}
+        title={searchQuery || statusFilter !== "all" ? "No MOUs match your filters" : "No MOUs yet"}
+        description={
+          searchQuery || statusFilter !== "all"
+            ? "Try adjusting your search or status filter to find what you're looking for."
+            : "Start by creating a Memorandum of Understanding with a partner company, or invite a company HR to establish a new MOU."
+        }
+        action={
+          searchQuery || statusFilter !== "all"
+            ? undefined
+            : { label: "Create MOU", onClick: () => setIsCreateOpen(true) }
+        }
+        secondaryAction={
+          searchQuery || statusFilter !== "all"
+            ? { label: "Clear filters", onClick: () => { setSearchQuery(""); setStatusFilter("all"); } }
+            : undefined
+        }
+      />
+    );
+
+    const tableContent = (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>End Date</TableHead>
+                  <TableHead className="hidden md:table-cell">Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredMOUs.map((mou, index) => (
+                  <motion.tr
+                    key={mou.id}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                    className="hover:bg-muted/50 border-b transition-colors"
+                  >
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 hover:text-primary transition-colors text-left"
+                        onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}
+                      >
+                        <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        {mou.companies?.name || "Unknown Company"}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={mou.status} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(mou.starts_at)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(mou.ends_at)}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell max-w-[200px]">
+                      <span className="text-sm text-muted-foreground truncate block">
+                        {mou.notes || "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          {getNextActions(mou).map((action) => (
+                            <DropdownMenuItem
+                              key={action.status}
+                              onClick={() => handleStatusChange(mou, action.status)}
+                              disabled={isUpdatingStatus}
+                            >
+                              {action.icon}
+                              <span className="ml-2">{action.label}</span>
+                            </DropdownMenuItem>
+                          ))}
+                          {mou.status !== "terminated" && mou.status !== "expired" && (
+                            <div>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => { setDeleteTarget(mou); setIsDeleteOpen(true); }}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Terminate & Delete
+                              </DropdownMenuItem>
+                            </div>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+
+    let content;
+    if (isLoadingMOUs) {
+      content = loadingContent;
+    } else if (isErrorMOUs) {
+      content = errorContent;
+    } else if (filteredMOUs.length === 0) {
+      content = emptyContent;
+    } else {
+      content = tableContent;
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Filters */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by company name or notes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                    <SelectItem value="terminated">Terminated</SelectItem>
+                    <SelectItem value="expired">Expired</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Badge variant="secondary">{filteredMOUs.length}</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Content */}
+        {content}
+      </div>
+    );
+  }
+
+  // ── Render Invitations tab content (avoids SWC top-level fragment issue) ─
+  function renderInvitationsTab() {
+    const loadingContent = (
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-5 w-20" />
+              <div className="flex-1" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+
+    const errorContent = (
+      <ErrorState
+        message="Could not load invitations."
+        onRetry={fetchInvitations}
+      />
+    );
+
+    const emptyContent = (
+      <EmptyState
+        icon={<Mail className="h-10 w-10 text-muted-foreground" />}
+        title={
+          invDirection === "incoming"
+            ? "No incoming invitations"
+            : "No sent invitations"
+        }
+        description={
+          invDirection === "incoming"
+            ? "When a company HR invites your university to an MoU, it will appear here."
+            : "Invite company HR personnel to establish MoUs with your university."
+        }
+        action={
+          invDirection === "outgoing"
+            ? { label: "Send Invitation", onClick: () => setIsInviteOpen(true) }
+            : undefined
+        }
+      />
+    );
+
+    const tableContent = (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{invDirection === "incoming" ? "From" : "To"}</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="hidden md:table-cell">Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayedInvitations.map((inv, index) => {
+                  const expired = inv.status === "pending" && isExpired(inv.expires_at);
+                  return (
+                    <motion.tr
+                      key={inv.id}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                      className={`hover:bg-muted/50 border-b transition-colors ${expired ? "opacity-60" : ""}`}
+                    >
+                      <TableCell className="font-medium">
+                        {invDirection === "incoming" ? (
+                          <span className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            {inv.inviter?.full_name || inv.inviter?.email || "Unknown"}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            {inv.invitee_email}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {inv.companies?.name || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <InvitationStatusBadge status={expired ? "expired" : inv.status} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {formatDate(inv.created_at)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {expired ? (
+                          <span className="text-destructive flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Expired
+                          </span>
+                        ) : (
+                          formatDate(inv.expires_at)
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell max-w-[200px]">
+                        <span className="text-sm text-muted-foreground truncate block">
+                          {inv.notes || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Incoming: accept/reject buttons */}
+                          {invDirection === "incoming" && inv.status === "pending" && !expired && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-green-600 hover:bg-green-700 h-8"
+                                onClick={() => handleRespondInvitation(inv.id, "accepted")}
+                                disabled={isRespondingInv}
+                              >
+                                <UserCheck className="h-3.5 w-3.5 mr-1" />
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive hover:text-destructive h-8"
+                                onClick={() => handleRespondInvitation(inv.id, "rejected")}
+                                disabled={isRespondingInv}
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+                          {/* Outgoing: revoke button */}
+                          {invDirection === "outgoing" && inv.status === "pending" && !expired && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive h-8"
+                              onClick={() => handleRevokeInvitation(inv.id)}
+                              disabled={isRevokingInv}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              Revoke
+                            </Button>
+                          )}
+                          {/* Accepted: link to MOU */}
+                          {inv.status === "accepted" && inv.mou_id && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8"
+                              onClick={() => { setDetailMOU(null); setActiveTab("mous"); }}
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              View MOU
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </motion.tr>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+
+    let content;
+    if (isLoadingInv) {
+      content = loadingContent;
+    } else if (isErrorInv) {
+      content = errorContent;
+    } else if (displayedInvitations.length === 0) {
+      content = emptyContent;
+    } else {
+      content = tableContent;
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Direction toggle + invite button */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+            <button
+              type="button"
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                invDirection === "incoming"
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setInvDirection("incoming")}
+            >
+              Incoming
+              {pendingIncomingCount > 0 && (
+                <Badge variant="default" className="ml-2 bg-primary">{pendingIncomingCount}</Badge>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                invDirection === "outgoing"
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setInvDirection("outgoing")}
+            >
+              Sent
+            </button>
+          </div>
+
+          {invDirection === "outgoing" && (
+            <Button onClick={() => setIsInviteOpen(true)}>
+              <Send className="h-4 w-4 mr-2" />
+              Invite Company HR
+            </Button>
+          )}
+        </div>
+
+        {/* Content */}
+        {content}
+      </div>
+    );
+  }
+
   // ── Render ─────────────────────────────────────────────────────
+  const tabContent = activeTab === "mous" ? renderMouTab() : renderInvitationsTab();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -353,186 +1001,60 @@ export default function UniversityAdminMOUsPage() {
         title="MOUs"
         description="Manage Memorandums of Understanding with partner companies. Track status, review terms, and manage agreements."
         actions={
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New MOU
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActiveTab("invitations");
+                setInvDirection("outgoing");
+                setIsInviteOpen(true);
+              }}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Invite Company
+            </Button>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New MOU
+            </Button>
+          </div>
         }
       />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by company name or notes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                  <SelectItem value="terminated">Terminated</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                </SelectContent>
-              </Select>
-              <Badge variant="secondary">{filteredMOUs.length}</Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Content */}
-      {isLoading ? (
-        <Card>
-          <CardContent className="p-6 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-5 w-20" />
-                <Skeleton className="h-5 w-28" />
-                <Skeleton className="h-5 w-28" />
-                <div className="flex-1" />
-                <Skeleton className="h-8 w-8" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : isError ? (
-        <ErrorState
-          message="Could not load MOUs. Please check your connection and try again."
-          onRetry={fetchMOUs}
-        />
-      ) : filteredMOUs.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-10 w-10 text-muted-foreground" />}
-          title={searchQuery || statusFilter !== "all" ? "No MOUs match your filters" : "No MOUs yet"}
-          description={
-            searchQuery || statusFilter !== "all"
-              ? "Try adjusting your search or status filter to find what you're looking for."
-              : "Start by creating a Memorandum of Understanding with a partner company."
-          }
-          action={
-            searchQuery || statusFilter !== "all"
-              ? undefined
-              : { label: "Create MOU", onClick: () => setIsCreateOpen(true) }
-          }
-          secondaryAction={
-            searchQuery || statusFilter !== "all"
-              ? { label: "Clear filters", onClick: () => { setSearchQuery(""); setStatusFilter("all"); } }
-              : undefined
-          }
-        />
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          type="button"
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === "mous"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setActiveTab("mous")}
         >
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Start Date</TableHead>
-                    <TableHead>End Date</TableHead>
-                    <TableHead className="hidden md:table-cell">Notes</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMOUs.map((mou, index) => (
-                    <motion.tr
-                      key={mou.id}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                      className="hover:bg-muted/50 border-b transition-colors"
-                    >
-                      <TableCell className="font-medium">
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 hover:text-primary transition-colors text-left"
-                          onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}
-                        >
-                          <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          {mou.companies?.name || "Unknown Company"}
-                        </button>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={mou.status} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(mou.starts_at)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(mou.ends_at)}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell max-w-[200px]">
-                        <span className="text-sm text-muted-foreground truncate block">
-                          {mou.notes || "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}>
-                              <FileText className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            {getNextActions(mou).map((action) => (
-                              <DropdownMenuItem
-                                key={action.status}
-                                onClick={() => handleStatusChange(mou, action.status)}
-                                disabled={isUpdatingStatus}
-                              >
-                                {action.icon}
-                                <span className="ml-2">{action.label}</span>
-                              </DropdownMenuItem>
-                            ))}
-                            {mou.status !== "terminated" && mou.status !== "expired" && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => { setDeleteTarget(mou); setIsDeleteOpen(true); }}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Terminate & Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </motion.tr>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+          MOUs
+          <Badge variant="secondary" className="ml-2">{mous.length}</Badge>
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
+            activeTab === "invitations"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+          onClick={() => setActiveTab("invitations")}
+        >
+          Invitations
+          {pendingIncomingCount > 0 && (
+            <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+              {pendingIncomingCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Tab content */}
+      {tabContent}
 
       {/* ── Create MOU Dialog ────────────────────────────────────── */}
       <Dialog open={isCreateOpen} onOpenChange={(open) => { if (!open) { resetCreateForm(); } setIsCreateOpen(open); }}>
@@ -601,11 +1123,68 @@ export default function UniversityAdminMOUsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Invite Company HR Dialog ──────────────────────────────── */}
+      <Dialog
+        open={isInviteOpen}
+        onOpenChange={(open) => {
+          if (!open) { setInviteEmail(""); setInviteNotes(""); }
+          setIsInviteOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              Invite Company HR
+            </DialogTitle>
+            <DialogDescription>
+              Send an MoU invitation to a company HR. They will need to accept the invitation to create an active MoU with {university?.name || "your university"}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Company HR Email *</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                placeholder="hr@company.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The person must already be registered on InternHub with the company_hr role.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-notes">Message (optional)</Label>
+              <Textarea
+                id="invite-notes"
+                placeholder="Add a message to the invitation..."
+                value={inviteNotes}
+                onChange={(e) => setInviteNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setInviteEmail(""); setInviteNotes(""); setIsInviteOpen(false); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendInvite}
+              disabled={isSendingInvite || !inviteEmail.trim()}
+            >
+              {isSendingInvite ? "Sending..." : <span><Send className="h-4 w-4 mr-2" />Send Invitation</span>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── MOU Detail Dialog ────────────────────────────────────── */}
       <Dialog open={isDetailOpen} onOpenChange={(open) => { if (!open) setDetailMOU(null); setIsDetailOpen(open); }}>
         <DialogContent className="sm:max-w-[560px]">
           {detailMOU && (
-            <>
+            <div>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -715,7 +1294,7 @@ export default function UniversityAdminMOUsPage() {
                   Close
                 </Button>
               </DialogFooter>
-            </>
+            </div>
           )}
         </DialogContent>
       </Dialog>

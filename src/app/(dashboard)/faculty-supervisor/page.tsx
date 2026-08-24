@@ -4,16 +4,10 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  Users,
   Briefcase,
-  TrendingUp,
   GraduationCap,
-  Building2,
   FileText,
-  Search,
-  UserCheck,
   BarChart3,
-  Calendar,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -24,10 +18,7 @@ import {
   Send,
   ArrowRight,
   AlertTriangle,
-  Star,
   Eye,
-  MessageSquare,
-  FileCheck,
   XCircle,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

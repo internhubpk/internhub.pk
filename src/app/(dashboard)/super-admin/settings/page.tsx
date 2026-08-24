@@ -19,6 +19,8 @@ import {
   Briefcase,
   GraduationCap,
   FileText,
+  User,
+  Mail,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { useAuth } from "@/components/providers/auth-provider";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { PasswordChangeCard } from "@/components/auth/password-change-card";
+import { toast } from "@/components/shared/toast";
 
 /**
  * Super Admin — Platform Settings
@@ -85,6 +91,27 @@ interface SystemHealth {
   version: string;
 }
 
+interface StorageStats {
+  total_used_bytes: number;
+  total_file_count: number;
+  universities: {
+    university_id: string;
+    university_name: string | null;
+    used_bytes: number;
+    used_mb: number;
+    used_gb: number;
+    file_count: number;
+    student_count: number;
+    usage_percentage: number;
+  }[];
+}
+
+interface StorageState {
+  stats: StorageStats | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
 const defaultSettings: PlatformSettings = {
   platform_name: "CareerStep",
   support_email: "support@careerstep.tech",
@@ -115,9 +142,41 @@ const emptyHealth: SystemHealth = {
 };
 
 export default function SuperAdminSettingsPage() {
+  const { user, profile, refreshProfile } = useAuth();
   const [settings, setSettings] = useState<PlatformSettings>(defaultSettings);
+  const [adminName, setAdminName] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Sync admin name from profile
+  useEffect(() => {
+    if (profile?.full_name) setAdminName(profile.full_name);
+  }, [profile?.full_name]);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setIsSavingProfile(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: adminName.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success("Profile saved", { description: "Your name has been updated." });
+      await refreshProfile();
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      toast.error("Failed to save profile", { description: err instanceof Error ? err.message : "Please try again." });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
   const [stats, setStats] = useState<PlatformStats>(emptyStats);
   const [health, setHealth] = useState<SystemHealth>(emptyHealth);
+  const [storage, setStorage] = useState<StorageState>({ stats: null, isLoading: false, error: null });
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -202,6 +261,20 @@ export default function SuperAdminSettingsPage() {
     }
   }, []);
 
+  const fetchStorageStats = useCallback(async () => {
+    setStorage((prev) => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const res = await fetch("/api/storage/stats");
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result?.error || "Failed to load storage stats");
+      }
+      setStorage({ stats: result.data, isLoading: false, error: null });
+    } catch (e: any) {
+      setStorage({ stats: null, isLoading: false, error: e.message });
+    }
+  }, []);
+
   const fetchSystemHealth = useCallback(async () => {
     try {
       const supabase = createClient();
@@ -242,10 +315,10 @@ export default function SuperAdminSettingsPage() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([fetchSettings(), fetchPlatformStats(), fetchSystemHealth()]);
+      await Promise.all([fetchSettings(), fetchPlatformStats(), fetchSystemHealth(), fetchStorageStats()]);
       setIsLoading(false);
     })();
-  }, [fetchSettings, fetchPlatformStats, fetchSystemHealth]);
+  }, [fetchSettings, fetchPlatformStats, fetchSystemHealth, fetchStorageStats]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -629,6 +702,177 @@ export default function SuperAdminSettingsPage() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {/* Storage Statistics */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          className="lg:col-span-2"
+        >
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Storage Statistics
+                  </CardTitle>
+                  <CardDescription>
+                    Real storage usage aggregated from the documents table.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchStorageStats}
+                  disabled={storage.isLoading}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 mr-2 ${storage.isLoading ? "animate-spin" : ""}`}
+                  />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {storage.isLoading && !storage.stats && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
+                  <span className="text-muted-foreground">Loading storage stats…</span>
+                </div>
+              )}
+
+
+              {storage.error && !storage.stats && (
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                  <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <span className="text-sm text-red-700 dark:text-red-300">{storage.error}</span>
+                </div>
+              )}
+
+              {storage.stats && (
+                <>
+                  {/* Summary row */}
+                  <div className="grid gap-4 sm:grid-cols-3 mb-6">
+                    <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                      <p className="text-sm font-medium text-muted-foreground">Total Files</p>
+                      <p className="text-2xl font-bold mt-1">{storage.stats.total_file_count.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                      <p className="text-sm font-medium text-muted-foreground">Total Used</p>
+                      <p className="text-2xl font-bold mt-1">
+                        {storage.stats.total_used_bytes >= 1024 * 1024 * 1024
+                          ? `${storage.stats.universities.reduce((a, u) => a + u.used_gb, 0).toFixed(2)} GB`
+                          : `${storage.stats.universities.reduce((a, u) => a + u.used_mb, 0)} MB`}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm font-medium text-muted-foreground">Universities</p>
+                      <p className="text-2xl font-bold mt-1">{storage.stats.universities.length}</p>
+                    </div>
+                  </div>
+
+                  {/* Per-university breakdown */}
+                  {storage.stats.universities.length > 0 ? (
+                    <div className="max-h-72 overflow-y-auto rounded-lg border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-muted">
+                          <tr>
+                            <th className="text-left p-3 font-medium">University</th>
+                            <th className="text-right p-3 font-medium">Students</th>
+                            <th className="text-right p-3 font-medium">Files</th>
+                            <th className="text-right p-3 font-medium">Used</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {storage.stats.universities
+                            .filter((u) => u.file_count > 0)
+                            .map((u) => (
+                              <tr key={u.university_id} className="hover:bg-muted/50">
+                                <td className="p-3 font-medium">{u.university_name || "Unknown"}</td>
+                                <td className="p-3 text-right text-muted-foreground">{u.student_count}</td>
+                                <td className="p-3 text-right text-muted-foreground">{u.file_count}</td>
+                                <td className="p-3 text-right font-mono">
+                                  {u.used_gb >= 1 ? `${u.used_gb} GB` : `${u.used_mb} MB`}
+                                </td>
+                              </tr>
+                            ))}
+                          {storage.stats.universities.every((u) => u.file_count === 0) && (
+                            <tr>
+                              <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                                No documents uploaded yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-6">No universities found.</p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Personal Profile + Password */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Your Profile
+            </CardTitle>
+            <CardDescription>Update your name and profile picture.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <AvatarUploader
+              userId={user?.id || ""}
+              currentUrl={profile?.avatar_url}
+              fullName={profile?.full_name}
+              onUploaded={() => refreshProfile()}
+              onRemoved={() => refreshProfile()}
+              size="md"
+            />
+            <Separator />
+            <div className="space-y-2">
+              <Label htmlFor="sa-name" className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" /> Full Name
+              </Label>
+              <Input
+                id="sa-name"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                placeholder="Your full name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sa-email" className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" /> Email
+              </Label>
+              <Input
+                id="sa-email"
+                value={user?.email || ""}
+                disabled
+                className="bg-muted/50"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="gap-2">
+                {isSavingProfile ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save Changes
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+        <PasswordChangeCard />
       </div>
 
       {/* Platform Statistics — real counts from the DB */}

@@ -154,28 +154,44 @@ export default function StudentInternshipsPage() {
         });
       }
 
+      // Fetch internship_target_departments for department-based filtering
+      // This is the NEW structured table that replaces the legacy free-text
+      // target_departments jsonb column.
+      let targetDeptMap: Record<string, string[]> = {}; // internship_id -> [department_id, ...]
+      if (internshipIds.length > 0) {
+        const { data: itds } = await supabase
+          .from("internship_target_departments")
+          .select("internship_id, department_id")
+          .in("internship_id", internshipIds);
+        (itds || []).forEach((row: any) => {
+          if (!targetDeptMap[row.internship_id]) {
+            targetDeptMap[row.internship_id] = [];
+          }
+          targetDeptMap[row.internship_id].push(row.department_id);
+        });
+      }
+
       // Combine data. Apply department scoping client-side: an internship is
-      // visible to this student if its `department_id` matches the student's
-      // department OR its `target_departments` jsonb array contains the
-      // student's department OR it has no department restriction (NULL +
-      // empty/missing `target_departments` = open to all).
-      //
-      // IMPORTANT: `target_departments` is a jsonb array of department NAMES
-      // (e.g. ["Computer Science", "Software Engineering"]), NOT UUIDs.
-      // This matches how company HR enters them in the internship form
-      // (free-text department names, since HR may target departments at
-      // universities that don't exist in our `departments` table yet).
-      // We therefore compare against `profile.departments.name` (the joined
-      // department name), NOT against `profile.department_id` (a UUID).
-      // Comparing UUIDs against name-strings was the root cause of the
-      // "No Internships Available" bug on this page — every comparison
-      // returned false, so the student saw zero internships even though
-      // 2 were available to them.
+      // visible to this student if:
+      //   1. It has no department restriction (legacy + new)
+      //   2. Its `department_id` column matches the student's department_id
+      //   3. Its legacy `target_departments` jsonb array contains the student's dept name
+      //   4. Its `internship_target_departments` table rows include the student's department_id
       const studentDeptId = profile?.department_id;
       const studentDeptName = profile?.departments?.name;
       const processedInternships: Internship[] = (internshipsData || [])
         .filter((internship: any) => {
           if (!studentDeptId) return true;
+
+          // Check new structured table first
+          const itdDepts = targetDeptMap[internship.id];
+          if (itdDepts && itdDepts.length > 0) {
+            // If there ARE structured targets, the student must match one of them
+            if (itdDepts.includes(studentDeptId)) return true;
+            return false;
+          }
+
+          // Fall back to legacy logic for internships without structured targets
           const openToAll =
             !internship.department_id &&
             (!internship.target_departments ||

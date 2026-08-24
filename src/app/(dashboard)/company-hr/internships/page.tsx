@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -60,12 +60,14 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   MoreVertical,
   FileText,
   CheckCircle2,
   AlertCircle,
   Archive,
   Send,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -78,8 +80,17 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { InternshipImageUpload } from "@/components/company/internship-image-upload";
 import { ImageIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { createClient } from "@/utils/supabase/client";
+import { cn } from "@/lib/utils";
 
 // Types
+interface TargetDeptRow {
+  university_id: string;
+  department_id: string;
+}
+
 interface InternshipProgram {
   id: string;
   title: string;
@@ -101,6 +112,26 @@ interface InternshipProgram {
   image_url?: string | null;
   created_at: string;
   updated_at: string;
+  internship_target_departments?: Array<{
+    id: string;
+    university_id: string;
+    department_id: string;
+    departments?: { id: string; name: string } | null;
+    universities?: { id: string; name: string } | null;
+  }>;
+}
+
+// MoU university + department types for multi-select
+interface MouDepartment {
+  id: string;
+  name: string;
+  is_active?: boolean;
+}
+
+interface MouUniversity {
+  university_id: string;
+  university_name: string;
+  departments: MouDepartment[];
 }
 
 // Default empty state - internships will be fetched from database
@@ -123,15 +154,16 @@ function toDateInputValue(value?: string | null): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Free-text tag input for target departments. Departments are stored as
-// free-text labels in a jsonb array, so HR can enter anything relevant
-// to their internship offering — no fixed dropdown.
-
 export default function CompanyHRInternshipsPage() {
   const [internships, setInternships] = useState<InternshipProgram[]>(DEFAULT_INTERNSHIPS);
   const [isLoading, setIsLoading] = useState(true);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [mouUniversities, setMouUniversities] = useState<MouUniversity[]>([]);
+  const [isLoadingMouDepts, setIsLoadingMouDepts] = useState(false);
+  const [expandedUnis, setExpandedUnis] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    fetchCompanyAndMouDepts();
     fetchInternships();
   }, []);
 
@@ -166,6 +198,7 @@ export default function CompanyHRInternshipsPage() {
           image_url: prog.image_url || null,
           created_at: prog.created_at,
           updated_at: prog.updated_at || prog.created_at,
+          internship_target_departments: prog.internship_target_departments || [],
         }));
         setInternships(progList);
       }
@@ -176,6 +209,70 @@ export default function CompanyHRInternshipsPage() {
       setIsLoading(false);
     }
   }
+
+  const fetchCompanyAndMouDepts = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profile?.company_id) {
+        setCompanyId(profile.company_id);
+        setIsLoadingMouDepts(true);
+
+        const now = new Date().toISOString();
+        const { data: mous } = await supabase
+          .from('company_university_mous')
+          .select('university_id, universities:university_id(id, name)')
+          .eq('company_id', profile.company_id)
+          .eq('status', 'active')
+          .or(`ends_at.gt.${now},ends_at.is.null`);
+
+        const uniList = (mous || [])
+          .map((m: any) => ({
+            university_id: m.university_id,
+            university_name: m.universities?.name || 'Unknown',
+          }))
+          .filter((v: any, i: number, a: any[]) =>
+            a.findIndex((t: any) => t.university_id === v.university_id) === i
+          );
+
+        if (uniList.length === 0) {
+          setMouUniversities([]);
+          setIsLoadingMouDepts(false);
+          return;
+        }
+
+        const uniWithDepts: MouUniversity[] = await Promise.all(
+          uniList.map(async (uni: any) => {
+            try {
+              const res = await fetch(`/api/departments?university_id=${uni.university_id}&pageSize=100`);
+              const result = await res.json();
+              const depts: MouDepartment[] = (result?.data?.data || result?.data || [])
+                .filter((d: any) => d.is_active !== false);
+              return { ...uni, departments: depts };
+            } catch {
+              return { ...uni, departments: [] };
+            }
+          })
+        );
+
+        setMouUniversities(uniWithDepts);
+        setExpandedUnis(new Set(uniWithDepts.map(u => u.university_id)));
+      }
+    } catch (e) {
+      console.error('Error fetching MoU departments:', e);
+    } finally {
+      setIsLoadingMouDepts(false);
+    }
+  }, []);
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingInternship, setEditingInternship] = useState<InternshipProgram | null>(null);
@@ -195,7 +292,7 @@ export default function CompanyHRInternshipsPage() {
     is_paid: false,
     stipend: "",
     duration_weeks: "",
-    target_departments: [] as string[],
+    target_departments: [] as TargetDeptRow[],
     target_university: "",
     max_applicants: "",
     start_date: "",
@@ -312,8 +409,23 @@ export default function CompanyHRInternshipsPage() {
     }
   };
 
-  const openEditDialog = (internship: InternshipProgram) => {
+  const openEditDialog = async (internship: InternshipProgram) => {
     setEditingInternship(internship);
+
+    // Build target_departments from internship_target_departments join data
+    let targetDepts: TargetDeptRow[] = [];
+    if (internship.internship_target_departments && internship.internship_target_departments.length > 0) {
+      targetDepts = internship.internship_target_departments
+        .filter((td) => td.university_id && td.department_id)
+        .map((td) => ({ university_id: td.university_id, department_id: td.department_id }));
+    }
+
+    // Fallback: if no structured data, check legacy target_departments (strings)
+    if (targetDepts.length === 0 && internship.target_departments && internship.target_departments.length > 0 && typeof internship.target_departments[0] === 'string') {
+      // Legacy free-text — we can't convert to structured format, leave empty
+      targetDepts = [];
+    }
+
     setFormData({
       title: internship.title,
       description: internship.description,
@@ -322,7 +434,7 @@ export default function CompanyHRInternshipsPage() {
       is_paid: internship.is_paid,
       stipend: internship.stipend?.toString() || "",
       duration_weeks: internship.duration_weeks.toString(),
-      target_departments: internship.target_departments,
+      target_departments: targetDepts,
       target_university: internship.target_university || "",
       max_applicants: internship.max_applicants?.toString() || "",
       start_date: toDateInputValue(internship.start_date),
@@ -363,7 +475,7 @@ export default function CompanyHRInternshipsPage() {
       is_paid: internship.is_paid,
       stipend: internship.stipend?.toString() || "",
       duration_weeks: internship.duration_weeks.toString(),
-      target_departments: internship.target_departments,
+      target_departments: [], // Duplicated internships start fresh for department targeting
       target_university: internship.target_university || "",
       max_applicants: internship.max_applicants?.toString() || "",
       start_date: "",
@@ -437,15 +549,76 @@ export default function CompanyHRInternshipsPage() {
     totalApplicants: internships.reduce((acc, i) => acc + i.current_applicants, 0),
   };
 
-  const addDepartment = (dept: string) => {
-    const v = dept.trim();
-    if (!v) return;
-    if (formData.target_departments.some((x) => x.toLowerCase() === v.toLowerCase())) return;
-    setFormData({ ...formData, target_departments: [...formData.target_departments, v] });
+  // Department multi-select helpers
+  const isDeptSelected = (universityId: string, departmentId: string) => {
+    return formData.target_departments.some(
+      (t) => t.university_id === universityId && t.department_id === departmentId
+    );
   };
 
-  const removeDepartment = (idx: number) => {
-    setFormData({ ...formData, target_departments: formData.target_departments.filter((_, i) => i !== idx) });
+  const toggleDept = (universityId: string, departmentId: string) => {
+    if (isDeptSelected(universityId, departmentId)) {
+      setFormData({
+        ...formData,
+        target_departments: formData.target_departments.filter(
+          (t) => !(t.university_id === universityId && t.department_id === departmentId)
+        ),
+      });
+    } else {
+      setFormData({
+        ...formData,
+        target_departments: [
+          ...formData.target_departments,
+          { university_id: universityId, department_id: departmentId },
+        ],
+      });
+    }
+  };
+
+  const toggleAllDeptsInUni = (uni: MouUniversity) => {
+    const allSelected = uni.departments.every((d) =>
+      isDeptSelected(uni.university_id, d.id)
+    );
+    if (allSelected) {
+      setFormData({
+        ...formData,
+        target_departments: formData.target_departments.filter(
+          (t) => t.university_id !== uni.university_id
+        ),
+      });
+    } else {
+      const existing = new Set(
+        formData.target_departments
+          .filter((t) => t.university_id === uni.university_id)
+          .map((t) => t.department_id)
+      );
+      const newTargets = uni.departments
+        .filter((d) => !existing.has(d.id))
+        .map((d) => ({ university_id: uni.university_id, department_id: d.id }));
+      setFormData({
+        ...formData,
+        target_departments: [...formData.target_departments, ...newTargets],
+      });
+    }
+  };
+
+  const toggleUniExpanded = (uniId: string) => {
+    setExpandedUnis((prev) => {
+      const next = new Set(prev);
+      if (next.has(uniId)) next.delete(uniId);
+      else next.add(uniId);
+      return next;
+    });
+  };
+
+  // Get display department names from internship_target_departments join data
+  const getDeptDisplayNames = (internship: InternshipProgram): string[] => {
+    if (internship.internship_target_departments && internship.internship_target_departments.length > 0) {
+      return internship.internship_target_departments
+        .map((td) => td.departments?.name || td.universities?.name || 'Unknown')
+        .filter((name, idx, arr) => arr.indexOf(name) === idx);
+    }
+    return internship.target_departments || [];
   };
 
   return (
@@ -585,22 +758,103 @@ export default function CompanyHRInternshipsPage() {
 
               {/* Target Audience */}
               <div className="space-y-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4" /> Target Audience
-                </h3>
-                
-                <div className="space-y-2">
-                  <Label>Target Departments</Label>
-                  <DepartmentTagInput
-                    values={formData.target_departments}
-                    onAdd={addDepartment}
-                    onRemove={removeDepartment}
-                    placeholder="Type a department name, then press Enter"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Free-text: enter any department relevant to this internship (e.g., Computer Science, Marketing, Mechanical Engineering). Leave empty for general intake.
-                  </p>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" /> Target Departments
+                  </h3>
+                  {formData.target_departments.length > 0 && (
+                    <Badge variant="default" className="text-xs">
+                      {formData.target_departments.length} selected
+                    </Badge>
+                  )}
                 </div>
+                
+                {isLoadingMouDepts && (
+                  <div className="flex items-center gap-2 py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Loading departments…</span>
+                  </div>
+                )}
+
+                {!isLoadingMouDepts && mouUniversities.length === 0 && (
+                  <p className="text-sm text-muted-foreground p-3 rounded-lg border border-dashed">
+                    No active MoUs found. Set up a Memorandum of Understanding with a university to target specific departments.
+                  </p>
+                )}
+
+                {!isLoadingMouDepts && mouUniversities.length > 0 && (
+                  <div className="space-y-2 max-h-60 overflow-y-auto rounded-lg border p-2">
+                    {mouUniversities.map((uni) => {
+                      const allSelected =
+                        uni.departments.length > 0 &&
+                        uni.departments.every((d) =>
+                          isDeptSelected(uni.university_id, d.id)
+                        );
+                      const isExpanded = expandedUnis.has(uni.university_id);
+                      return (
+                        <Collapsible
+                          key={uni.university_id}
+                          open={isExpanded}
+                          onOpenChange={() => toggleUniExpanded(uni.university_id)}
+                        >
+                          <div className="flex items-center gap-2 px-2 py-1.5">
+                            <CollapsibleTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex items-center gap-2 flex-1 text-sm font-medium hover:bg-muted/50 rounded px-1 py-0.5"
+                              >
+                                <ChevronRight
+                                  className={cn(
+                                    "h-4 w-4 text-muted-foreground transition-transform",
+                                    isExpanded && "rotate-90"
+                                  )}
+                                />
+                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                                {uni.university_name}
+                                <span className="text-xs text-muted-foreground">
+                                  ({uni.departments.length})
+                                </span>
+                              </button>
+                            </CollapsibleTrigger>
+                            {uni.departments.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => toggleAllDeptsInUni(uni)}
+                                className="text-xs text-primary hover:underline whitespace-nowrap"
+                              >
+                                {allSelected ? "Deselect all" : "Select all"}
+                              </button>
+                            )}
+                          </div>
+                          <CollapsibleContent>
+                            <div className="pl-6 pb-2 space-y-1">
+                              {uni.departments.map((dept) => (
+                                <label
+                                  key={dept.id}
+                                  className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/50 cursor-pointer"
+                                >
+                                  <Checkbox
+                                    checked={isDeptSelected(uni.university_id, dept.id)}
+                                    onCheckedChange={() =>
+                                      toggleDept(uni.university_id, dept.id)
+                                    }
+                                  />
+                                  <span className="text-sm">{dept.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {formData.target_departments.length === 0 && !isLoadingMouDepts && mouUniversities.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Leaving this empty means the internship is open to all students from MoU-linked universities.
+                  </p>
+                )}
               </div>
 
               {/* Compensation */}
@@ -806,12 +1060,12 @@ export default function CompanyHRInternshipsPage() {
                         
                         {/* Department Tags */}
                         <div className="flex gap-1 ml-2 overflow-hidden">
-                          {internship.target_departments.slice(0, 2).map(dept => (
+                          {getDeptDisplayNames(internship).slice(0, 2).map(dept => (
                             <Badge key={dept} variant="outline" className="text-xs">{dept}</Badge>
                           ))}
-                          {internship.target_departments.length > 2 && (
+                          {getDeptDisplayNames(internship).length > 2 && (
                             <Badge variant="outline" className="text-xs">
-                              +{internship.target_departments.length - 2}
+                              +{getDeptDisplayNames(internship).length - 2}
                             </Badge>
                           )}
                         </div>
@@ -837,7 +1091,7 @@ export default function CompanyHRInternshipsPage() {
                             <div>
                               <h4 className="font-medium text-sm mb-2">Target Departments</h4>
                               <div className="flex flex-wrap gap-1">
-                                {internship.target_departments.map(dept => (
+                                {getDeptDisplayNames(internship).map(dept => (
                                   <Badge key={dept} variant="outline" className="text-xs">{dept}</Badge>
                                 ))}
                               </div>
@@ -1078,16 +1332,88 @@ export default function CompanyHRInternshipsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Target Departments</Label>
-              <DepartmentTagInput
-                values={formData.target_departments}
-                onAdd={addDepartment}
-                onRemove={removeDepartment}
-                placeholder="Type a department name, then press Enter"
-              />
-              <p className="text-xs text-muted-foreground">
-                Free-text: enter any department relevant to this internship.
-              </p>
+              <div className="flex items-center justify-between">
+                <Label>Target Departments</Label>
+                {formData.target_departments.length > 0 && (
+                  <Badge variant="default" className="text-xs">
+                    {formData.target_departments.length} selected
+                  </Badge>
+                )}
+              </div>
+              {isLoadingMouDepts && (
+                <div className="flex items-center gap-2 py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Loading departments…</span>
+                </div>
+              )}
+              {!isLoadingMouDepts && mouUniversities.length === 0 && (
+                <p className="text-sm text-muted-foreground p-3 rounded-lg border border-dashed">
+                  No active MoUs found.
+                </p>
+              )}
+              {!isLoadingMouDepts && mouUniversities.length > 0 && (
+                <div className="space-y-2 max-h-60 overflow-y-auto rounded-lg border p-2">
+                  {mouUniversities.map((uni) => {
+                    const allSelected =
+                      uni.departments.length > 0 &&
+                      uni.departments.every((d) => isDeptSelected(uni.university_id, d.id));
+                    const isExpanded = expandedUnis.has(uni.university_id);
+                    return (
+                      <Collapsible
+                        key={uni.university_id}
+                        open={isExpanded}
+                        onOpenChange={() => toggleUniExpanded(uni.university_id)}
+                      >
+                        <div className="flex items-center gap-2 px-2 py-1.5">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex items-center gap-2 flex-1 text-sm font-medium hover:bg-muted/50 rounded px-1 py-0.5"
+                            >
+                              <ChevronRight
+                                className={cn(
+                                  "h-4 w-4 text-muted-foreground transition-transform",
+                                  isExpanded && "rotate-90"
+                                )}
+                              />
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              {uni.university_name}
+                              <span className="text-xs text-muted-foreground">
+                                ({uni.departments.length})
+                              </span>
+                            </button>
+                          </CollapsibleTrigger>
+                          {uni.departments.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleAllDeptsInUni(uni)}
+                              className="text-xs text-primary hover:underline whitespace-nowrap"
+                            >
+                              {allSelected ? "Deselect all" : "Select all"}
+                            </button>
+                          )}
+                        </div>
+                        <CollapsibleContent>
+                          <div className="pl-6 pb-2 space-y-1">
+                            {uni.departments.map((dept) => (
+                              <label
+                                key={dept.id}
+                                className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted/50 cursor-pointer"
+                              >
+                                <Checkbox
+                                  checked={isDeptSelected(uni.university_id, dept.id)}
+                                  onCheckedChange={() => toggleDept(uni.university_id, dept.id)}
+                                />
+                                <span className="text-sm">{dept.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
           </DialogBody>
@@ -1106,63 +1432,5 @@ export default function CompanyHRInternshipsPage() {
 }
 
 // ===========================================================================
-// DepartmentTagInput — free-text tag input for target_departments.
-// Type a value, press Enter (or comma) to add. Backspace on empty input
-// removes the last tag. Click X on a tag to remove it.
+// End of CompanyHRInternshipsPage
 // ===========================================================================
-function DepartmentTagInput({
-  values,
-  onAdd,
-  onRemove,
-  placeholder,
-}: {
-  values: string[];
-  onAdd: (v: string) => void;
-  onRemove: (idx: number) => void;
-  placeholder?: string;
-}) {
-  const [text, setText] = useState("");
-
-  const commit = () => {
-    if (!text.trim()) return;
-    onAdd(text);
-    setText("");
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2 p-2 rounded-lg border bg-background min-h-[42px]">
-      {values.map((v, idx) => (
-        <span
-          key={`${v}-${idx}`}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
-        >
-          {v}
-          <button
-            type="button"
-            onClick={() => onRemove(idx)}
-            className="hover:bg-primary/20 rounded-full p-0.5"
-            aria-label={`Remove ${v}`}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Backspace" && !text && values.length > 0) {
-            onRemove(values.length - 1);
-          }
-        }}
-        onBlur={commit}
-        placeholder={values.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[160px] bg-transparent outline-none text-sm px-1"
-      />
-    </div>
-  );
-}

@@ -10,13 +10,8 @@ import {
   Phone,
   MapPin,
   Building2,
-  AlertCircle,
-  Loader2,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Key,
   User,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +26,9 @@ import { toast } from "@/components/shared/toast";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { PasswordChangeCard } from "@/components/auth/password-change-card";
+import { Separator } from "@/components/ui/separator";
 
 interface CompanyForm {
   name: string;
@@ -109,13 +107,7 @@ export default function CompanyHRSettingsPage() {
   const [savingCompany, setSavingCompany] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingNotifs, setSavingNotifs] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
 
-  const [currentPwd, setCurrentPwd] = useState("");
-  const [newPwd, setNewPwd] = useState("");
-  const [confirmPwd, setConfirmPwd] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -268,34 +260,7 @@ export default function CompanyHRSettingsPage() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (newPwd.length < 8) {
-      toast.error("Validation error", { description: "New password must be at least 8 characters" });
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      toast.error("Validation error", { description: "New passwords do not match" });
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      const res = await fetch("/api/company-hr/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_password: currentPwd, new_password: newPwd }),
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
-      toast.success("Password changed", { description: "Your password was updated successfully" });
-      setCurrentPwd("");
-      setNewPwd("");
-      setConfirmPwd("");
-    } catch (e: any) {
-      toast.error("Password change failed", { description: e.message });
-    } finally {
-      setChangingPassword(false);
-    }
-  };
+
 
   if (loading) {
     return (
@@ -432,9 +397,18 @@ export default function CompanyHRSettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Your Profile</CardTitle>
-              <CardDescription>Update your personal contact details.</CardDescription>
+              <CardDescription>Update your personal contact details and profile picture.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <AvatarUploader
+                userId={user?.id || ""}
+                currentUrl={profileForm.avatar_url || null}
+                fullName={`${profileForm.first_name} ${profileForm.last_name}`.trim() || undefined}
+                onUploaded={() => { refreshProfile(); load(); }}
+                onRemoved={() => { refreshProfile(); load(); }}
+                size="md"
+              />
+              <Separator />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="first_name">First Name</Label>
@@ -557,46 +531,7 @@ export default function CompanyHRSettingsPage() {
         </TabsContent>
 
         <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Change Password</CardTitle>
-              <CardDescription>Use a strong password of at least 8 characters. Mix letters, numbers, and symbols.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 max-w-md">
-              <div className="space-y-2">
-                <Label htmlFor="current_password">Current Password</Label>
-                <div className="relative">
-                  <Key className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input id="current_password" type={showCurrent ? "text" : "password"} value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} placeholder="••••••••" className="pl-9 pr-9" />
-                  <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new_password">New Password</Label>
-                <div className="relative">
-                  <Input id="new_password" type={showNew ? "text" : "password"} value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="••••••••" className="pr-9" />
-                  <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm_password">Confirm New Password</Label>
-                <Input id="confirm_password" type={showNew ? "text" : "password"} value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="••••••••" />
-              </div>
-              {newPwd && confirmPwd && newPwd !== confirmPwd && (
-                <div className="flex items-center gap-2 text-sm text-red-600">
-                  <AlertCircle className="h-4 w-4" /> Passwords do not match
-                </div>
-              )}
-              <Button onClick={handleChangePassword} disabled={changingPassword || !currentPwd || !newPwd}>
-                {changingPassword ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                Update Password
-              </Button>
-            </CardContent>
-          </Card>
+          <PasswordChangeCard />
         </TabsContent>
       </Tabs>
     </div>

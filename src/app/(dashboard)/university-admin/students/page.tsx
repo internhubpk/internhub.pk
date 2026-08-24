@@ -57,10 +57,11 @@ import type { Profile, Department } from "@/types";
 interface StudentWithDetails extends Profile {
   departmentName?: string | null;
   departmentCode?: string | null;
-  enrollmentNumber?: string | null;
+  studentIdNumber?: string | null;
   programName?: string | null;
   internshipStatus?: string | null;
   gpa?: number | null;
+  semester?: number | null;
 }
 
 interface StudentFilters {
@@ -143,14 +144,14 @@ export default function UniversityAdminStudentsPage() {
         }
 
         // Get student-specific details if available
-        let studentDetails: { enrollment_number: string | null; program_id: string | null; cgpa: number | null; status: string | null } | null = null;
+        let studentDetails: { student_id_number: string | null; program_id: string | null; cgpa: number | null; semester: number | null } | null = null;
         try {
           const { data: details } = await supabase
             .from("students")
-            .select("enrollment_number, program_id, cgpa, status")
+            .select("student_id_number, program_id, cgpa, semester")
             .eq("user_id", student.user_id)
-            .single();
-          studentDetails = details as { enrollment_number: string | null; program_id: string | null; cgpa: number | null; status: string | null } | null;
+            .maybeSingle();
+          studentDetails = details as { student_id_number: string | null; program_id: string | null; cgpa: number | null; semester: number | null } | null;
         } catch (e) {
           // Students table might not have this user yet
         }
@@ -189,7 +190,8 @@ export default function UniversityAdminStudentsPage() {
           ...student,
           departmentName: deptInfo?.name || null,
           departmentCode: deptInfo?.code || null,
-          enrollmentNumber: studentDetails?.enrollment_number || null,
+          studentIdNumber: studentDetails?.student_id_number || null,
+          semester: studentDetails?.semester ?? null,
           programName: programName,
           internshipStatus: internshipStatus,
           gpa: studentDetails?.cgpa || null,
@@ -206,7 +208,7 @@ export default function UniversityAdminStudentsPage() {
           (s) =>
             (s.full_name && s.full_name.toLowerCase().includes(query)) ||
             s.email.toLowerCase().includes(query) ||
-            (s.enrollmentNumber && s.enrollmentNumber.toLowerCase().includes(query))
+            (s.studentIdNumber && s.studentIdNumber.toLowerCase().includes(query))
         );
       }
 
@@ -265,13 +267,14 @@ export default function UniversityAdminStudentsPage() {
     }
 
     // Create CSV content
-    const headers = ["Name", "Email", "Enrollment #", "Department", "Program", "Status", "GPA", "Internship Status"];
+    const headers = ["Name", "Email", "Roll No.", "Department", "Program", "Semester", "Status", "GPA", "Internship Status"];
     const rows = students.map(s => [
       s.full_name || "",
       s.email,
-      s.enrollmentNumber || "",
+      s.studentIdNumber || "",
       s.departmentName || "",
       s.programName || "",
+      s.semester?.toString() || "",
       s.is_active ? "Active" : "Inactive",
       s.gpa?.toString() || "",
       s.internshipStatus || "None",
@@ -474,8 +477,9 @@ export default function UniversityAdminStudentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
-                  <TableHead className="hidden md:table-cell">Enrollment #</TableHead>
-                  <TableHead>Department</TableHead>
+                  <TableHead className="hidden md:table-cell">Roll No.</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead>Sem.</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden sm:table-cell">GPA</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -493,8 +497,9 @@ export default function UniversityAdminStudentsPage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-10" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                     <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-10" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-8 w-8 rounded" /></TableCell>
@@ -556,8 +561,9 @@ export default function UniversityAdminStudentsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
-                    <TableHead className="hidden md:table-cell">Enrollment #</TableHead>
-                    <TableHead>Department</TableHead>
+                    <TableHead className="hidden md:table-cell">Roll No.</TableHead>
+                    <TableHead>Program</TableHead>
+                    <TableHead>Sem.</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="hidden sm:table-cell">GPA</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -580,13 +586,20 @@ export default function UniversityAdminStudentsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <span className="font-mono text-sm">{student.enrollmentNumber || "-"}</span>
+                        <span className="font-mono text-sm">{student.studentIdNumber || "-"}</span>
                       </TableCell>
                       <TableCell>
-                        {student.departmentName ? (
-                          <span className="text-sm">{student.departmentName}</span>
+                        {student.programName ? (
+                          <span className="text-sm">{student.programName}</span>
                         ) : (
                           <span className="text-sm text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {student.semester ? (
+                          <span className="text-sm">Sem {student.semester}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>{getStatusBadge(student)}</TableCell>
@@ -648,9 +661,9 @@ export default function UniversityAdminStudentsPage() {
                               </Badge>
                             )}
 
-                            {student.enrollmentNumber && (
-                              <Badge variant="secondary" className="text-xs font-mono">
-                                #{student.enrollmentNumber}
+                            {student.programName && (
+                              <Badge variant="secondary" className="text-xs">
+                                {student.programName}
                               </Badge>
                             )}
                           </div>
@@ -703,8 +716,8 @@ export default function UniversityAdminStudentsPage() {
               {/* Details Grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground">Enrollment Number</p>
-                  <p className="font-medium font-mono">{selectedStudent.enrollmentNumber || "N/A"}</p>
+                  <p className="text-xs text-muted-foreground">Roll Number</p>
+                  <p className="font-medium font-mono">{selectedStudent.studentIdNumber || "N/A"}</p>
                 </div>
                 <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
                   <p className="text-xs text-muted-foreground">GPA</p>
@@ -717,6 +730,10 @@ export default function UniversityAdminStudentsPage() {
                 <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
                   <p className="text-xs text-muted-foreground">Program</p>
                   <p className="font-medium">{selectedStudent.programName || "N/A"}</p>
+                </div>
+                <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Semester</p>
+                  <p className="font-medium">{selectedStudent.semester || "N/A"}</p>
                 </div>
                 <div className="space-y-1 p-3 bg-muted/50 rounded-lg">
                   <p className="text-xs text-muted-foreground">Internship Status</p>

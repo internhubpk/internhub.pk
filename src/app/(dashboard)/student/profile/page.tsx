@@ -58,6 +58,7 @@ import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { AvatarUploader } from "@/components/shared/avatar-uploader";
+import { PasswordChangeCard } from "@/components/auth/password-change-card";
 import { toast as sharedToast } from "@/components/shared/toast";
 import {
   AlertDialog,
@@ -701,6 +702,7 @@ export default function StudentProfilePage() {
                 currentUrl={profile?.avatar_url}
                 fullName={profile?.full_name || `${profileData.firstName} ${profileData.lastName}`}
                 onUploaded={() => refreshProfile()}
+                onRemoved={() => refreshProfile()}
                 size="lg"
               />
               
@@ -1228,6 +1230,9 @@ export default function StudentProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Security — password change */}
+          <PasswordChangeCard />
 
           {/* Recent Notifications */}
           <Card>

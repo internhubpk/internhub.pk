@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
-// GET: List company's internship programs
-// POST: Create new internship program
+// GET: List company's internship programs (with target departments)
+// POST: Create new internship program (with target departments)
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -57,10 +57,19 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
 
-    // Build query
+    // Build query — include target departments
     let query = supabase
       .from("internships")
-      .select("*", { count: "exact" })
+      .select(`
+        *,
+        internship_target_departments(
+          id,
+          university_id,
+          department_id,
+          departments:department_id(id, name),
+          universities:university_id(id, name)
+        )
+      `, { count: "exact" })
       .eq("company_id", profile.company_id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -155,7 +164,8 @@ export async function POST(request: NextRequest) {
       is_paid = false,
       stipend,
       duration_weeks = 8,
-      target_departments = [],
+      target_departments: oldTargetDepartments = [],
+      target_departments: newTargetDepartments = [],
       university_id,
       max_applicants,
       start_date,
@@ -182,12 +192,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate new-style target_departments: [{university_id, department_id}]
+    const newStyleTargets: Array<{ university_id: string; department_id: string }> =
+      Array.isArray(newTargetDepartments) && newTargetDepartments.length > 0 &&
+      typeof newTargetDepartments[0] === "object" && newTargetDepartments[0] !== null
+        ? newTargetDepartments
+        : [];
+
+    // If new-style targets provided, validate MoU and department ownership
+    if (newStyleTargets.length > 0) {
+      // Collect unique university IDs
+      const uniIds = [...new Set(newStyleTargets.map(t => t.university_id))];
+      const now = new Date().toISOString();
+
+      // Check each university has an active MoU with this company
+      for (const uniId of uniIds) {
+        const { count: mouCount } = await supabase
+          .from("company_university_mous")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", profile.company_id)
+          .eq("university_id", uniId)
+          .eq("status", "active")
+          .or(`ends_at.gt.${now},ends_at.is.null`);
+
+        if ((mouCount || 0) === 0) {
+          return NextResponse.json(
+            { error: { code: "VALIDATION_ERROR", message: `No active MoU found for university ${uniId}` } },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Verify each department belongs to its specified university
+      for (const target of newStyleTargets) {
+        const { data: dept } = await supabase
+          .from("departments")
+          .select("id, university_id")
+          .eq("id", target.department_id)
+          .eq("university_id", target.university_id)
+          .single();
+
+        if (!dept) {
+          return NextResponse.json(
+            { error: { code: "VALIDATION_ERROR", message: `Department ${target.department_id} does not belong to university ${target.university_id}` } },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Defensive: keep stipend_currency consistent — default to PKR
     const stipend_currency = "PKR";
 
-    // Create internship. Only include columns that exist on `internships` per
-    // migration 0001 (plus the optional location_type / target_departments
-    // added in migration 0024, and image_url added in migration 0037).
+    // Build the legacy target_departments jsonb (for backward compatibility)
+    // Keep the old free-text column populated alongside the new table.
+    const legacyTargetDepartments = oldTargetDepartments.length > 0 &&
+      typeof oldTargetDepartments[0] === "string"
+      ? oldTargetDepartments
+      : []; // We don't backfill from new-style to old-style
+
+    // Create internship
     const insertPayload: Record<string, unknown> = {
       company_id: profile.company_id,
       title: title.trim(),
@@ -211,7 +275,9 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     };
     if (location_type !== undefined) insertPayload.location_type = location_type;
-    if (target_departments !== undefined) insertPayload.target_departments = target_departments;
+    // Keep legacy column for backward compat
+    if (legacyTargetDepartments.length > 0) insertPayload.target_departments = legacyTargetDepartments;
+    else insertPayload.target_departments = [];
     if (university_id !== undefined) insertPayload.university_id = university_id || null;
 
     const { data: internship, error: insertError } = await supabase
@@ -226,6 +292,24 @@ export async function POST(request: NextRequest) {
         { error: { code: "DATABASE_ERROR", message: "Failed to create internship program" } },
         { status: 500 }
       );
+    }
+
+    // Insert target department rows
+    if (newStyleTargets.length > 0) {
+      const targetRows = newStyleTargets.map(t => ({
+        internship_id: internship.id,
+        university_id: t.university_id,
+        department_id: t.department_id,
+      }));
+
+      const { error: tdError } = await supabase
+        .from("internship_target_departments")
+        .insert(targetRows);
+
+      if (tdError) {
+        console.error("Error inserting target departments:", tdError);
+        // Non-fatal: internship was created, just the target depts failed
+      }
     }
 
     // Log audit action
