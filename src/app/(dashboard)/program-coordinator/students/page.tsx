@@ -56,6 +56,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Label } from "@/components/ui/label";
+import { PasswordField } from "@/components/ui/password-field";
 import { toast } from "@/components/shared/toast";
 
 interface StudentRow {
@@ -92,6 +93,7 @@ export default function ProgramCoordinatorStudentsPage() {
   const [studentForm, setStudentForm] = useState({
     full_name: "",
     email: "",
+    password: "",
     student_id_number: "",
     enrollment_year: "",
     expected_graduation: "",
@@ -574,7 +576,7 @@ export default function ProgramCoordinatorStudentsPage() {
 
       {/* Add Student Dialog */}
       <Dialog open={isAddStudentOpen} onOpenChange={setIsAddStudentOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Student</DialogTitle>
             <DialogDescription>
@@ -603,6 +605,14 @@ export default function ProgramCoordinatorStudentsPage() {
                 required
               />
             </div>
+            <PasswordField
+              id="student-password"
+              label="Password"
+              value={studentForm.password}
+              onChange={(v) => setStudentForm((f) => ({ ...f, password: v }))}
+              hint="The student will use this password to sign in. They can change it after first login."
+              required
+            />
             <div className="space-y-2">
               <Label htmlFor="student-id-number">Student ID Number</Label>
               <Input
@@ -653,8 +663,8 @@ export default function ProgramCoordinatorStudentsPage() {
             </Button>
             <Button
               onClick={async () => {
-                if (!studentForm.full_name.trim() || !studentForm.email.trim()) {
-                  toast.error("Full name and email are required");
+                if (!studentForm.full_name.trim() || !studentForm.email.trim() || !studentForm.password) {
+                  toast.error("Full name, email, and password are required");
                   return;
                 }
                 setIsAdding(true);
@@ -684,6 +694,7 @@ export default function ProgramCoordinatorStudentsPage() {
                   setStudentForm({
                     full_name: "",
                     email: "",
+                    password: "",
                     student_id_number: "",
                     enrollment_year: "",
                     expected_graduation: "",
@@ -713,7 +724,7 @@ export default function ProgramCoordinatorStudentsPage() {
 
       {/* Bulk Assign Dialog */}
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md md:max-w-lg">
           <DialogHeader>
             <DialogTitle>Assign Supervisor to {selectedIds.size} Student(s)</DialogTitle>
             <DialogDescription>

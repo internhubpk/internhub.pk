@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordField } from "@/components/ui/password-field";
+import { Upload, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -170,6 +172,80 @@ export default function CompanyHRSupervisorsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
+
+  // Bulk CSV import state
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importCsvText, setImportCsvText] = useState("");
+  const [importCsvName, setImportCsvName] = useState("");
+  const [importPhase, setImportPhase] = useState<"upload" | "preview" | "results">("upload");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [validation, setValidation] = useState<any>(null);
+  const [importResult, setImportResult] = useState<any>(null);
+
+  const downloadSupervisorTemplate = () => {
+    const template = "first_name,last_name,email,password,phone,specialization\n"
+      + "Bilal,Ahmed,bilal.ahmed@company.com,StrongP@ss1!,+923001234567,Operations\n";
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "site_supervisors_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportCsvName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportCsvText((ev.target?.result as string) || "");
+      setValidation(null);
+      setImportResult(null);
+      setImportPhase("upload");
+    };
+    reader.readAsText(file);
+  };
+
+  const resetImportDialog = () => {
+    setIsImportOpen(false);
+    setImportCsvText("");
+    setImportCsvName("");
+    setImportPhase("upload");
+    setValidation(null);
+    setImportResult(null);
+  };
+
+  const handleValidateCsv = async () => {
+    if (!importCsvText.trim()) { toast.error("No CSV selected"); return; }
+    setIsValidating(true);
+    try {
+      const res = await fetch("/api/company-hr/supervisors/bulk", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, dry_run: true }),
+      });
+      const data = await res.json();
+      if (!data.success) { toast.error("Validation failed", { description: data.error }); return; }
+      setValidation(data.data); setImportPhase("preview");
+    } catch (err) { toast.error("Validation failed"); } finally { setIsValidating(false); }
+  };
+
+  const handleConfirmImport = async () => {
+    setIsCommitting(true);
+    try {
+      const res = await fetch("/api/company-hr/supervisors/bulk", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, dry_run: false }),
+      });
+      const data = await res.json();
+      if (!data.success) { toast.error("Import failed", { description: data.error }); return; }
+      setImportResult(data.data); setImportPhase("results"); fetchSupervisors();
+      toast.success("Import complete", { description: `Created ${data.data.created} supervisor account(s).` });
+    } catch (err) { toast.error("Import failed"); } finally { setIsCommitting(false); }
+  };
 
   // Form state
   const [formData, setFormData] = useState({
@@ -1123,6 +1199,63 @@ export default function CompanyHRSupervisorsPage() {
             </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import CSV Dialog */}
+      <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
+        <DialogContent className="sm:max-w-[680px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Site Supervisors from CSV</DialogTitle>
+            <DialogDescription>
+              {importPhase === "upload" && "Upload a CSV of site supervisors for your company. Everything is validated before any account is created."}
+              {importPhase === "preview" && "Review the validation results, then confirm to create the valid accounts."}
+              {importPhase === "results" && "Import finished. Details below."}
+            </DialogDescription>
+          </DialogHeader>
+          {importPhase === "upload" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={downloadSupervisorTemplate}><FileSpreadsheet className="h-4 w-4 mr-2" />Download CSV Template</Button>
+                <Button variant="outline" onClick={() => (document.getElementById("hr-sup-csv-input") as HTMLInputElement | null)?.click()}><Upload className="h-4 w-4 mr-2" />Choose CSV File</Button>
+                <input id="hr-sup-csv-input" type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
+              </div>
+              {importCsvName && <p className="text-sm">Selected: <span className="font-medium">{importCsvName}</span></p>}
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>password</code></p>
+                <p>Optional: <code>phone</code>, <code>specialization</code></p>
+                <p>Header row required (case-insensitive). Max 500 rows. Passwords go to Supabase Auth only.</p>
+              </div>
+              <DialogFooter><Button variant="outline" onClick={resetImportDialog}>Cancel</Button><Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>{isValidating ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Validating…</>) : "Validate CSV"}</Button></DialogFooter>
+            </div>
+          )}
+          {importPhase === "preview" && validation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold">{validation.total}</div><div className="text-xs text-muted-foreground">Rows</div></div>
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold text-green-600 dark:text-green-400">{validation.valid}</div><div className="text-xs text-muted-foreground">Valid</div></div>
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold text-red-600 dark:text-red-400">{validation.invalid}</div><div className="text-xs text-muted-foreground">With errors</div></div>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table><TableHeader><TableRow><TableHead className="w-12">Row</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>
+                  {validation.details?.map((r: any) => (<TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell>{r.valid ? <Badge variant="default" className="bg-green-600">Ready</Badge> : <Badge variant="destructive" title={r.error}>{r.error || "Invalid"}</Badge>}</TableCell></TableRow>))}
+                </TableBody></Table>
+              </div>
+              <DialogFooter><Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>Back</Button><Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>{isCommitting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>) : `Import ${validation.valid} Supervisor${validation.valid === 1 ? "" : "s"}`}</Button></DialogFooter>
+            </div>
+          )}
+          {importPhase === "results" && importResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400"><CheckCircle2 className="h-5 w-5" /><span className="font-medium">{importResult.created} supervisor account(s) created.</span></div>
+              {importResult.invalid > 0 && <p className="text-sm text-muted-foreground">{importResult.invalid} row(s) were skipped:</p>}
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table><TableHeader><TableRow><TableHead className="w-12">Row</TableHead><TableHead>Email</TableHead><TableHead>Outcome</TableHead></TableRow></TableHeader><TableBody>
+                  {importResult.details?.filter((r: any) => !r.created).map((r: any) => (<TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell><Badge variant="destructive" title={r.error}>{r.error || "Skipped"}</Badge></TableCell></TableRow>))}
+                </TableBody></Table>
+              </div>
+              <DialogFooter><Button onClick={resetImportDialog}>Done</Button></DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1136,6 +1269,8 @@ function InfoRow({ label, value, icon, highlight }: { label: string; value: stri
         {label}
       </span>
       <span className={`font-medium ${highlight ? 'text-primary' : ''}`}>{value}</span>
+
+
     </div>
   );
 }

@@ -225,7 +225,7 @@ export default function SupervisorsPage() {
               description={
                 searchQuery || filterActive !== "all"
                   ? "Try adjusting your filters."
-                  : "Supervisors are created when you create a Program. Go to Programs to create one."
+                  : "Faculty Supervisors are created by the Program Coordinator of each program. They will appear here once assigned."
               }
               action={
                 !searchQuery && filterActive === "all"

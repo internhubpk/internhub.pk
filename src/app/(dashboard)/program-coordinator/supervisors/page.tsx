@@ -32,6 +32,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { PasswordField } from "@/components/ui/password-field";
+import { Upload, FileSpreadsheet, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -61,11 +63,109 @@ export default function ProgramCoordinatorSupervisorsPage() {
   const [isAddSupervisorOpen, setIsAddSupervisorOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [supervisorForm, setSupervisorForm] = useState({
-    full_name: "",
+    first_name: "",
+    last_name: "",
     email: "",
-    type: "faculty",
-    employee_id: "",
+    password: "",
+    phone: "",
+    specialization: "",
   });
+
+  // Bulk CSV import state
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importCsvText, setImportCsvText] = useState("");
+  const [importCsvName, setImportCsvName] = useState("");
+  const [importPhase, setImportPhase] = useState<"upload" | "preview" | "results">("upload");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [validation, setValidation] = useState<any>(null);
+  const [importResult, setImportResult] = useState<any>(null);
+
+  const downloadSupervisorTemplate = () => {
+    const template = "first_name,last_name,email,password,phone,specialization\n"
+      + "Sara,Ali,sara.ali@university.edu.pk,StrongP@ss1!,,+923001234567,Software Engineering\n";
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "faculty_supervisors_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportCsvName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportCsvText((ev.target?.result as string) || "");
+      setValidation(null);
+      setImportResult(null);
+      setImportPhase("upload");
+    };
+    reader.readAsText(file);
+  };
+
+  const resetImportDialog = () => {
+    setIsImportOpen(false);
+    setImportCsvText("");
+    setImportCsvName("");
+    setImportPhase("upload");
+    setValidation(null);
+    setImportResult(null);
+  };
+
+  const handleValidateCsv = async () => {
+    if (!importCsvText.trim()) {
+      toast.error("No CSV selected", { description: "Please choose a CSV file first." });
+      return;
+    }
+    setIsValidating(true);
+    try {
+      const res = await fetch("/api/program-coordinator/supervisors/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, dry_run: true }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error("Validation failed", { description: data.error || data.message });
+        return;
+      }
+      setValidation(data.data);
+      setImportPhase("preview");
+    } catch (err) {
+      toast.error("Validation failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    setIsCommitting(true);
+    try {
+      const res = await fetch("/api/program-coordinator/supervisors/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, dry_run: false }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error("Import failed", { description: data.error || data.message });
+        return;
+      }
+      setImportResult(data.data);
+      setImportPhase("results");
+      fetchSupervisors();
+      toast.success("Import complete", { description: `Created ${data.data.created} supervisor account(s).` });
+    } catch (err) {
+      toast.error("Import failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setIsCommitting(false);
+    }
+  };
 
   const fetchSupervisors = useCallback(async () => {
     if (!profile?.university_id) {
@@ -171,10 +271,16 @@ export default function ProgramCoordinatorSupervisorsPage() {
         title="Supervisors"
         description="Faculty and site supervisors at your university. Supervisors are assigned to students, not programs."
         actions={
+          <>
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
           <Button onClick={() => setIsAddSupervisorOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Supervisor
           </Button>
+          </>
         }
       />
 
@@ -294,23 +400,35 @@ export default function ProgramCoordinatorSupervisorsPage() {
 
       {/* Add Supervisor Dialog */}
       <Dialog open={isAddSupervisorOpen} onOpenChange={setIsAddSupervisorOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md md:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Supervisor</DialogTitle>
+            <DialogTitle>Add Faculty Supervisor</DialogTitle>
             <DialogDescription>
-              Create a new supervisor at your university.
+              Create a new faculty supervisor account linked to your program.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="supervisor-full-name">Full Name *</Label>
-              <Input
-                id="supervisor-full-name"
-                placeholder="e.g. Dr. Sara Ali"
-                value={supervisorForm.full_name}
-                onChange={(e) => setSupervisorForm((f) => ({ ...f, full_name: e.target.value }))}
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="supervisor-first-name">First Name *</Label>
+                <Input
+                  id="supervisor-first-name"
+                  placeholder="e.g. Sara"
+                  value={supervisorForm.first_name}
+                  onChange={(e) => setSupervisorForm((f) => ({ ...f, first_name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="supervisor-last-name">Last Name *</Label>
+                <Input
+                  id="supervisor-last-name"
+                  placeholder="e.g. Ali"
+                  value={supervisorForm.last_name}
+                  onChange={(e) => setSupervisorForm((f) => ({ ...f, last_name: e.target.value }))}
+                  required
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="supervisor-email">Email *</Label>
@@ -323,26 +441,33 @@ export default function ProgramCoordinatorSupervisorsPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="supervisor-type">Type *</Label>
-              <Select value={supervisorForm.type} onValueChange={(v) => setSupervisorForm((f) => ({ ...f, type: v }))}>
-                <SelectTrigger id="supervisor-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="faculty">Faculty</SelectItem>
-                  <SelectItem value="site">Site</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="supervisor-employee-id">Employee ID</Label>
-              <Input
-                id="supervisor-employee-id"
-                placeholder="e.g. EMP-0042"
-                value={supervisorForm.employee_id}
-                onChange={(e) => setSupervisorForm((f) => ({ ...f, employee_id: e.target.value }))}
-              />
+            <PasswordField
+              id="supervisor-password"
+              label="Password"
+              value={supervisorForm.password}
+              onChange={(v) => setSupervisorForm((f) => ({ ...f, password: v }))}
+              hint="The supervisor will use this password to sign in. They can change it after first login."
+              required
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="supervisor-phone">Phone</Label>
+                <Input
+                  id="supervisor-phone"
+                  placeholder="e.g. +92 300 1234567"
+                  value={supervisorForm.phone}
+                  onChange={(e) => setSupervisorForm((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="supervisor-specialization">Specialization</Label>
+                <Input
+                  id="supervisor-specialization"
+                  placeholder="e.g. Software Engineering"
+                  value={supervisorForm.specialization}
+                  onChange={(e) => setSupervisorForm((f) => ({ ...f, specialization: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -351,22 +476,24 @@ export default function ProgramCoordinatorSupervisorsPage() {
             </Button>
             <Button
               onClick={async () => {
-                if (!supervisorForm.full_name.trim() || !supervisorForm.email.trim()) {
-                  toast.error("Full name and email are required");
+                if (!supervisorForm.first_name.trim() || !supervisorForm.last_name.trim() || !supervisorForm.email.trim() || !supervisorForm.password) {
+                  toast.error("First name, last name, email, and password are required");
                   return;
                 }
                 setIsAdding(true);
                 try {
-                  const resp = await fetch("/api/supervisors", {
+                  // Calls the PC-specific route — university/department/program
+                  // are forced server-side from the caller's profile.
+                  const resp = await fetch("/api/program-coordinator/supervisors", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                      full_name: supervisorForm.full_name.trim(),
+                      first_name: supervisorForm.first_name.trim(),
+                      last_name: supervisorForm.last_name.trim(),
                       email: supervisorForm.email.trim(),
-                      type: supervisorForm.type,
-                      employee_id: supervisorForm.employee_id.trim() || null,
-                      university_id: profile?.university_id,
-                      department_id: profile?.department_id,
+                      password: supervisorForm.password,
+                      phone: supervisorForm.phone.trim() || undefined,
+                      specialization: supervisorForm.specialization.trim() || undefined,
                     }),
                   });
                   const data = await resp.json();
@@ -374,17 +501,12 @@ export default function ProgramCoordinatorSupervisorsPage() {
                     toast.error("Failed to create supervisor", { description: data.error });
                     return;
                   }
-                  toast.success("Supervisor created successfully");
+                  toast.success("Faculty supervisor created", { description: `${supervisorForm.first_name} ${supervisorForm.last_name} can sign in with ${supervisorForm.email}.` });
                   setIsAddSupervisorOpen(false);
-                  setSupervisorForm({
-                    full_name: "",
-                    email: "",
-                    type: "faculty",
-                    employee_id: "",
-                  });
+                  setSupervisorForm({ first_name: "", last_name: "", email: "", password: "", phone: "", specialization: "" });
                   fetchSupervisors();
                 } catch (err) {
-                  toast.error("Failed to create supervisor", { err });
+                  toast.error("Failed to create supervisor", { description: err instanceof Error ? err.message : "Unknown error" });
                 } finally {
                   setIsAdding(false);
                 }
@@ -401,6 +523,93 @@ export default function ProgramCoordinatorSupervisorsPage() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import CSV Dialog */}
+      <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
+        <DialogContent className="sm:max-w-[680px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Faculty Supervisors from CSV</DialogTitle>
+            <DialogDescription>
+              {importPhase === "upload" && "Upload a CSV of faculty supervisors for your program. Everything is validated before any account is created."}
+              {importPhase === "preview" && "Review the validation results, then confirm to create the valid accounts."}
+              {importPhase === "results" && "Import finished. Details below."}
+            </DialogDescription>
+          </DialogHeader>
+          {importPhase === "upload" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={downloadSupervisorTemplate}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Download CSV Template
+                </Button>
+                <Button variant="outline" onClick={() => (document.getElementById("pc-sup-csv-input") as HTMLInputElement | null)?.click()}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose CSV File
+                </Button>
+                <input id="pc-sup-csv-input" type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
+              </div>
+              {importCsvName && <p className="text-sm">Selected: <span className="font-medium">{importCsvName}</span></p>}
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>password</code></p>
+                <p>Optional columns: <code>phone</code>, <code>specialization</code></p>
+                <p>Header row required (case-insensitive). Maximum 500 rows per import.</p>
+                <p>Passwords are passed to Supabase Auth only — they are never stored in the application database.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetImportDialog}>Cancel</Button>
+                <Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>
+                  {isValidating ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Validating…</>) : "Validate CSV"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+          {importPhase === "preview" && validation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold">{validation.total}</div><div className="text-xs text-muted-foreground">Rows</div></div>
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold text-green-600 dark:text-green-400">{validation.valid}</div><div className="text-xs text-muted-foreground">Valid</div></div>
+                <div className="rounded-md border p-2"><div className="text-lg font-semibold text-red-600 dark:text-red-400">{validation.invalid}</div><div className="text-xs text-muted-foreground">With errors</div></div>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader><TableRow><TableHead className="w-12">Row</TableHead><TableHead>Email</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {validation.details?.map((r: any) => (
+                      <TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell>{r.valid ? <Badge variant="default" className="bg-green-600">Ready</Badge> : <Badge variant="destructive" title={r.error}>{r.error || "Invalid"}</Badge>}</TableCell></TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>Back</Button>
+                <Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>
+                  {isCommitting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>) : `Import ${validation.valid} Supervisor${validation.valid === 1 ? "" : "s"}`}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+          {importPhase === "results" && importResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">{importResult.created} supervisor account(s) created.</span>
+              </div>
+              {importResult.invalid > 0 && <p className="text-sm text-muted-foreground">{importResult.invalid} row(s) were skipped:</p>}
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader><TableRow><TableHead className="w-12">Row</TableHead><TableHead>Email</TableHead><TableHead>Outcome</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {importResult.details?.filter((r: any) => !r.created).map((r: any) => (
+                      <TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell><Badge variant="destructive" title={r.error}>{r.error || "Skipped"}</Badge></TableCell></TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <DialogFooter><Button onClick={resetImportDialog}>Done</Button></DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

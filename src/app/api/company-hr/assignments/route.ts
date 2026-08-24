@@ -286,6 +286,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SPEC §13: "A Site Supervisor must NOT be assignable to an application
+    // that has not reached the appropriate accepted state." The SI row is
+    // created when an application is accepted. Explicitly validate that
+    // every target SI is still in an assignable state (the linked
+    // application remains accepted AND the internship is not
+    // completed/cancelled/expired). The DB trigger
+    // (trg_guard_si_site_supervisor, migration 0087) is defense-in-depth.
+    if (supervisor.type === "site" || supervisor.type === "external") {
+      const unassignable = validSIs.filter(
+        (si) => si.status === "completed" || si.status === "cancelled" || si.status === "expired"
+      );
+      if (unassignable.length > 0) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "INTERN_NOT_ASSIGNABLE",
+              message: `${unassignable.length} intern(s) are not in an assignable state (completed, cancelled, or expired). Only accepted/active applications can receive a site supervisor.`,
+            },
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Deactivate any currently-active assignments for these
     // student_internship_id values that match the SAME supervisor TYPE
     // we're now assigning. This prevents the new assignment from
