@@ -47,7 +47,7 @@ export default async function DashboardPage() {
   let role: UserRole | null = null;
   
   // Priority 1: app_metadata (set by triggers/admin operations — authoritative)
-  const appRole = user.app_metadata?.role;
+  const appRole = user.app_metadata?.app_role ?? user.app_metadata?.role;
   if (appRole && ROLE_DASHBOARD_PATHS[appRole as UserRole]) {
     role = appRole as UserRole;
   }

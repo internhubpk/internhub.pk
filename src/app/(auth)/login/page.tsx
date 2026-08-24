@@ -275,9 +275,12 @@ function LoginForm() {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (!cancelled && session && !error) {
           // Valid session exists — read the role and redirect
-          const role = session.user?.app_metadata?.role as string | undefined
-                    || session.user?.user_metadata?.role as string | undefined
-                    || null;
+          // (migration 0090: prefer `app_role`, fall back to legacy `role`.)
+          const role =
+            (session.user?.app_metadata?.app_role as string | undefined) ||
+            (session.user?.app_metadata?.role as string | undefined) ||
+            (session.user?.user_metadata?.role as string | undefined) ||
+            null;
           if (role) {
             const dashboardPaths: Record<string, string> = {
               super_admin: "/super-admin",
@@ -391,6 +394,7 @@ function LoginForm() {
       //      per-request guard will still keep them out of cross-tenant
       //      dashboards, but at least they won't be sent to a 404.
       const userRole =
+        (data.user?.app_metadata?.app_role as string | undefined) ||
         (data.user?.app_metadata?.role as string | undefined) ||
         (data.user?.user_metadata?.role as string | undefined) ||
         null;
@@ -563,7 +567,10 @@ function LoginForm() {
       // causing a brief flash of the old dashboard before the proxy
       // redirects to the correct one.
       let redirectPath = "/dashboard";
-      const metaRole = data.user?.app_metadata?.role || data.user?.user_metadata?.role;
+      const metaRole =
+        (data.user?.app_metadata?.app_role as string | undefined) ||
+        (data.user?.app_metadata?.role as string | undefined) ||
+        (data.user?.user_metadata?.role as string | undefined);
       const rolePaths: Record<string, string> = {
         super_admin: "/super-admin",
         university_admin: "/university-admin",

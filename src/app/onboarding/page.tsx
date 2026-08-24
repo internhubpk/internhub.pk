@@ -87,9 +87,11 @@ export default function OnboardingPage() {
         foundRole = user.user_metadata.role;
       }
 
-      // Check 3: App metadata
-      if (!foundRole && user?.app_metadata?.role) {
-        foundRole = user.app_metadata.role;
+      // Check 3: App metadata (migration 0090: prefer `app_role`, fall back
+      // to legacy `role` for sessions issued before the migration).
+      const metaRole = user?.app_metadata?.app_role ?? user?.app_metadata?.role;
+      if (!foundRole && metaRole) {
+        foundRole = metaRole as string;
       }
 
       // Check 4: Direct query to profiles table

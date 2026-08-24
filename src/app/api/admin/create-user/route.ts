@@ -325,7 +325,12 @@ export async function POST(request: NextRequest) {
     // app_metadata: system-managed, tamper-proof. Only the role + tenant
     // ids go here (no display fields like full_name — those belong in
     // user_metadata only).
-    const appMetadata: Record<string, unknown> = { role };
+    //
+    // IMPORTANT: use `app_role` (not `role`) — migration 0090 renamed this
+    // key so GoTrue doesn't expose it as the JWT top-level `role` claim
+    // (which PostgREST would misinterpret as a Postgres role name and fail
+    // with `role "X" does not exist`).
+    const appMetadata: Record<string, unknown> = { app_role: role };
     if (effectiveUniversityId) appMetadata.university_id = effectiveUniversityId;
     if (company_id) appMetadata.company_id = company_id;
     if (effectiveDepartmentId) appMetadata.department_id = effectiveDepartmentId;

@@ -12,7 +12,7 @@
  *   session load with no metadata).
  * - Role source priority is now: authRole (from AuthProvider, which is
  *   profile.role → app_metadata.role → user_metadata.role), then
- *   profile.role, then user.app_metadata.role, then user.user_metadata.role.
+ *   profile.role, then user.app_metadata.app_role ?? user.app_metadata.role, then user.user_metadata.role.
  *   Reading app_metadata before user_metadata protects against stale
  *   user_metadata on accounts whose role was changed before migration 0011.
  */
@@ -158,7 +158,9 @@ export function RouteGuard({
   // the callback reference stays stable across renders that don't
   // actually change the user's role.
   // ----------------------------------------------------------------
-  const appMetaRole = user?.app_metadata?.role as string | undefined;
+  const appMetaRole =
+    (user?.app_metadata?.app_role as string | undefined) ||
+    (user?.app_metadata?.role as string | undefined);
   const userMetaRole = user?.user_metadata?.role as string | undefined;
   const profileRole = profile?.role as string | undefined;
 
@@ -361,7 +363,9 @@ export function useRouteAuthorization() {
 
   // Primitive-only deps — see the comment on RouteGuard.resolveRole for
   // why we don't depend on the `user` / `profile` object references.
-  const appMetaRole = user?.app_metadata?.role as string | undefined;
+  const appMetaRole =
+    (user?.app_metadata?.app_role as string | undefined) ||
+    (user?.app_metadata?.role as string | undefined);
   const userMetaRole = user?.user_metadata?.role as string | undefined;
   const profileRole = profile?.role as string | undefined;
 

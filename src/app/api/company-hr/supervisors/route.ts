@@ -342,7 +342,10 @@ export async function POST(request: NextRequest) {
     if (specialization?.trim()) userMetadata.specialization = specialization.trim();
 
     const appMetadata: Record<string, unknown> = {
-      role: newRole,
+      // migration 0090: use `app_role` (not `role`) so GoTrue doesn't expose
+      // it as the JWT top-level `role` claim (PostgREST would misinterpret
+      // it as a Postgres role name and fail with `role "X" does not exist`).
+      app_role: newRole,
       company_id: profile.company_id,
     };
 

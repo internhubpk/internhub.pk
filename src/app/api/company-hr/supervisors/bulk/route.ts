@@ -417,7 +417,8 @@ export async function POST(request: NextRequest) {
           last_name: input.last_name,
         },
         app_metadata: {
-          role: "site_supervisor",
+          app_role: "site_supervisor",  // migration 0090: app_role, not role
+
           company_id: hrCompanyId,
         },
       });

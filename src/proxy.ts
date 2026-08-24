@@ -173,7 +173,7 @@ function getDashboardPath(role: UserRole | null): string {
  *     user_metadata fallback was removed everywhere (migration 0084).
  */
 function getRoleFromUser(user: any): UserRole | null {
-  const appRole = user?.app_metadata?.role;
+  const appRole = user?.app_metadata?.app_role ?? user?.app_metadata?.role;
   if (appRole && ROLE_DASHBOARDS[appRole as UserRole]) {
     return appRole as UserRole;
   }

@@ -513,7 +513,7 @@ export async function POST(request: NextRequest) {
         // the right value for the new supervisor going forward.
         try {
           await admin.auth.admin.updateUserById(supervisorData.user_id, {
-            app_metadata: { role: expectedRole },
+            app_metadata: { app_role: expectedRole },  // migration 0090: app_role, not role
             user_metadata: { role: expectedRole },
           });
         } catch (metaErr) {

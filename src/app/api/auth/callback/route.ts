@@ -52,8 +52,12 @@ export async function GET(request: NextRequest) {
       if (data?.user) {
         // SECURITY (2026-08-23 audit): app_metadata only — user_metadata is
         // user-writable and must never influence routing/tenant redirects.
+        // migration 0090: prefer `app_role`, fall back to legacy `role` for
+        // sessions issued before the migration.
         const userRole =
-          (data.user.app_metadata?.role as string | undefined) || null;
+          (data.user.app_metadata?.app_role as string | undefined) ||
+          (data.user.app_metadata?.role as string | undefined) ||
+          null;
         
         let userTenantSlug = 
           (data.user.app_metadata?.tenant_slug as string | undefined) || null;

@@ -349,7 +349,9 @@ export async function PATCH(
     const metaPatch: Record<string, string> = {};
     if (shouldHealUniversityId && effectiveUniversityId) {
       metaPatch.university_id = effectiveUniversityId;
-      metaPatch.role = (coord.role as string) || "department_coordinator";
+      // migration 0090: use `app_role` (not `role`) in app_metadata so
+      // GoTrue doesn't expose it as the JWT top-level `role` claim.
+      metaPatch.app_role = (coord.role as string) || "department_coordinator";
     }
     if (department_id !== undefined) {
       metaPatch.department_id = department_id || "";

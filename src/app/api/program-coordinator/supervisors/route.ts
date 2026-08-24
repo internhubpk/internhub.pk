@@ -219,7 +219,8 @@ export async function POST(request: NextRequest) {
         last_name,
       },
       app_metadata: {
-        role: "faculty_supervisor",
+        app_role: "faculty_supervisor",  // migration 0090: app_role, not role
+
         university_id: pcUniversityId,
         department_id: pcDepartmentId,
       },

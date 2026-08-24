@@ -391,16 +391,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // trusted for role decisions.
     if (profile?.role && roles.includes(profile.role)) return true;
 
-    if (user?.app_metadata?.role && roles.includes(user.app_metadata.role as UserRole)) return true;
+    const metaRole =
+      (user?.app_metadata?.app_role as string | undefined) ||
+      (user?.app_metadata?.role as string | undefined);
+    if (metaRole && roles.includes(metaRole as UserRole)) return true;
 
     return false;
-  }, [profile?.role, user?.app_metadata?.role]);
+  }, [profile?.role, user?.app_metadata?.app_role, user?.app_metadata?.role]);
 
   // Determine role from multiple sources for the context value.
   // Priority:
   //   1. profile.role (DB — most accurate, but requires the profiles table
   //      to be reachable; on RLS failure we fall through)
-  //   2. user.app_metadata.role (system-managed; kept in sync with
+  //   2. user.app_metadata.app_role (migration 0090) or legacy
+  //      user.app_metadata.role (system-managed; kept in sync with
   //      profiles.role by the profiles_sync_role_to_auth trigger —
   //      migration 0011)
   //   3. user.user_metadata.role (set at signup; also synced by the
@@ -411,11 +415,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Priority 1: From profile (DB)
     if (profile?.role) return profile.role;
 
-    // Priority 2: From app_metadata (system-managed, kept in sync by trigger)
-    if (user?.app_metadata?.role) return user.app_metadata.role as UserRole;
+    // Priority 2: From app_metadata.app_role (migration 0090), with legacy
+    // fallback to app_metadata.role.
+    const metaRole =
+      (user?.app_metadata?.app_role as string | undefined) ||
+      (user?.app_metadata?.role as string | undefined);
+    if (metaRole) return metaRole as UserRole;
 
     return null;
-  }, [profile?.role, user?.app_metadata?.role]);
+  }, [profile?.role, user?.app_metadata?.app_role, user?.app_metadata?.role]);
 
   // Compute the effective role once per render. The value is a primitive
   // (string or null), so identical inputs produce identical outputs — this

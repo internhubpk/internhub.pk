@@ -401,7 +401,8 @@ export async function POST(request: NextRequest) {
           department_id: studentDepartmentId || undefined,
         },
         app_metadata: {
-          role: "student",
+          app_role: "student",  // migration 0090: app_role, not role
+
           university_id: effectiveUniversityId,
           department_id: studentDepartmentId || undefined,
         },

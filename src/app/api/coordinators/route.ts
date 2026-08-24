@@ -300,7 +300,8 @@ export async function POST(request: NextRequest) {
       app_metadata: {
         // system-managed; the DB trigger + profile upsert below keep
         // profiles.role in sync with this value
-        role: "department_coordinator",
+        // migration 0090: use `app_role` so GoTrue doesn't expose it as JWT `role`
+        app_role: "department_coordinator",
       },
     });
 
