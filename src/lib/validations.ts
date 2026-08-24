@@ -22,8 +22,17 @@ export const UpdateUniversitySchema = CreateUniversitySchema.partial();
 // ============ STUDENT SCHEMAS ============
 
 export const CreateStudentSchema = z.object({
-  user_id: z.string().uuid("Invalid user ID"),
-  university_id: z.string().uuid("Invalid university ID"),
+  // When the caller is a program_coordinator creating a brand-new student,
+  // user_id is NOT provided — the route creates the Supabase Auth user from
+  // email + password + full_name. (Spec §7: single-student form must include
+  // a password field.)
+  user_id: z.string().uuid("Invalid user ID").optional(),
+  email: z.string().email("Invalid email format").optional(),
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  full_name: z.string().min(2, "Full name must be at least 2 characters").optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  university_id: z.string().uuid("Invalid university ID").optional(),
   department_id: z.string().uuid("Invalid department ID").optional().nullable(),
   program_id: z.string().uuid("Invalid program ID").optional().nullable(),
   student_id_number: z.string()
@@ -42,6 +51,18 @@ export const CreateStudentSchema = z.object({
 });
 
 export const UpdateStudentSchema = CreateStudentSchema.partial();
+
+// Runtime validation: either user_id OR (email + password + full_name).
+// Kept as a function so the schema itself stays refinement-free (Zod v4
+// .partial() cannot be used on schemas with refinements).
+export function validateCreateStudentInput(d: {
+  user_id?: string;
+  email?: string;
+  password?: string;
+  full_name?: string;
+}): boolean {
+  return Boolean(d.user_id || (d.email && d.password && d.full_name));
+}
 
 // ============ INTERNSHIP SCHEMAS ============
 

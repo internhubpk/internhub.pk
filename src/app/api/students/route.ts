@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import {
   CreateStudentSchema,
+  validateCreateStudentInput,
   PaginationSchema,
   FilterSchema,
 } from "@/lib/validations";
@@ -312,13 +313,21 @@ export async function POST(request: NextRequest) {
 
     const studentData = validation.data;
 
+    // Runtime validation (spec §7): either user_id OR (email + password + full_name).
+    if (!validateCreateStudentInput(studentData)) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Either user_id OR (email + password + full_name) must be provided" },
+        { status: 400 }
+      );
+    }
+
     // SECURITY: Validate + force tenant IDs based on caller role.
     if (userRole === "university_admin") {
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account. Ask a super admin to assign you to a university.");
       }
       if (studentData.university_id !== userUniversityId) {
-        await audit.studentCreate("unknown", studentData.university_id);
+        await audit.studentCreate("unknown", studentData.university_id!);
         return authorizationError("Cannot create student in another university");
       }
       studentData.university_id = userUniversityId;
@@ -351,8 +360,117 @@ export async function POST(request: NextRequest) {
       }
       // Force university_id from caller's profile (cannot spoof).
       studentData.university_id = userUniversityId;
-      // Force program_id from caller's profile (cannot spoof).
+      // Force program_id from caller's profile (cannot spoof) — spec §8:
+      // "Do NOT trust a client-supplied program_id." Any body value is
+      // overridden here.
       studentData.program_id = userProgramId;
+      // Force department_id from caller's profile too (PC is department-scoped).
+      studentData.department_id = (authContext.profile as any)?.department_id || null;
+    }
+
+    // ================================================================
+    // SPEC §7: if no user_id was provided, create the Supabase Auth
+    // user from email + password + full_name. This makes single-student
+    // creation self-contained (the old flow required a pre-existing
+    // auth user and was broken). Mirrors the working bulk path.
+    // ================================================================
+    let effectiveUserId: string | undefined = studentData.user_id;
+
+    if (!effectiveUserId) {
+      if (!studentData.email || !studentData.password || !studentData.full_name) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Either user_id OR (email + password + full_name) must be provided" },
+          { status: 400 }
+        );
+      }
+
+      // Check for existing email BEFORE creating the auth user (atomicity).
+      const { data: existingProfile } = await admin
+        .from("profiles")
+        .select("user_id")
+        .ilike("email", studentData.email)
+        .maybeSingle();
+      if (existingProfile) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "An account with this email already exists" },
+          { status: 409 }
+        );
+      }
+
+      // Derive first/last name from full_name if not supplied separately.
+      const nameParts = studentData.full_name.trim().split(/\s+/);
+      const firstName = studentData.first_name?.trim() || nameParts[0] || "";
+      const lastName = studentData.last_name?.trim() || nameParts.slice(1).join(" ") || "";
+
+      const { data: authData, error: authErr } = await admin.auth.admin.createUser({
+        email: studentData.email,
+        password: studentData.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: studentData.full_name,
+          first_name: firstName,
+          last_name: lastName,
+        },
+        app_metadata: {
+          // Authoritative role + tenant scope (migration 0084: ensure_profile_exists
+          // reads ONLY app_metadata for role/tenant).
+          role: "student",
+          university_id: studentData.university_id,
+          department_id: studentData.department_id || undefined,
+          program_id: studentData.program_id || undefined,
+        },
+      });
+
+      if (authErr || !authData?.user) {
+        const msg = authErr?.message || "Failed to create auth account";
+        if (/already registered|already exists/i.test(msg)) {
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "An account with this email already exists" },
+            { status: 409 }
+          );
+        }
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: msg },
+          { status: 500 }
+        );
+      }
+
+      effectiveUserId = authData.user.id;
+
+      // Ensure the profile row exists (idempotent — trigger may have
+      // already created it; this fills in display + tenant fields).
+      try {
+        await admin.rpc("ensure_profile_exists", { p_user_id: effectiveUserId });
+      } catch {
+        // Non-fatal — the upsert-style profile fix below is the fallback.
+      }
+
+      // Upsert the profile with the correct role + tenant + display fields.
+      const { error: profileUpsertErr } = await admin
+        .from("profiles")
+        .upsert({
+          user_id: effectiveUserId,
+          email: studentData.email,
+          full_name: studentData.full_name,
+          first_name: firstName,
+          last_name: lastName,
+          role: "student",
+          status: "active",
+          is_active: true,
+          university_id: studentData.university_id,
+          department_id: studentData.department_id || null,
+          program_id: studentData.program_id || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
+      if (profileUpsertErr) {
+        // Roll back the auth user — do not leave an orphan account.
+        await admin.auth.admin.deleteUser(effectiveUserId);
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `Profile creation failed: ${profileUpsertErr.message}` },
+          { status: 500 }
+        );
+      }
     }
 
     // For super admins, verify the university exists.
@@ -371,9 +489,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Ensure the target user's profile exists (idempotent — fixes the
-    // "auth user created but profile missing" issue from the broken trigger).
-    await admin.rpc("ensure_profile_exists", { p_user_id: studentData.user_id });
+    // Ensure the target user's profile exists (for the user_id-provided path;
+    // the email+password path already did this above). Idempotent.
+    if (studentData.user_id) {
+      await admin.rpc("ensure_profile_exists", { p_user_id: studentData.user_id });
+    }
 
     // Check if student_id_number is unique within the university.
     const { data: existingEnrollment } = await admin
@@ -440,7 +560,7 @@ export async function POST(request: NextRequest) {
     const { data: student, error } = await admin
       .from("students")
       .insert({
-        user_id: studentData.user_id,
+        user_id: effectiveUserId,
         university_id: studentData.university_id,
         department_id: studentData.department_id,
         program_id: studentData.program_id,
@@ -456,6 +576,14 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error(`[${requestId}] student INSERT error`, error);
+
+      // ATOMICITY: if we created the auth user in this request (no
+      // user_id was supplied) and the students row failed, roll back
+      // the auth user + profile so no orphan account remains.
+      if (!studentData.user_id && effectiveUserId) {
+        await admin.from("profiles").delete().eq("user_id", effectiveUserId);
+        await admin.auth.admin.deleteUser(effectiveUserId);
+      }
 
       if (error.code === "23505") {
         return NextResponse.json<ApiResponse<never>>(
@@ -475,7 +603,7 @@ export async function POST(request: NextRequest) {
     }
 
     // AUDIT LOG: Log student creation for compliance.
-    await audit.studentCreate(student!.user_id, studentData.university_id);
+    await audit.studentCreate(student!.user_id, studentData.university_id!);
 
     return NextResponse.json<ApiResponse<Student>>({
       success: true,

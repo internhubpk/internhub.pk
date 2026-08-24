@@ -42,6 +42,8 @@ export interface AuthContext {
     role: UserRole | null;
     university_id: string | null;
     department_id: string | null;
+    program_id?: string | null;
+    company_id?: string | null;
   } | null;
   isAuthenticated: boolean;
 }
@@ -330,6 +332,8 @@ async function buildContextFromUser(
       role: profile.role as UserRole,
       university_id: profile.university_id,
       department_id: (profile as any).department_id || null,
+      program_id: (profile as any).program_id || null,
+      company_id: (profile as any).company_id || null,
     },
     isAuthenticated: true,
   };
