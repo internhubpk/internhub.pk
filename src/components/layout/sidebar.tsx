@@ -11,7 +11,6 @@ import {
   ChevronDown,
   LogOut,
   Menu,
-  X,
   Settings,
   Briefcase,
   Building2,
@@ -414,17 +413,6 @@ function SidebarContent({
           </Button>
         )}
 
-        {/* Close button - Mobile only */}
-        {isMobile && onClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 lg:hidden text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
       </div>
 
       {/* ============================================ */}
