@@ -10,6 +10,9 @@ import {
   Plus,
   UserCheck,
   AlertCircle,
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
   Loader2,
   Users,
 } from "lucide-react";
@@ -96,6 +99,125 @@ export default function ProgramCoordinatorStudentsPage() {
   });
 
   const programId = profile?.program_id;
+
+  // ===== CSV Bulk Import state =====
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importCsvText, setImportCsvText] = useState("");
+  const [importCsvName, setImportCsvName] = useState("");
+  const [importPassword, setImportPassword] = useState("");
+  const [importPhase, setImportPhase] = useState<"upload" | "preview" | "results">("upload");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [validation, setValidation] = useState<{
+    total: number;
+    valid: number;
+    invalid: number;
+    details: { row: number; email: string; name: string; valid: boolean; error?: string; created?: boolean }[];
+  } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    invalid: number;
+    details: { row: number; email: string; name: string; valid: boolean; error?: string; created?: boolean }[];
+  } | null>(null);
+
+  const downloadCsvTemplate = () => {
+    const template =
+      "first_name,last_name,email,student_id_number,enrollment_year,expected_graduation,cgpa\n" +
+      "Ayesha,Khan,ayesha.khan@university.edu,BSCS-2026-001,2026,2030-06-30,3.2\n" +
+      "Bilal,Ahmed,bilal.ahmed@university.edu,BSCS-2026-002,2026,2030-06-30,\n";
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "students_import_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportCsvName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportCsvText((ev.target?.result as string) || "");
+      setValidation(null);
+      setImportResult(null);
+      setImportPhase("upload");
+    };
+    reader.readAsText(file);
+  };
+
+  const resetImportDialog = () => {
+    setIsImportOpen(false);
+    setImportCsvText("");
+    setImportCsvName("");
+    setImportPassword("");
+    setImportPhase("upload");
+    setValidation(null);
+    setImportResult(null);
+  };
+
+  // Phase 1: dry-run validation (nothing is created).
+  const handleValidateCsv = async () => {
+    if (!importCsvText.trim()) {
+      toast.error("No CSV selected", { description: "Please choose a CSV file first." });
+      return;
+    }
+    if (importPassword.trim().length < 8) {
+      toast.error("Password required", {
+        description: "Enter a password of at least 8 characters. Every imported account will use it; students change it after first sign-in.",
+      });
+      return;
+    }
+    setIsValidating(true);
+    try {
+      const res = await fetch("/api/program-coordinator/students/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, password: importPassword.trim(), dry_run: true }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error("Validation failed", { description: data.error || data.message });
+        return;
+      }
+      setValidation(data.data);
+      setImportPhase("preview");
+    } catch (err) {
+      toast.error("Validation failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Phase 2: commit — creates accounts for VALID rows only.
+  const handleConfirmImport = async () => {
+    setIsCommitting(true);
+    try {
+      const res = await fetch("/api/program-coordinator/students/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: importCsvText, password: importPassword.trim(), dry_run: false }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error("Import failed", { description: data.error || data.message });
+        return;
+      }
+      setImportResult(data.data);
+      setImportPhase("results");
+      await fetchStudents();
+      toast.success("Import complete", {
+        description: `Created ${data.data.created} student account(s) in your program.`,
+      });
+    } catch (err) {
+      toast.error("Import failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setIsCommitting(false);
+    }
+  };
 
   const fetchStudents = useCallback(async () => {
     if (!profile?.department_id && !programId) {
@@ -300,6 +422,10 @@ export default function ProgramCoordinatorStudentsPage() {
         description="Students in your program. Assign supervisors individually or in bulk."
         actions={
           <>
+            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
             <Button onClick={() => setIsAddStudentOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Add Student
@@ -643,6 +769,208 @@ export default function ProgramCoordinatorStudentsPage() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CSV Bulk Import Dialog ===== */}
+      <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
+        <DialogContent className="sm:max-w-[680px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Students from CSV</DialogTitle>
+            <DialogDescription>
+              {importPhase === "upload" && "Upload a CSV of students for your program. Everything is validated before any account is created."}
+              {importPhase === "preview" && "Review the validation results, then confirm to create the valid accounts."}
+              {importPhase === "results" && "Import finished. Details below."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {importPhase === "upload" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                <span>
+                  Students are always created in <strong>your program</strong> — university,
+                  department and program are taken from your account and cannot be overridden by
+                  the CSV.
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={downloadCsvTemplate}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Download CSV Template
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => (document.getElementById("pc-csv-input") as HTMLInputElement | null)?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose CSV File
+                </Button>
+                <input
+                  id="pc-csv-input"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+              </div>
+
+              {importCsvName && (
+                <p className="text-sm">
+                  Selected: <span className="font-medium">{importCsvName}</span>
+                </p>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code>, <code>student_id_number</code></p>
+                <p>Optional columns: <code>enrollment_year</code> (e.g. 2026), <code>expected_graduation</code> (YYYY-MM-DD), <code>cgpa</code> (0–4)</p>
+                <p>Header row required (case-insensitive). Maximum 500 rows per import.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="pc-import-password" className="text-sm font-medium">
+                  Shared initial password
+                </label>
+                <Input
+                  id="pc-import-password"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="At least 8 characters — used for every account"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Students change this after their first sign-in.
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={resetImportDialog}>Cancel</Button>
+                <Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>
+                  {isValidating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Validating…
+                    </>
+                  ) : (
+                    "Validate CSV"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {importPhase === "preview" && validation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border p-2">
+                  <div className="text-lg font-semibold">{validation.total}</div>
+                  <div className="text-xs text-muted-foreground">Rows</div>
+                </div>
+                <div className="rounded-md border p-2">
+                  <div className="text-lg font-semibold text-green-600 dark:text-green-400">{validation.valid}</div>
+                  <div className="text-xs text-muted-foreground">Valid</div>
+                </div>
+                <div className="rounded-md border p-2">
+                  <div className="text-lg font-semibold text-red-600 dark:text-red-400">{validation.invalid}</div>
+                  <div className="text-xs text-muted-foreground">With errors</div>
+                </div>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Confirming creates accounts for the <strong>{validation.valid}</strong> valid row(s)
+                {validation.invalid > 0 && <> and skips the {validation.invalid} row(s) with errors</>}.
+              </p>
+
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Row</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {validation.details.map((r) => (
+                      <TableRow key={r.row}>
+                        <TableCell>{r.row}</TableCell>
+                        <TableCell className="max-w-[160px] truncate">{r.name || "—"}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{r.email || "—"}</TableCell>
+                        <TableCell>
+                          {r.valid ? (
+                            <Badge variant="default" className="bg-green-600">Ready</Badge>
+                          ) : (
+                            <Badge variant="destructive" title={r.error}>{r.error || "Invalid"}</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>
+                  Back
+                </Button>
+                <Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>
+                  {isCommitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing…
+                    </>
+                  ) : (
+                    `Import ${validation.valid} Student${validation.valid === 1 ? "" : "s"}`
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {importPhase === "results" && importResult && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">
+                  {importResult.created} student account(s) created in your program.
+                </span>
+              </div>
+              {importResult.invalid > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {importResult.invalid} row(s) were skipped:
+                </p>
+              )}
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Row</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Outcome</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importResult.details
+                      .filter((r) => !r.created)
+                      .map((r) => (
+                        <TableRow key={r.row}>
+                          <TableCell>{r.row}</TableCell>
+                          <TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant="destructive" title={r.error}>{r.error || "Skipped"}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <DialogFooter>
+                <Button onClick={resetImportDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

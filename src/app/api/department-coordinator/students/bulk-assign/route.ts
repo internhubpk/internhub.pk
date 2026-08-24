@@ -63,9 +63,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "department_coordinator" && profile.role !== "super_admin") {
+    // Program Coordinators own the student workflow (2026-08-24): they
+    // assign supervisors to students within their own department/program,
+    // enforced by the students UPDATE RLS policy + the department filter
+    // below. Department Coordinators keep their existing assignment flow.
+    if (
+      profile.role !== "department_coordinator" &&
+      profile.role !== "program_coordinator" &&
+      profile.role !== "super_admin"
+    ) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: Department coordinator access required" },
+        { success: false, error: "Forbidden: Coordinator access required" },
         { status: 403 }
       );
     }
@@ -257,11 +265,13 @@ export async function POST(request: NextRequest) {
       .update(updatePayload)
       .in("user_id", effectiveStudentIds);
 
-    if (profile.role === "department_coordinator") {
+    if (profile.role === "department_coordinator" || profile.role === "program_coordinator") {
       query = query.eq("department_id", profile.department_id);
     }
 
-    const { data: updated, error: updateErr } = await query.select("user_id, department_id, university_id, company_id");
+    // NOTE: the students table has no company_id column — selecting it made
+    // every bulk-assign UPDATE fail with 42703 after RLS passed.
+    const { data: updated, error: updateErr } = await query.select("user_id, department_id, university_id");
 
     if (updateErr) {
       console.error("[bulk-assign] update error:", updateErr);
@@ -318,7 +328,6 @@ export async function POST(request: NextRequest) {
           };
           if (studentRow.department_id) insertPayload.department_id = studentRow.department_id;
           if (studentRow.university_id) insertPayload.university_id = studentRow.university_id;
-          if (studentRow.company_id) insertPayload.company_id = studentRow.company_id;
 
           const { error: insertErr } = await supabase
             .from("student_internships")
