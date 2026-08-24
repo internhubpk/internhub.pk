@@ -44,17 +44,16 @@
 -- -----------------------------------------------------------------------------
 -- PART 1 — Extend the evaluation_type enum.
 -- -----------------------------------------------------------------------------
--- Add the new enum value. ALTER TYPE ... ADD VALUE is irreversible but
--- idempotent via IF NOT EXISTS (Postgres 9.3+).
+-- Add the new enum value. ADD VALUE IF NOT EXISTS makes re-runs safe; the
+-- DO block + EXCEPTION clause is a belt-and-suspenders guard for Postgres
+-- versions / scenarios where IF NOT EXISTS is not honored.
 DO $$
 BEGIN
-  -- Postgres <12 does not support ADD VALUE IF NOT EXISTS inside a
-  -- transaction; the DO block + EXCEPTION clause guards against re-runs.
   BEGIN
-    ALTER TYPE public.evaluation_type ADD VALUE 'department_coordinator_report';
+    ALTER TYPE public.evaluation_type ADD VALUE IF NOT EXISTS 'department_coordinator_report';
   EXCEPTION
     WHEN duplicate_object THEN NULL;
-    WHEN duplicate_value  THEN NULL;
+    WHEN invalid_parameter_value THEN NULL;
   END;
 END $$;
 
@@ -255,8 +254,8 @@ FROM public.evaluations e
 WHERE e.evaluator_role = 'department_coordinator'
   AND e.type = 'department_coordinator_report'::evaluation_type;
 
-ALTER VIEW public.department_coordinator_report_evaluations
-  OWNER TO postgres;
+-- (View ownership defaults to the migration runner; no explicit OWNER change
+-- needed — the GRANT below is what matters for API access.)
 GRANT SELECT ON public.department_coordinator_report_evaluations TO authenticated;
 
 -- =============================================================================
