@@ -135,18 +135,20 @@ export async function POST(request: NextRequest) {
 
     const callerRole = callerProfile?.role as UserRole | undefined;
 
+    // SECURITY (2026-08-24): department_coordinator REMOVED from this gate
+    // per spec §2/§14 — DC must not create any accounts through this route.
+    // DC creates departments+programs (which auto-provision DC/PC accounts
+    // via /api/departments and /api/programs respectively); DC does NOT
+    // create faculty_supervisor/student accounts.
     if (
       callerProfileError ||
       !callerRole ||
-      (callerRole !== "super_admin" &&
-        callerRole !== "university_admin" &&
-        callerRole !== "department_coordinator")
+      (callerRole !== "super_admin" && callerRole !== "university_admin")
     ) {
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
-          error:
-            "Forbidden: Super Admin, University Admin, or Department Coordinator access required",
+          error: "Forbidden: Super Admin or University Admin access required",
         },
         { status: 403 }
       );
@@ -256,20 +258,6 @@ export async function POST(request: NextRequest) {
       }
       effectiveUniversityId = callerProfile.university_id;
 
-      // Department coordinators are forced to their own department.
-      if (callerRole === "department_coordinator") {
-        if (!callerProfile?.department_id) {
-          return NextResponse.json<ApiResponse<never>>(
-            {
-              success: false,
-              error:
-                "Your coordinator account is not linked to a department. Ask a University Admin to assign you to a department first.",
-            },
-            { status: 403 }
-          );
-        }
-        effectiveDepartmentId = callerProfile.department_id;
-      }
       // For university_admin: if department_id was passed, validate it
       // belongs to the same university. (We rely on RLS to also enforce
       // this — departments outside the caller's university would not be
