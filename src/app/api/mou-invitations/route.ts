@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createServiceRoleClient } from "@/utils/supabase/service-role";
 import type { ApiResponse } from "@/types";
 
 // ── GET — list invitations ─────────────────────────────────────────
@@ -132,7 +133,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Validate invitee exists in profiles with correct role ───────
-    const { data: inviteeProfile, error: inviteeError } = await supabase
+    // Use service-role client to bypass RLS: the invitee belongs to a
+    // different tenant (university admin → company HR or vice-versa)
+    // so the regular client's RLS would hide their profile.
+    const serviceRole = await createServiceRoleClient();
+    const { data: inviteeProfile, error: inviteeError } = await serviceRole
       .from("profiles")
       .select("user_id, email, role, full_name, company_id, university_id")
       .eq("email", invitee_email.trim().toLowerCase())
