@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 // Use service role client for PUBLIC endpoint - bypasses RLS so public pages can show data
 import { createServiceRoleClient } from "@/utils/supabase/service-role";
-// Use regular server client for authenticated operations (POST)
+// Use regular server client for authenticated operations (POST) AND for
+// detecting the caller's identity on the GET route (we can't call
+// auth.getUser() on the service-role client now that it no longer
+// attaches cookies — that's the whole point of the 2026-08-25 fix).
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import {
@@ -35,17 +38,42 @@ const CREATE_ROLES: UserRole[] = ["super_admin", "university_admin", "company_hr
  */
 export async function GET(request: NextRequest) {
   try {
-    // Use service role client to bypass RLS for public company listings
-    // This ensures public pages can always display company data
+    // Two clients:
+    //   - authClient (cookie-bound) — for detecting the caller's identity.
+    //     The service-role client no longer attaches cookies (2026-08-25
+    //     fix), so we can't call auth.getUser() on it. The cookie-bound
+    //     client gives us the user + their profile/role.
+    //   - serviceClient (service-role) — for the actual companies query.
+    //     Bypasses RLS so public marketplace pages see data even when
+    //     no anon RLS policy would match.
+    let authUser: { id: string } | null = null;
+    let authProfile: { role: string; university_id: string | null } | null = null;
+    try {
+      const cookieStore = await cookies();
+      const authClient = await createClient(cookieStore);
+      if (authClient) {
+        const { data: { user } } = await authClient.auth.getUser();
+        if (user) {
+          authUser = user;
+          const { data: profile } = await authClient
+            .from("profiles")
+            .select("role, university_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (profile) authProfile = profile;
+        }
+      }
+    } catch {
+      // Anonymous / unauthenticated — fall through with authUser=null.
+    }
+
     const supabase = await createServiceRoleClient();
     if (!supabase) {
       return Response.json({ success: false, error: "Server unavailable" }, { status: 500 });
     }
 
     // For public company listings (marketplace), allow unauthenticated access with limited data
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = authUser;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -77,37 +105,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Authenticated users get role-based filtering
-    if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, university_id")
-        .eq("user_id", user.id)
-        .single();
+    if (user && authProfile) {
+      // Company HR sees only their company
+      if (authProfile.role === "company_hr") {
+        const { data: companyUser } = await supabase
+          .from("company_users")
+          .select("company_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (profile) {
-        // Company HR sees only their company
-        if (profile.role === "company_hr") {
-          const { data: companyUser } = await supabase
-            .from("company_users")
-            .select("company_id")
-            .eq("user_id", user.id)
-            .single();
-
-          if (companyUser) {
-            query = query.eq("id", companyUser.company_id);
-          }
+        if (companyUser) {
+          query = query.eq("id", companyUser.company_id);
         }
+      }
 
-        // University staff see companies associated with their university
-        if (
-          ["university_admin", "department_coordinator", "faculty_supervisor"].includes(
-            profile.role
-          ) &&
-          profile.university_id &&
-          !isMarketplace
-        ) {
-          query = query.eq("university_id", profile.university_id);
-        }
+      // University staff see companies associated with their university
+      if (
+        ["university_admin", "department_coordinator", "faculty_supervisor"].includes(
+          authProfile.role
+        ) &&
+        authProfile.university_id &&
+        !isMarketplace
+      ) {
+        query = query.eq("university_id", authProfile.university_id);
       }
     }
 

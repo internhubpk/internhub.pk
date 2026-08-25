@@ -64,6 +64,8 @@ import {
   Lightbulb,
   Heart,
   Zap,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -269,6 +271,53 @@ export default function CompanyHREvaluationsPage() {
       title: `${evaluation.internship_title || "Internship"} Completion Certificate`,
     });
     router.push(`/company-hr/certificates?${params.toString()}`);
+  };
+
+  // QUICK ISSUE (2026-08-25): A direct "Issue Certificate" button that
+  // creates the certificate record WITHOUT uploading a file. Many HRs
+  // don't have a PDF on hand when they approve the evaluation; the
+  // previous flow forced them to navigate to /company-hr/certificates
+  // and upload a file before the certificate_issued flag would flip
+  // on this evaluations page. The JSON-mode POST endpoint now accepts
+  // a body without a `file` field and creates the record immediately
+  // (file_url = NULL). The student is notified and gets a
+  // verification_code + verification_url they can share / add to
+  // LinkedIn right away. HR can attach the actual PDF later from the
+  // Certificates page.
+  const [quickIssuingId, setQuickIssuingId] = useState<string | null>(null);
+  const handleQuickIssueCertificate = async (evaluation: FinalEvaluation) => {
+    if (!confirm(`Issue a certificate for ${evaluation.intern_name}? The student will be notified and a verification URL will be generated. You can attach the actual PDF later from the Certificates page.`)) {
+      return;
+    }
+    setQuickIssuingId(evaluation.id);
+    try {
+      const res = await fetch("/api/company-hr/certificates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_user_id: evaluation.intern_id,
+          internship_id: evaluation.internship_id,
+          title: `${evaluation.internship_title || "Internship"} Completion Certificate`,
+        }),
+      });
+      const json = await res.json().catch(() => ({ success: false }));
+      if (res.ok && json.success) {
+        toast.success("Certificate issued", {
+          description: `Certificate #${json.data?.certificate_number} issued. Verification code: ${json.data?.verification_code}`,
+        });
+        await fetchEvaluations();
+      } else {
+        toast.error("Failed to issue certificate", {
+          description: json.error?.message || json.error || `HTTP ${res.status}`,
+        });
+      }
+    } catch (err: any) {
+      toast.error("Failed to issue certificate", {
+        description: err?.message || "Network error",
+      });
+    } finally {
+      setQuickIssuingId(null);
+    }
   };
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -587,14 +636,35 @@ export default function CompanyHREvaluationsPage() {
                         )}
 
                         {evaluation.status === "submitted" && !evaluation.certificate_issued && (
-                          <Button
-                            size="sm"
-                            className="bg-purple-600 hover:bg-purple-700"
-                            onClick={() => handleIssueCertificate(evaluation)}
-                          >
-                            <Award className="h-3 w-3 mr-1" />
-                            Approve & Issue Certificate
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-purple-600 hover:bg-purple-700"
+                              disabled={quickIssuingId === evaluation.id}
+                              onClick={() => handleQuickIssueCertificate(evaluation)}
+                            >
+                              {quickIssuingId === evaluation.id ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Issuing…
+                                </>
+                              ) : (
+                                <>
+                                  <Award className="h-3 w-3 mr-1" />
+                                  Issue Certificate
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleIssueCertificate(evaluation)}
+                              title="Upload a PDF/PNG certificate file via the Certificates page"
+                            >
+                              <Upload className="h-3 w-3 mr-1" />
+                              Upload File
+                            </Button>
+                          </>
                         )}
 
                         <DropdownMenu>
@@ -779,13 +849,33 @@ export default function CompanyHREvaluationsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsViewOpen(false)}>Close</Button>
                 {!selectedEvaluation.certificate_issued && (selectedEvaluation.status === "approved" || selectedEvaluation.status === "submitted") && (
-                  <Button
-                    className="bg-purple-600 hover:bg-purple-700"
-                    onClick={() => handleIssueCertificate(selectedEvaluation)}
-                  >
-                    <Award className="h-4 w-4 mr-2" />
-                    Issue Certificate
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleIssueCertificate(selectedEvaluation)}
+                      title="Upload a PDF/PNG certificate file via the Certificates page"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload File
+                    </Button>
+                    <Button
+                      className="bg-purple-600 hover:bg-purple-700"
+                      disabled={quickIssuingId === selectedEvaluation.id}
+                      onClick={() => handleQuickIssueCertificate(selectedEvaluation)}
+                    >
+                      {quickIssuingId === selectedEvaluation.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Issuing…
+                        </>
+                      ) : (
+                        <>
+                          <Award className="h-4 w-4 mr-2" />
+                          Issue Certificate
+                        </>
+                      )}
+                    </Button>
+                  </>
                 )}
                 {selectedEvaluation.certificate_issued && (
                   <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">

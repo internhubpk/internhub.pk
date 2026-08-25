@@ -162,6 +162,32 @@ export async function GET(request: NextRequest) {
 
 // --------------------------------------------------------------------------
 // POST — upload a certificate file + create the certificate record
+//
+// TWO MODES (since 2026-08-25):
+//
+// 1. multipart/form-data  (file upload)
+//    fields: student_user_id, internship_id, title, issue_date?,
+//            certificate_number? (auto-generated if omitted)
+//    file:   file (PDF/PNG/JPEG, up to 10MB)
+//    The certificate is stored in the `certificates` Supabase Storage
+//    bucket under the path "<company_hr_user_id>/<timestamp>-<filename>".
+//
+// 2. application/json  (file-less / "quick issue")
+//    body:  { student_user_id, internship_id, title, issue_date?,
+//             certificate_number? }
+//    Creates the certificate record WITHOUT uploading a file — useful
+//    when HR just wants to record that a certificate was issued and let
+//    the student verify it on /verify/<code>. file_url will be NULL;
+//    the verification_url + verification_code are generated regardless
+//    so the student can share the certificate's authenticity on
+//    LinkedIn immediately. The HR can always come back and upload the
+//    actual PDF/PNG later via the file-upload mode (PATCH).
+//
+// This endpoint REPLACES the old "issue certificate" route that lived at
+// /api/company-hr/evaluations/[id]/certificate. That route created a
+// certificate record but never uploaded a file and never produced a
+// verification URL — so the resulting certificate couldn't actually be
+// verified or added to LinkedIn. This new route does both.
 // --------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   try {
@@ -182,14 +208,38 @@ export async function POST(request: NextRequest) {
     const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
     if (errorResponse) return errorResponse;
 
-    // Parse multipart form
-    const formData = await request.formData();
-    const student_user_id = formData.get("student_user_id") as string | null;
-    const internship_id = formData.get("internship_id") as string | null;
-    const title = formData.get("title") as string | null;
-    const issue_date = formData.get("issue_date") as string | null;
-    const certificate_number_param = formData.get("certificate_number") as string | null;
-    const file = formData.get("file") as File | null;
+    // Detect mode: JSON body → file-less "quick issue"; otherwise
+    // multipart/form-data → file upload.
+    const contentType = request.headers.get("content-type") || "";
+    let student_user_id: string | null;
+    let internship_id: string | null;
+    let title: string | null;
+    let issue_date: string | null;
+    let certificate_number_param: string | null;
+    let file: File | null = null;
+
+    if (contentType.includes("application/json")) {
+      // ── File-less "quick issue" mode ──────────────────────────────
+      // Creates the certificate record WITHOUT uploading a file. The
+      // verification_code + verification_url are still generated so the
+      // student can immediately verify + add to LinkedIn. file_url
+      // stays NULL until HR uploads a PDF/PNG later via PATCH.
+      const body = await request.json().catch(() => ({}));
+      student_user_id = body.student_user_id ?? null;
+      internship_id = body.internship_id ?? null;
+      title = body.title ?? null;
+      issue_date = body.issue_date ?? null;
+      certificate_number_param = body.certificate_number ?? null;
+    } else {
+      // ── Multipart file-upload mode (original behavior) ──────────
+      const formData = await request.formData();
+      student_user_id = formData.get("student_user_id") as string | null;
+      internship_id = formData.get("internship_id") as string | null;
+      title = formData.get("title") as string | null;
+      issue_date = formData.get("issue_date") as string | null;
+      certificate_number_param = formData.get("certificate_number") as string | null;
+      file = formData.get("file") as File | null;
+    }
 
     if (!student_user_id || !internship_id || !title) {
       return NextResponse.json(
@@ -197,23 +247,24 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (!file) {
-      return NextResponse.json(
-        { error: { code: "BAD_REQUEST", message: "A certificate file (PDF/PNG/JPEG) is required" } },
-        { status: 400 }
-      );
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      return NextResponse.json(
-        { error: { code: "FILE_TOO_LARGE", message: `File exceeds the 10MB limit (${Math.round(file.size / 1024 / 1024)}MB)` } },
-        { status: 413 }
-      );
-    }
-    if (!ALLOWED_MIME.has(file.type)) {
-      return NextResponse.json(
-        { error: { code: "BAD_FILE_TYPE", message: `Unsupported file type: ${file.type}. Allowed: PDF, PNG, JPEG, WebP.` } },
-        { status: 415 }
-      );
+
+    // File is OPTIONAL — only validate if a file was actually uploaded
+    // (multipart mode). JSON-mode creates a file-less certificate
+    // record (file_url = NULL) so HR can issue a certificate without
+    // having a PDF on hand.
+    if (file) {
+      if (file.size > MAX_FILE_BYTES) {
+        return NextResponse.json(
+          { error: { code: "FILE_TOO_LARGE", message: `File exceeds the 10MB limit (${Math.round(file.size / 1024 / 1024)}MB)` } },
+          { status: 413 }
+        );
+      }
+      if (!ALLOWED_MIME.has(file.type)) {
+        return NextResponse.json(
+          { error: { code: "BAD_FILE_TYPE", message: `Unsupported file type: ${file.type}. Allowed: PDF, PNG, JPEG, WebP.` } },
+          { status: 415 }
+        );
+      }
     }
 
     // Verify the internship belongs to this company.
@@ -253,37 +304,47 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------------------------
-    // 1. Upload the file to Supabase Storage.
+    // 1. Upload the file to Supabase Storage (SKIPPED in file-less mode).
     // --------------------------------------------------------------------
-    const safeName = (file.name || "certificate.pdf")
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(0, 80);
-    const filePath = `${user.id}/${Date.now()}-${safeName}`;
+    // fileUrl stays NULL when no file is provided (JSON mode). The
+    // certificate record is still created with a verification_code +
+    // verification_url, so the student can verify the certificate on
+    // /verify/<code> and add it to LinkedIn. HR can upload the actual
+    // PDF/PNG later via PATCH.
+    let filePath: string | null = null;
+    let fileUrl: string | null = null;
 
-    const fileBytes = new Uint8Array(await file.arrayBuffer());
-    const { error: uploadErr } = await supabase
-      .storage
-      .from("certificates")
-      .upload(filePath, fileBytes, {
-        contentType: file.type,
-        cacheControl: "3600",
-        upsert: false,
-      });
+    if (file) {
+      const safeName = (file.name || "certificate.pdf")
+        .replace(/[^a-zA-Z0-9._-]/g, "_")
+        .slice(0, 80);
+      filePath = `${user.id}/${Date.now()}-${safeName}`;
 
-    if (uploadErr) {
-      console.error("[/api/company-hr/certificates] storage upload error:", uploadErr);
-      return NextResponse.json(
-        { error: { code: "UPLOAD_FAILED", message: `Failed to upload certificate file: ${uploadErr.message}` } },
-        { status: 500 }
-      );
+      const fileBytes = new Uint8Array(await file.arrayBuffer());
+      const { error: uploadErr } = await supabase
+        .storage
+        .from("certificates")
+        .upload(filePath, fileBytes, {
+          contentType: file.type,
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadErr) {
+        console.error("[/api/company-hr/certificates] storage upload error:", uploadErr);
+        return NextResponse.json(
+          { error: { code: "UPLOAD_FAILED", message: `Failed to upload certificate file: ${uploadErr.message}` } },
+          { status: 500 }
+        );
+      }
+
+      const { data: publicUrlData } = supabase
+        .storage
+        .from("certificates")
+        .getPublicUrl(filePath);
+
+      fileUrl = publicUrlData?.publicUrl || null;
     }
-
-    const { data: publicUrlData } = supabase
-      .storage
-      .from("certificates")
-      .getPublicUrl(filePath);
-
-    const fileUrl = publicUrlData?.publicUrl || null;
 
     // --------------------------------------------------------------------
     // 2. Generate a unique verification_code + verification_url, insert.
@@ -310,6 +371,17 @@ export async function POST(request: NextRequest) {
         requestOrigin
       );
 
+      const metadata: Record<string, unknown> = {
+        uploaded_by: user.id,
+        uploaded_at: new Date().toISOString(),
+        source: file ? "company_hr_upload" : "company_hr_quick_issue",
+      };
+      if (file) {
+        metadata.file_name = file.name;
+        metadata.file_size = file.size;
+        metadata.file_type = file.type;
+      }
+
       const { data: inserted, error: insErr } = await supabase
         .from("certificates")
         .insert({
@@ -325,14 +397,7 @@ export async function POST(request: NextRequest) {
           status: "issued",
           verification_code,
           verification_url,
-          metadata: {
-            uploaded_by: user.id,
-            uploaded_at: new Date().toISOString(),
-            file_name: file.name,
-            file_size: file.size,
-            file_type: file.type,
-            source: "company_hr_upload",
-          },
+          metadata,
         })
         .select("id, verification_code, verification_url")
         .single();
@@ -344,7 +409,10 @@ export async function POST(request: NextRequest) {
           continue;
         }
         console.error("[/api/company-hr/certificates] insert error:", insErr);
-        await supabase.storage.from("certificates").remove([filePath]);
+        // Clean up the uploaded file (if any) on insert failure.
+        if (filePath) {
+          await supabase.storage.from("certificates").remove([filePath]);
+        }
         return NextResponse.json(
           { error: { code: "DATABASE_ERROR", message: `Failed to create certificate: ${insErr.message}` } },
           { status: 500 }
@@ -396,7 +464,9 @@ export async function POST(request: NextRequest) {
     }
 
     // All 5 attempts collided.
-    await supabase.storage.from("certificates").remove([filePath]);
+    if (filePath) {
+      await supabase.storage.from("certificates").remove([filePath]);
+    }
     console.error("[/api/company-hr/certificates] verification_code collision after 5 attempts:", lastError);
     return NextResponse.json(
       { error: { code: "CODE_COLLISION", message: "Failed to generate a unique verification code after 5 attempts. Please try again." } },

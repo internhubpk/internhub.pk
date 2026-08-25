@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 async function getCompanyProfile(supabase: any, userId: string) {
@@ -363,6 +364,42 @@ export async function POST(request: NextRequest) {
     //   - type='site'     → site_supervisor_id
     //   - type='external' → external_evaluator_id (migration 0071)
     //   - type='faculty'  → faculty_supervisor_id (rare from company HR)
+    //
+    // IMPORTANT: We use the SERVICE-ROLE adminClient for this write, not
+    // the cookie-bound `supabase` client. Two reasons:
+    //
+    //   1. RLS — si_update allows company_hr to update SIs in their own
+    //      company, which should match the SIs we just inserted
+    //      assignments for. But if the HR's session JWT has a stale
+    //      app_meta_data (e.g. company_id was changed by a super_admin
+    //      after the HR logged in), the cookie-bound update would
+    //      silently return 0 rows and the supervisor's dashboard would
+    //      show 0 students. The adminClient bypasses RLS entirely.
+    //
+    //   2. The guard trigger trg_guard_si_site_supervisor (migration
+    //      0087, relaxed in 0093) fires BEFORE UPDATE on
+    //      site_supervisor_id regardless of which client issues the
+    //      UPDATE. With the relaxed trigger (0093), the only states
+    //      that block the update are 'cancelled' and 'expired' — the
+    //      pre-check above already returned 400 for those, so the
+    //      adminClient write cannot be blocked by the trigger.
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseUrl || !serviceRoleKey?.trim()) {
+      // Without the service-role key the adminClient cannot be created.
+      // Fall back to the cookie-bound client so the route still works
+      // in local dev — but log loudly so the misconfiguration is visible.
+      console.error(
+        "[company-hr/assignments POST] SUPABASE_SERVICE_ROLE_KEY is not set — " +
+          "falling back to cookie-bound client for the mirror write. " +
+          "Supervisor dashboard may silently lose students when the JWT " +
+          "is stale or the guard trigger fires."
+      );
+    }
+    const adminClient = supabaseUrl && serviceRoleKey?.trim()
+      ? createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+      : supabase;
+
     const mirrorColumn =
       supervisor.type === "external"
         ? "external_evaluator_id"
@@ -375,7 +412,7 @@ export async function POST(request: NextRequest) {
     };
     const mirrorResults = await Promise.all(
       validSIs.map((si) =>
-        supabase
+        adminClient
           .from("student_internships")
           .update(mirrorPayload)
           .eq("id", si.id)

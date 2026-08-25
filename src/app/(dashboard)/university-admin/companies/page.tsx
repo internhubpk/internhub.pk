@@ -84,12 +84,16 @@ export default function UniversityAdminCompaniesPage() {
     name: "",
     industry: "",
     website: "",
+    size: "",
+    address: "",
     contact_person: "",
     contact_email: "",
     contact_phone: "",
     city: "",
     country: "",
     description: "",
+    is_verified: false,
+    is_active: true,
   };
   const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
 
@@ -133,9 +137,19 @@ export default function UniversityAdminCompaniesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...companyForm,
           name: companyForm.name.trim(),
-          contact_email: companyForm.contact_email.trim(),
+          industry: companyForm.industry.trim() || undefined,
+          website: companyForm.website.trim() || undefined,
+          size: companyForm.size.trim() || undefined,
+          address: companyForm.address.trim() || undefined,
+          contact_person: companyForm.contact_person.trim() || undefined,
+          contact_email: companyForm.contact_email.trim() || undefined,
+          contact_phone: companyForm.contact_phone.trim() || undefined,
+          city: companyForm.city.trim() || undefined,
+          country: companyForm.country.trim() || undefined,
+          description: companyForm.description.trim() || undefined,
+          is_verified: companyForm.is_verified,
+          is_active: companyForm.is_active,
           university_id: profile.university_id,
         }),
       });
@@ -478,6 +492,15 @@ export default function UniversityAdminCompaniesPage() {
                 />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="co-size">Company size</Label>
+                <Input
+                  id="co-size"
+                  value={companyForm.size}
+                  onChange={(e) => setCompanyForm({ ...companyForm, size: e.target.value })}
+                  placeholder="11-50"
+                />
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="co-website">Website</Label>
                 <Input
                   id="co-website"
@@ -530,6 +553,15 @@ export default function UniversityAdminCompaniesPage() {
                 />
               </div>
               <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="co-address">Address</Label>
+                <Input
+                  id="co-address"
+                  value={companyForm.address}
+                  onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
+                  placeholder="Street, building, etc."
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="co-description">Description</Label>
                 <Textarea
                   id="co-description"
@@ -537,6 +569,28 @@ export default function UniversityAdminCompaniesPage() {
                   onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })}
                   rows={3}
                 />
+              </div>
+              <div className="col-span-2 flex items-center justify-between gap-4 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="co-is-verified"
+                    checked={companyForm.is_verified}
+                    onCheckedChange={(v) => setCompanyForm({ ...companyForm, is_verified: v })}
+                  />
+                  <Label htmlFor="co-is-verified" className="cursor-pointer">
+                    Verified (shown with a green checkmark to students)
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="co-is-active"
+                    checked={companyForm.is_active}
+                    onCheckedChange={(v) => setCompanyForm({ ...companyForm, is_active: v })}
+                  />
+                  <Label htmlFor="co-is-active" className="cursor-pointer">
+                    Active
+                  </Label>
+                </div>
               </div>
             </div>
           </DialogBody>

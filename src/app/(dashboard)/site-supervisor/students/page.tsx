@@ -219,7 +219,58 @@ export default function SiteSupervisorStudentsPage() {
         .eq("site_supervisor_id", supervisorUserId)
         .order("updated_at", { ascending: false });
 
-      const internRows = (assignments || []) as any[];
+      // DEFENSE-IN-DEPTH (2026-08-25): Also fetch SIs that have an
+      // active intern_supervisor_assignment for this supervisor but
+      // where the mirror column is NULL. The HR assignment flow
+      // sometimes loses the mirror write (silently failed trigger or
+      // RLS check), and a supervisor would see 0 students even though
+      // an active assignment row existed. Merge by SI id, skipping
+      // any SI already in the primary result set.
+      const primaryIds = new Set((assignments || []).map((r: any) => r.id));
+      const { data: fallbackAssignments } = await supabase
+        .from("intern_supervisor_assignments")
+        .select("student_internship_id")
+        .eq("supervisor_id", supervisorUserId)
+        .eq("type", "site")
+        .eq("is_active", true)
+        .is("ended_at", null);
+      const fallbackSiIds = (fallbackAssignments || [])
+        .map((a: any) => a.student_internship_id)
+        .filter((id: string) => Boolean(id) && !primaryIds.has(id));
+      let fallbackRows: any[] = [];
+      if (fallbackSiIds.length > 0) {
+        const { data: fb } = await supabase
+          .from("student_internships")
+          .select(`
+            id,
+            student_user_id,
+            internship_id,
+            status,
+            start_date,
+            end_date,
+            updated_at,
+            student_profile:student_user_id(
+              full_name,
+              first_name,
+              last_name,
+              email,
+              phone,
+              avatar_url,
+              student_id_number
+            ),
+            internship:internships(
+              id,
+              title,
+              company:companies(name)
+            )
+          `)
+          .in("id", fallbackSiIds)
+          .order("updated_at", { ascending: false });
+        fallbackRows = (fb as any[]) || [];
+      }
+      const mergedAssignments = [...(assignments || []), ...fallbackRows];
+
+      const internRows = mergedAssignments as any[];
       const studentUserIds = internRows
         .map((r) => r.student_user_id)
         .filter((id): id is string => Boolean(id));

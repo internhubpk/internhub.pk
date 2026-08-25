@@ -139,9 +139,14 @@ export async function POST(request: NextRequest) {
     // incorrectly report "No account found with that email." Fail loudly
     // instead so this misconfiguration is obvious rather than silently
     // masquerading as a user error.
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    //
+    // The check uses .trim() so a whitespace-only env value is also
+    // rejected — the service-role client itself throws on missing/blank
+    // keys, but failing here produces a clearer API response than the
+    // generic 500 from the throw.
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
       console.error(
-        "[/api/mou-invitations POST] SUPABASE_SERVICE_ROLE_KEY is not set — " +
+        "[/api/mou-invitations POST] SUPABASE_SERVICE_ROLE_KEY is not set or blank — " +
           "cross-tenant invitee lookups will be blocked by RLS and every " +
           "invite will incorrectly report 'no account found'. Set it in " +
           "the deployment's environment variables."

@@ -54,6 +54,15 @@ export async function GET(request: NextRequest) {
     // Query assigned students via student_internships table. Use real
     // columns only — `student_id`, `progress`, `last_evaluation_at` don't
     // exist. Join `profiles` (not `students`) via `student_user_id`.
+    //
+    // DEFENSE-IN-DEPTH (2026-08-25): We query BOTH the mirror column
+    // (site_supervisor_id / external_evaluator_id) AND the
+    // intern_supervisor_assignments table. The HR assignment flow
+    // sometimes loses the mirror write (the trigger / RLS / race
+    // silently dropped it), and a supervisor would see 0 students
+    // even though an active assignment row existed. By unioning both
+    // sources we guarantee the supervisor sees every student they have
+    // an active assignment for, regardless of mirror-column state.
     let query = supabase
       .from("student_internships")
       .select(
@@ -108,10 +117,76 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Fallback: also fetch SIs that have an active intern_supervisor_
+    // assignment for this supervisor but where the mirror column is
+    // NULL. (These are the rows that fell through the cracks when the
+    // HR's mirror write silently failed.) Merge by SI id, skipping
+    // any SI already in the primary result set.
+    const primaryIds = new Set((assignments || []).map((r: any) => r.id));
+    const fallbackAssignmentType =
+      profile.role === "external_evaluator" ? "external" : "site";
+    const { data: fallbackAssignments } = await supabase
+      .from("intern_supervisor_assignments")
+      .select("student_internship_id")
+      .eq("supervisor_id", supervisorUserId)
+      .eq("type", fallbackAssignmentType)
+      .eq("is_active", true)
+      .is("ended_at", null);
+
+    const fallbackSiIds = (fallbackAssignments || [])
+      .map((a: any) => a.student_internship_id)
+      .filter((id: string) => Boolean(id) && !primaryIds.has(id));
+
+    let fallbackRows: any[] = [];
+    if (fallbackSiIds.length > 0) {
+      const { data: fb } = await supabase
+        .from("student_internships")
+        .select(
+          `
+          id,
+          student_user_id,
+          internship_id,
+          status,
+          start_date,
+          end_date,
+          created_at,
+          updated_at,
+          student_profile:student_user_id(
+            full_name,
+            first_name,
+            last_name,
+            email,
+            phone,
+            avatar_url,
+            student_id_number
+          ),
+          internship:internships(
+            id,
+            title,
+            company_id,
+            status,
+            start_date,
+            end_date
+          )
+          `
+        )
+        .in("id", fallbackSiIds)
+        .order("updated_at", { ascending: false });
+      if (status && fb) {
+        // Apply the same status filter to the fallback set so the
+        // merged result is consistent with the primary query.
+        fallbackRows = (fb as any[]).filter((r) => r.status === status);
+      } else {
+        fallbackRows = (fb as any[]) || [];
+      }
+    }
+
+    const mergedAssignments = [...(assignments || []), ...fallbackRows];
+
     // Pull all student_user_ids so we can look up most-recent evaluation per
     // student in a single query (evaluations.evaluator_id is the supervisor's
     // user_id, NOT supervisors.id).
-    const internRows = (assignments || []) as any[];
+    const internRows = mergedAssignments as any[];
     const studentUserIds = internRows
       .map((r) => r.student_user_id)
       .filter((id: any): id is string => Boolean(id));
@@ -135,9 +210,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform data for frontend
+    // Transform data for frontend. NOTE: the local `profile` variable
+    // SHADOWS the outer-scope `profile` (the supervisor's own profile);
+    // this is preserved for backwards-compat — the inner `profile` is
+    // the STUDENT's profile (the joined row from profiles).
     const students = internRows.map((assignment: any) => {
-      const profile = assignment.student_profile || {};
+      const studentProfile = assignment.student_profile || {};
       const internship = assignment.internship || {};
       const studentUser = assignment.student_user_id as string | undefined;
       const lastEvalInfo = studentUser ? lastEvalByStudent.get(studentUser) ?? null : null;
@@ -147,18 +225,18 @@ export async function GET(request: NextRequest) {
         : null;
 
       const fullName =
-        profile.full_name ||
-        [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+        studentProfile.full_name ||
+        [studentProfile.first_name, studentProfile.last_name].filter(Boolean).join(" ") ||
         "Unknown Student";
 
       return {
         id: assignment.id,
         studentId: studentUser,
         studentName: fullName,
-        studentEmail: profile.email || "",
-        studentPhone: profile.phone ?? null,
-        avatarUrl: profile.avatar_url ?? null,
-        enrollmentNumber: profile.student_id_number ?? null,
+        studentEmail: studentProfile.email || "",
+        studentPhone: studentProfile.phone ?? null,
+        avatarUrl: studentProfile.avatar_url ?? null,
+        enrollmentNumber: studentProfile.student_id_number ?? null,
         internshipId: internship.id,
         internshipTitle: internship.title,
         companyId: internship.company_id,
@@ -186,13 +264,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const totalCount = (count || 0) + fallbackRows.length;
     const response: PaginatedResponse<typeof filteredStudents[number]> = {
       items: filteredStudents,
-      total: count || filteredStudents.length,
+      total: totalCount || filteredStudents.length,
       page,
       pageSize,
-      totalPages: Math.ceil((count || filteredStudents.length) / pageSize),
-      hasNextPage: (page * pageSize) < (count || 0),
+      totalPages: Math.ceil((totalCount || filteredStudents.length) / pageSize),
+      hasNextPage: (page * pageSize) < totalCount,
       hasPrevPage: page > 1,
     };
 
