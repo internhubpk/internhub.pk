@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,7 @@ const DEFAULT_PROGRAMS = ["All Internships"];
 
 export default function CompanyHREvaluationsPage() {
   const { profile } = useAuth();
+  const router = useRouter();
   const [evaluations, setEvaluations] = useState<FinalEvaluation[]>(DEFAULT_EVALUATIONS);
   const [programs, setPrograms] = useState<string[]>(DEFAULT_PROGRAMS);
   const [internsForEvaluation, setInternsForEvaluation] = useState<Array<{
@@ -254,22 +256,21 @@ export default function CompanyHREvaluationsPage() {
     }
   };
 
-  const handleIssueCertificate = async (evaluationId: string) => {
-    setIssuingCert(true);
-    try {
-      const res = await fetch(`/api/company-hr/evaluations/${evaluationId}/certificate`, {
-        method: "POST",
-      });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
-      toast.success("Certificate issued", { description: "The intern can now download it from their dashboard." });
-      await fetchEvaluations();
-    } catch (e: any) {
-      toast.error("Error", { description: e.message || "Failed to issue certificate" });
-    } finally {
-      setIssuingCert(false);
-    }
+  // NOTE: /api/company-hr/evaluations/[id]/certificate is deprecated (410
+  // Gone) — certificate issuance now happens on the dedicated Certificates
+  // page (/company-hr/certificates), which uploads a real file and
+  // generates a verification code/URL. We hand off to that page instead
+  // of calling the dead endpoint, pre-filling the student + internship so
+  // HR doesn't have to re-select them.
+  const handleIssueCertificate = (evaluation: FinalEvaluation) => {
+    const params = new URLSearchParams({
+      student_user_id: evaluation.intern_id,
+      internship_id: evaluation.internship_id,
+      title: `${evaluation.internship_title || "Internship"} Completion Certificate`,
+    });
+    router.push(`/company-hr/certificates?${params.toString()}`);
   };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [programFilter, setProgramFilter] = useState("all");
@@ -589,11 +590,10 @@ export default function CompanyHREvaluationsPage() {
                           <Button
                             size="sm"
                             className="bg-purple-600 hover:bg-purple-700"
-                            onClick={() => handleIssueCertificate(evaluation.id)}
-                            disabled={issuingCert}
+                            onClick={() => handleIssueCertificate(evaluation)}
                           >
                             <Award className="h-3 w-3 mr-1" />
-                            {issuingCert ? "Issuing..." : "Approve & Issue Certificate"}
+                            Approve & Issue Certificate
                           </Button>
                         )}
 
@@ -610,33 +610,31 @@ export default function CompanyHREvaluationsPage() {
                             <DropdownMenuItem
                               disabled={!evaluation.certificate_issued}
                               onClick={async () => {
-                                // Fetch the certificate PDF from the existing
-                                // /api/company-hr/evaluations/[id]/certificate
-                                // endpoint. The endpoint streams a PDF — opening
-                                // it in a new tab lets the browser handle the
-                                // download/print flow.
                                 if (!evaluation.certificate_issued) {
                                   toast.error("Certificate not issued", { description: "Approve the evaluation first to issue the certificate." });
                                   return;
                                 }
                                 try {
-                                  const res = await fetch(`/api/company-hr/evaluations/${evaluation.id}/certificate`);
-                                  if (!res.ok) {
-                                    const err = await res.json().catch(() => ({}));
-                                    toast.error("Error", { description: err.error || "Failed to generate certificate. The evaluation may not be approved yet." });
+                                  // Certificates now live in the `certificates`
+                                  // table (with a real uploaded file), not
+                                  // behind the deprecated per-evaluation PDF
+                                  // endpoint. Look up the issued certificate
+                                  // for this student + internship and open its
+                                  // uploaded file.
+                                  const res = await fetch(
+                                    `/api/company-hr/certificates?student_user_id=${encodeURIComponent(evaluation.intern_id)}`
+                                  );
+                                  const j = await res.json().catch(() => null);
+                                  const cert = (j?.data || []).find(
+                                    (c: any) => c.internship?.title === evaluation.internship_title
+                                  ) || (j?.data || [])[0];
+                                  if (!res.ok || !cert?.file_url) {
+                                    toast.error("Error", { description: "Could not find the certificate file. Try the Certificates page." });
                                     return;
                                   }
-                                  const blob = await res.blob();
-                                  const url = URL.createObjectURL(blob);
-                                  const a = document.createElement("a");
-                                  a.href = url;
-                                  a.download = `certificate-${evaluation.intern_name || evaluation.id}.pdf`;
-                                  document.body.appendChild(a);
-                                  a.click();
-                                  document.body.removeChild(a);
-                                  URL.revokeObjectURL(url);
+                                  window.open(cert.file_url, "_blank", "noopener,noreferrer");
                                 } catch (e) {
-                                  toast.error("Failed", { description: "Network error while generating certificate." });
+                                  toast.error("Failed", { description: "Network error while fetching the certificate." });
                                 }
                               }}
                             >
@@ -783,11 +781,10 @@ export default function CompanyHREvaluationsPage() {
                 {!selectedEvaluation.certificate_issued && (selectedEvaluation.status === "approved" || selectedEvaluation.status === "submitted") && (
                   <Button
                     className="bg-purple-600 hover:bg-purple-700"
-                    onClick={() => handleIssueCertificate(selectedEvaluation.id)}
-                    disabled={issuingCert}
+                    onClick={() => handleIssueCertificate(selectedEvaluation)}
                   >
                     <Award className="h-4 w-4 mr-2" />
-                    {issuingCert ? "Issuing..." : "Issue Certificate"}
+                    Issue Certificate
                   </Button>
                 )}
                 {selectedEvaluation.certificate_issued && (

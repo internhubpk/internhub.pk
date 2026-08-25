@@ -69,13 +69,16 @@ const SUPER_ADMIN_TARGET_ROLES: UserRole[] = [
 ];
 
 // Roles a University Admin can create — limited to roles that live inside
-// their own university. company_hr / site_supervisor / external_evaluator
-// are not in this list because those roles are tied to a company, not a
-// university.
+// their own university, PLUS company_hr: a university admin may register a
+// partner company (via /api/companies) and then create that company's HR
+// account, the same way super_admin can. The company_id is required and
+// validated below; university_id is NOT attached to company_hr profiles
+// (see step 3) since company_hr belongs to a company, not a university.
 const UNI_ADMIN_TARGET_ROLES: UserRole[] = [
   "department_coordinator",
   "faculty_supervisor",
   "student",
+  "company_hr",
 ];
 
 // Roles a Department Coordinator can create — students AND faculty
@@ -237,6 +240,22 @@ export async function POST(request: NextRequest) {
       effectiveUniversityId = university_id;
       // super_admin creating a company_hr — university_id may be unset,
       // company_id may be set instead. That's fine.
+    } else if (callerRole === "university_admin" && role === "company_hr") {
+      // University admin creating a company_hr account: company_hr
+      // belongs to a company, not a university, so we deliberately do
+      // NOT force university_id onto this profile (that would incorrectly
+      // scope the HR account as if they were university staff, breaking
+      // company_hr-specific RLS policies that key off company_id only).
+      if (!company_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          {
+            success: false,
+            error: "company_id is required when creating a company_hr account.",
+          },
+          { status: 400 }
+        );
+      }
+      effectiveUniversityId = undefined;
     } else {
       // university_admin OR department_coordinator: fetch their profile to
       // get university_id (and department_id for coordinators).

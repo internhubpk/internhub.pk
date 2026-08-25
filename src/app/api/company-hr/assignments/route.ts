@@ -373,14 +373,34 @@ export async function POST(request: NextRequest) {
       [mirrorColumn]: supervisor_id,
       updated_at: new Date().toISOString(),
     };
-    await Promise.all(
+    const mirrorResults = await Promise.all(
       validSIs.map((si) =>
         supabase
           .from("student_internships")
           .update(mirrorPayload)
           .eq("id", si.id)
+          .select("id")
       )
     );
+    const mirrorFailures = mirrorResults
+      .map((res, idx) => ({ res, si: validSIs[idx] }))
+      .filter(({ res }) => res.error || !res.data || res.data.length === 0);
+
+    if (mirrorFailures.length > 0) {
+      // The assignment row(s) below were already created — don't roll
+      // those back (the assignment itself is valid audit history) — but
+      // DO surface this to the caller instead of silently reporting
+      // success while the supervisor's dashboard (which reads
+      // student_internships.<mirror column>, not intern_supervisor_
+      // assignments) never reflects the change.
+      console.error(
+        "[company-hr/assignments POST] mirror update failed for",
+        mirrorFailures.map((f) => ({
+          student_internship_id: f.si.id,
+          error: f.res.error?.message || "0 rows affected (RLS or guard trigger blocked the update)",
+        }))
+      );
+    }
 
     // Notify each intern with a role-appropriate message.
     const assignLabel =
@@ -418,11 +438,24 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const assignedCount = createdAssignments?.length || 0;
+    if (mirrorFailures.length > 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: createdAssignments,
+          warning: `${mirrorFailures.length} of ${assignedCount} assignment(s) were recorded but did not appear on the supervisor's dashboard (the internship may not be in an accepted/active state). Please check those interns and re-assign if needed.`,
+          message: `Assigned ${assignedCount} intern(s) to supervisor (${mirrorFailures.length} incomplete)`,
+        },
+        { status: 201 }
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
         data: createdAssignments,
-        message: `Successfully assigned ${createdAssignments?.length || 0} intern(s) to supervisor`,
+        message: `Successfully assigned ${assignedCount} intern(s) to supervisor`,
       },
       { status: 201 }
     );
@@ -552,10 +585,28 @@ export async function PUT(request: NextRequest) {
         : supervisor.type === "faculty"
           ? "faculty_supervisor_id"
           : "site_supervisor_id";
-    await supabase
+    const { data: putMirrorRows, error: putMirrorError } = await supabase
       .from("student_internships")
       .update({ [putMirrorColumn]: new_supervisor_id, updated_at: new Date().toISOString() })
-      .eq("id", si.id);
+      .eq("id", si.id)
+      .select("id");
+
+    if (putMirrorError || !putMirrorRows || putMirrorRows.length === 0) {
+      console.error(
+        "[company-hr/assignments PUT] mirror update failed:",
+        putMirrorError?.message || "0 rows affected (RLS or guard trigger blocked the update)"
+      );
+      return NextResponse.json(
+        {
+          error: {
+            code: "MIRROR_UPDATE_FAILED",
+            message:
+              "The reassignment record was created, but it could not be reflected on the supervisor's dashboard. The internship may not be in an accepted/active state.",
+          },
+        },
+        { status: 409 }
+      );
+    }
 
     await supabase.from("audit_logs").insert({
       user_id: user.id,

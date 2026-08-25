@@ -1,6 +1,7 @@
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { fetchSupervisedStudentIds } from "@/lib/supervised-students";
+import { buildVerificationUrl } from "@/lib/site-url";
 import { randomBytes } from "crypto";
 
 // ---------------------------------------------------------------------------
@@ -591,10 +592,7 @@ export async function POST(request: Request) {
       // Use crypto.randomBytes for entropy — Math.random is not cryptographically
       // secure and would let attackers guess certificate codes.
       const verificationCode = generateVerificationCode();
-      const verifyBaseUrl = process.env.NEXT_PUBLIC_SITE_URL
-        || process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\.supabase\.co$/, "")
-        || "https://careerstep.tech";
-      const verificationUrl = `${verifyBaseUrl}/verify/${verificationCode}`;
+      const verificationUrl = buildVerificationUrl(verificationCode);
 
       // Generate a real PDF on the server using the report_data so the
       // student has something to download immediately. The PDF is a simple

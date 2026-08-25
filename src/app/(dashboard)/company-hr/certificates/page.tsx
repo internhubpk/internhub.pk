@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -88,6 +89,13 @@ interface StudentByInternship {
 
 export default function CompanyHrCertificatesPage() {
   const { user, profile } = useAuth();
+  const searchParams = useSearchParams();
+  // Deep-link support: the Evaluations page's "Approve & Issue Certificate"
+  // action hands off here with these params instead of calling the
+  // deprecated /api/company-hr/evaluations/[id]/certificate endpoint.
+  const prefillStudentId = searchParams.get("student_user_id");
+  const prefillInternshipId = searchParams.get("internship_id");
+  const prefillTitle = searchParams.get("title");
   const [certificates, setCertificates] = useState<CertificateRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -202,6 +210,28 @@ export default function CompanyHrCertificatesPage() {
       fetchAvailableStudents();
     }
   }, [showUploadModal, fetchAvailableStudents]);
+
+  // Deep-link from Evaluations: open the upload modal automatically and
+  // pre-fill the title once, so HR lands directly on the certificate
+  // upload form for the student/internship they just approved.
+  useEffect(() => {
+    if (prefillStudentId && prefillInternshipId) {
+      setShowUploadModal(true);
+      if (prefillTitle) setCertTitle(prefillTitle);
+    }
+  }, []);
+
+  // Once the student/internship dropdown data has loaded, pre-select the
+  // pair passed in via the URL (if it's actually in the list).
+  useEffect(() => {
+    if (!prefillStudentId || !prefillInternshipId || availableStudents.length === 0) return;
+    const match = availableStudents.find(
+      (s) => s.student_user_id === prefillStudentId && s.internship_id === prefillInternshipId
+    );
+    if (match) {
+      setSelectedStudentInternship(`${match.student_user_id}|${match.internship_id}`);
+    }
+  }, [availableStudents, prefillStudentId, prefillInternshipId]);
 
   const filtered = certificates.filter((c) => {
     const q = search.trim().toLowerCase();

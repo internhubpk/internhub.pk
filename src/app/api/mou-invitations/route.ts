@@ -132,16 +132,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Guard against the service-role client silently falling back to the
+    // anon key (see utils/supabase/service-role.ts). If that happens here,
+    // RLS hides the invitee's profile (it belongs to a different tenant)
+    // and every invite — even for a real, registered account — would
+    // incorrectly report "No account found with that email." Fail loudly
+    // instead so this misconfiguration is obvious rather than silently
+    // masquerading as a user error.
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error(
+        "[/api/mou-invitations POST] SUPABASE_SERVICE_ROLE_KEY is not set — " +
+          "cross-tenant invitee lookups will be blocked by RLS and every " +
+          "invite will incorrectly report 'no account found'. Set it in " +
+          "the deployment's environment variables."
+      );
+      return NextResponse.json<ApiResponse<never>>(
+        {
+          success: false,
+          error:
+            "Server misconfiguration: service role key is not set. Contact the platform administrator.",
+        },
+        { status: 500 }
+      );
+    }
+
     // ── Validate invitee exists in profiles with correct role ───────
     // Use service-role client to bypass RLS: the invitee belongs to a
     // different tenant (university admin → company HR or vice-versa)
     // so the regular client's RLS would hide their profile.
     const serviceRole = await createServiceRoleClient();
-    const { data: inviteeProfile, error: inviteeError } = await serviceRole
+    // Case-insensitive match: profiles.email is normally stored lowercase
+    // (Supabase Auth lowercases new signups), but rows created before that
+    // was consistently enforced may not be. ilike with an escaped pattern
+    // avoids missing a real match on stale-cased legacy rows.
+    const escapedEmail = invitee_email.trim().replace(/[%_]/g, (m: string) => `\\${m}`);
+    const { data: inviteeProfiles, error: inviteeError } = await serviceRole
       .from("profiles")
       .select("user_id, email, role, full_name, company_id, university_id")
-      .eq("email", invitee_email.trim().toLowerCase())
-      .maybeSingle();
+      .ilike("email", escapedEmail)
+      .limit(1);
+    const inviteeProfile = inviteeProfiles?.[0] ?? null;
 
     if (inviteeError) {
       return NextResponse.json<ApiResponse<never>>(

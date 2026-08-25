@@ -15,10 +15,21 @@ import {
   Phone,
   ExternalLink,
   Plus,
+  Eye,
+  EyeOff,
+  UserPlus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -65,6 +76,134 @@ export default function UniversityAdminCompaniesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [detailCompany, setDetailCompany] = useState<CompanyWithStats | null>(null);
+
+  // ── Create Company dialog ──────────────────────────────────────
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const emptyCompanyForm = {
+    name: "",
+    industry: "",
+    website: "",
+    contact_person: "",
+    contact_email: "",
+    contact_phone: "",
+    city: "",
+    country: "",
+    description: "",
+  };
+  const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
+
+  // ── Create Company HR dialog ───────────────────────────────────
+  const [isCreateHrOpen, setIsCreateHrOpen] = useState(false);
+  const [isSavingHr, setIsSavingHr] = useState(false);
+  const [showHrPassword, setShowHrPassword] = useState(false);
+  const emptyHrForm = {
+    full_name: "",
+    email: "",
+    password: "",
+    company_id: "",
+    job_title: "",
+    phone: "",
+  };
+  const [hrForm, setHrForm] = useState(emptyHrForm);
+
+  function generatePassword() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+    let pwd = "";
+    for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+    return pwd;
+  }
+
+  async function handleCreateCompany() {
+    if (!companyForm.name.trim()) {
+      toast.error("Company name is required");
+      return;
+    }
+    if (!companyForm.contact_email.trim()) {
+      toast.error("Contact email is required");
+      return;
+    }
+    if (!profile?.university_id) {
+      toast.error("Your admin account is not linked to a university");
+      return;
+    }
+    setIsSavingCompany(true);
+    try {
+      const res = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...companyForm,
+          name: companyForm.name.trim(),
+          contact_email: companyForm.contact_email.trim(),
+          university_id: profile.university_id,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Company created", { description: `${companyForm.name} has been added.` });
+      setCompanyForm(emptyCompanyForm);
+      setIsCreateCompanyOpen(false);
+      fetchCompanies();
+    } catch (error: any) {
+      console.error("Error creating company:", error);
+      toast.error("Failed to create company", { description: error.message });
+    } finally {
+      setIsSavingCompany(false);
+    }
+  }
+
+  async function handleCreateHr() {
+    if (!hrForm.full_name.trim()) {
+      toast.error("Full name is required");
+      return;
+    }
+    if (!hrForm.email.trim() || !hrForm.email.includes("@")) {
+      toast.error("Valid email is required");
+      return;
+    }
+    if (hrForm.password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (!hrForm.company_id) {
+      toast.error("Please select a company");
+      return;
+    }
+    setIsSavingHr(true);
+    try {
+      // Same server route used by Super Admin — uses the service role key
+      // so the university admin's own session isn't replaced by the new
+      // HR account's session.
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: hrForm.email.trim(),
+          password: hrForm.password,
+          full_name: hrForm.full_name.trim(),
+          role: "company_hr",
+          company_id: hrForm.company_id,
+          job_title: hrForm.job_title.trim() || undefined,
+          phone: hrForm.phone.trim() || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Company HR account created", { description: `${hrForm.email} can now sign in.` });
+      setHrForm(emptyHrForm);
+      setIsCreateHrOpen(false);
+    } catch (error: any) {
+      console.error("Error creating HR:", error);
+      toast.error("Failed to create HR account", { description: error.message });
+    } finally {
+      setIsSavingHr(false);
+    }
+  }
 
   const fetchCompanies = useCallback(async () => {
     // Companies are publicly listed (RLS co_select is `USING (true)`),
@@ -154,6 +293,18 @@ export default function UniversityAdminCompaniesPage() {
       <PageHeader
         title="Companies"
         description="Manage partner companies for your university. Add new host organizations, manage their details, and create HR accounts."
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsCreateHrOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Company HR
+            </Button>
+            <Button onClick={() => setIsCreateCompanyOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Company
+            </Button>
+          </div>
+        }
       />
 
       {/* Filters */}
@@ -296,6 +447,223 @@ export default function UniversityAdminCompaniesPage() {
           ))}
         </div>
       )}
+
+      {/* Create Company Dialog */}
+      <Dialog open={isCreateCompanyOpen} onOpenChange={(o) => { setIsCreateCompanyOpen(o); if (!o) setCompanyForm(emptyCompanyForm); }}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader className="px-8 pt-6 pb-4">
+            <DialogTitle>Add Company</DialogTitle>
+            <DialogDescription>
+              Register a new host organization for your university's internship program.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="px-8 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="co-name">Company name *</Label>
+                <Input
+                  id="co-name"
+                  value={companyForm.name}
+                  onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+                  placeholder="Acme Corporation"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-industry">Industry</Label>
+                <Input
+                  id="co-industry"
+                  value={companyForm.industry}
+                  onChange={(e) => setCompanyForm({ ...companyForm, industry: e.target.value })}
+                  placeholder="Software"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-website">Website</Label>
+                <Input
+                  id="co-website"
+                  value={companyForm.website}
+                  onChange={(e) => setCompanyForm({ ...companyForm, website: e.target.value })}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-contact-person">Contact person</Label>
+                <Input
+                  id="co-contact-person"
+                  value={companyForm.contact_person}
+                  onChange={(e) => setCompanyForm({ ...companyForm, contact_person: e.target.value })}
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-contact-email">Contact email *</Label>
+                <Input
+                  id="co-contact-email"
+                  type="email"
+                  value={companyForm.contact_email}
+                  onChange={(e) => setCompanyForm({ ...companyForm, contact_email: e.target.value })}
+                  placeholder="hr@acme.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-contact-phone">Contact phone</Label>
+                <Input
+                  id="co-contact-phone"
+                  value={companyForm.contact_phone}
+                  onChange={(e) => setCompanyForm({ ...companyForm, contact_phone: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-city">City</Label>
+                <Input
+                  id="co-city"
+                  value={companyForm.city}
+                  onChange={(e) => setCompanyForm({ ...companyForm, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="co-country">Country</Label>
+                <Input
+                  id="co-country"
+                  value={companyForm.country}
+                  onChange={(e) => setCompanyForm({ ...companyForm, country: e.target.value })}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="co-description">Description</Label>
+                <Textarea
+                  id="co-description"
+                  value={companyForm.description}
+                  onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+            </div>
+          </DialogBody>
+          <DialogFooter className="px-8 pt-5 pb-6">
+            <Button variant="outline" onClick={() => setIsCreateCompanyOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCompany} disabled={isSavingCompany}>
+              {isSavingCompany ? "Creating..." : "Create Company"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Company HR Dialog */}
+      <Dialog open={isCreateHrOpen} onOpenChange={(o) => { setIsCreateHrOpen(o); if (!o) setHrForm(emptyHrForm); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader className="px-8 pt-6 pb-4">
+            <DialogTitle>Add Company HR</DialogTitle>
+            <DialogDescription>
+              Create an HR account for one of your partner companies. They'll manage that company's interns, supervisors, and internships.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="px-8 space-y-4">
+            {companies.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Add a company first before creating an HR account for it.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hr-company">Company *</Label>
+                  <Select
+                    value={hrForm.company_id}
+                    onValueChange={(v) => setHrForm({ ...hrForm, company_id: v })}
+                  >
+                    <SelectTrigger id="hr-company">
+                      <SelectValue placeholder="Select a company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hr-name">Full name *</Label>
+                  <Input
+                    id="hr-name"
+                    value={hrForm.full_name}
+                    onChange={(e) => setHrForm({ ...hrForm, full_name: e.target.value })}
+                    placeholder="Jane Doe"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hr-email">Email *</Label>
+                  <Input
+                    id="hr-email"
+                    type="email"
+                    value={hrForm.email}
+                    onChange={(e) => setHrForm({ ...hrForm, email: e.target.value })}
+                    placeholder="jane@acme.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hr-password">Password *</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="hr-password"
+                        type={showHrPassword ? "text" : "password"}
+                        value={hrForm.password}
+                        onChange={(e) => setHrForm({ ...hrForm, password: e.target.value })}
+                        placeholder="Min. 8 characters"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowHrPassword((s) => !s)}
+                      >
+                        {showHrPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setHrForm({ ...hrForm, password: generatePassword() })}
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hr-job-title">Job title</Label>
+                    <Input
+                      id="hr-job-title"
+                      value={hrForm.job_title}
+                      onChange={(e) => setHrForm({ ...hrForm, job_title: e.target.value })}
+                      placeholder="HR Manager"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="hr-phone">Phone</Label>
+                    <Input
+                      id="hr-phone"
+                      value={hrForm.phone}
+                      onChange={(e) => setHrForm({ ...hrForm, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </DialogBody>
+          <DialogFooter className="px-8 pt-5 pb-6">
+            <Button variant="outline" onClick={() => setIsCreateHrOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateHr} disabled={isSavingHr || companies.length === 0}>
+              {isSavingHr ? "Creating..." : "Create HR Account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Company Detail Dialog (view only) */}
       <Dialog open={!!detailCompany} onOpenChange={(open) => !open && setDetailCompany(null)}>
