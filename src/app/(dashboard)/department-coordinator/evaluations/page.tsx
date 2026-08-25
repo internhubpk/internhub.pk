@@ -40,7 +40,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -823,7 +822,7 @@ function EvaluationDialog({ open, onOpenChange, student, existingEvaluation }: E
 
           {/* Reports tab */}
           <TabsContent value="reports" className="flex-1 min-h-0 m-0 overflow-hidden">
-            <ScrollArea className="h-full max-h-[60vh]">
+            <div className="h-full overflow-y-auto">
               <div className="p-6 space-y-4">
                 {loadingData ? (
                   <div className="space-y-2">
@@ -1060,12 +1059,12 @@ function EvaluationDialog({ open, onOpenChange, student, existingEvaluation }: E
                   </>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
 
           {/* Evaluate tab */}
           <TabsContent value="evaluate" className="flex-1 min-h-0 m-0 overflow-hidden">
-            <ScrollArea className="h-full max-h-[60vh]">
+            <div className="h-full overflow-y-auto">
               <div className="p-6 space-y-6">
                 <div className="rounded-md border bg-muted/30 p-4">
                   <h3 className="font-medium mb-1">Student Reports — Department Coordinator Evaluation</h3>
@@ -1145,7 +1144,7 @@ function EvaluationDialog({ open, onOpenChange, student, existingEvaluation }: E
                   <p className="text-xs text-muted-foreground">{comments.length} / 5000 characters</p>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
 

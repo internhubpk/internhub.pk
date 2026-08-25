@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Check for duplicate pending invitation ─────────────────────
-    const { data: existingInvitation } = await supabase
+    const { data: existingInvitation } = await serviceRole
       .from("mou_invitations")
       .select("id")
       .eq("company_id", targetCompanyId!)
@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Check if an active MOU already exists ───────────────────────
-    const { data: existingMou } = await supabase
+    const { data: existingMou } = await serviceRole
       .from("company_university_mous")
       .select("id, status")
       .eq("company_id", targetCompanyId!)

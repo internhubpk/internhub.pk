@@ -1288,17 +1288,17 @@ export default function FacultySupervisorEvaluationsPage() {
 
       {/* View History Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
           {selectedHistoryItem && (
             <>
-              <DialogHeader>
+              <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
                 <DialogTitle>Evaluation Details</DialogTitle>
                 <DialogDescription>
                   Completed on {formatDate(selectedHistoryItem.evaluatedAt)}
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4">
+              <div className="mt-0 space-y-4 overflow-y-auto flex-1 min-h-0 px-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-muted-foreground">Student</Label>
@@ -1344,7 +1344,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 )}
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="px-6 py-4 border-t shrink-0">
                 <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                   Close
                 </Button>

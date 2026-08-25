@@ -17,7 +17,6 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  Info,
   Eye,
   EyeOff,
   RefreshCw,
@@ -64,8 +63,6 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
-import { createClient } from "@/utils/supabase/client";
-import type { Profile } from "@/types";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { toast } from "@/components/shared/toast";
 
@@ -94,8 +91,6 @@ interface ProgramFormData {
   name: string;
   code: string;
   description: string;
-  default_faculty_supervisor_id: string;
-  default_external_evaluator_id: string;
   is_active: boolean;
   // Program Coordinator credentials (CREATE mode only)
   coordinator_full_name: string;
@@ -115,8 +110,6 @@ const emptyForm: ProgramFormData = {
   name: "",
   code: "",
   description: "",
-  default_faculty_supervisor_id: "",
-  default_external_evaluator_id: "",
   is_active: true,
   coordinator_full_name: "",
   coordinator_email: "",
@@ -124,11 +117,16 @@ const emptyForm: ProgramFormData = {
   showPassword: false,
 };
 
+// NOTE: Supervisor and external evaluator fields were removed from the DC
+// Programs page. Programs only manage basic info (name, code, description,
+// is_active) and auto-provision a Program Coordinator account.
+// Supervisor assignment is handled through the Students page.
+
 export default function ProgramsPage() {
   const { profile } = useAuth();
   const [programs, setPrograms] = useState<Program[]>([]);
-  const [supervisors, setSupervisors] = useState<Profile[]>([]);
-  const [externalEvaluators, setExternalEvaluators] = useState<Profile[]>([]);
+  // Supervisor/evaluator state removed — DC no longer assigns supervisors
+  // through the Programs page.
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActive, setFilterActive] = useState<string>("all");
@@ -139,53 +137,8 @@ export default function ProgramsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedProgram, setExpandedProgram] = useState<string | null>(null);
 
-  // Fetch faculty supervisors AND external evaluators available to this
-  // coordinator's department. Faculty supervisors are filtered to the
-  // coordinator's own department only (no cross-department leak).
-  // External evaluators are fetched university-wide because they may be
-  // cross-department / industry experts.
-  const fetchSupervisors = useCallback(async () => {
-    if (!profile?.department_id) return;
-    try {
-      const supabase = createClient();
-      const [facRes, extRes] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("*")
-          .eq("department_id", profile.department_id)
-          .eq("role", "faculty_supervisor")
-          .eq("is_active", true)
-          .order("full_name"),
-        // External evaluators are cross-department; filter by university
-        // (or no filter at all if university_id is missing).
-        profile.university_id
-          ? supabase
-              .from("profiles")
-              .select("*")
-              .eq("university_id", profile.university_id)
-              .eq("role", "external_evaluator")
-              .eq("is_active", true)
-              .order("full_name")
-          : supabase
-              .from("profiles")
-              .select("*")
-              .eq("role", "external_evaluator")
-              .eq("is_active", true)
-              .order("full_name"),
-      ]);
-
-      if (facRes.error) throw facRes.error;
-      if (extRes.error) throw extRes.error;
-      setSupervisors(facRes.data || []);
-      setExternalEvaluators(extRes.data || []);
-    } catch (error) {
-      console.error("Error fetching supervisors/evaluators:", error);
-    }
-  }, [profile?.department_id, profile?.university_id]);
-
-  useEffect(() => {
-    fetchSupervisors();
-  }, [fetchSupervisors]);
+  // Supervisor/evaluator fetching removed — DC no longer assigns
+  // supervisors through the Programs page.
 
   // Fetch programs
   const fetchPrograms = useCallback(async () => {
@@ -229,16 +182,11 @@ export default function ProgramsPage() {
         is_active: formData.is_active,
       };
 
-      // On CREATE: include PC credentials and clear supervisor defaults
+      // On CREATE: include PC credentials (supervisor/evaluator removed from DC scope)
       if (!editingProgram) {
         programPayload.coordinator_full_name = formData.coordinator_full_name;
         programPayload.coordinator_email = formData.coordinator_email;
         programPayload.coordinator_password = formData.coordinator_password;
-        programPayload.default_faculty_supervisor_id = "";
-        programPayload.default_external_evaluator_id = "";
-      } else {
-        programPayload.default_faculty_supervisor_id = formData.default_faculty_supervisor_id || null;
-        programPayload.default_external_evaluator_id = formData.default_external_evaluator_id || null;
       }
 
       const url = "/api/programs";
@@ -315,8 +263,6 @@ export default function ProgramsPage() {
       name: program.name,
       code: program.code,
       description: program.description || "",
-      default_faculty_supervisor_id: program.default_faculty_supervisor_id || "",
-      default_external_evaluator_id: program.default_external_evaluator_id || "",
       is_active: program.is_active,
       coordinator_full_name: "",
       coordinator_email: "",
@@ -326,34 +272,7 @@ export default function ProgramsPage() {
     setIsDialogOpen(true);
   };
 
-  // Get the supervisor display name for a program.
-  // Tries the joined `supervisor` object first (from the API), then
-  // falls back to looking up the supervisors list we fetched.
-  const supervisorNameFor = (program: Program): string | null => {
-    if (program.supervisor?.full_name) return program.supervisor.full_name;
-    if (program.supervisor?.email) return program.supervisor.email;
-    if (program.default_faculty_supervisor_id) {
-      const sup = supervisors.find(
-        (s) => s.user_id === program.default_faculty_supervisor_id
-      );
-      if (sup) return sup.full_name || sup.email;
-    }
-    return null;
-  };
-
-  // Get the external evaluator display name for a program.
-  // Same lookup pattern as supervisorNameFor.
-  const externalEvaluatorNameFor = (program: Program): string | null => {
-    if (program.external_evaluator?.full_name) return program.external_evaluator.full_name;
-    if (program.external_evaluator?.email) return program.external_evaluator.email;
-    if (program.default_external_evaluator_id) {
-      const ev = externalEvaluators.find(
-        (s) => s.user_id === program.default_external_evaluator_id
-      );
-      if (ev) return ev.full_name || ev.email;
-    }
-    return null;
-  };
+  // Supervisor/evaluator display helpers removed from DC Programs page.
 
   return (
     <div className="space-y-6">
@@ -430,62 +349,7 @@ export default function ProgramsPage() {
                 {/* Duration (weeks) field REMOVED — programs no longer have
                     a fixed week count per InternHub spec (migration 0076). */}
 
-                {editingProgram ? (
-                  // EDIT mode: show dropdowns for both the default
-                  // faculty supervisor AND the default external
-                  // evaluator. Either can be left "None assigned".
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="supervisor">Assign Default Faculty Supervisor</Label>
-                      <Select
-                        value={formData.default_faculty_supervisor_id || "__none__"}
-                        onValueChange={(value) =>
-                          setFormData({
-                            ...formData,
-                            default_faculty_supervisor_id:
-                              value === "__none__" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="supervisor">
-                          <SelectValue placeholder="Select a faculty supervisor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">No supervisor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Default faculty supervisor for students in this program.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="externalEvaluator">Assign Default External Evaluator</Label>
-                      <Select
-                        value={formData.default_external_evaluator_id || "__none__"}
-                        onValueChange={(value) =>
-                          setFormData({
-                            ...formData,
-                            default_external_evaluator_id:
-                              value === "__none__" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="externalEvaluator">
-                          <SelectValue placeholder="Select an external evaluator" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">No evaluator</SelectItem>
-                          {externalEvaluators.map((ev) => (
-                            <SelectItem key={ev.user_id} value={ev.user_id}>
-                              {ev.full_name || ev.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                ) : (
+                {editingProgram ? null : (
                   // CREATE mode: collect Program Coordinator credentials.
                   // Per InternHub spec, the Department Coordinator provides
                   // the PC's name, email, and password when creating a program.
@@ -581,36 +445,8 @@ export default function ProgramsPage() {
                       </p>
                     </div>
 
-                    {/* Optional external evaluator picker on create.
-                        The evaluator must already exist (created via the
-                        Supervisors page). If none exists yet, the
-                        coordinator can still create the program and add
-                        the evaluator later via Edit. */}
-                    <div className="space-y-2">
-                      <Label htmlFor="externalEvaluatorCreate">Assign Default External Evaluator (optional)</Label>
-                      <Select
-                        value={formData.default_external_evaluator_id || "__none__"}
-                        onValueChange={(value) =>
-                          setFormData({
-                            ...formData,
-                            default_external_evaluator_id:
-                              value === "__none__" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger id="externalEvaluatorCreate">
-                          <SelectValue placeholder="Select an external evaluator" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">No evaluator</SelectItem>
-                          {externalEvaluators.map((ev) => (
-                            <SelectItem key={ev.user_id} value={ev.user_id}>
-                              {ev.full_name || ev.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Supervisor/evaluator assignment removed from DC Programs.
+                        Supervisors are assigned through the Students page. */}
                   </div>
                 )}
 
