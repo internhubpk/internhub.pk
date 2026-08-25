@@ -7,6 +7,8 @@ import type { ApiResponse } from "@/types";
 //   Returns the authenticated student's weekly logs (newest first), with
 //   the student's program / department / registration no joined in so the
 //   UI can render the universal report header without an extra round-trip.
+//   Also returns holidays for the student's university and daily entries
+//   for each log.
 // ============================================================================
 export async function GET(request: NextRequest) {
   try {
@@ -79,6 +81,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Fetch daily entries for ALL of the student's logs in a single query.
+    const logIds = (logs || []).map((l: any) => l.id);
+    let dailyEntriesMap: Record<string, any[]> = {};
+    if (logIds.length > 0) {
+      const { data: allDailyEntries } = await supabase
+        .from("weekly_log_daily_entries")
+        .select("id, weekly_log_id, day_of_week, entry_date, tasks_performed, hours_worked, is_holiday, notes")
+        .in("weekly_log_id", logIds)
+        .order("day_of_week", { ascending: true });
+
+      if (allDailyEntries) {
+        for (const de of allDailyEntries) {
+          const wlId = (de as any).weekly_log_id;
+          if (!dailyEntriesMap[wlId]) dailyEntriesMap[wlId] = [];
+          dailyEntriesMap[wlId].push(de);
+        }
+      }
+    }
+
+    // Attach daily entries to each log.
+    const logsWithEntries = (logs || []).map((log: any) => ({
+      ...log,
+      daily_entries: dailyEntriesMap[log.id] || [],
+    }));
+
     // Profile with program / department / university joins for the form's
     // auto-populated header.
     const { data: profile } = await supabase
@@ -92,6 +119,7 @@ export async function GET(request: NextRequest) {
         student_id_number,
         department_id,
         program_id,
+        university_id,
         departments:department_id ( id, name, code ),
         programs:program_id ( id, name, code ),
         universities:university_id ( id, name, slug, logo_url )
@@ -102,24 +130,18 @@ export async function GET(request: NextRequest) {
 
     // The canonical student_id_number (e.g. "FA21-BSCS-001") lives on the
     // `students` table — the coordinator sets it via the Add Student dialog.
-    // `profiles.student_id_number` is sometimes NULL for legacy accounts.
-    // Fall back to the students table so the report header always shows the
-    // registration number the coordinator assigned.
     const { data: studentRow } = await supabase
       .from("students")
       .select("student_id_number, program_id, department_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // Merge: prefer profiles.student_id_number, fall back to students.student_id_number.
     const profileWithRegNo = {
       ...(profile as any),
       student_id_number:
         (profile as any)?.student_id_number ||
         studentRow?.student_id_number ||
         null,
-      // If profile.program_id is null but students.program_id is set, use it
-      // so the program checkboxes can still highlight the right one.
       program_id:
         (profile as any)?.program_id ||
         studentRow?.program_id ||
@@ -130,8 +152,7 @@ export async function GET(request: NextRequest) {
         null,
     };
 
-    // Active internship — used by the form to derive week_number bounds
-    // and the host org / supervisor name.
+    // Active internship
     const { data: activeInternship } = await supabase
       .from("student_internships")
       .select(
@@ -155,8 +176,25 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    // List all programs in the student's department so the form can render
-    // the program checkboxes (matching the PDF layout: CS / SE / AI / Robotics & AI).
+    // Fetch holidays for the student's university (next 90 days) so the UI
+    // can mark holidays in the day-by-day form.
+    const universityId = (profile as any)?.university_id;
+    let holidays: any[] = [];
+    if (universityId) {
+      const today = new Date().toISOString().slice(0, 10);
+      const threeMonthsLater = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data: holidaysData } = await supabase
+        .from("holidays")
+        .select("id, name, holiday_date, end_date, is_active, restrict_submissions")
+        .eq("university_id", universityId)
+        .eq("is_active", true)
+        .gte("holiday_date", today)
+        .lte("holiday_date", threeMonthsLater)
+        .order("holiday_date", { ascending: true });
+      holidays = holidaysData || [];
+    }
+
+    // List all programs in the student's department.
     let programs: any[] = [];
     if (profileWithRegNo?.department_id) {
       const { data: programsData } = await supabase
@@ -171,10 +209,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json<ApiResponse<any>>({
       success: true,
       data: {
-        logs: logs || [],
+        logs: logsWithEntries,
         profile: profileWithRegNo,
         activeInternship,
         programs,
+        holidays,
       },
     });
   } catch (error: any) {
@@ -188,8 +227,10 @@ export async function GET(request: NextRequest) {
 
 // ============================================================================
 // POST /api/student/weekly-logs
-//   Create a new weekly log. Auto-fills program_name + department_name from
-//   the student's profile at submit time (snapshot for stable report data).
+//   Create a new weekly log with day-by-day daily entries.
+//   Flow: INSERT weekly_log (draft) → INSERT daily_entries → UPDATE status=submitted
+//   This 3-step flow is required because the wlde_insert_policy RLS only
+//   allows daily entry inserts when the parent log is in draft/revision_required.
 // ============================================================================
 export async function POST(request: NextRequest) {
   try {
@@ -230,6 +271,7 @@ export async function POST(request: NextRequest) {
         student_id_number,
         department_id,
         program_id,
+        university_id,
         departments:department_id ( name ),
         programs:program_id ( name )
         `
@@ -237,17 +279,12 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // The canonical student_id_number lives on the `students` table
-    // (set by the coordinator via the Add Student dialog). Fall back to it
-    // when profiles.student_id_number is NULL (legacy accounts).
     const { data: studentRow } = await supabase
       .from("students")
       .select("student_id_number, program_id, department_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // PostgREST may return an array for `programs:program_id` if the FK is
-    // ambiguous. Normalize to a single object.
     const profileRow = profile as any;
     const programName = Array.isArray(profileRow?.programs)
       ? profileRow.programs[0]?.name
@@ -259,6 +296,9 @@ export async function POST(request: NextRequest) {
       profileRow?.student_id_number ||
       studentRow?.student_id_number ||
       null;
+    const universityLogoUrl = Array.isArray(profileRow?.universities)
+      ? profileRow.universities[0]?.logo_url
+      : profileRow?.universities?.logo_url;
 
     const { data: activeInternship } = await supabase
       .from("student_internships")
@@ -277,33 +317,44 @@ export async function POST(request: NextRequest) {
       activeInternship?.faculty_supervisor_id ||
       null;
 
-    // Legacy tasks_completed text[] — keep in sync with new weekly_activities
-    // for back-compat with any code that reads the text[] column.
-    const weeklyActivities = Array.isArray(body.weekly_activities)
-      ? body.weekly_activities
-      : null;
-    const tasksArr: string[] = weeklyActivities
-      ? weeklyActivities
-          .map((r: any) => (r?.tasks ? String(r.tasks).trim() : ""))
-          .filter(Boolean)
-      : ((body.tasks_completed || "")
-          .split("\n")
-          .map((s: string) => s.trim())
-          .filter(Boolean) as string[]);
+    // Build daily entries from the request body.
+    // body.daily_entries is an array of:
+    //   { day_of_week: 1-7, entry_date: "YYYY-MM-DD", tasks_performed: string, hours_worked: number, is_holiday: boolean, notes?: string }
+    const dailyEntries = Array.isArray(body.daily_entries) ? body.daily_entries : [];
 
-    const totalHours = weeklyActivities
-      ? weeklyActivities.reduce(
-          (sum: number, r: any) => sum + (r?.hours ? Number(r.hours) || 0 : 0),
-          0
-        )
-      : body.hours_worked
-        ? Number(body.hours_worked)
-        : null;
+    // Build the legacy tasks_completed text[] from daily entries for back-compat.
+    const tasksArr: string[] = dailyEntries
+      .filter((de: any) => !de.is_holiday && de.tasks_performed?.trim())
+      .map((de: any) => `${de.tasks_performed.trim()} (${de.hours_worked || 0}h)`);
+
+    // Also accept the old-style tasks_completed textarea.
+    if (tasksArr.length === 0 && body.tasks_completed) {
+      const legacyTasks = (body.tasks_completed as string)
+        .split("\n")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      tasksArr.push(...legacyTasks);
+    }
+
+    // Compute total hours from daily entries.
+    const totalHours = dailyEntries.reduce(
+      (sum: number, de: any) => sum + (de.is_holiday ? 0 : Number(de.hours_worked) || 0),
+      0
+    );
+
+    // Legacy weekly_activities JSONB column — keep in sync.
+    const weeklyActivities = dailyEntries
+      .filter((de: any) => !de.is_holiday)
+      .map((de: any) => ({
+        tasks: de.tasks_performed || "",
+        hours: de.hours_worked || 0,
+      }));
 
     const supportingEvidence = Array.isArray(body.supporting_evidence)
       ? body.supporting_evidence
       : null;
 
+    // ---- STEP 1: Insert weekly_log with status "draft" ----
     const insertPayload: Record<string, any> = {
       student_user_id: user.id,
       internship_id: activeInternship?.internship_id || null,
@@ -321,18 +372,17 @@ export async function POST(request: NextRequest) {
       learnings: body.learning_outcomes || body.learnings || null,
       learning_outcomes: body.learning_outcomes || body.learnings || null,
       next_week_goals: body.next_week_goals || null,
-      hours_worked: totalHours,
+      hours_worked: totalHours || body.hours_worked || null,
       // New columns
       program_name: programName || body.program_name || null,
       department_name: departmentName || body.department_name || null,
       student_registration_no: studentRegistrationNo || body.student_registration_no || null,
-      university_logo_url: body.university_logo_url || null,
-      weekly_activities: weeklyActivities,
+      university_logo_url: universityLogoUrl || body.university_logo_url || null,
+      weekly_activities: weeklyActivities.length > 0 ? weeklyActivities : null,
       supporting_evidence: supportingEvidence,
       student_signature_url: body.student_signature_url || null,
       student_signed_at: body.student_signature_url ? new Date().toISOString() : null,
-      status: "submitted",
-      submitted_at: new Date().toISOString(),
+      status: "draft", // Start as draft so daily entries can be inserted (RLS)
     };
 
     const { data: inserted, error: insertError } = await supabase
@@ -344,29 +394,70 @@ export async function POST(request: NextRequest) {
     if (insertError) {
       if (insertError.code === "23505") {
         // Unique violation — update existing log for this week.
-        const { data: updated, error: updateError } = await supabase
+        // For upsert, we need to delete old daily entries and re-insert.
+        const { data: existingLog } = await supabase
           .from("weekly_logs")
-          .update({
-            ...insertPayload,
-            updated_at: new Date().toISOString(),
-          })
+          .select("id, status")
           .eq("student_user_id", user.id)
           .eq("week_start_date", body.week_start_date)
-          .select()
           .single();
 
-        if (updateError) {
-          console.error("[student/weekly-logs POST] upsert error:", updateError);
-          return NextResponse.json<ApiResponse<null>>(
-            { success: false, error: { code: "DB_ERROR", message: updateError.message } },
-            { status: 500 }
-          );
+        if (existingLog) {
+          // Delete old daily entries
+          await supabase
+            .from("weekly_log_daily_entries")
+          .delete()
+            .eq("weekly_log_id", existingLog.id);
+
+          // Temporarily set to draft so daily entries can be inserted
+          await supabase
+            .from("weekly_logs")
+            .update({ status: "draft" })
+            .eq("id", existingLog.id);
+
+          // Insert new daily entries
+          if (dailyEntries.length > 0) {
+            await supabase
+              .from("weekly_log_daily_entries")
+              .insert(
+                dailyEntries.map((de: any) => ({
+                  weekly_log_id: existingLog.id,
+                  day_of_week: Number(de.day_of_week),
+                  entry_date: de.entry_date,
+                  tasks_performed: de.tasks_performed || "",
+                  hours_worked: Number(de.hours_worked) || 0,
+                  is_holiday: !!de.is_holiday,
+                  notes: de.notes || null,
+                }))
+              );
+          }
+
+          // Update the weekly log with new data and set status to submitted
+          const { data: updated, error: updateError } = await supabase
+            .from("weekly_logs")
+            .update({
+              ...insertPayload,
+              status: "submitted",
+              submitted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingLog.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error("[student/weekly-logs POST] upsert error:", updateError);
+            return NextResponse.json<ApiResponse<null>>(
+              { success: false, error: { code: "DB_ERROR", message: updateError.message } },
+              { status: 500 }
+            );
+          }
+          return NextResponse.json<ApiResponse<any>>({
+            success: true,
+            data: updated,
+            message: "Weekly log updated (existing entry for this week was replaced).",
+          });
         }
-        return NextResponse.json<ApiResponse<any>>({
-          success: true,
-          data: updated,
-          message: "Weekly log updated (existing entry for this week was replaced).",
-        });
       }
 
       console.error("[student/weekly-logs POST] insert error:", insertError);
@@ -376,31 +467,98 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Notify the supervisor(s) — best-effort. Uses the shared sendNotification
-    // helper which also fires a web push notification to subscribed devices.
-    if (supervisorId) {
-      const weekLabel = new Date(body.week_start_date).toLocaleDateString();
-      const { sendNotification } = await import("@/lib/notifications");
-      await sendNotification(supabase, {
-        userId: supervisorId,
-        senderId: user.id,
-        category: "evaluation",
-        priority: "medium",
-        title: "New Weekly Log Submitted",
-        message: `Your student ${profile?.full_name || ""} submitted a weekly log for the week of ${weekLabel}. Please review and sign.`,
-        actionUrl: "/site-supervisor/weekly-logs",
-        metadata: {
-          type: "weekly_log_submitted",
-          log_id: inserted?.id,
-          student_user_id: user.id,
-          week_start_date: body.week_start_date,
-          sent_by: "student",
-        },
+    // ---- STEP 2: Insert daily entries ----
+    if (dailyEntries.length > 0) {
+      const dailyInsertPayload = dailyEntries.map((de: any) => ({
+        weekly_log_id: inserted.id,
+        day_of_week: Number(de.day_of_week),
+        entry_date: de.entry_date,
+        tasks_performed: de.tasks_performed || "",
+        hours_worked: Number(de.hours_worked) || 0,
+        is_holiday: !!de.is_holiday,
+        notes: de.notes || null,
+      }));
+
+      const { error: deError } = await supabase
+        .from("weekly_log_daily_entries")
+        .insert(dailyInsertPayload);
+
+      if (deError) {
+        console.error("[student/weekly-logs POST] daily entries insert error:", deError);
+        // Non-fatal: the weekly_log is already created. Daily entries can be
+        // added later. Log the error but don't fail the whole request.
+      }
+    }
+
+    // ---- STEP 3: Update status to "submitted" ----
+    const { data: finalLog, error: statusUpdateError } = await supabase
+      .from("weekly_logs")
+      .update({
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", inserted.id)
+      .select()
+      .single();
+
+    if (statusUpdateError) {
+      console.error("[student/weekly-logs POST] status update error:", statusUpdateError);
+      // The log is still in draft status — return it with a warning.
+      return NextResponse.json<ApiResponse<any>>({
+        success: true,
+        data: inserted,
+        message: "Weekly log created but could not be marked as submitted. It is in draft status.",
+        warning: "status_update_failed",
       });
     }
 
+    // Notify the supervisor(s) — best-effort.
+    if (supervisorId) {
+      const weekLabel = new Date(body.week_start_date).toLocaleDateString();
+      try {
+        const { sendNotification } = await import("@/lib/notifications");
+        await sendNotification(supabase, {
+          userId: supervisorId,
+          senderId: user.id,
+          category: "evaluation",
+          priority: "medium",
+          title: "New Weekly Log Submitted",
+          message: `Your student ${profile?.full_name || ""} submitted a weekly log for the week of ${weekLabel}. Please review and sign.`,
+          actionUrl: "/site-supervisor/weekly-logs",
+          metadata: {
+            type: "weekly_log_submitted",
+            log_id: finalLog?.id,
+            student_user_id: user.id,
+            week_start_date: body.week_start_date,
+            sent_by: "student",
+          },
+        });
+      } catch (notifErr) {
+        console.warn("[student/weekly-logs POST] notification error:", notifErr);
+      }
+    }
+
+    // Fetch the daily entries we just inserted to return them.
+    let returnedDailyEntries: any[] = [];
+    if (dailyEntries.length > 0) {
+      const { data: fetchedEntries } = await supabase
+        .from("weekly_log_daily_entries")
+        .select("id, weekly_log_id, day_of_week, entry_date, tasks_performed, hours_worked, is_holiday, notes")
+        .eq("weekly_log_id", finalLog?.id || inserted.id)
+        .order("day_of_week", { ascending: true });
+      returnedDailyEntries = fetchedEntries || [];
+    }
+
     return NextResponse.json<ApiResponse<any>>(
-      { success: true, data: inserted, message: "Weekly log submitted." },
+      {
+        success: true,
+        data: {
+          ...(finalLog || inserted),
+          daily_entries: returnedDailyEntries,
+        },
+        message: "Weekly log submitted.",
+      },
       { status: 201 }
     );
   } catch (error: any) {
