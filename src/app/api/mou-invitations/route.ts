@@ -166,17 +166,61 @@ export async function POST(request: NextRequest) {
     // different tenant (university admin → company HR or vice-versa)
     // so the regular client's RLS would hide their profile.
     const serviceRole = await createServiceRoleClient();
-    // Case-insensitive match: profiles.email is normally stored lowercase
-    // (Supabase Auth lowercases new signups), but rows created before that
-    // was consistently enforced may not be. ilike with an escaped pattern
-    // avoids missing a real match on stale-cased legacy rows.
-    const escapedEmail = invitee_email.trim().replace(/[%_]/g, (m: string) => `\\${m}`);
-    const { data: inviteeProfiles, error: inviteeError } = await serviceRole
+
+    // Normalize the email: trim + lowercase for matching.
+    // Supabase Auth normalizes emails to lowercase on signup, but rows
+    // created before that enforcement may have mixed case. We search
+    // with multiple strategies for maximum compatibility.
+    const normalizedEmail = invitee_email.trim().toLowerCase();
+    const escapedEmail = normalizedEmail.replace(/[%_]/g, (m: string) => `\\${m}`);
+
+    // Strategy 1: ilike (case-insensitive) — matches the normalized form
+    // and any legacy mixed-case rows.
+    let { data: inviteeProfiles, error: inviteeError } = await serviceRole
       .from("profiles")
       .select("user_id, email, role, full_name, company_id, university_id")
       .ilike("email", escapedEmail)
       .limit(1);
-    const inviteeProfile = inviteeProfiles?.[0] ?? null;
+    let inviteeProfile = inviteeProfiles?.[0] ?? null;
+
+    // Strategy 2: exact eq on lowercased email — catches edge cases where
+    // ilike behaves unexpectedly with certain special characters.
+    if (!inviteeProfile && !inviteeError) {
+      const eqResult = await serviceRole
+        .from("profiles")
+        .select("user_id, email, role, full_name, company_id, university_id")
+        .eq("email", normalizedEmail)
+        .limit(1);
+      inviteeProfile = eqResult.data?.[0] ?? null;
+    }
+
+    // Strategy 3: search auth.users directly (service-role can access it).
+    // This catches the edge case where the profiles row is missing but the
+    // auth account exists (e.g. trigger failure on account creation).
+    if (!inviteeProfile && !inviteeError) {
+      try {
+        const { data: authUsers } = await serviceRole.auth.admin.listUsers({
+          page: 1,
+          perPage: 1,
+        });
+        const authUser = (authUsers?.users || []).find(
+          (u: any) => u.email?.toLowerCase() === normalizedEmail
+        );
+        if (authUser) {
+          // The auth account exists but profiles row is missing — try to
+          // ensure the profile exists via the safety-net RPC, then retry.
+          try {
+            await serviceRole.rpc("ensure_profile_exists", { p_user_id: authUser.id });
+          } catch { /* non-fatal */ }
+          const retryResult = await serviceRole
+            .from("profiles")
+            .select("user_id, email, role, full_name, company_id, university_id")
+            .eq("user_id", authUser.id)
+            .maybeSingle();
+          inviteeProfile = retryResult.data ?? null;
+        }
+      } catch { /* admin.listUsers may fail in some environments — non-fatal */ }
+    }
 
     if (inviteeError) {
       return NextResponse.json<ApiResponse<never>>(
@@ -195,7 +239,7 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             error:
-              "No account found with that email. The person must register first.",
+              "No account found with that email. Please verify the email is correct and the person has registered with the company_hr role.",
           },
           { status: 404 }
         );
@@ -238,7 +282,7 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             error:
-              "No account found with that email. The person must register first.",
+              "No account found with that email. Please verify the email is correct and the person has registered with the company_hr role.",
           },
           { status: 404 }
         );

@@ -616,13 +616,22 @@ export async function PUT(request: NextRequest) {
     }
 
     // Mirror onto student_internships using the role-appropriate column.
+    // Use the SERVICE-ROLE adminClient (same as POST handler) to bypass
+    // RLS and avoid the mirror write silently failing.
     const putMirrorColumn =
       supervisor.type === "external"
         ? "external_evaluator_id"
         : supervisor.type === "faculty"
           ? "faculty_supervisor_id"
           : "site_supervisor_id";
-    const { data: putMirrorRows, error: putMirrorError } = await supabase
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const putAdminClient = supabaseUrl && serviceRoleKey?.trim()
+      ? createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+      : supabase;
+
+    const { data: putMirrorRows, error: putMirrorError } = await putAdminClient
       .from("student_internships")
       .update({ [putMirrorColumn]: new_supervisor_id, updated_at: new Date().toISOString() })
       .eq("id", si.id)

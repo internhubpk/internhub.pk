@@ -382,7 +382,7 @@ function LoginForm() {
       // preview URL), we redirect them to their own tenant's subdomain.
       //
       // URL construction priority:
-      //   1. JWT app_metadata.tenant_domain  (e.g. "myu.xirea.tech")
+      //   1. JWT app_metadata.tenant_domain  (e.g. "myu.careerstep.tech")
       //      — set by migration 0038, always correct, hosting-agnostic.
       //   2. DB lookup of universities.domain for the user's university_id
       //      — fallback when the JWT is stale (pre-0038 backfill).

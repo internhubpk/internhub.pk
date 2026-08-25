@@ -8,10 +8,10 @@
  *    links (Getting Started / Student User Manual / Company HR Guide /
  *    University Admin Guide). All four were dead `href="#"` anchors that
  *    did nothing except append `#` to the URL. When a tenant user (e.g.
- *    on myu.xirea.tech) clicked them, the address bar became
- *    `myu.xirea.tech/support#`, which is why those URLs appeared in
+ *    on myu.careerstep.tech) clicked them, the address bar became
+ *    `myu.careerstep.tech/support#`, which is why those URLs appeared in
  *    production logs. A later revision re-pointed all four links to
- *    `https://myu.xirea.tech/support#` — that is still wrong because
+ *    `https://myu.careerstep.tech/support#` — that is still wrong because
  *    (a) it links the main-platform support page to a single tenant's
  *    domain, and (b) the URL itself is a no-op fragment, not real docs.
  *    The entire Documentation card has therefore been removed. The

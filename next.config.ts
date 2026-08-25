@@ -28,11 +28,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: pkg.version || "0.0.0",
   },
   allowedDevOrigins: [
-    "myu.xirea.tech",
-    "iiui.xirea.tech",
     "careerstep.tech",
-    "myu.xirea.tech:3000",
-    "iiui.xirea.tech:3000",
     "careerstep.tech:3000",
   ],
   // PWA: add manifest headers so /manifest.webmanifest is served with the

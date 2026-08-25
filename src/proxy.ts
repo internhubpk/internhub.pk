@@ -195,7 +195,7 @@ function getTenantSlugFromUser(user: any): string | null {
 }
 
 /**
- * Extract tenant_domain (e.g. "myu.xirea.tech") from the JWT app_metadata.
+ * Extract tenant_domain (e.g. "myu.careerstep.tech") from the JWT app_metadata.
  * SECURITY: app_metadata only — user_metadata is user-writable (migration 0084).
  */
 function getTenantDomainFromUser(user: any): string | null {
@@ -266,7 +266,7 @@ function buildTenantRedirectUrl(
   const hostWithoutPort = hostname.split(":")[0];
 
   // Determine the target hostname. Priority:
-  //   1. tenantDomain (from JWT app_metadata, e.g. "myu.xirea.tech") —
+  //   1. tenantDomain (from JWT app_metadata, e.g. "myu.careerstep.tech") —
   //      always correct, hosting-agnostic. Set by migration 0038.
   //   2. <tenantSlug>.<apex> — only when the current hostname is NOT on
   //      an infra domain (vercel.app etc.). On infra domains the leftmost
@@ -480,7 +480,7 @@ export async function proxy(request: NextRequest) {
       // Use the Host header (set by the browser) instead of nextUrl.hostname,
       // because Next.js dev/start server normalizes nextUrl.hostname to
       // "localhost" even when the browser requested a different host (e.g.
-      // myu.xirea.tech:3000 via /etc/hosts or curl --resolve). In production
+      // myu.careerstep.tech:3000 via /etc/hosts or curl --resolve). In production
       // behind a proper reverse proxy, both would be the same.
       const hostHeader = request.headers.get("host") || request.nextUrl.hostname;
       const currentSubdomain = getCurrentSubdomain(hostHeader);
