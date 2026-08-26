@@ -44,9 +44,12 @@ export async function POST(
       );
     }
 
-    if (!file.type.startsWith("image/")) {
+    // Only PNG/JPEG logos are accepted: the generated Word document embeds
+    // the logo as a raster image part — SVG/WebP bytes previously produced
+    // corrupted .docx files that Word refused to open.
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "File must be an image" } },
+        { success: false, error: { code: "VALIDATION_ERROR", message: "Logo must be a PNG or JPG image" } },
         { status: 400 }
       );
     }
@@ -82,7 +85,9 @@ export async function POST(
     // ON CONFLICT path trips an RLS "new row violates row-level security
     // policy" error on this bucket's storage policies (verified live: the
     // same plain INSERT succeeds while the upsert variant is denied).
-    const ext = file.name.split(".").pop() || "png";
+    // Normalize the extension from the MIME type (never trust the filename
+    // extension — "logo.svg.png" with SVG bytes would corrupt the docx).
+    const ext = file.type === "image/jpeg" ? "jpeg" : "png";
     const filePath = `${user.id}/weekly_log_logo_${logId}_${Date.now()}.${ext}`;
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);

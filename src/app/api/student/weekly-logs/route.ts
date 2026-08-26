@@ -425,16 +425,46 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       if (insertError.code === "23505") {
-        // Unique violation — update existing log for this week.
-        // For upsert, we need to delete old daily entries and re-insert.
+        // Unique violation on (student_user_id, week_start_date) — a log for
+        // these dates already exists.
+        //
+        // OVERWRITE GUARD (bug fix 2026-08-26 — "generating a log deletes the
+        // other log"): the old flow ALWAYS replaced the existing row. When the
+        // form defaulted every submission's dates to the CURRENT calendar
+        // week, each new week number silently deleted the previous week's
+        // submission. Now a replacement only happens when the week NUMBER
+        // matches too (a genuine resubmission of the same week); a different
+        // week number on the same dates is rejected with 409 so the student
+        // can fix the dates instead of losing data.
         const { data: existingLog } = await supabase
           .from("weekly_logs")
-          .select("id, status")
+          .select("id, status, week_number")
           .eq("student_user_id", user.id)
           .eq("week_start_date", body.week_start_date)
-          .single();
+          .maybeSingle();
 
         if (existingLog) {
+          const submittedWeekNumber = body.week_number ? Number(body.week_number) : null;
+          const existingWeekNumber = existingLog.week_number ?? null;
+
+          if (
+            submittedWeekNumber !== null &&
+            existingWeekNumber !== null &&
+            submittedWeekNumber !== existingWeekNumber
+          ) {
+            return NextResponse.json<ApiResponse<null>>(
+              {
+                success: false,
+                error: {
+                  code: "WEEK_DATE_CONFLICT",
+                  message: `These dates (${body.week_start_date} to ${body.week_end_date}) are already used by your Week ${existingWeekNumber} log. Change the week dates so Week ${submittedWeekNumber} has its own date range — existing submissions are never deleted.`,
+                },
+              },
+              { status: 409 }
+            );
+          }
+
+          // Same week number + same start date = legitimate resubmission.
           // ORDER MATTERS. The weekly_log_daily_entries RLS policies
           // (wlde_delete_policy / wlde_insert_policy) only allow
           // delete/insert while the parent log's status is 'draft' or

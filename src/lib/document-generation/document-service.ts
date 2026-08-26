@@ -554,11 +554,16 @@ async function getTemplatePath(): Promise<string> {
 
 /**
  * Escape text for safe insertion into Word XML.
- * Replaces & < > " ' with their entity equivalents.
+ * Replaces & < > " ' with their entity equivalents and strips characters
+ * that are illegal in XML 1.0 (control chars other than tab/newline/CR —
+ * these commonly arrive via copy-paste from Word/PDFs and make Word refuse
+ * to open the file with a "corrupted" dialog).
  */
 function escapeXml(text: string): string {
   if (text == null) return "";
+  // eslint-disable-next-line no-control-regex
   return String(text)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -586,21 +591,62 @@ function formatDate(isoDate: string): string {
 /**
  * Build a Word XML <w:t> run with the given text.
  * If the text contains newlines, splits into multiple runs separated by <w:br/>.
+ * An optional <w:rPr> (run properties — font size / bold / spacing) is
+ * carried onto every run so injected text keeps the template's exact
+ * formatting ("the exact docx pattern").
  */
-function buildTextRun(text: string): string {
+function buildTextRun(text: string, rPr?: string): string {
   const escaped = escapeXml(text);
+  const rPrXml = rPr ? `<w:rPr>${rPr}</w:rPr>` : "";
   if (!escaped.includes("\n")) {
-    return `<w:r><w:t xml:space="preserve">${escaped}</w:t></w:r>`;
+    return `<w:r>${rPrXml}<w:t xml:space="preserve">${escaped}</w:t></w:r>`;
   }
   // Split on newlines and insert <w:br/> between.
   const parts = escaped.split("\n");
   const runs = parts
     .map((p, i) => {
       const br = i > 0 ? "<w:r><w:br/></w:r>" : "";
-      return `${br}<w:r><w:t xml:space="preserve">${p}</w:t></w:r>`;
+      return `${br}<w:r>${rPrXml}<w:t xml:space="preserve">${p}</w:t></w:r>`;
     })
     .join("");
   return runs;
+}
+
+/**
+ * LEAF-paragraph regex — matches a <w:p>...</w:p> that contains NO nested
+ * <w:p> opening tag.
+ *
+ * WHY THIS EXISTS (bug fix 2026-08-26 — "corrupted docx that won't open"):
+ * The template header stores the university/department names inside a
+ * TEXTBOX (<wps:txbx><w:txbxContent>), i.e. paragraphs NESTED inside the
+ * outer paragraph that carries the drawing. The previous naive regex
+ * `/<w:p\b[^>]*>[\s\S]*?<\/w:p>/` started at the OUTER paragraph's opening
+ * tag but stopped at the FIRST `</w:p>` — which belonged to the textbox's
+ * inner paragraph. Replacing that span beheaded the <w:drawing> element and
+ * left its closing tags orphaned → mismatched XML → Word declared the whole
+ * file corrupted. The leaf regex can never span a textbox boundary.
+ *
+ * (The `(?!<w:p\b)` lookahead correctly ignores `<w:pPr>` — no word
+ * boundary between "p" and "P".)
+ */
+const LEAF_P_REGEX = /<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g;
+
+/**
+ * Extract the run properties (<w:rPr>) that should be applied to injected
+ * text so it renders with the SAME formatting as the template text it
+ * replaces:
+ *   1. the first <w:r>'s <w:rPr> inside the paragraph (most faithful), or
+ *   2. the paragraph-mark <w:rPr> inside <w:pPr> (for empty paragraphs —
+ *      Word stores the intended formatting of the next typed run there), or
+ *   3. "" (fall back to style defaults).
+ */
+function extractRPrForInjection(fragmentXml: string): string {
+  // First <w:r>...<w:rPr>...</w:rPr>...<w:rPr is inside a run, not inside pPr.
+  const runMatch = fragmentXml.match(/<w:r\b[^>]*>\s*<w:rPr>([\s\S]*?)<\/w:rPr>/);
+  if (runMatch) return runMatch[1];
+  const pPrRPr = fragmentXml.match(/<w:pPr>[\s\S]*?<w:rPr>([\s\S]*?)<\/w:rPr>[\s\S]*?<\/w:pPr>/);
+  if (pPrRPr) return pPrRPr[1];
+  return "";
 }
 
 /**
@@ -654,10 +700,15 @@ function buildInlineImageXml(relId: string, widthPx: number, heightPx: number): 
 
 /**
  * Detect image format from a Buffer (PNG / JPEG / GIF / BMP).
- * Returns the ContentTypes extension + MIME type.
+ * Returns the ContentTypes extension + MIME type, or null when the magic
+ * bytes are not a Word-embeddable raster format (e.g. SVG or WebP text).
+ *
+ * NOTE: returning null (instead of the old "png" fallback) prevents
+ * non-PNG bytes from being written into a .png media part — which made
+ * Word refuse to open the generated document.
  */
-function detectImageFormat(buf: Buffer): { ext: string; mime: string } {
-  if (buf.length < 4) return { ext: "png", mime: "image/png" };
+function detectImageFormat(buf: Buffer): { ext: string; mime: string } | null {
+  if (!buf || buf.length < 4) return null;
   // PNG: 89 50 4E 47
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
     return { ext: "png", mime: "image/png" };
@@ -674,7 +725,7 @@ function detectImageFormat(buf: Buffer): { ext: string; mime: string } {
   if (buf[0] === 0x42 && buf[1] === 0x4d) {
     return { ext: "bmp", mime: "image/bmp" };
   }
-  return { ext: "png", mime: "image/png" };
+  return null;
 }
 
 /**
@@ -741,13 +792,16 @@ function injectValueAfterLabel(
   if (replaceWholeCell) {
     // Rebuild the entire value cell with a single paragraph holding the
     // value. The cell's <w:tcPr> (borders / shading / width) and the first
-    // paragraph's <w:pPr> (alignment) are preserved.
+    // paragraph's <w:pPr> (alignment) are preserved, and the injected run
+    // inherits the template's run formatting (font size etc.) so the cell
+    // looks exactly like the template intended.
     const tcPrMatch = nextTcMatch[0].match(/<w:tcPr>[\s\S]*?<\/w:tcPr>/);
     const tcPr = tcPrMatch ? tcPrMatch[0] : "";
-    const firstP = nextTcMatch[0].match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+    const firstP = nextTcMatch[0].match(new RegExp(LEAF_P_REGEX.source));
     const pPrMatch = firstP?.[0]?.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
     const pPr = pPrMatch ? pPrMatch[0] : "";
-    const newCell = `<w:tc>${tcPr}<w:p>${pPr}${buildTextRun(value)}</w:p></w:tc>`;
+    const rPr = extractRPrForInjection(firstP?.[0] || nextTcMatch[0]);
+    const newCell = `<w:tc>${tcPr}<w:p>${pPr}${buildTextRun(value, rPr)}</w:p></w:tc>`;
     const newXml =
       documentXml.slice(0, nextTcAbsIdx) +
       newCell +
@@ -769,10 +823,12 @@ function injectValueAfterLabel(
   const pAbsIdx = nextTcAbsIdx + nextTcMatch[0].indexOf(pMatch[0]);
   const pEndIdx = pAbsIdx + pMatch[0].length;
 
-  // Preserve the paragraph's <w:pPr> if present, drop everything else.
+  // Preserve the paragraph's <w:pPr> if present, drop everything else, and
+  // carry the paragraph-mark run formatting onto the injected run.
   const pPrMatch = pMatch[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
-  const newP = `<w:p>${pPr}${buildTextRun(value)}</w:p>`;
+  const rPr = extractRPrForInjection(pMatch[0]);
+  const newP = `<w:p>${pPr}${buildTextRun(value, rPr)}</w:p>`;
 
   const newXml =
     documentXml.slice(0, pAbsIdx) + newP + documentXml.slice(pEndIdx);
@@ -873,12 +929,20 @@ function populateWeeklyActivitiesTable(
   let xml = documentXml;
   let replacedCount = 0;
 
-  // Walk every <w:tr>...</w:tr> in the document. For each day (Mon-Fri),
+  // Walk every LEAF <w:tr>...</w:tr> in the document. For each day (Mon-Fri),
   // find the row whose FIRST cell's plain text equals the day name, then
   // mutate that row's 3 cells in place: (0) day label + date, (1) tasks,
   // (2) hours. This is far more reliable than the prior approach which
   // modified the day-label run in flight and then failed to locate the
   // adjacent tasks/hours cells.
+  //
+  // BUG FIX 2026-08-26 ("MondayAug 17, 2026Monday" duplication): the
+  // template's day cell contains TWO paragraphs — an empty vertical-spacing
+  // paragraph followed by the paragraph holding the "Monday" run. The old
+  // code replaced the FIRST paragraph (the spacer) and left the original
+  // day-name paragraph in place, duplicating the day name. We now replace
+  // the paragraph that actually CONTAINS the day-name text and keep the
+  // spacer, matching the template's layout exactly.
   for (const entry of dailyEntries) {
     const dayLabel = entry.dayName;
 
@@ -925,63 +989,49 @@ function populateWeeklyActivitiesTable(
     // Build the new (possibly modified) cell XMLs.
     const newRowParts: string[] = [];
 
-    // Cell 0: day label + date
-    {
-      const cell0Xml = cells[0].xml;
-      const pMatch = cell0Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
-      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
-      const newP = `<w:p>${pPr}${buildTextRun(dayLabelText)}</w:p>`;
-      let newCell0: string;
-      if (pMatch) {
-        const pStart = cell0Xml.indexOf(pMatch[0]);
-        const pEnd = pStart + pMatch[0].length;
-        newCell0 = cell0Xml.slice(0, pStart) + newP + cell0Xml.slice(pEnd);
-      } else {
-        const tcOpenEnd = cell0Xml.indexOf(">") + 1;
-        newCell0 = cell0Xml.slice(0, tcOpenEnd) + newP + cell0Xml.slice(tcOpenEnd);
+    // Replaces, inside ONE cell, the paragraph that contains the cell's
+    // text-bearing run (for the day cell) or the first paragraph (for the
+    // empty tasks/hours cells), preserving pPr + run formatting.
+    const replaceCellParagraph = (cellXml: string, text: string, requireExistingText: boolean): string => {
+      const leafRe = new RegExp(LEAF_P_REGEX.source, "g");
+      let pm: RegExpExecArray | null;
+      let targetP: RegExpExecArray | null = null;
+      while ((pm = leafRe.exec(cellXml)) !== null) {
+        if (extractCellPlainText(pm[0]).trim().length > 0) {
+          targetP = pm;
+          break;
+        }
       }
-      newRowParts.push(newCell0);
-      replacedCount++;
-    }
+      if (requireExistingText && !targetP) {
+        // Fall back to the first leaf paragraph.
+        const anyP = cellXml.match(new RegExp(LEAF_P_REGEX.source));
+        targetP = anyP ? { 0: anyP[0], index: anyP.index ?? 0 } as RegExpExecArray : null;
+      }
+      if (!targetP) {
+        const anyP = cellXml.match(new RegExp(LEAF_P_REGEX.source));
+        targetP = anyP ? { 0: anyP[0], index: anyP.index ?? 0 } as RegExpExecArray : null;
+      }
+      if (!targetP) return cellXml;
+      const pPr = targetP[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
+      const rPr = extractRPrForInjection(targetP[0]);
+      const newP = `<w:p>${pPr}${buildTextRun(text, rPr)}</w:p>`;
+      const pStart = cellXml.indexOf(targetP[0]);
+      const pEnd = pStart + targetP[0].length;
+      return cellXml.slice(0, pStart) + newP + cellXml.slice(pEnd);
+    };
 
-    // Cell 1: tasks performed
-    {
-      const cell1Xml = cells[1].xml;
-      const pMatch = cell1Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
-      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
-      const newP = `<w:p>${pPr}${buildTextRun(entry.tasksPerformed || "")}</w:p>`;
-      let newCell1: string;
-      if (pMatch) {
-        const pStart = cell1Xml.indexOf(pMatch[0]);
-        const pEnd = pStart + pMatch[0].length;
-        newCell1 = cell1Xml.slice(0, pStart) + newP + cell1Xml.slice(pEnd);
-      } else {
-        const tcOpenEnd = cell1Xml.indexOf(">") + 1;
-        newCell1 = cell1Xml.slice(0, tcOpenEnd) + newP + cell1Xml.slice(tcOpenEnd);
-      }
-      newRowParts.push(newCell1);
-      replacedCount++;
-    }
+    // Cell 0: day label + date (replace the paragraph holding "Monday").
+    newRowParts.push(replaceCellParagraph(cells[0].xml, dayLabelText, true));
+    replacedCount++;
 
-    // Cell 2: hours worked
-    {
-      const cell2Xml = cells[2].xml;
-      const pMatch = cell2Xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
-      const pPr = pMatch?.[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || "";
-      const hoursText = entry.isHoliday ? "—" : String(entry.hoursWorked || 0);
-      const newP = `<w:p>${pPr}${buildTextRun(hoursText)}</w:p>`;
-      let newCell2: string;
-      if (pMatch) {
-        const pStart = cell2Xml.indexOf(pMatch[0]);
-        const pEnd = pStart + pMatch[0].length;
-        newCell2 = cell2Xml.slice(0, pStart) + newP + cell2Xml.slice(pEnd);
-      } else {
-        const tcOpenEnd = cell2Xml.indexOf(">") + 1;
-        newCell2 = cell2Xml.slice(0, tcOpenEnd) + newP + cell2Xml.slice(tcOpenEnd);
-      }
-      newRowParts.push(newCell2);
-      replacedCount++;
-    }
+    // Cell 1: tasks performed.
+    newRowParts.push(replaceCellParagraph(cells[1].xml, entry.tasksPerformed || "", false));
+    replacedCount++;
+
+    // Cell 2: hours worked.
+    const hoursText = entry.isHoliday ? "—" : String(entry.hoursWorked || 0);
+    newRowParts.push(replaceCellParagraph(cells[2].xml, hoursText, false));
+    replacedCount++;
 
     // Rebuild the row: interleave the (possibly modified) cells with the
     // non-cell text fragments between them.
@@ -1020,8 +1070,10 @@ function injectParagraphAfterLabel(
   value: string
 ): { xml: string; replaced: boolean } {
   const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
-  // Walk every <w:p>...</w:p> chunk; locate the one whose plain text matches.
-  const pRegex = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+  // Walk every LEAF <w:p>...</w:p> chunk; locate the one whose plain text matches.
+  // (Leaf = contains no nested paragraph — see LEAF_P_REGEX for why this is
+  // critical around textbox content.)
+  const pRegex = new RegExp(LEAF_P_REGEX.source, "g");
   let match: RegExpExecArray | null;
   let labelPStartIdx = -1;
   let labelPEndIdx = -1;
@@ -1047,9 +1099,9 @@ function injectParagraphAfterLabel(
     return { xml: documentXml, replaced: false };
   }
 
-  // Find the NEXT <w:p>...</w:p> after the label paragraph.
+  // Find the NEXT LEAF <w:p>...</w:p> after the label paragraph.
   const afterLabel = documentXml.slice(labelPEndIdx);
-  const nextPMatch = afterLabel.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+  const nextPMatch = afterLabel.match(new RegExp(LEAF_P_REGEX.source));
   if (!nextPMatch) {
     // No next paragraph — append a new paragraph right after the label's paragraph
     const newPara = `<w:p>${buildTextRun(value)}</w:p>`;
@@ -1061,10 +1113,11 @@ function injectParagraphAfterLabel(
   const nextPStartIdx = labelPEndIdx + afterLabel.indexOf(nextPMatch[0]);
   const nextPEndIdx = nextPStartIdx + nextPMatch[0].length;
 
-  // Preserve the paragraph's <w:pPr> if present, drop everything else.
+  // Preserve the paragraph's <w:pPr> + run formatting, drop everything else.
   const pPrMatch = nextPMatch[0].match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
-  const newPara = `<w:p>${pPr}${buildTextRun(value)}</w:p>`;
+  const rPr = extractRPrForInjection(nextPMatch[0]);
+  const newPara = `<w:p>${pPr}${buildTextRun(value, rPr)}</w:p>`;
   return {
     xml: documentXml.slice(0, nextPStartIdx) + newPara + documentXml.slice(nextPEndIdx),
     replaced: true,
@@ -1213,44 +1266,56 @@ export async function populateWeeklyReportTemplate(
   let headerXmlWork = headerXml;
   const headerReplacedTags = new Set<string>();
 
-  // Walk every <w:p>...</w:p> in the header. Re-execute the regex after each
-  // replacement because indices shift.
-  let safetyCounter = 0;
-  while (safetyCounter++ < 200) {
-    const pRegex = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
-    let pMatch: RegExpExecArray | null;
-    let didReplace = false;
+  // Single pass over every LEAF paragraph (see LEAF_P_REGEX). A replace
+  // callback is used instead of the previous restart-after-every-replacement
+  // loop: restarting re-tested already-replaced paragraphs from the start,
+  // and because the injected university name ("International Islamic
+  // University Islamabad") itself matched one of the matchers, the loop
+  // burned all 200 safety iterations on the FIRST paragraph and never
+  // reached the remaining three (the fallback textbox copy kept the
+  // template's hardcoded "Ibadat International University Islamabad").
+  //
+  // FIT-TO-TEXTBOX scaling: the header textbox is a FIXED 329.45pt × 40.9pt
+  // (two lines: university name @18pt bold + department @14pt). A university
+  // name longer than the template's reference wraps to a second line and
+  // CLIPS the department line out of view. Replacements longer than their
+  // template reference therefore get their font size scaled down
+  // proportionally so each stays on one line — preserving the exact template
+  // layout for any university/department name.
+  const scaleHeaderRPr = (rPr: string, referenceLength: number, referenceSz: number, text: string): string => {
+    const len = Math.max(1, (text || "").trim().length);
+    if (len <= referenceLength) return rPr;
+    // 0.90 safety factor: bold proportional-width glyphs (capitals, wide
+    // letters) run wider than a strict char-count ratio suggests.
+    const scaled = Math.max(16, Math.floor((referenceSz * referenceLength * 0.9) / len));
+    if (/<w:sz w:val="\d+"\/>/.test(rPr)) {
+      return rPr.replace(/<w:sz w:val="\d+"\/>/g, `<w:sz w:val="${scaled}"/>`);
+    }
+    return `${rPr}<w:sz w:val="${scaled}"/>`;
+  };
 
-    while ((pMatch = pRegex.exec(headerXmlWork)) !== null) {
-      const pXml = pMatch[0];
+  {
+    const leafRe = new RegExp(LEAF_P_REGEX.source, "g");
+    headerXmlWork = headerXmlWork.replace(leafRe, (pXml: string) => {
       const plain = extractCellPlainText(pXml).replace(/\s+/g, " ").trim();
-      if (!plain) continue;
-
-      // Try each replacement matcher.
+      if (!plain) return pXml;
       for (const { match, replacement, tag } of headerReplacements) {
-        // Test against the whole plain text (for the strict matchers) OR
-        // search for the bracket-placeholder substring.
-        const isStrict = match.source.startsWith("^");
-        const matched = isStrict ? match.test(plain) : match.test(plain);
-        if (!matched) continue;
-
-        // Replace this paragraph's content: keep <w:pPr>, replace all
-        // <w:r>...</w:r> with a single new run containing the replacement.
+        if (!match.test(plain)) continue;
+        headerReplacedTags.add(tag);
+        // Keep <w:pPr>, replace all runs with one run carrying the original
+        // run formatting so the header keeps the template's exact look.
         const pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
         const pPr = pPrMatch ? pPrMatch[0] : "";
-        const newP = `<w:p>${pPr}${buildTextRun(replacement)}</w:p>`;
-
-        const pStart = pMatch.index;
-        const pEnd = pStart + pXml.length;
-        headerXmlWork =
-          headerXmlWork.slice(0, pStart) + newP + headerXmlWork.slice(pEnd);
-        headerReplacedTags.add(tag);
-        didReplace = true;
-        break; // re-execute the regex from start since indices shifted.
+        let rPr = extractRPrForInjection(pXml);
+        // Scale down the font so long names stay on one line inside the
+        // fixed-size header textbox (template references: university name =
+        // 41 chars @ sz 36, department = 27 chars @ sz 28).
+        const isUni = tag.startsWith("university_name");
+        rPr = scaleHeaderRPr(rPr, isUni ? 41 : 27, isUni ? 36 : 28, replacement || "");
+        return `<w:p>${pPr}${buildTextRun(replacement, rPr)}</w:p>`;
       }
-      if (didReplace) break;
-    }
-    if (!didReplace) break;
+      return pXml;
+    });
   }
 
   for (const tag of headerReplacedTags) {
@@ -1264,9 +1329,54 @@ export async function populateWeeklyReportTemplate(
   headerXml = headerXmlWork;
 
   // 5. Replace the university logo in word/media/image1.png.
-  if (data.universityLogoBuffer) {
-    zip.file("word/media/image1.png", data.universityLogoBuffer);
+  //
+  // FORMAT SAFETY (bug fix 2026-08-26 — "corrupted docx that won't open"):
+  // the template declares image1.png as image/png. Blindly overwriting it
+  // with JPEG/WebP/SVG bytes produced a file Word refuses to open. We now
+  // (a) detect the real format, (b) only embed Word-safe raster formats
+  // (PNG/JPEG/GIF/BMP), (c) for non-PNG formats write a NEW media part and
+  // repoint the header relationship + [Content_Types] entry, and (d) skip
+  // embedding entirely for anything else (keeping the template logo)
+  // rather than shipping a corrupt document.
+  const logoFmt = data.universityLogoBuffer
+    ? detectImageFormat(data.universityLogoBuffer)
+    : null;
+  const logoIsEmbeddable =
+    !!data.universityLogoBuffer &&
+    !!logoFmt &&
+    ["png", "jpeg", "gif", "bmp"].includes(logoFmt.ext);
+  if (data.universityLogoBuffer && logoIsEmbeddable && logoFmt) {
+    if (logoFmt.ext === "png") {
+      zip.file("word/media/image1.png", data.universityLogoBuffer);
+    } else {
+      // Write a new media part and repoint the header relationship.
+      const newMedia = `word/media/image1.${logoFmt.ext}`;
+      zip.file(newMedia, data.universityLogoBuffer);
+      zip.remove("word/media/image1.png");
+      const headerRelsFile = zip.file("word/_rels/header1.xml.rels");
+      if (headerRelsFile) {
+        let headerRelsXml = await headerRelsFile.async("string");
+        headerRelsXml = headerRelsXml.replace(
+          /Target="media\/image1\.png"/g,
+          `Target="media/image1.${logoFmt.ext}"`
+        );
+        zip.file("word/_rels/header1.xml.rels", headerRelsXml);
+      }
+      // Register the extension's content type (e.g. jpeg/gif/bmp).
+      let ctXml = await zip.file("[Content_Types].xml")!.async("string");
+      if (!ctXml.includes(`Extension="${logoFmt.ext}"`)) {
+        ctXml = ctXml.replace(
+          "</Types>",
+          `<Default Extension="${logoFmt.ext}" ContentType="${logoFmt.mime}"/></Types>`
+        );
+        zip.file("[Content_Types].xml", ctXml);
+      }
+    }
     imagesEmbedded.push("university_logo");
+  } else if (data.universityLogoBuffer) {
+    console.warn(
+      "[doc-gen] University logo is not a Word-embeddable raster image (PNG/JPEG/GIF/BMP) — keeping the template logo."
+    );
   }
 
   // 6. BODY: Inject student information into the table.
@@ -1322,40 +1432,67 @@ export async function populateWeeklyReportTemplate(
   // "Artificial Intelligence" / "Rob & AI"). We (a) write the student's
   // program into the FIRST option row and (b) DELETE the remaining option
   // rows so the generated document shows exactly one program value.
-  const programLabelPattern = /<w:t[^>]*>Program<\/w:t>[\s\S]*?(?=<w:tr|<\/w:tbl|<w:p)/;
-  if (programLabelPattern.test(documentXml)) {
-    // Find the next <w:tc> after "Program" label and replace its content.
-    const result = injectValueAfterLabel(documentXml, "Program", data.programName, true);
+  //
+  // BUG FIX 2026-08-26 ("the program should not be hardcoded"): the previous
+  // code GATED this injection behind a naive regex that required "Program"
+  // to live in a single <w:t> run. When the gate failed, the template's
+  // hardcoded option rows ("Computer Science" etc.) shipped unchanged in
+  // the generated report. The injection now runs unconditionally (the
+  // label-matching itself already handles split runs via cell-plain-text
+  // walking), always strips the extra option rows, and falls back to "—"
+  // so a hardcoded program can NEVER reach the output.
+  {
+    const programValue =
+      data.programName && String(data.programName).trim().length > 0
+        ? data.programName
+        : "—";
+    const result = injectValueAfterLabel(documentXml, "Program", programValue, true);
     if (result.replaced) {
       documentXml = removeProgramOptionRows(result.xml);
       fieldsPopulated.push("program");
+    } else {
+      // Even if the label cell moved/renamed, still strip the hardcoded
+      // option rows so they can never leak into the generated document.
+      documentXml = removeProgramOptionRows(documentXml);
     }
   }
 
   // 10. Inject signature images.
+  //      Format-guarded: a signature buffer that is not a Word-embeddable
+  //      raster image (PNG/JPEG/GIF/BMP) is skipped rather than written as
+  //      bogus PNG bytes (which corrupted the document).
   const newImageRels: Array<{ relId: string; buffer: Buffer; ext: string; mime: string }> = [];
+
+  const registerSignature = (
+    sigResult: { xml: string; relId?: string; imageAdded: boolean },
+    buffer: Buffer | null,
+    label: string
+  ): boolean => {
+    if (!sigResult.imageAdded || !sigResult.relId || !buffer) return false;
+    const fmt = detectImageFormat(buffer);
+    if (!fmt) {
+      console.warn(`[doc-gen] ${label} signature is not a raster image — skipping embed.`);
+      return false;
+    }
+    newImageRels.push({ relId: sigResult.relId, buffer, ext: fmt.ext, mime: fmt.mime });
+    return true;
+  };
 
   const sig1Result = appendSignatureAfterLabel(documentXml, "Student Signature", data.studentSignatureBuffer);
   documentXml = sig1Result.xml;
-  if (sig1Result.imageAdded && sig1Result.relId) {
-    const fmt = detectImageFormat(data.studentSignatureBuffer!);
-    newImageRels.push({ relId: sig1Result.relId, buffer: data.studentSignatureBuffer!, ext: fmt.ext, mime: fmt.mime });
+  if (registerSignature(sig1Result, data.studentSignatureBuffer, "Student")) {
     imagesEmbedded.push("student_signature");
   }
 
   const sig2Result = appendSignatureAfterLabel(documentXml, "Industry Supervisor", data.industrySupervisorSignatureBuffer);
   documentXml = sig2Result.xml;
-  if (sig2Result.imageAdded && sig2Result.relId) {
-    const fmt = detectImageFormat(data.industrySupervisorSignatureBuffer!);
-    newImageRels.push({ relId: sig2Result.relId, buffer: data.industrySupervisorSignatureBuffer!, ext: fmt.ext, mime: fmt.mime });
+  if (registerSignature(sig2Result, data.industrySupervisorSignatureBuffer, "Industry supervisor")) {
     imagesEmbedded.push("industry_supervisor_signature");
   }
 
   const sig3Result = appendSignatureAfterLabel(documentXml, "Faculty Supervisor", data.facultySupervisorSignatureBuffer);
   documentXml = sig3Result.xml;
-  if (sig3Result.imageAdded && sig3Result.relId) {
-    const fmt = detectImageFormat(data.facultySupervisorSignatureBuffer!);
-    newImageRels.push({ relId: sig3Result.relId, buffer: data.facultySupervisorSignatureBuffer!, ext: fmt.ext, mime: fmt.mime });
+  if (registerSignature(sig3Result, data.facultySupervisorSignatureBuffer, "Faculty supervisor")) {
     imagesEmbedded.push("faculty_supervisor_signature");
   }
 
@@ -1395,12 +1532,21 @@ export async function populateWeeklyReportTemplate(
   zip.file("word/document.xml", documentXml);
   zip.file("word/header1.xml", headerXml);
 
-  // 14. Re-zip and return the buffer.
+  // 14. Re-zip.
   const outputBuffer = await zip.generateAsync({
     type: "nodebuffer",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     compression: "DEFLATE",
   });
+
+  // 15. FINAL SAFETY NET — verify the produced document is structurally
+  //     valid BEFORE it is ever stored or delivered. A corrupted .docx
+  //     previously reached users ("file is corrupted, won't open") because
+  //     generation returned success based only on injection counts. We now
+  //     re-open the generated zip and XML-parse every part; any malformed
+  //     part aborts generation with a descriptive error instead of shipping
+  //     a broken file.
+  await validateDocxBuffer(outputBuffer);
 
   return {
     success: true,
@@ -1414,8 +1560,106 @@ export async function populateWeeklyReportTemplate(
   };
 }
 
-// Helper alias kept for back-compat (no longer used after the bug fix above).
-const newImageRelS: Array<{ relId: string; ext: string; mime: string }> = [];
+/**
+ * Validate that a generated .docx buffer is a well-formed OOXML package.
+ *
+ * Checks performed:
+ *   1. The buffer unzips as a ZIP archive.
+ *   2. Every XML part (document.xml, header1.xml, rels, [Content_Types].xml,
+ *      docProps, etc.) parses as well-formed XML.
+ *   3. word/document.xml exists.
+ *
+ * Throws a descriptive Error when validation fails so the calling API can
+ * return a 500 with a clear message instead of saving a corrupt file.
+ */
+async function validateDocxBuffer(buffer: Buffer): Promise<void> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch (err) {
+    throw new Error(`Generated document is not a valid ZIP/OOXML package: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const files = Object.keys(zip.files).filter((name) => !zip.files[name].dir);
+  if (!files.includes("word/document.xml")) {
+    throw new Error("Generated document is missing word/document.xml");
+  }
+
+  // Minimal well-formedness check: tag balance + entity/attribute sanity for
+  // every XML part. We use a lightweight scanner (regex-driven) instead of a
+  // full DOM parse to stay dependency-free in the Next.js runtime.
+  for (const name of files) {
+    if (!/\.(xml|rels)$/.test(name) && name !== "[Content_Types].xml") continue;
+    const content = await zip.files[name].async("string");
+    const problem = checkXmlWellFormed(content);
+    if (problem) {
+      throw new Error(
+        `Generated document part "${name}" is malformed: ${problem}`
+      );
+    }
+  }
+}
+
+/**
+ * Lightweight XML well-formedness scanner.
+ * Returns null when the fragment looks well-formed, or a description of the
+ * first problem found. Verifies:
+ *   - tags nest correctly (element name stack)
+ *   - no stray closing tags
+ *   - attributes are quoted
+ *   - text contains no raw '<'
+ * It is intentionally conservative: a false alarm fails generation loudly
+ * (preferred over shipping a corrupt docx).
+ */
+function checkXmlWellFormed(xml: string): string | null {
+  // Strip processing instructions (<?xml ...?>), comments (<!-- -->) and
+  // CDATA sections first — they are legal XML but confuse the tag scanner.
+  const stripped = xml
+    .replace(/<\?[\s\S]*?\?>/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+
+  const tagRe = /<\/?([A-Za-z_][\w.:-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g;
+  const stack: string[] = [];
+  let m: RegExpExecArray | null;
+  let lastIdx = 0;
+  while ((m = tagRe.exec(stripped)) !== null) {
+    // Raw "<" in text content between tags is illegal.
+    const between = stripped.slice(lastIdx, m.index);
+    const lt = between.indexOf("<");
+    if (lt !== -1) {
+      return `unexpected '<' in text content near offset ${lastIdx + lt}`;
+    }
+    lastIdx = m.index + m[0].length;
+
+    const isClose = m[0][1] === "/";
+    const name = m[1];
+    const attrs = m[2] || "";
+    if (!isClose) {
+      const selfClosed = m[0].endsWith("/>");
+      if (!selfClosed) {
+        if (!/^(?:[\w.:-]+\s*=\s*(?:"[^"]*"|'[^']*')|\s)*$/.test(attrs)) {
+          return `malformed attributes on <${name}>`;
+        }
+        stack.push(name);
+      }
+    } else {
+      const top = stack.pop();
+      if (!top || top !== name) {
+        return `mismatched closing tag </${name}> (expected </${top || "?"}>)`;
+      }
+    }
+  }
+  const tail = stripped.slice(lastIdx);
+  const lt = tail.indexOf("<");
+  if (lt !== -1) {
+    return `unexpected '<' in text content near offset ${lastIdx + lt}`;
+  }
+  if (stack.length > 0) {
+    return `unclosed element <${stack[stack.length - 1]}>`;
+  }
+  return null;
+}
 
 // ----------------------------------------------------------------------------
 // File Delivery

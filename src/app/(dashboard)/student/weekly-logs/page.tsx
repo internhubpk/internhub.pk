@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -175,6 +175,19 @@ export default function StudentWeeklyLogsPage() {
   const [challengesSolutions, setChallengesSolutions] = useState("");
   const [nextWeekGoals, setNextWeekGoals] = useState("");
 
+  // Internship dates (from the GET response) — used to derive each week's
+  // From/To dates from the week NUMBER so distinct weeks can never collide
+  // on the same week_start_date (the DB unique constraint that previously
+  // caused a new submission to silently REPLACE an earlier log).
+  const [internshipStartDate, setInternshipStartDate] = useState<string | null>(null);
+
+  // Live mirror of `logs` readable from effects that must NOT re-run when
+  // the logs refresh (the dialog-open effect below). Without the ref, a
+  // background refetch (e.g. Supabase TOKEN_REFRESHED → new user object →
+  // fetchWeeklyLogs) reset the ENTIRE form while the student was typing
+  // — losing every field, picked files included.
+  const logsRef = useRef<WeeklyLog[]>([]);
+
   // Word-report extras: university logo, supporting evidence, student signature.
   const [headerInfo, setHeaderInfo] = useState<ReportHeaderInfo | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -229,15 +242,57 @@ export default function StudentWeeklyLogsPage() {
     [isHolidayDate]
   );
 
+  // Regenerate the day rows whenever the selected week dates change — but
+  // PRESERVE anything the student already typed for dates that still exist
+  // (merging keeps tasks/hours across holiday re-detection and refetches;
+  // the old version wiped every typed entry on each regeneration).
   useEffect(() => {
     if (weekFromDate) {
-      setDailyEntries(generateDayRows(weekFromDate, weekToDate));
+      setDailyEntries((prev) => {
+        const fresh = generateDayRows(weekFromDate, weekToDate);
+        const prevByDate = new Map(prev.map((p) => [p.entry_date, p]));
+        return fresh.map((row) => {
+          const old = prevByDate.get(row.entry_date);
+          if (!old) return row;
+          return {
+            ...row,
+            tasks_performed: old.tasks_performed,
+            hours_worked: old.hours_worked,
+            notes: old.notes,
+          };
+        });
+      });
+    } else {
+      setDailyEntries([]);
     }
-  }, [weekFromDate, weekToDate, generateDayRows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekFromDate, weekToDate]);
+
+  // Derive the week's From/To dates from the week number + internship start
+  // date. Week N starts exactly (internshipStart + (N-1)·7 days), so every
+  // week number maps to a distinct date range — submitting Week 8 can never
+  // land on Week 7's dates (which used to overwrite/delete that log via the
+  // (student, week_start_date) unique constraint).
+  const applyWeekNumber = useCallback((n: number) => {
+    setWeekNumber(n);
+    if (internshipStartDate) {
+      const start = new Date(internshipStartDate + "T00:00:00");
+      start.setDate(start.getDate() + (Math.max(1, n) - 1) * 7);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 5);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      setWeekFromDate(fmt(start));
+      setWeekToDate(fmt(end));
+    }
+  }, [internshipStartDate]);
 
   // Pre-fill the dialog when it opens. The week number is a SUGGESTION only —
   // the student can freely type any week number (it is no longer hardcoded or
   // auto-locked to the calendar week of the chosen date).
+  //
+  // Runs ONLY on the open transition — it deliberately does NOT depend on
+  // `logs` (read via logsRef instead) so background refetches can never wipe
+  // an in-progress form.
   useEffect(() => {
     if (isDialogOpen) {
       const now = new Date();
@@ -248,15 +303,26 @@ export default function StudentWeeklyLogsPage() {
       const saturday = new Date(monday);
       saturday.setDate(monday.getDate() + 5);
       const fmt = (d: Date) => d.toISOString().slice(0, 10);
-      setWeekFromDate(fmt(monday));
-      setWeekToDate(fmt(saturday));
+      // Default dates: derived from the internship start when available,
+      // otherwise the current calendar week (the student can still edit them).
+      const currentLogs = logsRef.current;
+      const suggested = currentLogs.length > 0
+        ? Math.max(0, ...currentLogs.map((l) => l.week_number || 0)) + 1
+        : 1;
       setLearningOutcomes("");
       setChallengesSolutions("");
       setNextWeekGoals("");
-      // Suggest the next internship week (highest submitted week + 1).
-      const suggested = logs.length > 0
-        ? Math.max(0, ...logs.map((l) => l.week_number || 0)) + 1
-        : 1;
+      if (internshipStartDate) {
+        const start = new Date(internshipStartDate + "T00:00:00");
+        start.setDate(start.getDate() + (Math.max(1, suggested) - 1) * 7);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 5);
+        setWeekFromDate(fmt(start));
+        setWeekToDate(fmt(end));
+      } else {
+        setWeekFromDate(fmt(monday));
+        setWeekToDate(fmt(saturday));
+      }
       setWeekNumber(suggested);
       // Reset Word-report extras.
       setLogoFile(null);
@@ -266,12 +332,19 @@ export default function StudentWeeklyLogsPage() {
       setSignatureFile(null);
       setUploadStage("");
     }
-  }, [isDialogOpen, logs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen]);
 
+  // Fetch on login/logout only (user IDENTITY), not on every Supabase
+  // TOKEN_REFRESHED event — the auth provider emits a new `user` object on
+  // token refresh, which previously re-triggered this fetch mid-typing and
+  // (through the logs-dependent effects) reset the whole dialog form,
+  // including files the student had just attached.
   useEffect(() => {
-    if (!user) { setIsLoading(false); return; }
+    if (!user?.id) { setIsLoading(false); return; }
     fetchWeeklyLogs();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   async function fetchWeeklyLogs() {
     setIsLoading(true);
@@ -299,7 +372,19 @@ export default function StudentWeeklyLogsPage() {
             daily_entries: log.daily_entries || [],
           }))
         );
+        // Keep the ref in sync for effects that must not re-run on refetch.
+        logsRef.current = (json.data.logs || []).map((log: any) => ({
+          id: log.id,
+          week_number: log.week_number ?? null,
+          status: log.status || "draft",
+        }));
         setHolidays(json.data.holidays || []);
+
+        const ai = json.data.activeInternship;
+        const internship = ai && !Array.isArray(ai) ? ai.internships : null;
+        const internshipStart =
+          ai && !Array.isArray(ai) && ai.start_date ? String(ai.start_date).slice(0, 10) : null;
+        setInternshipStartDate(internshipStart);
 
         // Extract the read-only report header info (profile + active
         // internship) so the form can preview exactly what the generated
@@ -308,8 +393,6 @@ export default function StudentWeeklyLogsPage() {
         const uni = Array.isArray(p.universities) ? p.universities[0] : p.universities;
         const dept = Array.isArray(p.departments) ? p.departments[0] : p.departments;
         const prog = Array.isArray(p.programs) ? p.programs[0] : p.programs;
-        const ai = json.data.activeInternship;
-        const internship = ai && !Array.isArray(ai) ? ai.internships : null;
         const company =
           internship && !Array.isArray(internship) && internship.companies && !Array.isArray(internship.companies)
             ? internship.companies
@@ -344,8 +427,10 @@ export default function StudentWeeklyLogsPage() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("Invalid File", { description: "The university logo must be an image (PNG, JPG, SVG or WebP)." });
+    // Only PNG/JPEG can be embedded in the generated Word document — SVG and
+    // WebP uploads previously produced corrupted .docx files.
+    if (!["image/png", "image/jpeg"].includes(f.type)) {
+      toast.error("Invalid File", { description: "The university logo must be a PNG or JPG image (other formats cannot be embedded in the Word report)." });
       return;
     }
     if (f.size > 5 * 1024 * 1024) {
@@ -692,7 +777,7 @@ export default function StudentWeeklyLogsPage() {
                                   <Input
                                     id="wl-logo"
                                     type="file"
-                                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                                    accept="image/png,image/jpeg"
                                     className="hidden"
                                     onChange={handleLogoChange}
                                   />
@@ -725,11 +810,41 @@ export default function StudentWeeklyLogsPage() {
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                               <div className="space-y-1.5">
                                 <Label htmlFor="wl-from" className="text-sm font-medium">From</Label>
-                                <Input id="wl-from" type="date" value={weekFromDate} onChange={(e) => setWeekFromDate(e.target.value)} />
+                                <Input
+                                  id="wl-from"
+                                  type="date"
+                                  value={weekFromDate}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setWeekFromDate(v);
+                                    // Keep the range valid: if From moves past To
+                                    // (or onto it), slide To to From + 5 days so the
+                                    // week always spans Mon–Sat and the daily rows
+                                    // never silently disappear.
+                                    if (v && weekToDate && v >= weekToDate) {
+                                      const end = new Date(v + "T00:00:00");
+                                      end.setDate(end.getDate() + 5);
+                                      setWeekToDate(end.toISOString().slice(0, 10));
+                                    }
+                                  }}
+                                />
                               </div>
                               <div className="space-y-1.5">
                                 <Label htmlFor="wl-to" className="text-sm font-medium">To</Label>
-                                <Input id="wl-to" type="date" value={weekToDate} onChange={(e) => setWeekToDate(e.target.value)} />
+                                <Input
+                                  id="wl-to"
+                                  type="date"
+                                  value={weekToDate}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    // Keep the range valid: To can never precede From.
+                                    if (v && weekFromDate && v < weekFromDate) {
+                                      setWeekToDate(weekFromDate);
+                                    } else {
+                                      setWeekToDate(v);
+                                    }
+                                  }}
+                                />
                               </div>
                               <div className="space-y-1.5">
                                 <Label htmlFor="wl-week" className="text-sm font-medium">Week Number</Label>
@@ -739,11 +854,21 @@ export default function StudentWeeklyLogsPage() {
                                   min="1"
                                   step="1"
                                   value={weekNumber || ""}
-                                  onChange={(e) => setWeekNumber(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  onChange={(e) => applyWeekNumber(Math.max(1, parseInt(e.target.value, 10) || 1))}
                                 />
+                                {internshipStartDate ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    Dates auto-calculated from your internship start ({formatDate(internshipStartDate)}) — adjust if needed.
+                                  </p>
+                                ) : null}
                                 {logs.some((l) => l.week_number === weekNumber && l.status !== "draft") && (
                                   <p className="text-xs text-amber-600 dark:text-amber-400">
                                     You already submitted Week {weekNumber}. Submitting again for the same start date replaces that log.
+                                  </p>
+                                )}
+                                {logs.some((l) => l.week_number !== weekNumber && l.week_start_date === weekFromDate && l.status !== "draft") && (
+                                  <p className="text-xs text-destructive">
+                                    These dates are already used by Week {logs.find((l) => l.week_number !== weekNumber && l.week_start_date === weekFromDate)?.week_number}. Change the week number or dates so you don&rsquo;t overwrite it.
                                   </p>
                                 )}
                               </div>
@@ -1021,23 +1146,23 @@ export default function StudentWeeklyLogsPage() {
                   <Card className="transition-all hover:shadow-md">
                     <CardHeader className="pb-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <CardTitle className="text-lg">
+                        <div className="min-w-0">
+                          <CardTitle className="text-lg break-words">
                             {log.week_number ? ("Week " + log.week_number + " \u00B7 ") : ""}
                             {formatDate(log.week_start_date)}
                             {log.week_end_date ? (" \u2013 " + formatDate(log.week_end_date)) : ""}
                           </CardTitle>
-                          <CardDescription className="flex items-center gap-2 mt-1">
-                            <Calendar className="h-3 w-3" />
-                            {log.week_start_date} — {log.week_end_date}
+                          <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
+                            <Calendar className="h-3 w-3 shrink-0" />
+                            <span className="whitespace-nowrap">{log.week_start_date} — {log.week_end_date}</span>
                             {log.hours_worked !== null && (
-                              <span className="ml-2 inline-flex items-center gap-1"><Timer className="h-3 w-3" /> {log.hours_worked}h</span>
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap"><Timer className="h-3 w-3" /> {log.hours_worked}h</span>
                             )}
                           </CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:shrink-0">
                           <StatusBadge status={log.status} />
-                          {log.submittedAt && <span className="text-xs text-muted-foreground">{new Date(log.submittedAt).toLocaleDateString()}</span>}
+                          {log.submittedAt && <span className="text-xs text-muted-foreground whitespace-nowrap">{new Date(log.submittedAt).toLocaleDateString()}</span>}
                           <Button variant="ghost" size="sm" className="gap-1.5 h-7" title="Download Word Document" onClick={() => handleDownloadWord(log)}>
                             <Printer className="h-3.5 w-3.5" />
                             Word
@@ -1058,16 +1183,16 @@ export default function StudentWeeklyLogsPage() {
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                           <CardContent className="pt-0 space-y-3">
                             <div className="rounded-lg border overflow-hidden">
-                              <div className="grid grid-cols-[120px_1fr_80px] bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                              <div className="grid grid-cols-[96px_1fr_56px] sm:grid-cols-[120px_1fr_80px] bg-muted/50 px-3 py-2 text-xs font-semibold text-muted-foreground">
                                 <span>Day</span><span>Tasks Performed</span><span className="text-right">Hours</span>
                               </div>
                               {(log.daily_entries || []).map((de: any, i: number) => (
-                                <div key={de.id || i} className={"grid grid-cols-[120px_1fr_80px] px-3 py-2 border-t " + (de.is_holiday ? "bg-amber-50/50 dark:bg-amber-950/20" : "")}>
-                                  <span className="text-sm font-medium">{DAY_NAMES[(de.day_of_week || 1) - 1] || "Day"}</span>
-                                  <span className="text-sm text-muted-foreground">
+                                <div key={de.id || i} className={"grid grid-cols-[96px_1fr_56px] sm:grid-cols-[120px_1fr_80px] px-3 py-2 border-t text-xs sm:text-sm " + (de.is_holiday ? "bg-amber-50/50 dark:bg-amber-950/20" : "")}>
+                                  <span className="font-medium break-words">{DAY_NAMES[(de.day_of_week || 1) - 1] || "Day"}</span>
+                                  <span className="text-muted-foreground break-words">
                                     {de.is_holiday ? <span className="italic text-amber-600 dark:text-amber-400">Holiday{de.notes ? (" \u2014 " + de.notes) : ""}</span> : (de.tasks_performed || "\u2014")}
                                   </span>
-                                  <span className="text-sm text-right">{de.is_holiday ? "\u2014" : ((de.hours_worked || 0) + "h")}</span>
+                                  <span className="text-right whitespace-nowrap">{de.is_holiday ? "\u2014" : ((de.hours_worked || 0) + "h")}</span>
                                 </div>
                               ))}
                             </div>
