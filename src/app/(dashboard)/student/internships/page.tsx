@@ -171,42 +171,28 @@ export default function StudentInternshipsPage() {
         });
       }
 
-      // Combine data. Apply department scoping client-side: an internship is
-      // visible to this student if:
-      //   1. It has no department restriction (legacy + new)
-      //   2. Its `department_id` column matches the student's department_id
-      //   3. Its legacy `target_departments` jsonb array contains the student's dept name
-      //   4. Its `internship_target_departments` table rows include the student's department_id
+      // Combine data. Department scoping (STRICT, per platform rules
+      // 2026-08-27): a student sees an internship ONLY when
+      //   1. their university has an ACTIVE MoU with the company, AND
+      //   2. the internship targets THEIR department
+      //      (internship_target_departments row for their university +
+      //      department).
+      // The database RLS policy `internships_select_mou_aware`
+      // (migration 0099) already enforces BOTH conditions server-side; this
+      // client-side filter is defense-in-depth and keeps the intent obvious.
+      // Internships the student is already enrolled in (via
+      // student_internships) are exempt from the department condition.
       const studentDeptId = profile?.department_id;
-      const studentDeptName = profile?.departments?.name;
       const processedInternships: Internship[] = (internshipsData || [])
         .filter((internship: any) => {
-          if (!studentDeptId) return true;
+          // No department on the profile → cannot satisfy the department
+          // condition → not visible (strict two-condition rule).
+          if (!studentDeptId) return false;
 
-          // Check new structured table first
+          // Structured target-departments: the student's department MUST be
+          // among them (matched together with their university).
           const itdDepts = targetDeptMap[internship.id];
-          if (itdDepts && itdDepts.length > 0) {
-            // If there ARE structured targets, the student must match one of them
-            if (itdDepts.includes(studentDeptId)) return true;
-            return false;
-          }
-
-          // Fall back to legacy logic for internships without structured targets
-          const openToAll =
-            !internship.department_id &&
-            (!internship.target_departments ||
-              (Array.isArray(internship.target_departments) &&
-                internship.target_departments.length === 0));
-          if (openToAll) return true;
-          if (internship.department_id === studentDeptId) return true;
-          if (
-            Array.isArray(internship.target_departments) &&
-            studentDeptName &&
-            internship.target_departments.includes(studentDeptName)
-          ) {
-            return true;
-          }
-          return false;
+          return Array.isArray(itdDepts) && itdDepts.includes(studentDeptId);
         })
         .map(internship => ({
           ...internship,

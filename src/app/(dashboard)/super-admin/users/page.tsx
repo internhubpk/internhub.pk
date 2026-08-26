@@ -176,7 +176,8 @@ export default function SuperAdminUsersPage() {
     userId: string;
     currentStatus: string;
     newStatus: string;
-  }>({ open: false, userId: "", currentStatus: "", newStatus: "" });
+    cascadeLabel: string;
+  }>({ open: false, userId: "", currentStatus: "", newStatus: "", cascadeLabel: "" });
 
   useEffect(() => {
     fetchUsers();
@@ -362,33 +363,58 @@ export default function SuperAdminUsersPage() {
   }
 
   // Open the confirmation dialog instead of using native confirm().
+  // The dialog explains the CASCADE: suspending a university admin suspends
+  // every account under that university; suspending a company HR admin
+  // suspends every account of that company; other accounts suspend alone.
   function handleToggleUserStatus(userId: string, currentStatus: string) {
     const newStatus = currentStatus === "active" ? "suspended" : "active";
-    setStatusDialog({ open: true, userId, currentStatus, newStatus });
+    const target = users.find(u => u.user_id === userId);
+    let cascadeLabel = "Only this account will be affected.";
+    if (newStatus === "suspended") {
+      if (target?.role === "university_admin") {
+        cascadeLabel =
+          "This is a UNIVERSITY ADMIN — suspending them will also suspend ALL accounts under their university (coordinators, supervisors, students). None of them will be able to sign in.";
+      } else if (target?.role === "company_hr") {
+        cascadeLabel =
+          "This is a COMPANY ADMIN (HR) — suspending them will also suspend ALL accounts of their company (site supervisors, evaluators). None of them will be able to sign in.";
+      }
+    } else {
+      if (target?.role === "university_admin") {
+        cascadeLabel =
+          "Reactivating this university admin will also reactivate ALL accounts under their university.";
+      } else if (target?.role === "company_hr") {
+        cascadeLabel =
+          "Reactivating this company admin will also reactivate ALL accounts of their company.";
+      }
+    }
+    setStatusDialog({ open: true, userId, currentStatus, newStatus, cascadeLabel });
   }
 
   // Actually perform the suspend/activate after the user confirms.
+  // Goes through the super-admin API which CASCADES:
+  //   - suspending a UNIVERSITY ADMIN suspends every account under that
+  //     university (coordinators, supervisors, students…)
+  //   - suspending a COMPANY HR admin suspends every account of that company
+  //   - any other account: only that account
+  // Suspended users are also banned at the auth layer (cannot sign in).
   async function confirmToggleUserStatus() {
     const { userId, newStatus } = statusDialog;
-    setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "" });
+    setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "", cascadeLabel: "" });
 
     try {
-      const supabase = createClient();
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          status: newStatus,
-          is_active: newStatus === "active",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
-
-      if (error) throw error;
+      const res = await fetch(`/api/super-admin/users/${userId}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
 
       setMessage({
         type: "success",
-        text: `User ${newStatus === "suspended" ? "suspended" : "activated"} successfully!`,
+        text: json.message || `User ${newStatus === "suspended" ? "suspended" : "activated"} successfully!`,
       });
 
       fetchUsers();
@@ -1430,7 +1456,7 @@ export default function SuperAdminUsersPage() {
         open={statusDialog.open}
         onOpenChange={(open) => {
           if (!open) {
-            setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "" });
+            setStatusDialog({ open: false, userId: "", currentStatus: "", newStatus: "", cascadeLabel: "" });
           }
         }}
       >
@@ -1439,11 +1465,19 @@ export default function SuperAdminUsersPage() {
             <AlertDialogTitle>
               {statusDialog.newStatus === "suspended" ? "Suspend User" : "Activate User"}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to{" "}
-              {statusDialog.newStatus === "suspended" ? "suspend" : "activate"} this user?
-              {statusDialog.newStatus === "suspended" &&
-                " They will lose access to their dashboard immediately."}
+            <AlertDialogDescription className="space-y-3">
+              <span>
+                Are you sure you want to{" "}
+                {statusDialog.newStatus === "suspended" ? "suspend" : "activate"} this user?
+                {statusDialog.newStatus === "suspended" &&
+                  " They will lose access to their dashboard immediately."}
+              </span>
+              {statusDialog.cascadeLabel && statusDialog.cascadeLabel !== "Only this account will be affected." && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300">{statusDialog.cascadeLabel}</p>
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

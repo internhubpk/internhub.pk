@@ -1469,18 +1469,30 @@ function injectParagraphAfterLabel(
 }
 
 /**
- * Append a signature image inline after a "Signature" label.
+ * Insert a signature image INSIDE the "box" cell that sits BELOW the given
+ * label in the signature table.
+ *
+ * The template's signature table (last table of the document) is:
+ *
+ *   Row 0: | Student Signature | Industry Supervisor | Faculty Supervisor |  (labels)
+ *   Row 1: |      (box)        |       (box)          |      (box)         |  (empty signature boxes)
+ *
+ * The user's explicit requirement ("The signatures should be in the below
+ * relevant boxes") is that each signature image lands in the EMPTY BOX under
+ * its label — NOT inside the label cell itself (the previous behaviour, which
+ * left the boxes blank and stretched the label row).
+ *
+ * How this works:
+ *   1. Locate the signature table (the <w:tbl> whose Row 0 contains the label).
+ *   2. Determine the label's COLUMN index in Row 0.
+ *   3. Replace the corresponding Row-1 cell's empty paragraph with a
+ *      horizontally-CENTERED paragraph holding the inline signature drawing,
+ *      scaled to fit the box while preserving the image's aspect ratio.
+ *
  * Returns the modified XML + the relationship ID that was added (so the
  * caller can register it in document.xml.rels).
- *
- * SPLIT-LABEL HANDLING:
- * Word frequently splits a logical label like "Student Signature" across
- * multiple <w:r><w:t>...</w:t></w:r> runs. We walk every <w:tc>...</w:tc>
- * chunk and match its plain text against the label, then insert a new
- * paragraph with the inline drawing immediately after that cell's last
- * paragraph (or just inside the cell, before </w:tc>).
  */
-function appendSignatureAfterLabel(
+function insertSignatureIntoBox(
   documentXml: string,
   labelText: string,
   imageBuffer: Buffer | null
@@ -1490,52 +1502,108 @@ function appendSignatureAfterLabel(
   }
 
   const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
-  const tcRegex = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
-  let match: RegExpExecArray | null;
-  let targetCellEndIdx = -1;
 
-  while ((match = tcRegex.exec(documentXml)) !== null) {
-    const cellXml = match[0];
-    const plain = extractCellPlainText(cellXml);
-    if (plain.replace(/\s+/g, " ").trim() === normalizedLabel) {
-      targetCellEndIdx = match.index + cellXml.length;
+  // 1. Walk every table; find the signature table (Row 0 contains the label).
+  //    SPLIT-LABEL safe: compare each cell's FULL plain text (Word splits
+  //    "Faculty Supervisor" across multiple <w:t> runs, so a raw
+  //    .includes("Faculty Supervisor") on the XML would MISS the table).
+  const tblRegex = /<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>/g;
+  let tblMatch: RegExpExecArray | null;
+  let sigTbl: string | null = null;
+  let sigTblStart = -1;
+  let sigTblEnd = -1;
+
+  while ((tblMatch = tblRegex.exec(documentXml)) !== null) {
+    const rows = tblMatch[0].match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+    if (rows.length < 2) continue;
+    const row0Cells = rows[0]!.match(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g) || [];
+    const labels = row0Cells.map((c) =>
+      extractCellPlainText(c).replace(/\s+/g, " ").trim()
+    );
+    if (labels.includes(normalizedLabel)) {
+      sigTbl = tblMatch[0];
+      sigTblStart = tblMatch.index;
+      sigTblEnd = tblMatch.index + tblMatch[0].length;
       break;
     }
   }
 
-  if (targetCellEndIdx === -1) {
+  if (!sigTbl) {
     return { xml: documentXml, imageAdded: false };
+  }
+
+  // 2. Locate the label's column in Row 0 and the target box cell in Row 1.
+  const rows = sigTbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+  if (rows.length < 2) {
+    return { xml: documentXml, imageAdded: false };
+  }
+  const row0Cells = rows[0]!.match(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g) || [];
+  const colIdx = row0Cells.findIndex((c) =>
+    extractCellPlainText(c).replace(/\s+/g, " ").trim() === normalizedLabel
+  );
+  if (colIdx === -1) {
+    return { xml: documentXml, imageAdded: false };
+  }
+  const row1Cells = rows[1].match(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g) || [];
+  if (colIdx >= row1Cells.length) {
+    return { xml: documentXml, imageAdded: false };
+  }
+  const boxCell = row1Cells[colIdx];
+
+  // 3. Scale the signature to fit the box (2881 twips ≈ 2.0" wide × 1457
+  //    twips ≈ 1.0" tall) while PRESERVING the image's aspect ratio.
+  //    Box-safe target: ≤ 1.8" wide, ≤ 0.8" tall (216×96 px @ 96 DPI).
+  const dims = readImageDimensions(imageBuffer);
+  let wPx = 150;
+  let hPx = 60;
+  if (dims && dims.width > 0 && dims.height > 0) {
+    const scale = Math.min(216 / dims.width, 96 / dims.height);
+    wPx = Math.max(24, Math.round(dims.width * scale));
+    hPx = Math.max(16, Math.round(dims.height * scale));
   }
 
   const relId = generateRelId();
-  // Build a new paragraph containing the inline image.
-  // Standard signature image: 150x60 pixels (1.5 inch x 0.6 inch)
-  const drawingXml = buildInlineImageXml(relId, 150, 60);
-  const newPara = `<w:p><w:r>${drawingXml}</w:r></w:p>`;
+  const drawingXml = buildInlineImageXml(relId, wPx, hPx);
+  // Centered paragraph inside the box cell (w:jc=center), replacing the
+  // template's empty spacer paragraph so the signature sits dead-center.
+  const newPara = `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${drawingXml}</w:r></w:p>`;
 
-  // Insert the new paragraph immediately after the cell's last paragraph
-  // (i.e. right before the cell's closing </w:tc>).
-  // Find the last </w:p> before targetCellEndIdx.
-  const cellEndRelativeIdx = documentXml.lastIndexOf("</w:tc>", targetCellEndIdx - 1);
-  if (cellEndRelativeIdx === -1) {
-    return { xml: documentXml, imageAdded: false };
+  const pMatch = boxCell.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+  let newBoxCell: string;
+  if (pMatch) {
+    newBoxCell = boxCell.replace(pMatch[0], () => newPara);
+  } else {
+    newBoxCell = boxCell.replace(/<\/w:tc>$/, () => `${newPara}</w:tc>`);
   }
-  // Find the last </w:p> before cellEndRelativeIdx.
-  const lastPEndIdx = documentXml.lastIndexOf("</w:p>", cellEndRelativeIdx);
-  if (lastPEndIdx === -1) {
-    // No <w:p> in cell — insert one right inside <w:tc>
-    const tcStartIdx = documentXml.lastIndexOf("<w:tc", cellEndRelativeIdx);
-    const tcOpenEnd = documentXml.indexOf(">", tcStartIdx) + 1;
-    const newXml =
-      documentXml.slice(0, tcOpenEnd) +
-      newPara +
-      documentXml.slice(tcOpenEnd);
-    return { xml: newXml, relId, imageAdded: true };
+
+  // 4. Stamp <w:cantSplit/> on both signature rows so the label row and the
+  //    box row can never be torn apart across a page boundary. Idempotent:
+  //    skips rows that already carry a <w:cantSplit/> (this function runs up
+  //    to three times — once per signature).
+  const hardenedRow = (rowXml: string) => {
+    if (/<w:cantSplit\s*\/>/.test(rowXml)) return rowXml;
+    if (/<w:trPr>[\s\S]*?<\/w:trPr>/.test(rowXml)) {
+      return rowXml.replace(/<w:trPr>/, () => "<w:trPr><w:cantSplit/>");
+    }
+    return rowXml.replace(
+      /(<w:tr\b[^>]*>)/,
+      (m) => `${m}<w:trPr><w:cantSplit/></w:trPr>`
+    );
+  };
+
+  let newTbl = sigTbl;
+  // Swap rows in REVERSE document order so earlier indices stay valid.
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (i === 1) {
+      const modifiedRow = hardenedRow(rows[1]).replace(boxCell, () => newBoxCell);
+      newTbl = newTbl.replace(rows[1], () => modifiedRow);
+    } else {
+      newTbl = newTbl.replace(rows[i], () => hardenedRow(rows[i]));
+    }
   }
-  // Insert after the last </w:p>
-  const insertAt = lastPEndIdx + "</w:p>".length;
+
   const newXml =
-    documentXml.slice(0, insertAt) + newPara + documentXml.slice(insertAt);
+    documentXml.slice(0, sigTblStart) + newTbl + documentXml.slice(sigTblEnd);
   return { xml: newXml, relId, imageAdded: true };
 }
 
@@ -1875,19 +1943,19 @@ export async function populateWeeklyReportTemplate(
     return true;
   };
 
-  const sig1Result = appendSignatureAfterLabel(documentXml, "Student Signature", data.studentSignatureBuffer);
+  const sig1Result = insertSignatureIntoBox(documentXml, "Student Signature", data.studentSignatureBuffer);
   documentXml = sig1Result.xml;
   if (registerSignature(sig1Result, data.studentSignatureBuffer, "Student")) {
     imagesEmbedded.push("student_signature");
   }
 
-  const sig2Result = appendSignatureAfterLabel(documentXml, "Industry Supervisor", data.industrySupervisorSignatureBuffer);
+  const sig2Result = insertSignatureIntoBox(documentXml, "Industry Supervisor", data.industrySupervisorSignatureBuffer);
   documentXml = sig2Result.xml;
   if (registerSignature(sig2Result, data.industrySupervisorSignatureBuffer, "Industry supervisor")) {
     imagesEmbedded.push("industry_supervisor_signature");
   }
 
-  const sig3Result = appendSignatureAfterLabel(documentXml, "Faculty Supervisor", data.facultySupervisorSignatureBuffer);
+  const sig3Result = insertSignatureIntoBox(documentXml, "Faculty Supervisor", data.facultySupervisorSignatureBuffer);
   documentXml = sig3Result.xml;
   if (registerSignature(sig3Result, data.facultySupervisorSignatureBuffer, "Faculty supervisor")) {
     imagesEmbedded.push("faculty_supervisor_signature");
@@ -1946,13 +2014,19 @@ export async function populateWeeklyReportTemplate(
         if (dims && fmt) {
           evidenceImageSeq += 1;
           const relId = `rIdEvImg${evidenceImageSeq}`;
+          // PIXELS → EMU conversion: 1 px @ 96 DPI = 9525 EMU.
+          // (bug fix 2026-08-27: dims are PIXELS but were written straight
+          // into wp:extent as EMU — a 638px-wide image rendered at 638 EMU
+          // = 0.07mm, i.e. invisible.)
+          const natWEmu = dims.width * 9525;
+          const natHEmu = dims.height * 9525;
           const scale = Math.min(
-            CONTENT_W_EMU / dims.width,
-            MAX_IMG_H_EMU / dims.height,
+            CONTENT_W_EMU / natWEmu,
+            MAX_IMG_H_EMU / natHEmu,
             1 // never upscale small images beyond natural size
           );
-          const wEmu = Math.max(1, Math.round(dims.width * scale));
-          const hEmu = Math.max(1, Math.round(dims.height * scale));
+          const wEmu = Math.max(1, Math.round(natWEmu * scale));
+          const hEmu = Math.max(1, Math.round(natHEmu * scale));
           figureNo += 1;
           newImageRels.push({ relId, buffer: ev.buffer, ext: fmt.ext, mime: fmt.mime });
           sectionXmlParts.push(

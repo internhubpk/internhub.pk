@@ -259,13 +259,22 @@ export default function SuperAdminCompaniesPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("companies")
-        .delete()
-        .eq("id", deleteTarget.id);
-      if (error) throw error;
-      toast.success("Company deleted");
+      // Server-side cascade delete (super-admin API + SECURITY DEFINER SQL
+      // function): permanently removes the company, ALL of its accounts
+      // (company HR, site supervisors — auth users included), its
+      // internships, applications, student internship records, weekly logs
+      // written at those internships, MOUs, and supervisors.
+      const res = await fetch(`/api/super-admin/companies/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      const d = json.data || {};
+      toast.success("Company deleted", {
+        description: `Removed ${d.deleted_auth_users ?? 0} user account(s) and all related data.`,
+      });
       setDeleteTarget(null);
       fetchCompanies();
     } catch (error: any) {
@@ -616,11 +625,23 @@ export default function SuperAdminCompaniesPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete company?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <strong>{deleteTarget?.name}</strong>.
-              Any HR accounts linked to this company will lose their company
-              association (their profiles will remain).
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete company?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="font-medium text-red-800 dark:text-red-200">
+                  This will permanently delete <strong>{deleteTarget?.name}</strong>.
+                </p>
+                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                  This action <strong>cannot be undone</strong>. Deleting a company permanently removes{" "}
+                  <strong>all user accounts related to it</strong> — every company HR and site supervisor
+                  account (they will no longer be able to sign in) — plus the company&apos;s internships,
+                  applications, student internship records, weekly logs written at those internships,
+                  evaluations, certificates, documents, supervisors, and MOUs with universities.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

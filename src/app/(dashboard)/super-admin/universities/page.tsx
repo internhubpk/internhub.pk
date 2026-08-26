@@ -455,36 +455,30 @@ export default function SuperAdminUniversitiesPage() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
-    
+
     setIsDeleting(true);
     setDeleteError(null);
 
     try {
-      const supabase = createClient();
-      
-      // First check if there are any users associated.
-      // NOTE: `profiles` PK is `user_id` (no `id` column). We only need the
-      // count, so selecting the PK with `head: true` is enough — `head: true`
-      // means no rows are actually returned, so this is a count-only request.
-      const { count } = await supabase
-        .from("profiles")
-        .select("user_id", { count: "exact", head: true })
-        .eq("university_id", deleteTarget.id);
-
-      if (count && count > 0) {
-        setDeleteError(`Cannot delete: ${count} user(s) are associated with this university. Reassign or remove them first.`);
-        setIsDeleting(false);
-        return;
+      // Server-side cascade delete (super-admin API + SECURITY DEFINER SQL
+      // function): permanently removes the university, ALL of its user
+      // accounts (auth users included), departments, programs, students,
+      // logs, and companies registered under it.
+      const res = await fetch(`/api/super-admin/universities/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
       }
 
-      const { error } = await supabase
-        .from("universities")
-        .delete()
-        .eq("id", deleteTarget.id);
-
-      if (error) throw error;
-
-      setMessage({ type: "success", text: "University deleted successfully!" });
+      const d = json.data || {};
+      setMessage({
+        type: "success",
+        text: `University deleted permanently — removed ${d.deleted_auth_users ?? 0} user account(s)${
+          d.deleted_companies ? ` and ${d.deleted_companies} company/companies registered under it` : ""
+        }.`,
+      });
       setIsDeleteDialogOpen(false);
       setDeleteTarget(null);
       fetchUniversities();
@@ -926,7 +920,11 @@ export default function SuperAdminUniversitiesPage() {
                   Are you absolutely sure you want to delete this university?
                 </p>
                 <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                  This action <strong>cannot be undone</strong>. All data associated with this university will be permanently removed.
+                  This action <strong>cannot be undone</strong>. Deleting a university permanently removes{" "}
+                  <strong>all user accounts related to it</strong> — the university admin, every coordinator,
+                  supervisor and student (they will no longer be able to sign in) — plus all departments,
+                  programs, student records, weekly logs, tasks, internships posted to the university, MOUs,
+                  and any companies registered under this university along with their accounts.
                 </p>
               </div>
               
