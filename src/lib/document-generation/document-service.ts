@@ -211,16 +211,24 @@ export async function assembleWeeklyReportData(
 ): Promise<WeeklyReportData> {
   const supabase = await createClient();
 
-  // 1. Fetch the weekly log with student + internship info.
+  // 1. Fetch the weekly log with all its scalar columns (NO embedded joins —
+  //    see note below).
   //    weekly_logs uses `student_user_id` (NOT `student_id`) — confirmed live
-  //    via Supabase Management API. The earlier code used the wrong column
-  //    name + wrong FK hint (`students:student_id`), which silently broke
-  //    document generation against the live DB. Fixed here.
+  //    via Supabase Management API.
   //
   //    weekly_logs also carries snapshotted program_name / department_name /
   //    university_logo_url / *_signature_url / *_remarks columns (migrations
   //    0058, 0071) — included so the Word template's "Faculty of Computer
   //    Science" header text can be substituted per-student per spec.
+  //
+  //    IMPORTANT: the previous shape embedded
+  //      `students:student_user_id ( profiles:user_id (...) )`
+  //    which PostgREST CANNOT resolve on the live schema — `students` has two
+  //    FKs to `profiles` (user_id + faculty_supervisor_id), so the
+  //    `profiles:user_id` embed is ambiguous and the whole request failed
+  //    with "Could not embed because more than one relationship was found".
+  //    Student / profile / internship rows are now fetched with separate,
+  //    unambiguous queries.
   const { data: weeklyLog, error: wlErr } = await supabase
     .from("weekly_logs")
     .select(
@@ -233,16 +241,7 @@ export async function assembleWeeklyReportData(
       learning_outcomes, challenges_solutions,
       supporting_evidence,
       student_signature_url, site_supervisor_signature_url, faculty_supervisor_signature_url,
-      site_supervisor_remarks, faculty_supervisor_remarks,
-      students:student_user_id (
-        user_id, student_id_number, program_id, department_id,
-        profiles:user_id ( full_name, email, university_id, program_id, signature_url )
-      ),
-      internships:internship_id (
-        id, title, company_id, program_id,
-        companies:company_id ( name, logo_url ),
-        programs:program_id ( name, code )
-      )
+      site_supervisor_remarks, faculty_supervisor_remarks
       `
     )
     .eq("id", weeklyLogId)
@@ -252,9 +251,42 @@ export async function assembleWeeklyReportData(
     throw new Error(`Weekly log not found: ${wlErr?.message || "unknown"}`);
   }
 
-  const student = weeklyLog.students as any;
-  const internship = weeklyLog.internships as any;
-  const profile = student?.profiles as any;
+  // 1a. Student row (registration number, program / department ids).
+  const { data: studentData } = await supabase
+    .from("students")
+    .select("user_id, student_id_number, program_id, department_id")
+    .eq("user_id", weeklyLog.student_user_id)
+    .maybeSingle();
+  const student = studentData as any;
+
+  // 1b. Profile row (name, email, university). NOTE: `profiles` has no
+  //     `signature_url` column on the live DB — the student's signature is
+  //     read from weekly_logs.student_signature_url instead.
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, email, university_id, program_id")
+    .eq("user_id", weeklyLog.student_user_id)
+    .maybeSingle();
+  const profile = profileData as any;
+
+  // 1c. Internship row (title, company, program) — the company/program
+  //     embeds on `internships` resolve fine (single FK each).
+  let internship: any = null;
+  if (weeklyLog.internship_id) {
+    const { data: internshipData } = await supabase
+      .from("internships")
+      .select(
+        `
+        id, title, company_id, program_id,
+        companies:company_id ( name, logo_url ),
+        programs:program_id ( name, code )
+        `
+      )
+      .eq("id", weeklyLog.internship_id)
+      .maybeSingle();
+    internship = internshipData as any;
+  }
+
   if (!student || !internship || !profile) {
     throw new Error("Weekly log is missing required student/internship/profile data");
   }
@@ -367,10 +399,10 @@ export async function assembleWeeklyReportData(
       weeklyLogAny.university_logo_url
         ? fetchUniversityLogo(weeklyLogAny.university_logo_url)
         : fetchUniversityLogo(university.logo_url),
-      // Student signature: prefer weekly_log.student_signature_url, fall back to profile.signature_url
-      weeklyLogAny.student_signature_url
-        ? fetchSignatureImage(weeklyLogAny.student_signature_url)
-        : fetchSignatureImage(profile.signature_url || null),
+      // Student signature: weekly_log.student_signature_url (uploaded via the
+      // weekly-log form). The old fallback referenced `profile.signature_url`,
+      // a column that does not exist on the live `profiles` table.
+      fetchSignatureImage(weeklyLogAny.student_signature_url || null),
       // Industry supervisor (site supervisor) signature
       weeklyLogAny.site_supervisor_signature_url
         ? fetchSignatureImage(weeklyLogAny.site_supervisor_signature_url)
@@ -1310,10 +1342,18 @@ export async function saveGeneratedReport(params: {
 }): Promise<{ reportId: string; storagePath: string; error?: string }> {
   const supabase = await createClient();
 
-  // 1. Generate a safe storage path: generated-reports/<university_id>/<student_id>/<filename>
+  // 1. Generate a safe storage path.
+  //
+  //    PATH CONVENTION — the FIRST segment MUST be the CALLER's user id
+  //    (params.generatedBy). The `generated-reports` bucket's storage RLS
+  //    policies require `(storage.foldername(name))[1] = auth.uid()`, so a
+  //    path like `<university_id>/<student_id>/<file>` (the old convention)
+  //    is rejected with "new row violates row-level security policy" —
+  //    university ids are never auth.uid()s. The student id is kept as the
+  //    SECOND segment so reports remain grouped per student.
   const safeFilename = sanitizeFilename(params.filename);
   const storagePath = [
-    params.universityId || "no-university",
+    params.generatedBy,
     params.studentId,
     `${Date.now()}-${safeFilename}`,
   ].join("/");

@@ -120,13 +120,52 @@ export async function POST(
       );
     }
 
+    const evidenceItem = {
+      name: file.name,
+      url: urlData.signedUrl,
+      size: file.size,
+      type: file.type,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    // Append the file metadata to weekly_logs.supporting_evidence (jsonb
+    // array) so the Word report generation (assembleWeeklyReportData →
+    // supportingEvidence summary) includes it. Without this the upload was
+    // orphaned — the file sat in storage but never reached the .docx.
+    const { data: currentLog } = await supabase
+      .from("weekly_logs")
+      .select("supporting_evidence")
+      .eq("id", logId)
+      .eq("student_user_id", user.id)
+      .single();
+
+    const existing: unknown[] = Array.isArray(
+      (currentLog as any)?.supporting_evidence
+    )
+      ? (currentLog as any).supporting_evidence
+      : [];
+
+    const { error: updateError } = await supabase
+      .from("weekly_logs")
+      .update({
+        supporting_evidence: [...existing, evidenceItem],
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", logId)
+      .eq("student_user_id", user.id);
+
+    if (updateError) {
+      console.error("[evidence upload] db update error:", updateError);
+      // Non-fatal — file is already in storage; return metadata anyway.
+    }
+
     return NextResponse.json<ApiResponse<{ name: string; url: string; size: number; type: string }>>({
       success: true,
       data: {
-        name: file.name,
-        url: urlData.signedUrl,
-        size: file.size,
-        type: file.type,
+        name: evidenceItem.name,
+        url: evidenceItem.url,
+        size: evidenceItem.size,
+        type: evidenceItem.type,
       },
       message: "Evidence file uploaded.",
     });

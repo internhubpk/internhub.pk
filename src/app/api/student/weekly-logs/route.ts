@@ -403,21 +403,39 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (existingLog) {
-          // Delete old daily entries
-          await supabase
-            .from("weekly_log_daily_entries")
-          .delete()
-            .eq("weekly_log_id", existingLog.id);
+          // ORDER MATTERS. The weekly_log_daily_entries RLS policies
+          // (wlde_delete_policy / wlde_insert_policy) only allow
+          // delete/insert while the parent log's status is 'draft' or
+          // 'revision_required'. The previous order (delete → set draft →
+          // insert) silently skipped the delete (RLS filters it out while
+          // the log is 'submitted'), so the subsequent insert hit the
+          // (weekly_log_id, day_of_week) unique constraint and the client
+          // kept seeing the STALE daily entries despite a "success"
+          // response. Correct order: set draft FIRST, then delete, then
+          // insert.
 
-          // Temporarily set to draft so daily entries can be inserted
-          await supabase
+          // 1. Temporarily set to draft so daily entries can be deleted
+          //    and re-inserted.
+          const { error: draftErr } = await supabase
             .from("weekly_logs")
             .update({ status: "draft" })
             .eq("id", existingLog.id);
+          if (draftErr) {
+            console.error("[student/weekly-logs POST] draft-status update error:", draftErr);
+          }
 
-          // Insert new daily entries
+          // 2. Delete old daily entries.
+          const { error: delErr } = await supabase
+            .from("weekly_log_daily_entries")
+            .delete()
+            .eq("weekly_log_id", existingLog.id);
+          if (delErr) {
+            console.error("[student/weekly-logs POST] daily entries delete error:", delErr);
+          }
+
+          // 3. Insert new daily entries.
           if (dailyEntries.length > 0) {
-            await supabase
+            const { error: deInsertErr } = await supabase
               .from("weekly_log_daily_entries")
               .insert(
                 dailyEntries.map((de: any) => ({
@@ -430,6 +448,9 @@ export async function POST(request: NextRequest) {
                   notes: de.notes || null,
                 }))
               );
+            if (deInsertErr) {
+              console.error("[student/weekly-logs POST] daily entries insert error:", deInsertErr);
+            }
           }
 
           // Update the weekly log with new data and set status to submitted

@@ -76,6 +76,12 @@ export async function POST(
     // Upload to the public `internship_images` bucket. We reuse it because
     // it already allows image uploads of up to 5MB and exposes public URLs.
     // Path: <user_id>/weekly_log_logo_<logId>_<timestamp>.<ext>
+    //
+    // NOTE: do NOT use `upsert: true` here. The path embeds Date.now(), so
+    // every upload targets a fresh object — upsert is unnecessary, and the
+    // ON CONFLICT path trips an RLS "new row violates row-level security
+    // policy" error on this bucket's storage policies (verified live: the
+    // same plain INSERT succeeds while the upsert variant is denied).
     const ext = file.name.split(".").pop() || "png";
     const filePath = `${user.id}/weekly_log_logo_${logId}_${Date.now()}.${ext}`;
     const bytes = await file.arrayBuffer();
@@ -85,7 +91,6 @@ export async function POST(
       .from("internship_images")
       .upload(filePath, buffer, {
         contentType: file.type,
-        upsert: true,
       });
 
     if (uploadError) {
@@ -106,6 +111,25 @@ export async function POST(
         { success: false, error: { code: "STORAGE_ERROR", message: "Could not resolve public URL" } },
         { status: 500 }
       );
+    }
+
+    // Persist the logo URL on the weekly_log row so the Word report
+    // generation (assembleWeeklyReportData → universityLogoBuffer) picks it
+    // up. Without this update the upload was orphaned — the file sat in
+    // storage but the generated .docx fell back to universities.logo_url.
+    const { error: updateError } = await supabase
+      .from("weekly_logs")
+      .update({
+        university_logo_url: logoUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", logId)
+      .eq("student_user_id", user.id);
+
+    if (updateError) {
+      console.error("[logo upload] db update error:", updateError);
+      // Non-fatal — file is already in storage; the client can still
+      // proceed and the URL can be re-saved on submit.
     }
 
     return NextResponse.json<ApiResponse<{ logo_url: string }>>({

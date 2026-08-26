@@ -12,8 +12,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -35,11 +37,19 @@ import {
   Sun,
   ChevronDown,
   ChevronUp,
+  ImagePlus,
+  Paperclip,
+  PenTool,
+  Trash2,
+  GraduationCap,
+  Upload,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { SignaturePad } from "@/components/supervisors/signature-pad";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,12 +95,64 @@ interface WeeklyLog {
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
+// Read-only report header info (auto-filled from the student's profile) that
+// the generated Word report shows in its header + Student Information table.
+interface ReportHeaderInfo {
+  universityName: string | null;
+  departmentName: string | null;
+  programName: string | null;
+  studentName: string | null;
+  registrationNo: string | null;
+  hostOrganization: string | null;
+  supervisorName: string | null;
+  universityLogoUrl: string | null;
+}
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
   return new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+}
+
+// Convert a data URL (e.g. canvas signature PNG) to a File for multipart upload.
+async function dataUrlToFile(dataUrl: string, filename: string): Promise<File | null> {
+  try {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: blob.type || "image/png" });
+  } catch {
+    return null;
+  }
+}
+
+// Render a typed name as a PNG data URL (italic script-style) so typed
+// signatures can be embedded in the Word report like drawn ones.
+function typedNameToPngDataUrl(name: string): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = 600;
+  canvas.height = 200;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#1a1a1a";
+  ctx.font = "italic 52px 'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', cursive";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+  return canvas.toDataURL("image/png");
+}
+
+// Small read-only info tile used in the "Report Header" preview section.
+function InfoField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium truncate" title={value || ""}>{value || "\u2014"}</p>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +174,15 @@ export default function StudentWeeklyLogsPage() {
   const [learningOutcomes, setLearningOutcomes] = useState("");
   const [challengesSolutions, setChallengesSolutions] = useState("");
   const [nextWeekGoals, setNextWeekGoals] = useState("");
+
+  // Word-report extras: university logo, supporting evidence, student signature.
+  const [headerInfo, setHeaderInfo] = useState<ReportHeaderInfo | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [uploadStage, setUploadStage] = useState("");
 
   const isHolidayDate = useCallback(
     (dateStr: string): { isHoliday: boolean; name?: string } => {
@@ -164,6 +235,9 @@ export default function StudentWeeklyLogsPage() {
     }
   }, [weekFromDate, weekToDate, generateDayRows]);
 
+  // Pre-fill the dialog when it opens. The week number is a SUGGESTION only —
+  // the student can freely type any week number (it is no longer hardcoded or
+  // auto-locked to the calendar week of the chosen date).
   useEffect(() => {
     if (isDialogOpen) {
       const now = new Date();
@@ -179,19 +253,20 @@ export default function StudentWeeklyLogsPage() {
       setLearningOutcomes("");
       setChallengesSolutions("");
       setNextWeekGoals("");
+      // Suggest the next internship week (highest submitted week + 1).
+      const suggested = logs.length > 0
+        ? Math.max(0, ...logs.map((l) => l.week_number || 0)) + 1
+        : 1;
+      setWeekNumber(suggested);
+      // Reset Word-report extras.
+      setLogoFile(null);
+      setLogoPreview(null);
+      setEvidenceFiles([]);
+      setSignatureData(null);
+      setSignatureFile(null);
+      setUploadStage("");
     }
-  }, [isDialogOpen]);
-
-  useEffect(() => {
-    if (weekFromDate) {
-      const start = new Date(weekFromDate + "T00:00:00");
-      const yearStart = new Date(start.getFullYear(), 0, 1);
-      const wkNum = Math.ceil(
-        ((start.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24) + 1) / 7
-      );
-      setWeekNumber(wkNum);
-    }
-  }, [weekFromDate]);
+  }, [isDialogOpen, logs]);
 
   useEffect(() => {
     if (!user) { setIsLoading(false); return; }
@@ -225,6 +300,35 @@ export default function StudentWeeklyLogsPage() {
           }))
         );
         setHolidays(json.data.holidays || []);
+
+        // Extract the read-only report header info (profile + active
+        // internship) so the form can preview exactly what the generated
+        // Word report will show.
+        const p = json.data.profile || {};
+        const uni = Array.isArray(p.universities) ? p.universities[0] : p.universities;
+        const dept = Array.isArray(p.departments) ? p.departments[0] : p.departments;
+        const prog = Array.isArray(p.programs) ? p.programs[0] : p.programs;
+        const ai = json.data.activeInternship;
+        const internship = ai && !Array.isArray(ai) ? ai.internships : null;
+        const company =
+          internship && !Array.isArray(internship) && internship.companies && !Array.isArray(internship.companies)
+            ? internship.companies
+            : null;
+        const siteSup = ai && !Array.isArray(ai) ? ai.site_supervisor : null;
+        const facultySup = ai && !Array.isArray(ai) ? ai.faculty_supervisor : null;
+        setHeaderInfo({
+          universityName: uni?.name || null,
+          departmentName: dept?.name || null,
+          programName: prog?.name || null,
+          studentName: p.full_name || null,
+          registrationNo: p.student_id_number || null,
+          hostOrganization: company?.name || null,
+          supervisorName:
+            (siteSup && !Array.isArray(siteSup) ? siteSup.full_name : null) ||
+            (facultySup && !Array.isArray(facultySup) ? facultySup.full_name : null) ||
+            null,
+          universityLogoUrl: uni?.logo_url || null,
+        });
       }
     } catch (err) {
       console.error("Error fetching weekly logs:", err);
@@ -233,8 +337,72 @@ export default function StudentWeeklyLogsPage() {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // File handlers: university logo, supporting evidence, student signature
+  // -------------------------------------------------------------------------
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("Invalid File", { description: "The university logo must be an image (PNG, JPG, SVG or WebP)." });
+      return;
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error("File Too Large", { description: "The logo must be 5MB or smaller." });
+      return;
+    }
+    setLogoFile(f);
+    setLogoPreview(URL.createObjectURL(f));
+  };
+
+  const handleEvidenceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const valid: File[] = [];
+    for (const f of files) {
+      if (f.size > 10 * 1024 * 1024) {
+        toast.error("File Too Large", { description: `"${f.name}" is over 10MB and was skipped.` });
+        continue;
+      }
+      valid.push(f);
+    }
+    if (valid.length > 0) {
+      setEvidenceFiles((prev) => [...prev, ...valid].slice(0, 10));
+    }
+  };
+
+  const removeEvidenceFile = (index: number) => {
+    setEvidenceFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!["image/png", "image/jpeg"].includes(f.type)) {
+      toast.error("Invalid File", { description: "The signature must be a PNG or JPEG image." });
+      return;
+    }
+    if (f.size > 1024 * 1024) {
+      toast.error("File Too Large", { description: "The signature image must be 1MB or smaller." });
+      return;
+    }
+    setSignatureFile(f);
+    setSignatureData(null); // uploaded file takes precedence over the pad
+  };
+
   const handleSubmit = async () => {
     if (!user) return;
+    if (!weekNumber || weekNumber < 1) {
+      toast.error("Validation Error", { description: "Please enter a valid week number (1 or higher)." });
+      return;
+    }
+    if (!weekFromDate) {
+      toast.error("Validation Error", { description: "Please select the week start date." });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const workingDays = dailyEntries.filter((de) => !de.is_holiday);
@@ -244,6 +412,9 @@ export default function StudentWeeklyLogsPage() {
         setIsSubmitting(false);
         return;
       }
+
+      // ---- STEP 1: Create / update the weekly log row ----
+      setUploadStage("Submitting log...");
       const res = await fetch("/api/student/weekly-logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -265,17 +436,81 @@ export default function StudentWeeklyLogsPage() {
         }),
       });
       const json = await res.json();
-      if (json.success) {
-        toast.success("Weekly Log Submitted", { description: json.message || ("Week " + weekNumber + " log has been submitted.") });
-        setIsDialogOpen(false);
-        await fetchWeeklyLogs();
-      } else {
+      if (!json.success) {
         toast.error("Submit Failed", { description: (json.error && typeof json.error === "object" ? json.error.message : json.error) || "Failed to submit weekly log." });
+        setIsSubmitting(false);
+        setUploadStage("");
+        return;
       }
+      const logId: string | undefined = json.data?.id;
+
+      // ---- STEP 2: Upload the university logo (Word report header) ----
+      if (logId && logoFile) {
+        setUploadStage("Uploading university logo...");
+        try {
+          const fd = new FormData();
+          fd.append("file", logoFile);
+          const lr = await fetch(`/api/student/weekly-logs/${logId}/logo`, { method: "POST", body: fd });
+          const lj = await lr.json();
+          if (!lj.success) {
+            toast.info("Logo Not Uploaded", { description: "The weekly log was submitted, but the logo upload failed. You can retry later." });
+          }
+        } catch {
+          toast.info("Logo Not Uploaded", { description: "The weekly log was submitted, but the logo upload failed. You can retry later." });
+        }
+      }
+
+      // ---- STEP 3: Upload the student signature (Word report signature section) ----
+      if (logId && (signatureFile || signatureData)) {
+        setUploadStage("Uploading signature...");
+        let sigFile: File | null = signatureFile;
+        if (!sigFile && signatureData) {
+          const dataUrl = signatureData.startsWith("data:image")
+            ? signatureData
+            : typedNameToPngDataUrl(signatureData);
+          if (dataUrl) sigFile = await dataUrlToFile(dataUrl, "student-signature.png");
+        }
+        if (sigFile) {
+          try {
+            const fd = new FormData();
+            fd.append("file", sigFile);
+            const sr = await fetch(`/api/student/weekly-logs/${logId}/signature`, { method: "POST", body: fd });
+            const sj = await sr.json();
+            if (!sj.success) {
+              toast.info("Signature Not Uploaded", { description: "The weekly log was submitted, but the signature upload failed. You can retry later." });
+            }
+          } catch {
+            toast.info("Signature Not Uploaded", { description: "The weekly log was submitted, but the signature upload failed. You can retry later." });
+          }
+        }
+      }
+
+      // ---- STEP 4: Upload supporting evidence files ----
+      if (logId && evidenceFiles.length > 0) {
+        for (let i = 0; i < evidenceFiles.length; i++) {
+          setUploadStage(`Uploading evidence ${i + 1} of ${evidenceFiles.length}...`);
+          try {
+            const fd = new FormData();
+            fd.append("file", evidenceFiles[i]);
+            const er = await fetch(`/api/student/weekly-logs/${logId}/evidence`, { method: "POST", body: fd });
+            const ej = await er.json();
+            if (!ej.success) {
+              toast.info("Evidence Not Uploaded", { description: `"${evidenceFiles[i].name}" could not be uploaded.` });
+            }
+          } catch {
+            toast.info("Evidence Not Uploaded", { description: `"${evidenceFiles[i].name}" could not be uploaded.` });
+          }
+        }
+      }
+
+      toast.success("Weekly Log Submitted", { description: `Week ${weekNumber} log has been submitted.` });
+      setIsDialogOpen(false);
+      await fetchWeeklyLogs();
     } catch {
       toast.error("Error", { description: "Failed to submit weekly log. Please try again." });
     } finally {
       setIsSubmitting(false);
+      setUploadStage("");
     }
   };
 
@@ -399,164 +634,356 @@ export default function StudentWeeklyLogsPage() {
                     </DialogTrigger>
 
                     {/* ============ DAY-BY-DAY FORM DIALOG ============ */}
-                    <DialogContent className="sm:max-w-[800px] max-h-[92vh] overflow-y-auto">
+                    <DialogContent className="sm:max-w-[880px] gap-0">
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                           <Calendar className="h-5 w-5 text-primary" />
                           Submit Weekly Log
                         </DialogTitle>
                         <DialogDescription>
-                          Fill in your daily activities for the week. Holiday days are auto-detected and disabled.
+                          Fill in your activities for the week. Every field below is carried into the generated Word report — including the university logo and your signature.
                         </DialogDescription>
                       </DialogHeader>
 
-                      <div className="space-y-5 py-2">
-                        {/* From / To Date Range */}
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="space-y-1.5">
-                            <Label htmlFor="wl-from" className="text-sm font-medium">From</Label>
-                            <Input id="wl-from" type="date" value={weekFromDate} onChange={(e) => setWeekFromDate(e.target.value)} />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="wl-to" className="text-sm font-medium">To</Label>
-                            <Input id="wl-to" type="date" value={weekToDate} onChange={(e) => setWeekToDate(e.target.value)} />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-sm font-medium">Week Number</Label>
-                            <Input type="number" min="1" value={weekNumber} disabled className="bg-muted" />
-                          </div>
-                        </div>
-
-                        {/* Day-by-Day Entries */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
+                      <DialogBody className="px-5 sm:px-7">
+                        <div className="space-y-6 py-2">
+                          {/* ============ REPORT HEADER (auto-filled) ============ */}
+                          <section className="rounded-xl border bg-muted/20 p-4 space-y-3">
                             <Label className="text-sm font-semibold flex items-center gap-1.5">
-                              <ListChecks className="h-4 w-4" />
-                              Daily Activities
+                              <GraduationCap className="h-4 w-4" />
+                              Report Header
+                              <span className="text-xs font-normal text-muted-foreground">(auto-filled from your profile)</span>
                             </Label>
-                            <Badge variant="outline" className="text-xs">
-                              {"Total: " + totalHoursWorked.toFixed(1) + "h"}
-                            </Badge>
-                          </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                              <InfoField label="University" value={headerInfo?.universityName} />
+                              <InfoField label="Department" value={headerInfo?.departmentName} />
+                              <InfoField label="Program" value={headerInfo?.programName} />
+                              <InfoField label="Student Name" value={headerInfo?.studentName} />
+                              <InfoField label="Registration No." value={headerInfo?.registrationNo} />
+                              <InfoField label="Host Organization" value={headerInfo?.hostOrganization} />
+                              <InfoField label="Supervisor" value={headerInfo?.supervisorName} />
+                            </div>
 
-                          {dailyEntries.length === 0 && (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              Select a &ldquo;From&rdquo; date to generate daily entries.
-                            </p>
-                          )}
-
-                          {dailyEntries.map((de, idx) => (
-                            <motion.div
-                              key={de.entry_date}
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.03 }}
-                              className={
-                                de.is_holiday
-                                  ? "rounded-lg border border-dashed border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3"
-                                  : "rounded-lg border bg-card p-3"
-                              }
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                                <div className="sm:w-40 shrink-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-semibold">{de.day_name}</span>
-                                    {de.is_holiday && (
-                                      <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] px-1.5 py-0">
-                                        <Sun className="h-3 w-3 mr-0.5" />
-                                        Holiday
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">{" " + formatDate(de.entry_date)}</span>
-                                  {de.is_holiday && de.holiday_name && (
-                                    <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">{de.holiday_name}</span>
+                            {/* University logo (Word report header image) */}
+                            <div className="space-y-2 rounded-lg border bg-background p-3">
+                              <Label className="text-sm font-medium flex items-center gap-1.5">
+                                <ImagePlus className="h-4 w-4" />
+                                University Logo
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
+                                Printed in the Word report header next to your university&apos;s name. Defaults to your university&apos;s official logo — upload your own if it is missing or outdated.
+                              </p>
+                              <div className="flex flex-wrap items-center gap-3">
+                                {(logoPreview || headerInfo?.universityLogoUrl) && (
+                                  <img
+                                    src={logoPreview || headerInfo?.universityLogoUrl || ""}
+                                    alt="University logo"
+                                    className="h-14 w-auto rounded border bg-white p-1 object-contain"
+                                  />
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Label
+                                    htmlFor="wl-logo"
+                                    className="cursor-pointer inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                                  >
+                                    <Upload className="h-3.5 w-3.5" />
+                                    {logoFile ? "Replace logo" : "Upload logo"}
+                                  </Label>
+                                  <Input
+                                    id="wl-logo"
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                                    className="hidden"
+                                    onChange={handleLogoChange}
+                                  />
+                                  {logoFile && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 gap-1 text-xs"
+                                      onClick={() => { setLogoFile(null); setLogoPreview(null); }}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      Remove
+                                    </Button>
                                   )}
                                 </div>
-
-                                {de.is_holiday ? (
-                                  <div className="flex-1 flex items-center">
-                                    <span className="text-sm text-muted-foreground italic">Holiday — no entry required</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex-1 space-y-2">
-                                    <Textarea
-                                      placeholder="Describe tasks performed..."
-                                      value={de.tasks_performed}
-                                      onChange={(e) => updateDayEntry(idx, "tasks_performed", e.target.value)}
-                                      rows={2}
-                                      className="text-sm resize-none"
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Hours:</Label>
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        max="24"
-                                        step="0.5"
-                                        value={de.hours_worked}
-                                        onChange={(e) => updateDayEntry(idx, "hours_worked", e.target.value)}
-                                        className="w-20 h-8 text-sm"
-                                      />
-                                    </div>
-                                  </div>
+                                {logoFile && (
+                                  <span className="max-w-[200px] truncate text-xs text-muted-foreground">{logoFile.name}</span>
                                 )}
                               </div>
-                            </motion.div>
-                          ))}
-                        </div>
+                            </div>
+                          </section>
 
-                        {/* Learning Outcomes */}
-                        <div className="space-y-1.5">
-                          <Label className="text-sm font-medium flex items-center gap-1.5">
-                            <Lightbulb className="h-4 w-4" />
-                            Learning Outcomes / Skills Gained
-                          </Label>
-                          <Textarea
-                            placeholder="Key learnings, new skills acquired, knowledge gained this week..."
-                            value={learningOutcomes}
-                            onChange={(e) => setLearningOutcomes(e.target.value)}
-                            rows={3}
-                          />
-                        </div>
+                          {/* ============ WEEK DETAILS ============ */}
+                          <section className="space-y-3">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <Calendar className="h-4 w-4" />
+                              Week Details
+                            </Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <div className="space-y-1.5">
+                                <Label htmlFor="wl-from" className="text-sm font-medium">From</Label>
+                                <Input id="wl-from" type="date" value={weekFromDate} onChange={(e) => setWeekFromDate(e.target.value)} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label htmlFor="wl-to" className="text-sm font-medium">To</Label>
+                                <Input id="wl-to" type="date" value={weekToDate} onChange={(e) => setWeekToDate(e.target.value)} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label htmlFor="wl-week" className="text-sm font-medium">Week Number</Label>
+                                <Input
+                                  id="wl-week"
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={weekNumber || ""}
+                                  onChange={(e) => setWeekNumber(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                />
+                                {logs.some((l) => l.week_number === weekNumber && l.status !== "draft") && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                                    You already submitted Week {weekNumber}. Submitting again for the same start date replaces that log.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </section>
 
-                        {/* Challenges Faced and Solutions */}
-                        <div className="space-y-1.5">
-                          <Label className="text-sm font-medium flex items-center gap-1.5">
-                            <AlertCircle className="h-4 w-4" />
-                            Challenges Faced and Solutions
-                          </Label>
-                          <Textarea
-                            placeholder="Obstacles encountered and how you resolved them..."
-                            value={challengesSolutions}
-                            onChange={(e) => setChallengesSolutions(e.target.value)}
-                            rows={3}
-                          />
-                        </div>
+                          {/* ============ DAY-BY-DAY ENTRIES ============ */}
+                          <section className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-semibold flex items-center gap-1.5">
+                                <ListChecks className="h-4 w-4" />
+                                Daily Activities
+                              </Label>
+                              <Badge variant="outline" className="text-xs">
+                                {"Total: " + totalHoursWorked.toFixed(1) + "h"}
+                              </Badge>
+                            </div>
 
-                        {/* Goals for Next Week */}
-                        <div className="space-y-1.5">
-                          <Label className="text-sm font-medium flex items-center gap-1.5">
-                            <Target className="h-4 w-4" />
-                            Goals for Next Week
-                          </Label>
-                          <Textarea
-                            placeholder="What you plan to accomplish next week..."
-                            value={nextWeekGoals}
-                            onChange={(e) => setNextWeekGoals(e.target.value)}
-                            rows={2}
-                          />
-                        </div>
+                            {dailyEntries.length === 0 && (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                Select a &ldquo;From&rdquo; date to generate daily entries.
+                              </p>
+                            )}
 
-                        {/* Submit */}
-                        <div className="flex justify-end gap-2 pt-2 border-t">
-                          <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                          <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-2">
-                            {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                            {isSubmitting ? "Submitting..." : "Submit Weekly Log"}
-                          </Button>
+                            {dailyEntries.map((de, idx) => (
+                              <motion.div
+                                key={de.entry_date}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.03 }}
+                                className={
+                                  de.is_holiday
+                                    ? "rounded-lg border border-dashed border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 p-3"
+                                    : "rounded-lg border bg-card p-3"
+                                }
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                                  <div className="sm:w-40 shrink-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-semibold">{de.day_name}</span>
+                                      {de.is_holiday && (
+                                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] px-1.5 py-0">
+                                          <Sun className="h-3 w-3 mr-0.5" />
+                                          Holiday
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{" " + formatDate(de.entry_date)}</span>
+                                    {de.is_holiday && de.holiday_name && (
+                                      <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">{de.holiday_name}</span>
+                                    )}
+                                  </div>
+
+                                  {de.is_holiday ? (
+                                    <div className="flex-1 flex items-center">
+                                      <span className="text-sm text-muted-foreground italic">Holiday — no entry required</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex-1 space-y-2">
+                                      <Textarea
+                                        placeholder="Describe tasks performed..."
+                                        value={de.tasks_performed}
+                                        onChange={(e) => updateDayEntry(idx, "tasks_performed", e.target.value)}
+                                        rows={2}
+                                        className="text-sm resize-none"
+                                      />
+                                      <div className="flex items-center gap-2">
+                                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Hours:</Label>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          max="24"
+                                          step="0.5"
+                                          value={de.hours_worked}
+                                          onChange={(e) => updateDayEntry(idx, "hours_worked", e.target.value)}
+                                          className="w-20 h-8 text-sm"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            ))}
+                            <p className="text-xs text-muted-foreground">
+                              The Word report template covers Monday–Friday. Saturday entries are saved in the system for your supervisor&apos;s review.
+                            </p>
+                          </section>
+
+                          {/* ============ LEARNING OUTCOMES ============ */}
+                          <section className="space-y-1.5">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <Lightbulb className="h-4 w-4" />
+                              Learning Outcomes / Skills Gained
+                            </Label>
+                            <Textarea
+                              placeholder="Key learnings, new skills acquired, knowledge gained this week..."
+                              value={learningOutcomes}
+                              onChange={(e) => setLearningOutcomes(e.target.value)}
+                              rows={3}
+                            />
+                          </section>
+
+                          {/* ============ CHALLENGES ============ */}
+                          <section className="space-y-1.5">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <AlertCircle className="h-4 w-4" />
+                              Challenges Faced and Solutions
+                            </Label>
+                            <Textarea
+                              placeholder="Obstacles encountered and how you resolved them..."
+                              value={challengesSolutions}
+                              onChange={(e) => setChallengesSolutions(e.target.value)}
+                              rows={3}
+                            />
+                          </section>
+
+                          {/* ============ GOALS FOR NEXT WEEK ============ */}
+                          <section className="space-y-1.5">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <Target className="h-4 w-4" />
+                              Goals for Next Week
+                            </Label>
+                            <Textarea
+                              placeholder="What you plan to accomplish next week..."
+                              value={nextWeekGoals}
+                              onChange={(e) => setNextWeekGoals(e.target.value)}
+                              rows={2}
+                            />
+                          </section>
+
+                          {/* ============ SUPPORTING EVIDENCE ============ */}
+                          <section className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <Paperclip className="h-4 w-4" />
+                              Supporting Evidence
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Attach relevant documents — attendance records or timesheets, screenshots of completed work, source code / GitHub commits, design documents, meeting minutes, photos, or certificates. These are listed in the Word report.
+                            </p>
+                            <Label
+                              htmlFor="wl-evidence"
+                              className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-3 text-xs font-medium hover:bg-accent transition-colors"
+                            >
+                              <Upload className="h-4 w-4" />
+                              Click to attach files (PDF, images or docs — up to 10MB each, max 10)
+                            </Label>
+                            <Input
+                              id="wl-evidence"
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={handleEvidenceChange}
+                            />
+                            {evidenceFiles.length > 0 && (
+                              <ul className="space-y-1">
+                                {evidenceFiles.map((f, i) => (
+                                  <li key={i} className="flex items-center justify-between gap-2 rounded border bg-background px-3 py-1.5 text-xs">
+                                    <span className="truncate flex items-center gap-1.5 min-w-0">
+                                      <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                      <span className="truncate">{f.name}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeEvidenceFile(i)}
+                                      className="text-muted-foreground hover:text-destructive shrink-0"
+                                      aria-label={"Remove " + f.name}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </section>
+
+                          {/* ============ STUDENT SIGNATURE ============ */}
+                          <section className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                              <PenTool className="h-4 w-4" />
+                              Student Signature
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Draw or type your signature — it is embedded in the Word report&apos;s signature section. Alternatively, upload a scanned signature image.
+                            </p>
+                            <SignaturePad
+                              label="Draw / Type Signature"
+                              onSignatureChange={(v) => {
+                                setSignatureData(v);
+                                if (v) setSignatureFile(null);
+                              }}
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Label
+                                htmlFor="wl-signature-file"
+                                className="cursor-pointer inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                                Or upload a signature image (PNG/JPG, max 1MB)
+                              </Label>
+                              <Input
+                                id="wl-signature-file"
+                                type="file"
+                                accept="image/png,image/jpeg"
+                                className="hidden"
+                                onChange={handleSignatureFileChange}
+                              />
+                              {signatureFile && (
+                                <>
+                                  <span className="max-w-[180px] truncate text-xs text-muted-foreground">{signatureFile.name}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1 text-xs"
+                                    onClick={() => setSignatureFile(null)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                    Remove
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </section>
                         </div>
-                      </div>
+                      </DialogBody>
+
+                      <DialogFooter className="px-5 sm:px-7">
+                        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="text-xs text-muted-foreground" aria-live="polite">
+                            {isSubmitting ? uploadStage || "Submitting..." : ""}
+                          </span>
+                          <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                            <Button onClick={handleSubmit} disabled={isSubmitting} className="gap-2">
+                              {isSubmitting ? <Clock className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              {isSubmitting ? "Submitting..." : "Submit Weekly Log"}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogFooter>
                     </DialogContent>
                   </Dialog>
                 </div>

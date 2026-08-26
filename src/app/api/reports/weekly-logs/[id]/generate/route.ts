@@ -48,10 +48,18 @@ export async function POST(
     }
 
     // 1. Fetch the weekly log (RLS-enforced — only authorized users can see it).
-    //    weekly_logs uses `student_user_id` (NOT `student_id`) on the live DB.
+    //    weekly_logs uses `student_user_id` (NOT `student_id`).
+    //    NOTE: this is a PLAIN query on purpose. The previous shape embedded
+    //    `students:student_user_id ( profiles:user_id ( university_id ) )`,
+    //    which PostgREST cannot resolve on the live schema — the `students`
+    //    table has TWO foreign keys to `profiles` (user_id and
+    //    faculty_supervisor_id), so the `profiles:user_id` embed is ambiguous
+    //    ("Could not embed because more than one relationship was found") and
+    //    the whole request failed with a 404. The student's university is now
+    //    fetched with a separate simple query.
     const { data: weeklyLog, error: wlErr } = await supabase
       .from("weekly_logs")
-      .select("id, student_user_id, internship_id, status, week_number, students:student_user_id ( user_id, profiles:user_id ( university_id ) )")
+      .select("id, student_user_id, internship_id, status, week_number")
       .eq("id", weeklyLogId)
       .single();
 
@@ -61,6 +69,17 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // 1b. Fetch the owning student's university id (for authorization +
+    //     report scoping). Kept as a separate, unambiguous query.
+    const { data: studentRow } = await supabase
+      .from("students")
+      .select("user_id, university_id, program_id, department_id")
+      .eq("user_id", weeklyLog.student_user_id)
+      .maybeSingle();
+
+    const studentUniversityId = (studentRow as any)?.university_id ?? null;
+    const studentProfileRow = studentRow as any;
 
     // 2. Verify the weekly log is in a submittable state (not draft).
     if (weeklyLog.status === "draft") {
@@ -85,10 +104,9 @@ export async function POST(
     }
 
     // 4. Authorization check (defense-in-depth in addition to RLS).
-    const student = weeklyLog.students as any;
-    const studentProfile = student?.profiles as any;
-    const studentUserId = student?.user_id;
-    const studentUniversityId = studentProfile?.university_id;
+    //    The student's profile/department/program data comes from the
+    //    separate queries above (studentProfileRow + callerProfile).
+    const studentUserId = weeklyLog.student_user_id;
 
     const isOwner = studentUserId === user.id;
     const isSuperAdmin = callerProfile.role === "super_admin";
@@ -97,10 +115,10 @@ export async function POST(
       callerProfile.university_id === studentUniversityId;
     const isProgramCoordinator =
       callerProfile.role === "program_coordinator" &&
-      callerProfile.program_id === studentProfile?.program_id;
+      callerProfile.program_id === studentProfileRow?.program_id;
     const isDepartmentCoordinator =
       callerProfile.role === "department_coordinator" &&
-      callerProfile.department_id === studentProfile?.department_id;
+      callerProfile.department_id === studentProfileRow?.department_id;
 
     // Supervisors: check via student_internships assignments.
     //    student_internships uses `student_user_id` (NOT `student_id`).
