@@ -459,6 +459,7 @@ export async function POST(request: NextRequest) {
 
           university_id: pcUniversityId,
           department_id: pcDepartmentId,
+          program_id: pcProgramId,
         },
       });
 
@@ -492,6 +493,12 @@ export async function POST(request: NextRequest) {
             is_active: true,
             university_id: pcUniversityId,
             department_id: pcDepartmentId,
+            // program_id on the profile keeps the weekly-log program_name
+            // snapshot + report generation correct (they read
+            // profiles.program_id first). Bug fix 2026-08-26: this was
+            // previously only written to the students row, leaving the
+            // profile NULL and reports showing "—" for Program.
+            program_id: pcProgramId,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }

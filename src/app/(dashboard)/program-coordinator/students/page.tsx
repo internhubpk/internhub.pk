@@ -695,31 +695,29 @@ export default function ProgramCoordinatorStudentsPage() {
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="student-program">Program *</Label>
-                <Select
-                  value={studentForm.program_id}
-                  onValueChange={(v) => setStudentForm((f) => ({ ...f, program_id: v }))}
+                <Label htmlFor="student-program">Program</Label>
+                {/* Read-only: every student created by a Program Coordinator
+                    is enrolled in the COORDINATOR'S OWN program (business
+                    rule 2026-08-26) — the server forces this too, so the
+                    field is informational rather than a dropdown. */}
+                <div
+                  id="student-program"
+                  className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm"
                 >
-                  <SelectTrigger id="student-program">
-                    <SelectValue placeholder={
-                      programs.length === 0
-                        ? "No programs in your department"
-                        : "Select a program"
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {programs.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}{p.code ? ` (${p.code})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {programs.length === 0 && (
+                  {(() => {
+                    if (!profile?.program_id) return "No program assigned to your account";
+                    const mine = programs.find((p) => p.id === profile.program_id);
+                    return mine ? `${mine.name}${mine.code ? ` (${mine.code})` : ""}` : "Your assigned program";
+                  })()}
+                </div>
+                {!profile?.program_id && (
                   <p className="text-xs text-destructive">
-                    No active programs in your department. Ask your Department Coordinator to create one first.
+                    Your coordinator account has no program assigned. Ask your University Admin to link you to a program before adding students.
                   </p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Students you add are automatically enrolled in your program.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="student-semester">Semester *</Label>
@@ -812,8 +810,12 @@ export default function ProgramCoordinatorStudentsPage() {
                   toast.error("Roll No is required");
                   return;
                 }
-                if (!studentForm.program_id) {
-                  toast.error("Please select a program");
+                // Program is forced server-side to the coordinator's own
+                // program; block submission early if the account has none.
+                if (!profile?.program_id) {
+                  toast.error("No program assigned to your account", {
+                    description: "Ask your University Admin to link your coordinator account to a program first.",
+                  });
                   return;
                 }
                 if (!studentForm.semester) {
@@ -836,7 +838,9 @@ export default function ProgramCoordinatorStudentsPage() {
                       password: studentForm.password,
                       student_id_number: studentForm.student_id_number.trim(),
                       semester: sem,
-                      program_id: studentForm.program_id,
+                      // Sent for reference only — the server forces this to
+                      // the coordinator's own program regardless.
+                      program_id: profile?.program_id,
                       department_id: profile?.department_id,
                       university_id: profile?.university_id,
                       enrollment_year: studentForm.enrollment_year ? parseInt(studentForm.enrollment_year, 10) : null,

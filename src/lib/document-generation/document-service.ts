@@ -319,6 +319,37 @@ export async function assembleWeeklyReportData(
     }
   }
 
+  // Program name resolution (bug fix 2026-08-26: report showed "—" when the
+  // internship had no program and the weekly-log snapshot was empty).
+  //
+  // Priority — the "Program" field on a university weekly report is the
+  // STUDENT'S enrolled degree program, not the internship's category:
+  //   1. weekly_logs.program_name  — snapshotted at submit time
+  //   2. the student's program     — students.program_id (canonical) or
+  //                                 profiles.program_id (fallback) resolved
+  //                                 via the programs table
+  //   3. the internship's program  — internships.program_id (last resort;
+  //                                 usually equals the student's program)
+  //   4. "—"
+  const studentProgramId: string | null =
+    student.program_id || profile.program_id || null;
+  let studentProgramName: string | null = null;
+  if (studentProgramId) {
+    const { data: programRow } = await supabase
+      .from("programs")
+      .select("name, code")
+      .eq("id", studentProgramId)
+      .maybeSingle();
+    if (programRow?.name) {
+      studentProgramName = programRow.name;
+    }
+  }
+  const programName: string | null =
+    (weeklyLog as any).program_name ||
+    studentProgramName ||
+    internship?.programs?.name ||
+    null;
+
   // 3. Fetch the daily entries (Monday-Friday structured data).
   const { data: dailyEntriesRows } = await supabase
     .from("weekly_log_daily_entries")
@@ -467,7 +498,7 @@ export async function assembleWeeklyReportData(
     universityName: university.name,
     universityLogoBuffer,
     departmentName: departmentName || "—",
-    programName: internship.programs?.name || weeklyLogAny.program_name || "—",
+    programName: programName || "—",
     studentName: profile.full_name || "—",
     studentRegistrationNumber:
       weeklyLogAny.student_registration_no ||
@@ -668,7 +699,15 @@ function detectImageFormat(buf: Buffer): { ext: string; mime: string } {
 function injectValueAfterLabel(
   documentXml: string,
   labelText: string,
-  value: string
+  value: string,
+  /**
+   * When true, replace EVERY paragraph in the value cell (not just the
+   * first). Needed for the Program cell: the template ships a list of
+   * degree-program options as separate paragraphs ("Computer Science",
+   * "Software Engineering", ...) and replacing only the first paragraph
+   * left the remaining options visible next to the injected value.
+   */
+  replaceWholeCell = false
 ): { xml: string; replaced: boolean } {
   // Walk every <w:tc>...</w:tc> chunk and find the one whose plain text
   // matches the label. The match is case-sensitive + whitespace-collapsed.
@@ -699,6 +738,23 @@ function injectValueAfterLabel(
   const nextTcAbsIdx = labelCellEndIdx + afterLabel.indexOf(nextTcMatch[0]);
   const nextTcEnd = nextTcAbsIdx + nextTcMatch[0].length;
 
+  if (replaceWholeCell) {
+    // Rebuild the entire value cell with a single paragraph holding the
+    // value. The cell's <w:tcPr> (borders / shading / width) and the first
+    // paragraph's <w:pPr> (alignment) are preserved.
+    const tcPrMatch = nextTcMatch[0].match(/<w:tcPr>[\s\S]*?<\/w:tcPr>/);
+    const tcPr = tcPrMatch ? tcPrMatch[0] : "";
+    const firstP = nextTcMatch[0].match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
+    const pPrMatch = firstP?.[0]?.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const newCell = `<w:tc>${tcPr}<w:p>${pPr}${buildTextRun(value)}</w:p></w:tc>`;
+    const newXml =
+      documentXml.slice(0, nextTcAbsIdx) +
+      newCell +
+      documentXml.slice(nextTcEnd);
+    return { xml: newXml, replaced: true };
+  }
+
   // Find the first <w:p>...</w:p> inside the value cell.
   const pMatch = nextTcMatch[0].match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
   if (!pMatch) {
@@ -721,6 +777,50 @@ function injectValueAfterLabel(
   const newXml =
     documentXml.slice(0, pAbsIdx) + newP + documentXml.slice(pEndIdx);
   return { xml: newXml, replaced: true };
+}
+
+/**
+ * Remove the template's extra program-option rows from the FIRST table of
+ * the document. The template emulates a program dropdown with a "Program"
+ * label row followed by FOUR option rows; the injection writes the real
+ * program into the first option row, and this helper deletes the rest so
+ * the rendered document shows exactly one program value.
+ *
+ * Safety: if the first table doesn't match the expected shape (label row
+ * "Program" followed by at least one row), or any row contains a nested
+ * table, the XML is returned unchanged.
+ */
+function removeProgramOptionRows(documentXml: string): string {
+  const tblMatch = documentXml.match(/<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>/);
+  if (!tblMatch) return documentXml;
+
+  const tblXml = tblMatch[0];
+  // Bail out on nested tables — the row regex below would mis-split them.
+  const rowRegex = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+  const rows: string[] = [];
+  let rm: RegExpExecArray | null;
+  while ((rm = rowRegex.exec(tblXml)) !== null) rows.push(rm[0]);
+  if (rows.some((r) => r.includes("<w:tbl"))) return documentXml;
+
+  const rowPlainText = (rowXml: string) =>
+    Array.from(rowXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g))
+      .map((m) => m[1])
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const labelIdx = rows.findIndex((r) => rowPlainText(r) === "Program");
+  if (labelIdx === -1 || labelIdx + 1 >= rows.length) return documentXml;
+
+  // Keep the label row and the (already-injected) value row; drop the rest.
+  // The table's structural prefix (<w:tblPr>, <w:tblGrid>) lives between the
+  // <w:tbl> open tag and the first <w:tr> — preserve it verbatim.
+  const kept = rows.slice(0, labelIdx + 2);
+  const firstRowIdx = tblXml.indexOf(rows[0]);
+  const tblPrefix = tblXml.slice(0, firstRowIdx);
+  const rebuilt = tblPrefix + kept.join("") + "</w:tbl>";
+  // Function replacement — avoids interpreting $ patterns in the XML.
+  return documentXml.replace(tblXml, () => rebuilt);
 }
 
 /**
@@ -1217,15 +1317,17 @@ export async function populateWeeklyReportTemplate(
   }
 
   // 9. Inject program name (find "Program" label and inject the value).
-  // The "Program" label is followed by a list of options (Computer Science,
-  // Software Engineering, etc.) which is the original dropdown list. We
-  // replace the entire list with just the selected program name.
+  // The template emulates a dropdown with FOUR separate table rows after the
+  // "Program" label row ("Computer Science" / "Software Engineering" /
+  // "Artificial Intelligence" / "Rob & AI"). We (a) write the student's
+  // program into the FIRST option row and (b) DELETE the remaining option
+  // rows so the generated document shows exactly one program value.
   const programLabelPattern = /<w:t[^>]*>Program<\/w:t>[\s\S]*?(?=<w:tr|<\/w:tbl|<w:p)/;
   if (programLabelPattern.test(documentXml)) {
     // Find the next <w:tc> after "Program" label and replace its content.
-    const result = injectValueAfterLabel(documentXml, "Program", data.programName);
+    const result = injectValueAfterLabel(documentXml, "Program", data.programName, true);
     if (result.replaced) {
-      documentXml = result.xml;
+      documentXml = removeProgramOptionRows(result.xml);
       fieldsPopulated.push("program");
     }
   }

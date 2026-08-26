@@ -52,7 +52,11 @@ skills/
 .zscripts/
 examples/
 mini-services/
-download/
+# Root-anchored on purpose: an unanchored "download/" pattern matches ANY
+# directory named "download" — including the API route
+# src/app/api/reports/generated/[id]/download/ — which silently excluded it
+# from git and broke report downloads on the deployment.
+/download/
 db/*.db
 Caddyfile
 

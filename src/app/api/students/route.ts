@@ -357,50 +357,54 @@ export async function POST(request: NextRequest) {
 
     if (userRole === "program_coordinator") {
       // Program coordinators can create students ONLY within their own
-      // university + department. They may pick ANY program that belongs
-      // to their department (a dropdown in the UI lists those programs).
+      // university + department + PROGRAM.
+      //
+      // BUSINESS RULE (user directive 2026-08-26): every student created by
+      // a Program Coordinator must be enrolled in the SAME program as the
+      // coordinator — "the program's id should be same for both, that
+      // program coordinator and all the students within that program".
+      // The students table's program_id is therefore FORCED from the
+      // caller's profile and any client-supplied program_id is overridden
+      // (mirrors the bulk-import route, which already enforces this).
       if (!userUniversityId) {
         return authorizationError("No university assigned to your account");
       }
       const userDepartmentId = (authContext.profile as any)?.department_id;
+      const userProgramId = (authContext.profile as any)?.program_id;
       if (!userDepartmentId) {
         return authorizationError(
           "No department assigned to your account. Ask a University Admin to assign you to a department first."
         );
       }
-      // Force university_id + department_id from caller's profile (cannot spoof).
+      if (!userProgramId) {
+        return authorizationError(
+          "No program assigned to your account. Ask a University Admin to link your coordinator account to a program first — students you create are automatically enrolled in your program."
+        );
+      }
+      // Force university_id + department_id + program_id from the caller's
+      // own profile (cannot be spoofed by the client).
       studentData.university_id = userUniversityId;
       studentData.department_id = userDepartmentId;
+      studentData.program_id = userProgramId;
 
-      // Trust but VERIFY the client-supplied program_id: it must exist AND
-      // belong to the caller's department (defense in depth — UI filters
-      // by department but RLS/server must enforce it).
-      if (studentData.program_id) {
-        const { data: prog, error: progErr } = await admin
-          .from("programs")
-          .select("id, department_id, university_id")
-          .eq("id", studentData.program_id)
-          .maybeSingle();
-        if (progErr || !prog) {
-          return NextResponse.json<ApiResponse<never>>(
-            { success: false, error: "Referenced program does not exist" },
-            { status: 400 }
-          );
-        }
-        if (prog.department_id !== userDepartmentId) {
-          return authorizationError(
-            "Program does not belong to your department"
-          );
-        }
-        if (prog.university_id !== userUniversityId) {
-          return authorizationError(
-            "Program does not belong to your university"
-          );
-        }
+      // Defense in depth: verify the PC's program actually exists and
+      // belongs to their university + department in the programs table.
+      const { data: prog, error: progErr } = await admin
+        .from("programs")
+        .select("id, department_id, university_id, name")
+        .eq("id", userProgramId)
+        .maybeSingle();
+      if (progErr || !prog) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Your assigned program could not be found. Contact your administrator." },
+          { status: 403 }
+        );
       }
-      // If program_id was not supplied, leave it null — the UI requires it
-      // but the API stays permissive so other valid PC callers (e.g. legacy
-      // paths) aren't broken.
+      if (prog.department_id !== userDepartmentId || prog.university_id !== userUniversityId) {
+        return authorizationError(
+          "Your profile's program does not match your university/department. Contact your administrator."
+        );
+      }
     }
 
     // ================================================================

@@ -273,7 +273,8 @@ export async function POST(request: NextRequest) {
         program_id,
         university_id,
         departments:department_id ( name ),
-        programs:program_id ( name )
+        programs:program_id ( name ),
+        universities:university_id ( logo_url )
         `
       )
       .eq("user_id", user.id)
@@ -286,16 +287,47 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     const profileRow = profile as any;
-    const programName = Array.isArray(profileRow?.programs)
+    let programName = Array.isArray(profileRow?.programs)
       ? profileRow.programs[0]?.name
       : profileRow?.programs?.name;
-    const departmentName = Array.isArray(profileRow?.departments)
+    let departmentName = Array.isArray(profileRow?.departments)
       ? profileRow.departments[0]?.name
       : profileRow?.departments?.name;
+
+    // FALLBACK (bug fix 2026-08-26): many existing student rows have
+    // program_id / department_id set on `students` but NOT on `profiles`
+    // (older creation flows only wrote the students table). Without this
+    // fallback the weekly_log.program_name snapshot is written as NULL and
+    // the generated Word report shows "—" for Program.
+    const snapshotProgramId =
+      profileRow?.program_id || studentRow?.program_id || null;
+    const snapshotDepartmentId =
+      profileRow?.department_id || studentRow?.department_id || null;
+    if (!programName && snapshotProgramId) {
+      const { data: progRow } = await supabase
+        .from("programs")
+        .select("name")
+        .eq("id", snapshotProgramId)
+        .maybeSingle();
+      programName = (progRow as any)?.name || null;
+    }
+    if (!departmentName && snapshotDepartmentId) {
+      const { data: deptRow } = await supabase
+        .from("departments")
+        .select("name")
+        .eq("id", snapshotDepartmentId)
+        .maybeSingle();
+      departmentName = (deptRow as any)?.name || null;
+    }
+
     const studentRegistrationNo =
       profileRow?.student_id_number ||
       studentRow?.student_id_number ||
       null;
+    // University logo: the profiles select above embeds
+    // universities:university_id(logo_url) — the previous select omitted the
+    // embed entirely, so this snapshot was always NULL and generation had to
+    // fall back to the live universities row every time.
     const universityLogoUrl = Array.isArray(profileRow?.universities)
       ? profileRow.universities[0]?.logo_url
       : profileRow?.universities?.logo_url;
