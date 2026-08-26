@@ -253,11 +253,19 @@ export default function CompanyHRInternshipsPage() {
           uniList.map(async (uni: any) => {
             try {
               const res = await fetch(`/api/departments?university_id=${uni.university_id}&pageSize=100`);
+              if (!res.ok) {
+                // Non-OK response (e.g. 403 no MoU, 500 misconfig) — mark as a
+                // load failure so the UI can tell it apart from a university
+                // that genuinely has zero departments.
+                setMouDeptLoadFailed(true);
+                return { ...uni, departments: [] };
+              }
               const result = await res.json();
               const depts: MouDepartment[] = (result?.data?.data || result?.data || [])
                 .filter((d: any) => d.is_active !== false);
               return { ...uni, departments: depts };
             } catch {
+              setMouDeptLoadFailed(true);
               return { ...uni, departments: [] };
             }
           })
@@ -282,6 +290,16 @@ export default function CompanyHRInternshipsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // "Publish immediately" in the create dialog: when checked the new
+  // internship is created directly with status='open' so students can see
+  // and apply right away. Unchecked keeps the old behaviour (draft, HR
+  // clicks Publish later). Defaults to ON because the previous silent-draft
+  // behaviour made users think the internship "was not appearing".
+  const [publishImmediately, setPublishImmediately] = useState(true);
+  // Tracks whether any MoU university's department list failed to load —
+  // distinguishes "university has zero departments" (genuine) from
+  // "departments could not be loaded" (fixable by retrying).
+  const [mouDeptLoadFailed, setMouDeptLoadFailed] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -347,13 +365,22 @@ export default function CompanyHRInternshipsPage() {
           target_departments: formData.target_departments,
           university_id: formData.target_university || null,
           image_url: formData.image_url || null,
+          status: publishImmediately ? 'open' : 'draft',
         }),
       });
 
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error?.message || 'Failed to create internship');
 
-      toast.success("Internship created", { description: formData.title });
+      if (publishImmediately) {
+        toast.success("Internship published", {
+          description: `${formData.title} is now open — students from targeted departments can see and apply to it.`,
+        });
+      } else {
+        toast.success("Internship created as draft", {
+          description: `${formData.title} is saved as a draft. Click "Publish" on the card to make it visible to students.`,
+        });
+      }
       setIsCreateOpen(false);
       resetForm();
       fetchInternships();
@@ -782,6 +809,16 @@ export default function CompanyHRInternshipsPage() {
                   </p>
                 )}
 
+                {!isLoadingMouDepts && mouUniversities.length > 0 && mouUniversities.every(u => u.departments.length === 0) && (
+                  <div className="text-sm p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                    {mouDeptLoadFailed ? (
+                      <>Departments could not be loaded for your MoU-linked universities. Please refresh the page and try again.</>
+                    ) : (
+                      <>Your MoU-linked universities have no departments set up yet. The internship will be open to all students from those universities until departments are added by the university admin.</>
+                    )}
+                  </div>
+                )}
+
                 {!isLoadingMouDepts && mouUniversities.length > 0 && (
                   <div className="space-y-2 max-h-60 overflow-y-auto rounded-lg border p-2">
                     {mouUniversities.map((uni) => {
@@ -917,7 +954,19 @@ export default function CompanyHRInternshipsPage() {
                 </div>
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <label className="flex items-center gap-2 mr-auto cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={publishImmediately}
+                    onChange={(e) => setPublishImmediately(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm">
+                    Publish immediately
+                    <span className="text-muted-foreground"> — visible to students right away</span>
+                  </span>
+                </label>
                 <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
                   Cancel
                 </Button>
@@ -925,7 +974,7 @@ export default function CompanyHRInternshipsPage() {
                   onClick={handleCreateInternship}
                   disabled={!formData.title || !formData.description || isSaving}
                 >
-                  {isSaving ? "Creating..." : "Create Internship"}
+                  {isSaving ? "Creating..." : publishImmediately ? "Create & Publish" : "Create as Draft"}
                 </Button>
               </DialogFooter>
             </DialogBody>

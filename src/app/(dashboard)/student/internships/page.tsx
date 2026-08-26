@@ -364,7 +364,26 @@ export default function StudentInternshipsPage() {
       toast.success("Application submitted", { description: `You applied to ${selectedInternship.title}.` });
     } catch (error) {
       console.error("Error applying:", error);
-      toast.error("Failed to submit application", { description: error instanceof Error ? error.message : "Please try again." });
+      // Surface a friendlier message for the known database-side failure:
+      // the capacity trigger (fixed by migration 0097) used to reject EVERY
+      // application insert with `column "vacancies" does not exist`.
+      // NOTE: supabase-js throws plain PostgrestError objects (not Error
+      // instances), so read .message defensively from either shape.
+      const err = error as { message?: string; code?: string; details?: string } | null;
+      const rawMessage = err?.message || (error instanceof Error ? error.message : String(error ?? ""));
+      let description = "Please try again.";
+      if (rawMessage.includes("vacancies") || rawMessage.includes("does not exist")) {
+        description =
+          "The application system needs a one-time database update (migration 0097). " +
+          "Please ask the administrator to run it in the Supabase SQL editor, then try again.";
+      } else if (rawMessage.includes("duplicate key")) {
+        description = "You have already applied to this internship.";
+      } else if (rawMessage.includes("row-level security")) {
+        description = "You do not have permission to apply. Make sure your student profile is complete.";
+      } else if (rawMessage.includes("capacity")) {
+        description = "This internship has reached its maximum number of applicants.";
+      }
+      toast.error("Failed to submit application", { description });
     } finally {
       setIsApplying(false);
     }

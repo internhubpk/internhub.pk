@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+// Create a service-role client for cross-tenant reads that RLS would
+// otherwise block for company_hr (e.g. verifying that a department belongs
+// to a university). Only used AFTER the route has validated the caller's
+// company and MoU — the MoU check remains the authorization boundary.
+function createScopedAdminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) return null;
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    { auth: { persistSession: false } }
+  );
+}
 
 async function getCompanyProfile(supabase: any, userId: string) {
   const { data: profile, error } = await supabase
@@ -194,14 +209,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      // Verify departments belong to their universities
+      // Verify departments belong to their universities.
+      // IMPORTANT: use the service-role client for this read — the
+      // `dept_select` RLS policy blocks company_hr from reading ANY
+      // departments row (their university_id is NULL), which made this
+      // check always fail with "Department does not belong to university"
+      // even for valid selections. The MoU check above is the real
+      // authorization boundary; this read is pure referential validation.
+      const adminClient = createScopedAdminClient();
+      const deptClient = adminClient || supabase;
       for (const target of newStyleTargets) {
-        const { data: dept } = await supabase
+        const { data: dept } = await deptClient
           .from("departments")
           .select("id, university_id")
           .eq("id", target.department_id)
           .eq("university_id", target.university_id)
-          .single();
+          .maybeSingle();
 
         if (!dept) {
           return NextResponse.json(

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import {
   CreateDepartmentSchema,
@@ -141,6 +142,73 @@ export async function GET(request: NextRequest) {
             { status: 403 }
           );
         }
+
+        // ------------------------------------------------------------------
+        // MoU is valid. Fetch the departments with the SERVICE ROLE client.
+        //
+        // WHY: the `dept_select` RLS policy on `departments` only allows
+        // super_admin or rows where university_id = the CALLER's
+        // university_id. company_hr profiles have university_id = NULL,
+        // so the user-scoped PostgREST query returns ZERO rows even though
+        // this route just proved the caller has an active MoU with the
+        // university. (The policy fix ships as migration 0097 — this code
+        // path makes the feature work on databases where 0097 has not yet
+        // been applied, and keeps working afterwards because the MoU check
+        // above remains the authorization boundary.)
+        // ------------------------------------------------------------------
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!serviceRoleKey) {
+          console.error(
+            "[/api/departments] SUPABASE_SERVICE_ROLE_KEY is not set — cannot serve company_hr department lists."
+          );
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "Server misconfiguration: service role key is not set" },
+            { status: 500 }
+          );
+        }
+
+        const adminClient = createAdminClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          serviceRoleKey,
+          { auth: { persistSession: false } }
+        );
+
+        let hrQuery = adminClient
+          .from("departments")
+          .select("id, name, code, university_id, is_active", { count: "exact" })
+          .eq("university_id", filters.university_id);
+
+        const hrIsActive = searchParams.get("is_active");
+        if (hrIsActive === "true") {
+          hrQuery = hrQuery.eq("is_active", true);
+        } else if (hrIsActive === "false") {
+          hrQuery = hrQuery.eq("is_active", false);
+        }
+
+        const { data: hrDepartments, count: hrCount, error: hrError } = await hrQuery
+          .order(sortBy, { ascending: sortOrder })
+          .range((page - 1) * pageSize, page * pageSize - 1);
+
+        if (hrError) {
+          console.error("Error fetching departments for company_hr:", hrError);
+          return NextResponse.json<ApiResponse<never>>(
+            { success: false, error: "Failed to fetch departments" },
+            { status: 500 }
+          );
+        }
+
+        const hrResponse: PaginatedResponse<Department> = {
+          data: (hrDepartments || []) as unknown as Department[],
+          total: hrCount || 0,
+          page,
+          pageSize,
+          totalPages: Math.ceil((hrCount || 0) / pageSize),
+        };
+
+        return NextResponse.json<ApiResponse<PaginatedResponse<Department>>>({
+          success: true,
+          data: hrResponse,
+        });
       } else if (profile.role !== "super_admin") {
         // Non-super-admins can only access their own university
         if (filters.university_id !== profile.university_id) {

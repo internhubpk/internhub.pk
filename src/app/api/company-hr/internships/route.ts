@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+// Create a service-role client for cross-tenant reads that RLS would
+// otherwise block for company_hr (e.g. verifying that a department belongs
+// to a university). Only used AFTER the route has validated the caller's
+// company and MoU — the MoU check remains the authorization boundary.
+async function createScopedAdminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) return null;
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    { auth: { persistSession: false } }
+  );
+}
 
 // GET: List company's internship programs (with target departments)
 // POST: Create new internship program (with target departments)
@@ -175,6 +190,7 @@ export async function POST(request: NextRequest) {
       requirements = [],
       benefits = [],
       image_url,
+      status: requestedStatus,
     } = body;
 
     // Validate required fields
@@ -223,14 +239,22 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Verify each department belongs to its specified university
+      // Verify each department belongs to its specified university.
+      // IMPORTANT: use the service-role client for this read — the
+      // `dept_select` RLS policy blocks company_hr from reading ANY
+      // departments row (their university_id is NULL), which made this
+      // check always fail with "Department does not belong to university"
+      // even for valid selections. The MoU check above is the real
+      // authorization boundary; this read is pure referential validation.
+      const adminClient = await createScopedAdminClient();
+      const deptClient = adminClient || supabase;
       for (const target of newStyleTargets) {
-        const { data: dept } = await supabase
+        const { data: dept } = await deptClient
           .from("departments")
           .select("id, university_id")
           .eq("id", target.department_id)
           .eq("university_id", target.university_id)
-          .single();
+          .maybeSingle();
 
         if (!dept) {
           return NextResponse.json(
@@ -250,6 +274,13 @@ export async function POST(request: NextRequest) {
       typeof oldTargetDepartments[0] === "string"
       ? oldTargetDepartments
       : []; // We don't backfill from new-style to old-style
+
+    // Validate optional initial status. Only 'draft' and 'open' make sense at
+    // creation time; anything else falls back to 'draft'. 'open' powers the
+    // "Publish immediately" option in the create dialog so freshly added
+    // internships are visible to students right away (they used to silently
+    // land in draft and students saw nothing).
+    const initialStatus = requestedStatus === "open" ? "open" : "draft";
 
     // Create internship
     const insertPayload: Record<string, unknown> = {
@@ -271,7 +302,7 @@ export async function POST(request: NextRequest) {
       requirements: Array.isArray(requirements) ? requirements : [],
       benefits: Array.isArray(benefits) ? benefits : [],
       image_url: typeof image_url === "string" && image_url.trim() ? image_url.trim() : null,
-      status: "draft",
+      status: initialStatus,
       created_by: user.id,
     };
     if (location_type !== undefined) insertPayload.location_type = location_type;
