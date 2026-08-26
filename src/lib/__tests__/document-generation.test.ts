@@ -65,6 +65,7 @@ async function main() {
     learningOutcomes: "Test learning outcomes content.",
     challengesFaced: "Test challenges content.",
     supportingEvidence: "1. evidence-A\n2. evidence-B",
+    evidenceAttachments: [],
     supervisorRemarks: "Test supervisor remarks.",
     studentSignatureBuffer: null,
     industrySupervisorSignatureBuffer: null,

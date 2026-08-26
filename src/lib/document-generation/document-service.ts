@@ -44,6 +44,8 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceRoleClient } from "@supabase/supabase-js";
 import path from "path";
 import { promises as fs } from "fs";
+import { buildOleObjectBin } from "./ole-package";
+import { PDF_ICON, DOCX_ICON, XLS_ICON, FILE_ICON } from "./ole-icons";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -82,12 +84,32 @@ export interface WeeklyReportData {
   learningOutcomes: string;
   challengesFaced: string;
   supportingEvidence: string;
+  // Supporting-evidence attachments — the ACTUAL files/links, appended at the
+  // end of the generated document (centered images for pictures, hyperlinks
+  // for links, embedded OLE package objects for PDF/DOCX/other files so the
+  // original file is double-clickable inside Word).
+  evidenceAttachments: EvidenceAttachment[];
   // Supervisor remarks (filled by supervisor; blank at student's submission)
   supervisorRemarks: string;
   // Signature image buffers
   studentSignatureBuffer: Buffer | null;
   industrySupervisorSignatureBuffer: Buffer | null;
   facultySupervisorSignatureBuffer: Buffer | null;
+}
+
+/** One supporting-evidence item as resolved for the Word report. */
+export interface EvidenceAttachment {
+  kind: "image" | "file" | "link";
+  /** Display name (filename for uploads, label for links). */
+  name: string;
+  /** External URL (links only). */
+  url?: string;
+  /** Raw bytes (images and files). */
+  buffer?: Buffer;
+  /** File extension without dot, e.g. "pdf". */
+  ext?: string;
+  /** MIME type. */
+  mime?: string;
 }
 
 export interface GenerationResult {
@@ -189,6 +211,140 @@ export async function fetchSignatureImage(
 ): Promise<Buffer | null> {
   if (!signatureUrl) return null;
   return fetchUniversityLogo(signatureUrl); // same logic — fetch URL or storage path
+}
+
+/**
+ * Resolve the supporting_evidence jsonb array of a weekly log into concrete
+ * attachments for the Word report:
+ *
+ *   - link entries  → { kind: "link" }               (rendered as hyperlinks)
+ *   - image files   → { kind: "image", buffer }      (embedded, centered)
+ *   - other files   → { kind: "file", buffer }       (embedded as OLE package
+ *                                                     objects — double-click
+ *                                                     opens the original file)
+ *
+ * Signed storage URLs expire (7-day TTL), so files are downloaded by their
+ * STORAGE PATH via the service-role client when available; the signed URL is
+ * only used as a fallback. Failures degrade to a link (when a URL is known)
+ * or are skipped — never fail the whole report because one evidence file
+ * could not be fetched.
+ */
+async function buildEvidenceAttachments(
+  supportingEvidence: unknown
+): Promise<EvidenceAttachment[]> {
+  if (!Array.isArray(supportingEvidence)) return [];
+  const out: EvidenceAttachment[] = [];
+
+  for (const raw of supportingEvidence) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as {
+      name?: string;
+      url?: string;
+      type?: string;
+      link?: boolean;
+      size?: number;
+    };
+    const name = (e.name || "").trim() || "evidence";
+    const url = (e.url || "").trim();
+
+    // 1. Link evidence (typed into the form) or a non-storage external URL.
+    const isStorageUrl = /\/storage\/v1\/object\//.test(url);
+    if (e.link === true || e.type === "link" || (url && !isStorageUrl && url.startsWith("http"))) {
+      if (url || name) out.push({ kind: "link", name, url: url || undefined });
+      continue;
+    }
+
+    // 2. File evidence — fetch the bytes.
+    if (!url) continue;
+    const buffer = await fetchEvidenceBuffer(url, name);
+    if (!buffer || buffer.length === 0) {
+      // Could not re-fetch (e.g. expired signed URL and no service key) —
+      // keep the item visible as a link when we at least have a URL.
+      if (isStorageUrl) continue; // dead internal URL — nothing useful to show
+      out.push({ kind: "link", name, url });
+      continue;
+    }
+
+    // 3. Classify: Word-renderable raster images are embedded inline;
+    //    everything else becomes an OLE package attachment.
+    const fmt = detectImageFormat(buffer);
+    const extFromName = (name.split(".").pop() || "").toLowerCase();
+    if (fmt && ["png", "jpeg", "gif", "bmp"].includes(fmt.ext)) {
+      out.push({ kind: "image", name, buffer, ext: fmt.ext, mime: fmt.mime });
+    } else {
+      out.push({
+        kind: "file",
+        name,
+        buffer,
+        ext: extFromName || fmt?.ext || "bin",
+        mime: e.type || undefined,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Download one evidence file's bytes.
+ *
+ * Handles Supabase storage URLs of the shapes:
+ *   https://<ref>.supabase.co/storage/v1/object/sign/documents/<path>?token=…
+ *   https://<ref>.supabase.co/storage/v1/object/public/documents/<path>
+ *   https://<ref>.supabase.co/storage/v1/object/authenticated/documents/<path>?…
+ * and bare storage paths ("documents/<path>" or "<user>/…").
+ *
+ * Strategy: extract the bucket + path and download with the service-role
+ * client (immune to signed-URL expiry); fall back to a plain fetch of the
+ * URL (works while the signature is still valid).
+ */
+async function fetchEvidenceBuffer(url: string, name: string): Promise<Buffer | null> {
+  try {
+    let bucket: string | null = null;
+    let objectPath: string | null = null;
+
+    const m = url.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/([^/]+)\/([^?#]+)/);
+    if (m) {
+      bucket = m[1];
+      objectPath = decodeURIComponent(m[2]);
+    } else if (!/^https?:\/\//i.test(url)) {
+      // Bare path — try the documents bucket first, then treat the first
+      // segment as a possible bucket name.
+      bucket = "documents";
+      objectPath = url;
+    }
+
+    if (bucket && objectPath) {
+      const url2 = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url2 && serviceKey) {
+        const client = createServiceRoleClient(url2, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data, error } = await client.storage
+          .from(bucket)
+          .download(objectPath);
+        if (!error && data) {
+          return Buffer.from(await data.arrayBuffer());
+        }
+        console.warn(
+          `[doc-gen] evidence service-role download failed (${name}):`,
+          error?.message
+        );
+      }
+    }
+
+    // Fallback: fetch the URL directly (signed URL still valid).
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const ab = await resp.arrayBuffer();
+      if (ab.byteLength > 0) return Buffer.from(ab);
+    }
+    console.warn(`[doc-gen] evidence fetch failed (${name}): HTTP ${resp.status}`);
+    return null;
+  } catch (err) {
+    console.warn(`[doc-gen] evidence fetch threw (${name}):`, err);
+    return null;
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -472,16 +628,41 @@ export async function assembleWeeklyReportData(
   //    Prefer the weekly_log's denormalized snapshot columns (migrations
   //    0058/0071) when populated; fall back to the legacy `learnings` /
   //    `challenges` / `next_week_goals` / `supervisor_feedback` columns.
+  // 7. Resolve supporting-evidence attachments (the actual files/links —
+  //    embedded at the END of the generated document).
+  const evidenceAttachments = await buildEvidenceAttachments(
+    (weeklyLogAny as any).supporting_evidence
+  );
+
+  // 7a. Body-section summary text ("Supporting Evidence (Mandatory)").
+  //     Each item states where it can be found in the document:
+  //     images are embedded below, files are attached below, links are live.
   const supportingEvidenceSummary: string = (() => {
-    if (weeklyLogAny.supporting_evidence && Array.isArray(weeklyLogAny.supporting_evidence)) {
-      const list = weeklyLogAny.supporting_evidence as Array<{ name?: string; url?: string }>;
+    if (evidenceAttachments.length > 0) {
+      return evidenceAttachments
+        .map((e, i) => {
+          if (e.kind === "link") return `${i + 1}. Link: ${e.url || e.name}`;
+          const ext = (e.ext || "").toUpperCase();
+          if (e.kind === "image") return `${i + 1}. ${e.name} (image — embedded in the Attachments section)`;
+          return `${i + 1}. ${e.name}${ext ? ` (${ext} file — attached in the Attachments section)` : " (attached in the Attachments section)"}`;
+        })
+        .join("\n");
+    }
+    if (
+      weeklyLogAny.supporting_evidence &&
+      Array.isArray(weeklyLogAny.supporting_evidence)
+    ) {
+      const list = weeklyLogAny.supporting_evidence as Array<{
+        name?: string;
+        url?: string;
+      }>;
       if (list.length > 0) {
         return list
           .map((e, i) => `${i + 1}. ${e.name || e.url || "evidence"}`)
           .join("\n");
       }
     }
-    return weeklyLog.next_week_goals || "See attached evidence files.";
+    return "No supporting evidence was attached for this week.";
   })();
 
   // Supervisor remarks: prefer site_supervisor_remarks (Industry Supervisor),
@@ -516,6 +697,8 @@ export async function assembleWeeklyReportData(
     challengesFaced: weeklyLogAny.challenges_solutions || weeklyLog.challenges || "",
     // Supporting Evidence (Mandatory)
     supportingEvidence: supportingEvidenceSummary,
+    // Evidence attachments (rendered at the very end of the document)
+    evidenceAttachments,
     // Supervisor Remarks
     supervisorRemarks,
     studentSignatureBuffer,
@@ -569,6 +752,15 @@ function escapeXml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+/**
+ * Escape a value for use inside an XML attribute (relationship targets,
+ * hyperlink URLs). Also strips control characters and — for URLs — leaves
+ * &amp; properly escaped so rels stay well-formed.
+ */
+function escapeXmlAttr(text: string): string {
+  return escapeXml(text);
 }
 
 /**
@@ -726,6 +918,158 @@ function detectImageFormat(buf: Buffer): { ext: string; mime: string } | null {
     return { ext: "bmp", mime: "image/bmp" };
   }
   return null;
+}
+
+/**
+ * Read the pixel dimensions of a PNG / JPEG / GIF / BMP buffer.
+ * Returns null for anything else (or a malformed header).
+ */
+export function readImageDimensions(
+  buf: Buffer | null
+): { width: number; height: number } | null {
+  if (!buf || buf.length < 26) return null;
+  try {
+    // PNG — IHDR: width @16, height @20 (big-endian).
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      const width = buf.readUInt32BE(16);
+      const height = buf.readUInt32BE(20);
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    // GIF — logical screen size @6 (little-endian).
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+      const width = buf.readUInt16LE(6);
+      const height = buf.readUInt16LE(8);
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    // BMP — width @18, height @22 (little-endian; height may be negative for
+    // top-down bitmaps).
+    if (buf[0] === 0x42 && buf[1] === 0x4d) {
+      const width = buf.readInt32LE(18);
+      const height = Math.abs(buf.readInt32LE(22));
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    // JPEG — walk the segment stream to the first SOF marker.
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      let off = 2;
+      while (off + 9 < buf.length) {
+        if (buf[off] !== 0xff) {
+          off++;
+          continue;
+        }
+        const marker = buf[off + 1];
+        // SOF0..SOF15 except DHT (C4), JPG (C8), DAC (CC).
+        if (
+          marker >= 0xc0 && marker <= 0xcf &&
+          marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+        ) {
+          const height = buf.readUInt16BE(off + 5);
+          const width = buf.readUInt16BE(off + 7);
+          if (width > 0 && height > 0) return { width, height };
+          return null;
+        }
+        // Skip this segment (length includes the 2 length bytes).
+        const segLen = buf.readUInt16BE(off + 2);
+        if (segLen < 2) return null;
+        off += 2 + segLen;
+      }
+      return null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-anchor the header's LOGO drawing (the wp:anchor whose docPr is
+ * "Image 1") so it renders at the given size, horizontally centered on the
+ * page. Updates positionH/posOffset, wp:extent and the inner a:ext.
+ *
+ * The anchor is located structurally (via its <wp:docPr name="Image 1"/>
+ * marker) so this does not depend on the template's hardcoded EMU offsets;
+ * if the marker cannot be found the header is returned unchanged.
+ */
+function retargetLogoAnchor(
+  headerXml: string,
+  newW: number,
+  newH: number,
+  newOffX: number
+): string {
+  const docPrIdx = headerXml.indexOf('name="Image 1"');
+  if (docPrIdx === -1) return headerXml;
+  const anchorStart = headerXml.lastIndexOf("<wp:anchor", docPrIdx);
+  const anchorEnd = headerXml.indexOf("</wp:anchor>", docPrIdx);
+  if (anchorStart === -1 || anchorEnd === -1) return headerXml;
+
+  let anchor = headerXml.slice(anchorStart, anchorEnd);
+  // First posOffset inside the anchor = positionH (relativeFrom="page").
+  anchor = anchor.replace(
+    /<wp:posOffset>-?\d+<\/wp:posOffset>/,
+    `<wp:posOffset>${newOffX}</wp:posOffset>`
+  );
+  anchor = anchor.replace(
+    /<wp:extent cx="\d+" cy="\d+"\/>/,
+    `<wp:extent cx="${newW}" cy="${newH}"/>`
+  );
+  anchor = anchor.replace(
+    /<a:ext cx="\d+" cy="\d+"\/>/,
+    `<a:ext cx="${newW}" cy="${newH}"/>`
+  );
+  return headerXml.slice(0, anchorStart) + anchor + headerXml.slice(anchorEnd);
+}
+
+/**
+ * Re-anchor the header's university-name TEXTBOX (the wp:anchor whose docPr
+ * is "Textbox 2") with the given width, horizontally centered on the page.
+ *
+ * Updates BOTH representations Word ships for the textbox:
+ *   - the DrawingML anchor (mc:Choice): positionH/posOffset, wp:extent, a:ext
+ *   - the legacy VML fallback (mc:Fallback v:shape style): margin-left/width
+ *
+ * Returns the XML unchanged when the textbox marker cannot be found.
+ */
+function retargetHeaderTextbox(
+  headerXml: string,
+  boxW: number,
+  pageW: number
+): string {
+  const docPrIdx = headerXml.indexOf('name="Textbox 2"');
+  if (docPrIdx === -1) return headerXml;
+  const anchorStart = headerXml.lastIndexOf("<wp:anchor", docPrIdx);
+  // The textbox's anchor is wrapped in <mc:AlternateContent> whose
+  // <mc:Fallback> carries a VML v:shape COPY that sits AFTER </wp:anchor> —
+  // the span must cover BOTH so the fallback geometry is updated too.
+  const anchorEnd = headerXml.indexOf("</mc:AlternateContent>", docPrIdx);
+  if (anchorStart === -1 || anchorEnd === -1) return headerXml;
+  const spanEnd = anchorEnd + "</mc:AlternateContent>".length;
+
+  const offX = Math.round(pageW / 2 - boxW / 2); // exact horizontal center
+  let span = headerXml.slice(anchorStart, spanEnd);
+
+  // --- DrawingML anchor (mc:Choice) ---
+  span = span.replace(
+    /<wp:posOffset>-?\d+<\/wp:posOffset>/,
+    `<wp:posOffset>${offX}</wp:posOffset>`
+  );
+  span = span.replace(
+    /<wp:extent cx="\d+" cy="\d+"\/>/,
+    (m) => m.replace(/cx="\d+"/, `cx="${boxW}"`)
+  );
+  span = span.replace(
+    /<a:ext cx="\d+" cy="\d+"\/>/,
+    (m) => m.replace(/cx="\d+"/, `cx="${boxW}"`)
+  );
+
+  // --- VML fallback (v:shape style uses pt units; 1pt = 12700 EMU) ---
+  const widthPt = (boxW / 12700).toFixed(2);
+  const marginLeftPt = (offX / 12700).toFixed(2);
+  span = span.replace(/margin-left:[\d.]+pt;/, `margin-left:${marginLeftPt}pt;`);
+  span = span.replace(/width:[\d.]+pt;/, `width:${widthPt}pt;`);
+
+  return headerXml.slice(0, anchorStart) + span + headerXml.slice(spanEnd);
 }
 
 /**
@@ -1275,19 +1619,38 @@ export async function populateWeeklyReportTemplate(
   // reached the remaining three (the fallback textbox copy kept the
   // template's hardcoded "Ibadat International University Islamabad").
   //
-  // FIT-TO-TEXTBOX scaling: the header textbox is a FIXED 329.45pt × 40.9pt
-  // (two lines: university name @18pt bold + department @14pt). A university
-  // name longer than the template's reference wraps to a second line and
-  // CLIPS the department line out of view. Replacements longer than their
-  // template reference therefore get their font size scaled down
-  // proportionally so each stays on one line — preserving the exact template
-  // layout for any university/department name.
+  // FIT-TO-TEXTBOX scaling + CENTERING (bug fix 2026-08-27 — "the logo and
+  // university name should be centered"): the header textbox is anchored to
+  // the PAGE, so we (a) WIDEN it (up to ~440pt) when the university name is
+  // longer than the template's reference so the font can stay larger, and
+  // (b) re-anchor it at the exact horizontal center of the page — for every
+  // box width. Text inside the textbox is already paragraph-centered
+  // (<w:jc w:val="center"/>), so the name always sits dead-center under the
+  // centered logo.
+  const TEMPLATE_BOX_W_EMU = 4184015; // 329.45pt — template textbox width
+  const MAX_BOX_W_EMU = 5600000; // ~440pt — keeps ≥86pt side margins (Letter)
+  const PAGE_W_EMU = 7772400; // Letter (template pgSz 12240 twips)
+  const UNI_REF_LEN = 41; // "Ibadat International University Islamabad"
+  const uniLen = Math.max(1, (data.universityName || "").trim().length);
+  let headerBoxW = TEMPLATE_BOX_W_EMU;
+  if (uniLen > UNI_REF_LEN) {
+    // Width the box would need for the longer name at the SAME font size
+    // (0.9 = the same bold-glyph safety factor used for font scaling).
+    const needed = Math.round(
+      (TEMPLATE_BOX_W_EMU * uniLen) / (UNI_REF_LEN * 0.9)
+    );
+    headerBoxW = Math.min(MAX_BOX_W_EMU, Math.max(TEMPLATE_BOX_W_EMU, needed));
+  }
+  const boxWidthFactor = headerBoxW / TEMPLATE_BOX_W_EMU;
+
   const scaleHeaderRPr = (rPr: string, referenceLength: number, referenceSz: number, text: string): string => {
     const len = Math.max(1, (text || "").trim().length);
-    if (len <= referenceLength) return rPr;
+    // Effective per-line capacity grows with the (possibly widened) box.
+    const effectiveRef = referenceLength * 0.9 * boxWidthFactor;
+    if (len <= effectiveRef) return rPr;
     // 0.90 safety factor: bold proportional-width glyphs (capitals, wide
     // letters) run wider than a strict char-count ratio suggests.
-    const scaled = Math.max(16, Math.floor((referenceSz * referenceLength * 0.9) / len));
+    const scaled = Math.max(16, Math.floor((referenceSz * effectiveRef) / len));
     if (/<w:sz w:val="\d+"\/>/.test(rPr)) {
       return rPr.replace(/<w:sz w:val="\d+"\/>/g, `<w:sz w:val="${scaled}"/>`);
     }
@@ -1308,14 +1671,23 @@ export async function populateWeeklyReportTemplate(
         const pPr = pPrMatch ? pPrMatch[0] : "";
         let rPr = extractRPrForInjection(pXml);
         // Scale down the font so long names stay on one line inside the
-        // fixed-size header textbox (template references: university name =
-        // 41 chars @ sz 36, department = 27 chars @ sz 28).
+        // (possibly widened) header textbox (template references: university
+        // name = 41 chars @ sz 36, department = 27 chars @ sz 28).
         const isUni = tag.startsWith("university_name");
-        rPr = scaleHeaderRPr(rPr, isUni ? 41 : 27, isUni ? 36 : 28, replacement || "");
+        rPr = scaleHeaderRPr(rPr, isUni ? UNI_REF_LEN : 27, isUni ? 36 : 28, replacement || "");
         return `<w:p>${pPr}${buildTextRun(replacement, rPr)}</w:p>`;
       }
       return pXml;
     });
+  }
+
+  // Re-anchor the university-name textbox: exact page centering (+ widening
+  // for long names). Touches BOTH the DrawingML anchor (mc:Choice path:
+  // positionH/posOffset, wp:extent, a:ext) and the legacy VML fallback
+  // (v:shape style margin-left/width) so Word AND older renderers agree.
+  headerXmlWork = retargetHeaderTextbox(headerXmlWork, headerBoxW, PAGE_W_EMU);
+  if (headerBoxW !== TEMPLATE_BOX_W_EMU) {
+    fieldsPopulated.push("university_name_textbox_widened");
   }
 
   for (const tag of headerReplacedTags) {
@@ -1373,6 +1745,31 @@ export async function populateWeeklyReportTemplate(
       }
     }
     imagesEmbedded.push("university_logo");
+
+    // 5a. CENTER THE LOGO + PRESERVE ITS ASPECT RATIO (bug fix 2026-08-27 —
+    //     "the logo and university name is not correct, it ruined the
+    //     document structure"). The template's logo anchor has a FIXED
+    //     extent of 1917192×762000 EMU (a 2.5:1 wide box). A typical
+    //     university crest is roughly SQUARE — forcing it into that box
+    //     stretched it into a distorted banner and looked "ruined". We now
+    //     read the image's real pixel dimensions, scale it to fit the header
+    //     band while PRESERVING the aspect ratio, and re-anchor it at the
+    //     exact horizontal center of the page.
+    const logoDims = readImageDimensions(data.universityLogoBuffer);
+    if (logoDims && logoFmt) {
+      const PAGE_W_EMU = 7772400; // Letter (template pgSz 12240 twips)
+      const LOGO_MAX_H_EMU = 762000; // template logo band height (0.83")
+      const LOGO_MAX_W_EMU = 2600000; // never wider than ~2.84"
+      const scale = Math.min(
+        LOGO_MAX_W_EMU / logoDims.width,
+        LOGO_MAX_H_EMU / logoDims.height
+      );
+      const newW = Math.max(1, Math.round(logoDims.width * scale));
+      const newH = Math.max(1, Math.round(logoDims.height * scale));
+      const newOffX = Math.round(PAGE_W_EMU / 2 - newW / 2); // exact center
+      headerXml = retargetLogoAnchor(headerXml, newW, newH, newOffX);
+      fieldsPopulated.push("university_logo_centered");
+    }
   } else if (data.universityLogoBuffer) {
     console.warn(
       "[doc-gen] University logo is not a Word-embeddable raster image (PNG/JPEG/GIF/BMP) — keeping the template logo."
@@ -1496,8 +1893,156 @@ export async function populateWeeklyReportTemplate(
     imagesEmbedded.push("faculty_supervisor_signature");
   }
 
-  // 11. Register new image relationships in document.xml.rels.
-  if (newImageRels.length > 0) {
+  // 10b. SUPPORTING-EVIDENCE ATTACHMENTS — append the ACTUAL evidence at the
+  //      end of the document (bug fix 2026-08-27 — the report used to only
+  //      list evidence FILENAMES as text: "1. settings.pdf"). Per the
+  //      template-owner's requirement:
+  //        - image evidence  → embedded inline, CENTERED, with a caption
+  //        - link evidence   → live hyperlinks
+  //        - PDF/DOCX/…      → embedded as Word OLE package objects (icon +
+  //                            filename; double-click opens the ORIGINAL
+  //                            file — the same mechanism Word's own
+  //                            "Insert > Object > Create from File" uses)
+  //      Everything is appended AFTER the signature section, before the
+  //      body's final sectPr, starting on a fresh page.
+  const extraObjectRels: Array<{
+    relId: string;
+    type: "oleObject" | "hyperlink" | "image";
+    target: string;
+    targetMode?: "External";
+  }> = [];
+  const extraZipFiles: Array<{ path: string; buffer: Buffer }> = [];
+  let evidenceImageSeq = 0;
+  let evidenceOleSeq = 0;
+  let evidenceLinkSeq = 0;
+
+  if (data.evidenceAttachments && data.evidenceAttachments.length > 0) {
+    const CONTENT_W_EMU = 5943600; // 6.5" content width (Letter, 1" margins)
+    const MAX_IMG_H_EMU = 5500000; // keep one image per page at most
+
+    const sectionXmlParts: string[] = [];
+
+    // Page break + section heading (same Heading1 style the template uses
+    // for "Weekly Activities" / "Supporting Evidence (Mandatory)").
+    sectionXmlParts.push(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`);
+    sectionXmlParts.push(
+      `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="202" w:after="45"/></w:pPr><w:r><w:t>Attachments — Supporting Evidence</w:t></w:r></w:p>`
+    );
+    sectionXmlParts.push(
+      `<w:p><w:pPr><w:spacing w:after="160"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="595959"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">The supporting evidence submitted with this weekly log is attached below. Images are embedded in full; document files are attached as objects which open on double-click; links open in the browser.</w:t></w:r></w:p>`
+    );
+
+    let figureNo = 0;
+    for (const evRaw of data.evidenceAttachments) {
+      // Non-renderable "image" evidence falls back to a file-object attach.
+      const ev: EvidenceAttachment =
+        evRaw.kind === "image" && evRaw.buffer && !(readImageDimensions(evRaw.buffer) && detectImageFormat(evRaw.buffer))
+          ? { ...evRaw, kind: "file", ext: evRaw.ext || "bin" }
+          : evRaw;
+      if (ev.kind === "image" && ev.buffer) {
+        // ---- Embedded, centered image ----
+        const dims = readImageDimensions(ev.buffer);
+        const fmt = detectImageFormat(ev.buffer);
+        if (dims && fmt) {
+          evidenceImageSeq += 1;
+          const relId = `rIdEvImg${evidenceImageSeq}`;
+          const scale = Math.min(
+            CONTENT_W_EMU / dims.width,
+            MAX_IMG_H_EMU / dims.height,
+            1 // never upscale small images beyond natural size
+          );
+          const wEmu = Math.max(1, Math.round(dims.width * scale));
+          const hEmu = Math.max(1, Math.round(dims.height * scale));
+          figureNo += 1;
+          newImageRels.push({ relId, buffer: ev.buffer, ext: fmt.ext, mime: fmt.mime });
+          sectionXmlParts.push(
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="160"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${wEmu}" cy="${hEmu}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${9000 + evidenceImageSeq}" name="Evidence Image ${evidenceImageSeq}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${9100 + evidenceImageSeq}" name="Evidence ${evidenceImageSeq}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${wEmu}" cy="${hEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+          );
+          sectionXmlParts.push(
+            `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="240"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="595959"/></w:rPr><w:t xml:space="preserve">Figure ${figureNo} — ${escapeXml(ev.name)}</w:t></w:r></w:p>`
+          );
+          imagesEmbedded.push(`evidence_image:${ev.name}`);
+          continue;
+        }
+      }
+
+      if (ev.kind === "link" && (ev.url || ev.name)) {
+        // ---- Live hyperlink ----
+        evidenceLinkSeq += 1;
+        const relId = `rIdEvLnk${evidenceLinkSeq}`;
+        const label = ev.name && ev.name !== ev.url ? `${ev.name} — ${ev.url}` : ev.url || ev.name;
+        extraObjectRels.push({
+          relId,
+          type: "hyperlink",
+          target: ev.url || ev.name,
+          targetMode: "External",
+        });
+        sectionXmlParts.push(
+          `<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:ind w:left="360"/></w:pPr><w:hyperlink r:id="${relId}" w:history="1"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r></w:hyperlink></w:p>`
+        );
+        continue;
+      }
+
+      if (ev.kind === "file" && ev.buffer) {
+        // ---- OLE package object (the actual file, double-clickable) ----
+        evidenceOleSeq += 1;
+        const oleRelId = `rIdEvOle${evidenceOleSeq}`;
+        const iconRelId = `rIdEvIcon${evidenceOleSeq}`;
+        const ext = (ev.ext || "bin").toLowerCase();
+        const icon =
+          ext === "pdf" ? PDF_ICON
+          : ["doc", "docx", "rtf", "odt"].includes(ext) ? DOCX_ICON
+          : ["xls", "xlsx", "csv", "ods"].includes(ext) ? XLS_ICON
+          : FILE_ICON;
+        const shapeId = `oleEvShape${evidenceOleSeq}`;
+        const objectId = `_oleEvObj${evidenceOleSeq}`;
+        const binPath = `embeddings/oleObjectEv${evidenceOleSeq}.bin`;
+        const iconPath = `media/imageEvIcon${evidenceOleSeq}.png`;
+
+        extraObjectRels.push({
+          relId: oleRelId,
+          type: "oleObject",
+          target: binPath,
+        });
+        extraObjectRels.push({
+          relId: iconRelId,
+          type: "image",
+          target: iconPath,
+        });
+        extraZipFiles.push({
+          path: `word/${binPath}`,
+          buffer: buildOleObjectBin(ev.name, ev.buffer),
+        });
+        extraZipFiles.push({ path: `word/${iconPath}`, buffer: icon });
+
+        // 32pt icon centered; w:dxaOrig/dyaOrig are twips (32pt = 640 twips).
+        sectionXmlParts.push(
+          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="200"/></w:pPr><w:r><w:object w:dxaOrig="640" w:dyaOrig="640"><v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f"><v:stroke joinstyle="miter"/><v:formulas><v:f eqn="if lineDrawn pixelLineWidth 0"/><v:f eqn="sum @0 1 0"/><v:f eqn="sum 0 0 @1"/><v:f eqn="prod @2 1 2"/><v:f eqn="prod @3 21600 pixelWidth"/><v:f eqn="prod @3 21600 pixelHeight"/><v:f eqn="sum @0 0 1"/><v:f eqn="prod @6 1 2"/><v:f eqn="prod @7 21600 pixelWidth"/><v:f eqn="sum @8 21600 0"/><v:f eqn="prod @7 21600 pixelHeight"/><v:f eqn="sum @10 21600 0"/></v:formulas><v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/><o:lock v:ext="edit" aspectratio="t"/></v:shapetype><v:shape id="${shapeId}" type="#_x0000_t75" style="width:32pt;height:32pt" o:ole=""><v:imagedata r:id="${iconRelId}" o:title=""/></v:shape><o:OLEObject Type="Embed" ProgID="Package" ShapeID="${shapeId}" DrawAspect="Icon" ObjectID="${objectId}" r:id="${oleRelId}"/></w:object></w:r></w:p>`
+        );
+        sectionXmlParts.push(
+          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="280"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="595959"/></w:rPr><w:t xml:space="preserve">${escapeXml(ev.name)} — double-click to open${ev.ext ? ` (${ev.ext.toUpperCase()} file, ${(Math.max(1, Math.round((ev.buffer.length || 0) / 1024)) + "").toString()} KB)` : ""}</w:t></w:r></w:p>`
+        );
+        imagesEmbedded.push(`evidence_file:${ev.name}`);
+      }
+    }
+
+    // Append the section BEFORE the body's final sectPr (the LAST <w:sectPr
+    // in the document — the template also carries an in-paragraph section
+    // break mid-document whose sectPr must NOT be targeted).
+    const sectPrIdx = documentXml.lastIndexOf("<w:sectPr");
+    if (sectPrIdx !== -1) {
+      documentXml =
+        documentXml.slice(0, sectPrIdx) +
+        sectionXmlParts.join("") +
+        documentXml.slice(sectPrIdx);
+      fieldsPopulated.push(`evidence_attachments (${data.evidenceAttachments.length})`);
+    }
+  }
+
+  // 11. Register new relationships in document.xml.rels (signature images +
+  //     evidence images + OLE objects + hyperlink evidence) and write the
+  //     referenced parts (media files, embeddings/*.bin) into the zip.
+  if (newImageRels.length > 0 || extraObjectRels.length > 0) {
     let relsXml = await zip.file("word/_rels/document.xml.rels")!.async("string");
 
     for (const img of newImageRels) {
@@ -1510,11 +2055,22 @@ export async function populateWeeklyReportTemplate(
       zip.file(`word/media/${img.relId}.${img.ext}`, img.buffer);
     }
 
+    for (const obj of extraObjectRels) {
+      const relEntry =
+        `<Relationship Id="${obj.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${obj.type}"` +
+        ` Target="${escapeXmlAttr(obj.target)}"${obj.targetMode ? ` TargetMode="${obj.targetMode}"` : ""}/>`;
+      relsXml = relsXml.replace("</Relationships>", `${relEntry}</Relationships>`);
+    }
+    for (const f of extraZipFiles) {
+      zip.file(f.path, f.buffer);
+    }
+
     zip.file("word/_rels/document.xml.rels", relsXml);
   }
 
-  // 12. Update [Content_Types].xml to register new image extensions if needed.
-  if (newImageRels.length > 0) {
+  // 12. Update [Content_Types].xml to register new extensions if needed
+  //     (signature/evidence image formats + the OLE-object .bin parts).
+  if (newImageRels.length > 0 || extraZipFiles.length > 0) {
     let contentTypesXml = await zip.file("[Content_Types].xml")!.async("string");
     const extensions = new Set(newImageRels.map((r) => r.ext));
     for (const ext of extensions) {
@@ -1524,6 +2080,13 @@ export async function populateWeeklyReportTemplate(
       if (!contentTypesXml.includes(`Extension="${ext}"`)) {
         contentTypesXml = contentTypesXml.replace("</Types>", `${entry}</Types>`);
       }
+    }
+    // OLE package parts (word/embeddings/oleObject*.bin).
+    if (extraZipFiles.some((f) => f.path.endsWith(".bin")) && !contentTypesXml.includes('Extension="bin"')) {
+      contentTypesXml = contentTypesXml.replace(
+        "</Types>",
+        `<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.oleObject"/></Types>`
+      );
     }
     zip.file("[Content_Types].xml", contentTypesXml);
   }

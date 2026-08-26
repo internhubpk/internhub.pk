@@ -44,6 +44,7 @@ import {
   GraduationCap,
   Upload,
   X,
+  Link2,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
@@ -193,6 +194,10 @@ export default function StudentWeeklyLogsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  // Evidence links (URLs typed by the student — rendered as live hyperlinks
+  // in the generated Word report's Attachments section).
+  const [evidenceLinks, setEvidenceLinks] = useState<string[]>([]);
+  const [evidenceLinkInput, setEvidenceLinkInput] = useState("");
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [uploadStage, setUploadStage] = useState("");
@@ -328,6 +333,8 @@ export default function StudentWeeklyLogsPage() {
       setLogoFile(null);
       setLogoPreview(null);
       setEvidenceFiles([]);
+      setEvidenceLinks([]);
+      setEvidenceLinkInput("");
       setSignatureData(null);
       setSignatureFile(null);
       setUploadStage("");
@@ -462,6 +469,32 @@ export default function StudentWeeklyLogsPage() {
     setEvidenceFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addEvidenceLink = () => {
+    const url = evidenceLinkInput.trim();
+    if (!url) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    try {
+      new URL(normalized);
+    } catch {
+      toast.error("Invalid Link", { description: "Please enter a valid URL (e.g. https://github.com/…)." });
+      return;
+    }
+    if (evidenceLinks.includes(normalized)) {
+      setEvidenceLinkInput("");
+      return;
+    }
+    if (evidenceLinks.length >= 10) {
+      toast.error("Too Many Links", { description: "You can attach up to 10 evidence links." });
+      return;
+    }
+    setEvidenceLinks((prev) => [...prev, normalized]);
+    setEvidenceLinkInput("");
+  };
+
+  const removeEvidenceLink = (index: number) => {
+    setEvidenceLinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -518,6 +551,19 @@ export default function StudentWeeklyLogsPage() {
           learning_outcomes: learningOutcomes.trim() || null,
           challenges_solutions: challengesSolutions.trim() || null,
           next_week_goals: nextWeekGoals.trim() || null,
+          // Evidence LINKS are stored up-front as supporting_evidence entries
+          // (files are uploaded after creation and appended by the evidence
+          // upload route). The Word report renders links as live hyperlinks
+          // in its Attachments section.
+          supporting_evidence:
+            evidenceLinks.length > 0
+              ? evidenceLinks.map((url) => ({
+                  name: url,
+                  url,
+                  link: true,
+                  type: "link",
+                }))
+              : null,
         }),
       });
       const json = await res.json();
@@ -1006,7 +1052,7 @@ export default function StudentWeeklyLogsPage() {
                               Supporting Evidence
                             </Label>
                             <p className="text-xs text-muted-foreground">
-                              Attach relevant documents — attendance records or timesheets, screenshots of completed work, source code / GitHub commits, design documents, meeting minutes, photos, or certificates. These are listed in the Word report.
+                              Attach relevant documents — attendance records or timesheets, screenshots of completed work, source code / GitHub commits, design documents, meeting minutes, photos, or certificates. Images are embedded in the Word report and files are attached at the end of the document; links appear as clickable hyperlinks.
                             </p>
                             <Label
                               htmlFor="wl-evidence"
@@ -1035,6 +1081,55 @@ export default function StudentWeeklyLogsPage() {
                                       onClick={() => removeEvidenceFile(i)}
                                       className="text-muted-foreground hover:text-destructive shrink-0"
                                       aria-label={"Remove " + f.name}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {/* Evidence LINKS — rendered as live hyperlinks in the
+                                Word report's Attachments section. */}
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="url"
+                                inputMode="url"
+                                placeholder="Or paste a link (GitHub repo, Drive folder, portfolio…)"
+                                value={evidenceLinkInput}
+                                onChange={(e) => setEvidenceLinkInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    addEvidenceLink();
+                                  }
+                                }}
+                                className="text-xs h-9"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-9 shrink-0"
+                                onClick={addEvidenceLink}
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                                Add Link
+                              </Button>
+                            </div>
+                            {evidenceLinks.length > 0 && (
+                              <ul className="space-y-1">
+                                {evidenceLinks.map((url, i) => (
+                                  <li key={i} className="flex items-center justify-between gap-2 rounded border bg-background px-3 py-1.5 text-xs">
+                                    <span className="truncate flex items-center gap-1.5 min-w-0">
+                                      <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                      <span className="truncate text-blue-600">{url}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeEvidenceLink(i)}
+                                      className="text-muted-foreground hover:text-destructive shrink-0"
+                                      aria-label={"Remove link " + url}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>
