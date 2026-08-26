@@ -11,7 +11,6 @@ import {
   ChevronDown,
   LogOut,
   Menu,
-  Settings,
   Briefcase,
   Building2,
   Users,
@@ -834,34 +833,20 @@ function SidebarContent({
           </TooltipProvider>
         )}
 
-        {/* Settings link */}
-        <Link
-          href={
-            profile?.role === "super_admin"
-              ? "/super-admin/settings"
-              : profile?.role === "university_admin"
-              ? "/university-admin/settings"
-              : "#"
-          }
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 mb-1 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
-            collapsed && !isMobile && "justify-center px-2"
-          )}
-        >
-          <Settings className="h-5 w-5 shrink-0" />
-          <AnimatePresence>
-            {(!collapsed || isMobile) && (
-              <motion.span
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: "auto" }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                Settings
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </Link>
+        {/* NOTE: The hardcoded "Settings" link that used to live here was REMOVED.
+            It was a duplicate of the Settings item already present in the
+            role's navigation config (see src/config/navigation.ts) for
+            super_admin and university_admin — they saw TWO Settings entries
+            in the sidebar (one in the main nav above, one above Sign Out).
+            For all OTHER roles it was a dead link (href="#") because the
+            switch above only handled super_admin/university_admin.
+            
+            Settings is now sourced ONLY from the navigation config, which
+            already includes a Settings entry for every role that has one
+            (super_admin, university_admin, department_coordinator,
+            program_coordinator, faculty_supervisor, company_hr,
+            site_supervisor, external_evaluator). The student role uses
+            "Profile" as its settings-equivalent entry instead. */}
 
         {/* Sign Out button */}
         <Button

@@ -297,11 +297,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── Generate slug ────────────────────────────────────────────────
+    // The `companies.slug` column is `text NOT NULL UNIQUE`, but the
+    // CreateCompanySchema does NOT include `slug` — the route caller
+    // never sends one. Without a generated slug the insert fails with
+    // `null value in column "slug" of relation "companies" violates
+    // not-null constraint` (HTTP 500 "Failed to create company").
+    //
+    // The super-admin UI used to ship its own client-side slugify() and
+    // include the slug in its direct Supabase insert. But the
+    // university-admin UI posts JSON here (no slug), so we MUST
+    // generate it server-side.
+    //
+    // Algorithm:
+    //   1. base  = slugify(name)         ("Acme Corp." -> "acme-corp")
+    //   2. if base slug is taken in `companies`, append `-2`, `-3`, ...
+    //   3. if no free numeric suffix within 100 tries, append `-` +
+    //      4-char random base32 suffix as a tiebreaker.
+    // Slugify rules mirror the super-admin page's slugify() in
+    // src/app/(dashboard)/super-admin/companies/page.tsx.
+    function slugify(s: string): string {
+      return s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80);
+    }
+    let baseSlug = slugify(companyData.name);
+    if (!baseSlug) {
+      // Name had no slugifiable chars (e.g. "???"). Use a fallback.
+      baseSlug = `company-${Date.now().toString(36)}`;
+    }
+    let slug = baseSlug;
+    {
+      const { data: existingSlugs } = await supabase
+        .from("companies")
+        .select("slug")
+        .like("slug", `${baseSlug}%`);
+      const taken = new Set((existingSlugs || []).map((r: any) => r.slug));
+      if (taken.has(slug)) {
+        let n = 2;
+        while (n < 100 && taken.has(`${baseSlug}-${n}`)) n++;
+        slug = n < 100 ? `${baseSlug}-${n}` : `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
+      }
+    }
+
     // Create company
     const { data: company, error } = await supabase
       .from("companies")
       .insert({
         ...companyData,
+        slug,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
