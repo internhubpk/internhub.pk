@@ -77,27 +77,25 @@ async function main() {
   const header = await zip.file("word/header1.xml")!.async("string");
   const doc = await zip.file("word/document.xml")!.async("string");
 
-  // 1. Logo anchor geometry
+  // 1. Header letterhead — must be INLINE + centered (no floating anchors)
   const logoIdx = header.indexOf('name="Image 1"');
-  const logoAnchorStart = header.lastIndexOf("<wp:anchor", logoIdx);
-  const logoAnchor = header.slice(logoAnchorStart, header.indexOf("</wp:anchor>", logoIdx));
-  const posH = logoAnchor.match(/<wp:positionH[^>]*>[\s\S]*?<wp:posOffset>(-?\d+)<\/wp:posOffset>/);
-  const extent = logoAnchor.match(/<wp:extent cx="(\d+)" cy="(\d+)"/);
-  console.log("\n=== LOGO ANCHOR ===");
-  console.log("positionH offset:", posH?.[1], "(centered would be", (7772400 - Number(extent?.[1] || 0)) / 2, ")");
-  console.log("extent:", extent?.[1], "x", extent?.[2]);
-
-  // 2. University-name textbox geometry
-  const tbIdx = header.indexOf('name="Textbox 2"');
-  const tbStart = header.lastIndexOf("<wp:anchor", tbIdx);
-  const tbSpan = header.slice(tbStart, header.indexOf("</mc:AlternateContent>", tbIdx));
-  const tbPos = tbSpan.match(/<wp:posOffset>(-?\d+)<\/wp:posOffset>/);
-  const tbExt = tbSpan.match(/<wp:extent cx="(\d+)"/);
-  console.log("\n=== NAME TEXTBOX ===");
-  console.log("positionH offset:", tbPos?.[1], "(centered would be", (7772400 - Number(tbExt?.[1] || 0)) / 2, ")");
-  console.log("extent cx:", tbExt?.[1]);
-  const vmlStyle = tbSpan.match(/style="([^"]*)"/);
-  console.log("VML style:", vmlStyle?.[1]?.slice(0, 160));
+  console.log("\n=== HEADER LETTERHEAD ===");
+  console.log("Image 1 drawing present:", logoIdx !== -1);
+  const headerHasAnchor = header.includes("<wp:anchor");
+  const headerHasTextbox = header.includes("txbxContent");
+  const headerInlineCount = (header.match(/<wp:inline/g) || []).length;
+  console.log("floating wp:anchor remaining:", headerHasAnchor, "| textbox remaining:", headerHasTextbox);
+  console.log("wp:inline drawings:", headerInlineCount);
+  const centeredParas = (header.match(/<w:jc w:val="center"\/>/g) || []).length;
+  console.log("centered paragraphs (<w:jc center>):", centeredParas);
+  const logoExt = header.match(/<wp:extent cx="(\d+)" cy="(\d+)"/);
+  console.log("inline logo extent:", logoExt?.[1], "x", logoExt?.[2],
+    `(aspect ${logoExt ? (Number(logoExt[1]) / Number(logoExt[2])).toFixed(2) : "?"}, logo.jpeg is 1063x1063 → expect 762000x762000)`);
+  const hdrTexts = [...header.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]);
+  console.log("header texts:", JSON.stringify(hdrTexts));
+  // spacing between logo and name (anti-"sticked" check)
+  const afterLogoSpacing = header.match(/w:after="(\d+)"[^>]*\/><w:jc w:val="center"\/><w:rPr><w:noProof\/>/);
+  console.log("spacing after logo paragraph:", afterLogoSpacing?.[1], "twips (expect 60 = 3pt)");
 
   // 3. Media parts
   console.log("\n=== MEDIA PARTS ===");

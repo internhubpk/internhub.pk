@@ -1073,6 +1073,128 @@ function retargetHeaderTextbox(
 }
 
 /**
+ * Find the span of the OUTER header paragraph that contains the given index.
+ *
+ * Header paragraphs can NEST: the template's header paragraph carries a
+ * floating TEXTBOX whose <w:txbxContent> holds its own <w:p> elements (and
+ * the legacy VML fallback carries another copy). A plain indexOf("</w:p>")
+ * therefore stops at an INNER closing tag. This walks the paragraph open/close
+ * tokens with a depth counter and returns the span of the top-level paragraph
+ * only. Returns null when no enclosing paragraph is found.
+ *
+ * The token regex matches `<w:p>` / `<w:p attrs…>` / `</w:p>` but NOT
+ * `<w:pPr>`, `<w:pict>`, `<w:proofErr>` etc. (the char after `w:p` must be a
+ * space or `>`).
+ */
+function findOuterParagraphSpan(
+  headerXml: string,
+  markerIdx: number
+): { start: number; end: number } | null {
+  const before = headerXml.slice(0, markerIdx);
+  const openMatches = [...before.matchAll(/<w:p(?:\s[^>]*)?>/g)];
+  if (!openMatches.length) return null;
+  const start = openMatches[openMatches.length - 1].index!;
+  const tokenRe = /<\/?w:p(?:\s[^>]*)?>/g;
+  tokenRe.lastIndex = start;
+  let depth = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tokenRe.exec(headerXml)) !== null) {
+    depth += m[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) {
+      return { start, end: m.index + m[0].length };
+    }
+  }
+  return null;
+}
+
+/**
+ * Build a Word inline drawing (<w:drawing><wp:inline>…) in EMU units for an
+ * image that lives in a relationship of HEADER1.XML (the university logo).
+ *
+ * Inline drawings flow with the paragraph text — every Word renderer (desktop
+ * Word, LibreOffice, Google Docs, mobile Word/WPS viewers) centers them with
+ * the paragraph's <w:jc w:val="center"/> — unlike page-anchored floating
+ * shapes, whose absolute offsets several mobile viewers misplace.
+ */
+function buildHeaderInlineDrawingXml(
+  relId: string,
+  wEmu: number,
+  hEmu: number
+): string {
+  return `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${wEmu}" cy="${hEmu}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1" name="Image 1"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="Image 1"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${wEmu}" cy="${hEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
+}
+
+/**
+ * REBUILD THE HEADER AS INLINE, CENTERED PARAGRAPHS (bug fix 2026-08-27 —
+ * "logo isn't centered; name and faculty stick to the logo and aren't
+ * centered").
+ *
+ * WHY: the template letterhead is built from PAGE-ANCHORED floating shapes —
+ * a <wp:anchor> logo plus a floating TEXTBOX holding the university name and
+ * faculty. The anchor offsets are mathematically page-centered, and desktop
+ * Word / LibreOffice render them centered — but several mobile Word viewers
+ * (the user's phone app among them) misplace page-relative floats ~0.9" to
+ * the right, which is exactly what the user's screenshot shows. The floating
+ * textbox also sits mere points under the logo ("sticked").
+ *
+ * THE FIX: replace the whole floating header paragraph with three ordinary
+ * centered paragraphs —
+ *   1. centered INLINE logo image (aspect-preserved)
+ *   2. centered bold university name (template: sz 36)
+ *   3. centered faculty/department line (template: sz 28)
+ * — separated by real paragraph spacing. Inline centered paragraphs are the
+ * most universally supported construct in OOXML, so every renderer shows the
+ * identical dead-center letterhead. The typography (bold 18pt name, 14pt
+ * faculty) is inherited from the template's textbox runs.
+ *
+ * Returns { changed: false } (xml untouched) when the template header does
+ * not follow the recognizable "Image 1"-anchor structure, so callers can
+ * fall back to the legacy floating-shape path.
+ */
+function rebuildHeaderAsInline(
+  headerXml: string,
+  opts: {
+    /** Relationship id of the logo image in header1.xml.rels. */
+    relId: string;
+    /** Logo display size in EMU (aspect already preserved). */
+    logoW: number;
+    logoH: number;
+    universityName: string;
+    departmentName: string;
+    /** Font sizes in half-points (template: 36 / 28). */
+    nameSz: number;
+    deptSz: number;
+  }
+): { xml: string; changed: boolean } {
+  const idx = headerXml.indexOf('name="Image 1"');
+  if (idx === -1) return { xml: headerXml, changed: false };
+  const span = findOuterParagraphSpan(headerXml, idx);
+  if (!span) return { xml: headerXml, changed: false };
+
+  const name = (opts.universityName || "").trim();
+  const dept = (opts.departmentName || "").trim();
+
+  // 1. Centered inline logo (3pt of air below before the name).
+  const logoPara = `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/><w:jc w:val="center"/><w:rPr><w:noProof/></w:rPr></w:pPr><w:r><w:rPr><w:noProof/></w:rPr>${buildHeaderInlineDrawingXml(opts.relId, opts.logoW, opts.logoH)}</w:r></w:p>`;
+
+  // 2. Centered bold university name (1pt gap before the faculty line).
+  const namePara = name
+    ? `<w:p><w:pPr><w:spacing w:before="0" w:after="20"/><w:jc w:val="center"/><w:rPr><w:b/><w:sz w:val="${opts.nameSz}"/></w:rPr></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="${opts.nameSz}"/></w:rPr><w:t xml:space="preserve">${escapeXml(name)}</w:t></w:r></w:p>`
+    : "";
+
+  // 3. Centered faculty / department line.
+  const deptPara = dept
+    ? `<w:p><w:pPr><w:spacing w:before="0" w:after="40"/><w:jc w:val="center"/><w:rPr><w:sz w:val="${opts.deptSz}"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="${opts.deptSz}"/></w:rPr><w:t xml:space="preserve">${escapeXml(dept)}</w:t></w:r></w:p>`
+    : "";
+
+  const rebuilt = logoPara + namePara + deptPara;
+  return {
+    xml: headerXml.slice(0, span.start) + rebuilt + headerXml.slice(span.end),
+    changed: true,
+  };
+}
+
+/**
  * Replace the first occurrence of a label-followed-by-empty-cell pattern
  * with the supplied value. Used to populate the "Student Information" table.
  *
@@ -1749,14 +1871,13 @@ export async function populateWeeklyReportTemplate(
     });
   }
 
-  // Re-anchor the university-name textbox: exact page centering (+ widening
-  // for long names). Touches BOTH the DrawingML anchor (mc:Choice path:
-  // positionH/posOffset, wp:extent, a:ext) and the legacy VML fallback
-  // (v:shape style margin-left/width) so Word AND older renderers agree.
-  headerXmlWork = retargetHeaderTextbox(headerXmlWork, headerBoxW, PAGE_W_EMU);
-  if (headerBoxW !== TEMPLATE_BOX_W_EMU) {
-    fieldsPopulated.push("university_name_textbox_widened");
-  }
+  // PRIMARY HEADER PATH — see step 5a below: rebuild the letterhead as INLINE
+  // centered paragraphs. The legacy floating-textbox retarget below now only
+  // runs when that rebuild cannot recognize the template's structure.
+  let headerInlineRebuilt = false;
+  // Logo display geometry (EMU) — computed in 5a from the real image's aspect
+  // ratio (or the template anchor's extent when no logo is supplied).
+  let headerLogoGeom: { w: number; h: number } | null = null;
 
   for (const tag of headerReplacedTags) {
     fieldsPopulated.push(tag);
@@ -1814,18 +1935,22 @@ export async function populateWeeklyReportTemplate(
     }
     imagesEmbedded.push("university_logo");
 
-    // 5a. CENTER THE LOGO + PRESERVE ITS ASPECT RATIO (bug fix 2026-08-27 —
-    //     "the logo and university name is not correct, it ruined the
-    //     document structure"). The template's logo anchor has a FIXED
-    //     extent of 1917192×762000 EMU (a 2.5:1 wide box). A typical
-    //     university crest is roughly SQUARE — forcing it into that box
-    //     stretched it into a distorted banner and looked "ruined". We now
-    //     read the image's real pixel dimensions, scale it to fit the header
-    //     band while PRESERVING the aspect ratio, and re-anchor it at the
-    //     exact horizontal center of the page.
+    // 5a. REBUILD THE LETTERHEAD AS INLINE, CENTERED PARAGRAPHS (bug fix
+    //     2026-08-27 — "the logo isn't centered; the name and faculty are
+    //     sticked to the logo and aren't centered").
+    //
+    //     The template header is a pair of PAGE-ANCHORED floating shapes
+    //     (logo wp:anchor + name/faculty TEXTBOX). Their offsets are
+    //     mathematically page-centered and desktop Word / LibreOffice agree —
+    //     but the user's mobile Word viewer renders page-relative floats
+    //     ~0.9" too far right, and the textbox sits virtually touching the
+    //     logo. We replace the whole floating paragraph with three ordinary
+    //     CENTERED paragraphs (inline logo, bold name, faculty line) — the
+    //     one construct every renderer positions identically. The logo keeps
+    //     its aspect ratio (a square crest stays square; the template's wide
+    //     banner stays wide).
     const logoDims = readImageDimensions(data.universityLogoBuffer);
     if (logoDims && logoFmt) {
-      const PAGE_W_EMU = 7772400; // Letter (template pgSz 12240 twips)
       const LOGO_MAX_H_EMU = 762000; // template logo band height (0.83")
       const LOGO_MAX_W_EMU = 2600000; // never wider than ~2.84"
       const scale = Math.min(
@@ -1834,14 +1959,79 @@ export async function populateWeeklyReportTemplate(
       );
       const newW = Math.max(1, Math.round(logoDims.width * scale));
       const newH = Math.max(1, Math.round(logoDims.height * scale));
-      const newOffX = Math.round(PAGE_W_EMU / 2 - newW / 2); // exact center
-      headerXml = retargetLogoAnchor(headerXml, newW, newH, newOffX);
+      headerLogoGeom = { w: newW, h: newH };
       fieldsPopulated.push("university_logo_centered");
     }
   } else if (data.universityLogoBuffer) {
     console.warn(
       "[doc-gen] University logo is not a Word-embeddable raster image (PNG/JPEG/GIF/BMP) — keeping the template logo."
     );
+  }
+
+  // 5b. Apply the inline letterhead rebuild (or fall back to the legacy
+  // floating-anchor retargeting when the template structure is not
+  // recognized). Logo geometry falls back to the template anchor's own
+  // extent so the template logo still renders at its designed size.
+  {
+    // Relationship id of the logo image inside header1.xml (unchanged by the
+    // media-bytes swap above — only the rels TARGET moves for non-PNG logos).
+    const logoIdx = headerXml.indexOf('name="Image 1"');
+    if (logoIdx !== -1) {
+      const anchorStart = headerXml.lastIndexOf("<wp:anchor", logoIdx);
+      const anchorEnd = headerXml.indexOf("</wp:anchor>", logoIdx);
+      const anchorXml = headerXml.slice(anchorStart, anchorEnd);
+      const relIdMatch = anchorXml.match(/r:embed="([^"]+)"/);
+      if (relIdMatch) {
+        if (!headerLogoGeom) {
+          const ext = anchorXml.match(/<wp:extent cx="(\d+)" cy="(\d+)"/);
+          headerLogoGeom = ext
+            ? { w: parseInt(ext[1], 10), h: parseInt(ext[2], 10) }
+            : { w: 1917192, h: 762000 }; // template default (wide banner)
+        }
+        // Font scaling: an inline centered paragraph spans the full text
+        // column (6.5" on the template's Letter page) — far wider than the
+        // old 4.58" textbox. Shrink only for genuinely long names.
+        const uniLen = Math.max(1, (data.universityName || "").trim().length);
+        let nameSz = 36; // template: bold 18pt
+        if (uniLen > 52) nameSz = Math.max(18, Math.floor((36 * 52) / uniLen));
+        const deptLen = Math.max(1, (data.departmentName || "").trim().length);
+        let deptSz = 28; // template: 14pt
+        if (deptLen > 70) deptSz = Math.max(14, Math.floor((28 * 70) / deptLen));
+
+        const rebuilt = rebuildHeaderAsInline(headerXml, {
+          relId: relIdMatch[1],
+          logoW: headerLogoGeom.w,
+          logoH: headerLogoGeom.h,
+          universityName: data.universityName,
+          departmentName: data.departmentName,
+          nameSz,
+          deptSz,
+        });
+        if (rebuilt.changed) {
+          headerXml = rebuilt.xml;
+          headerInlineRebuilt = true;
+          fieldsPopulated.push("header_letterhead_inline_centered");
+        }
+      }
+    }
+    if (!headerInlineRebuilt) {
+      // LEGACY fallback (unrecognized template): keep the floating shapes but
+      // re-anchor both at the exact horizontal page center, updating the
+      // DrawingML anchor AND the legacy VML fallback geometry.
+      const offX = headerLogoGeom
+        ? Math.round(PAGE_W_EMU / 2 - headerLogoGeom.w / 2)
+        : Math.round(PAGE_W_EMU / 2 - 1917192 / 2);
+      headerXml = retargetLogoAnchor(
+        headerXml,
+        headerLogoGeom?.w ?? 1917192,
+        headerLogoGeom?.h ?? 762000,
+        offX
+      );
+      headerXml = retargetHeaderTextbox(headerXml, headerBoxW, PAGE_W_EMU);
+      if (headerBoxW !== TEMPLATE_BOX_W_EMU) {
+        fieldsPopulated.push("university_name_textbox_widened");
+      }
+    }
   }
 
   // 6. BODY: Inject student information into the table.
