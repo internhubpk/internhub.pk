@@ -131,48 +131,51 @@ export function PublicFooter({
           </p>
 
           {/* Partner logos — AILAB99 (platform) + Ibadat International University.
-              Responsive: stacked on mobile, inline on larger screens, with
-              breathing room (padding/margin) and compressed assets. */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-5 sm:divide-x sm:divide-border/60">
+              The logo replaces the partner *name text*: "Powered by [AILAB99 logo]"
+              and "In collaboration with [IIUI logo]". The whole pill (text + logo)
+              is a single external link. Responsive: stacked on mobile, inline on
+              larger screens, with breathing room and compressed square assets. */}
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 sm:gap-5 sm:divide-x sm:divide-border/60">
             <a
               href="https://www.ailab99.com/"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="AILAB99 — Powered by"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors group"
+              aria-label="Powered by AILAB99 (opens in a new tab)"
+              title="Powered by AILAB99"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/60 transition-colors group"
             >
+              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors whitespace-nowrap">
+                Powered by
+              </span>
               <img
                 src="/ailab99-logo.png"
-                alt="AILAB99 logo"
-                width={36}
-                height={36}
+                alt="AILAB99"
+                width={40}
+                height={40}
                 loading="lazy"
-                className="h-8 w-8 sm:h-9 sm:w-9 object-contain"
+                className="h-8 w-8 sm:h-9 sm:w-9 object-contain group-hover:scale-105 transition-transform"
               />
-              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors whitespace-nowrap">
-                Powered by <span className="font-semibold">AILAB99</span>
-              </span>
             </a>
 
             <a
               href="https://iiui.edu.pk/"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Ibadat International University — In collaboration with"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors group sm:pl-5"
+              aria-label="In collaboration with Ibadat International University (opens in a new tab)"
+              title="In collaboration with Ibadat International University"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/60 transition-colors group sm:pl-5"
             >
+              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors whitespace-nowrap">
+                In collaboration with
+              </span>
               <img
                 src="/ibadat-logo.png"
-                alt="Ibadat International University logo"
-                width={36}
-                height={36}
+                alt="Ibadat International University"
+                width={40}
+                height={40}
                 loading="lazy"
-                className="h-8 w-8 sm:h-9 sm:w-9 object-contain"
+                className="h-8 w-8 sm:h-9 sm:w-9 object-contain group-hover:scale-105 transition-transform"
               />
-              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                In collaboration with{" "}
-                <span className="font-semibold">Ibadat International University</span>
-              </span>
             </a>
           </div>
         </div>
