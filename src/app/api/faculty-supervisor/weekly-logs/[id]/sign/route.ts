@@ -124,18 +124,27 @@ export async function POST(
     // Otherwise → faculty_signed (awaiting site supervisor).
     const newStatus = log.site_supervisor_signature_url ? "approved" : "faculty_signed";
 
+    // BUG FIX 2026-08-27 ("make sure supervisor remarks are added" to the Word
+    // report): signing WITHOUT typing new remarks used to overwrite
+    // faculty_supervisor_remarks / supervisor_feedback with NULL — wiping the
+    // feedback written during review, so the generated report's "Supervisor
+    // Remarks" section went empty. Remarks columns are now only written when
+    // the signer actually supplied remarks; otherwise the review-time
+    // feedback is preserved.
     const updatePayload: Record<string, any> = {
       faculty_supervisor_id: user.id,
       faculty_supervisor_signature_url: signatureUrl,
-      faculty_supervisor_remarks: remarks || null,
       faculty_supervisor_signed_at: new Date().toISOString(),
-      // Back-compat: keep supervisor_id / feedback / reviewed_at in sync.
+      // Back-compat: keep supervisor_id / reviewed_at in sync.
       supervisor_id: user.id,
-      supervisor_feedback: remarks || null,
       reviewed_at: new Date().toISOString(),
       status: newStatus,
       updated_at: new Date().toISOString(),
     };
+    if (remarks && remarks.trim().length > 0) {
+      updatePayload.faculty_supervisor_remarks = remarks;
+      updatePayload.supervisor_feedback = remarks;
+    }
 
     const { data: updatedLog, error: updateError } = await supabase
       .from("weekly_logs")

@@ -66,7 +66,7 @@ async function main() {
     week_number: 1,
     week_start_date: "2026-08-24",
     week_end_date: "2026-08-28",
-    status: "submitted",
+    status: "approved",
     submitted_at: new Date().toISOString(),
     hours_worked: 40,
     tasks_completed: ["Onboarding", "Data cleaning", "Report drafting", "QA", "Weekly review"],
@@ -74,6 +74,11 @@ async function main() {
     challenges_solutions: "Tooling setup took longer than expected; resolved with help from the supervisor.",
     university_logo_url: logoUrl,
     student_signature_url: signatureUrl,
+    site_supervisor_signature_url: "https://wqvbmjlloxsrvwhtdskv.supabase.co/storage/v1/object/public/signatures/qa/site-supervisor-signature.png",
+    // Supervisor remarks — the Word report's "Supervisor Remarks" section
+    // reads site_supervisor_remarks first (E2E assertion target).
+    site_supervisor_remarks: "Great first week — consistent attendance, proactive questions, and a solid grasp of the publishing workflow already.",
+    supervisor_feedback: "Great first week — consistent attendance, proactive questions, and a solid grasp of the publishing workflow already.",
     supporting_evidence: [{
       url: evidenceSignedUrl,
       name: "Settings.pdf",

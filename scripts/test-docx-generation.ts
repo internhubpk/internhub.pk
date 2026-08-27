@@ -49,7 +49,9 @@ async function main() {
     ],
     learningOutcomes: "Learned the internal publishing workflow.",
     challengesFaced: "Tooling setup took longer than expected.",
-    supportingEvidence: "1. Settings.pdf (PDF file — attached in the Attachments section)",
+    // Produced by resolveWeeklyReportData since 2026-08-27 — a single tick
+    // instead of a numbered file listing (template-owner request).
+    supportingEvidence: "✓ Supporting documents attached",
     evidenceAttachments: [
       { kind: "file", name: "Settings.pdf", buffer: fakePdf, ext: "pdf", mime: "application/pdf" },
       { kind: "image", name: "screenshot.png", buffer: sig, ext: "png", mime: "image/png" },
@@ -134,6 +136,56 @@ async function main() {
     console.log("Has OLE objects:", doc.includes("<o:OLEObject"));
     console.log("Has hyperlink evidence:", /r:id="rIdEvLnk\d+"/.test(doc));
   }
+
+  // 5a. Evidence section CLEANUP assertions (2026-08-27 requirements):
+  //     - no "yapping" intro paragraph
+  //     - no OLE caption ("… — double-click to open (PDF file, X KB)")
+  //     - body shows the tick, not a numbered file listing
+  //     - link evidence is CENTERED (no left indent)
+  console.log("\n=== EVIDENCE CLEANUP ASSERTIONS ===");
+  const yappingGone = !doc.includes("The supporting evidence submitted with this weekly log");
+  const oleCaptionGone = !doc.includes("double-click to open");
+  const tickPresent = doc.includes("✓ Supporting documents attached");
+  const oldListingGone = !doc.includes("attached in the Attachments section");
+  const linkParaMatch = doc.match(/<w:p><w:pPr>(?:<w:jc w:val="center"\/>|<w:spacing[^>]*\/>)+<\/w:pPr><w:hyperlink r:id="rIdEvLnk\d+"/);
+  const linkCentered = !!linkParaMatch && linkParaMatch[0].includes('<w:jc w:val="center"/>');
+  const linkIndented = /<w:ind w:left="\d+"\/><w:hyperlink/.test(doc);
+  console.log("yapping intro REMOVED:", yappingGone);
+  console.log("OLE caption REMOVED:", oleCaptionGone);
+  console.log("tick mark in body ✓:", tickPresent);
+  console.log("old numbered listing REMOVED:", oldListingGone);
+  console.log("hyperlink evidence CENTERED:", linkCentered, "| left-indent remaining:", linkIndented);
+
+  // 5b. Program table CENTERING assertions — the label row ("Program") and
+  //     the value row must be horizontally + vertically centered.
+  console.log("\n=== PROGRAM TABLE CENTERING ===");
+  const progIdx = doc.indexOf("Program");
+  if (progIdx !== -1) {
+    const tblStart = doc.lastIndexOf("<w:tbl>", progIdx);
+    const tblEnd = doc.indexOf("</w:tbl>", progIdx);
+    const tbl = doc.slice(tblStart, tblEnd + 8);
+    const paras = tbl.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
+    const centeredCount = paras.filter(p => p.includes('<w:jc w:val="center"/>')).length;
+    const indRemaining = (tbl.match(/<w:ind\b/g) || []).length;
+    const cells = tbl.match(/<w:tc\b[\s\S]*?<\/w:tc>/g) || [];
+    const vAlignCount = cells.filter(c => c.includes('<w:vAlign w:val="center"/>')).length;
+    console.log(`paragraphs: ${paras.length}, centered: ${centeredCount}, leftover <w:ind>: ${indRemaining}`);
+    console.log(`cells: ${cells.length}, vertically centered: ${vAlignCount}`);
+    console.log("PROGRAM TABLE CENTERED:", paras.length > 0 && centeredCount === paras.length && vAlignCount === cells.length && indRemaining === 0);
+  }
+
+  // 5c. Supervisor Remarks assertion — the remarks text must appear in the
+  //     body AFTER the "Supervisor Remarks" heading. The heading text is
+  //     SPLIT across multiple <w:t> runs in the template, so the check walks
+  //     leaf paragraphs and concatenates their runs first.
+  console.log("\n=== SUPERVISOR REMARKS ===");
+  const leafParas = doc.match(/<w:p\b[^>]*>(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g) || [];
+  const paraText = (p: string) =>
+    (p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || []).map(t => t.replace(/<[^>]*>/g, "")).join("");
+  const supParaIdx = leafParas.findIndex(p => paraText(p).replace(/\s+/g, " ").trim() === "Supervisor Remarks");
+  const remarksParaIdx = leafParas.findIndex(p => paraText(p).includes("Good progress this week."));
+  console.log("heading present:", supParaIdx !== -1, "| remarks text present:", remarksParaIdx !== -1,
+    "| remarks after heading:", supParaIdx !== -1 && remarksParaIdx > supParaIdx);
 
   // 6. rels integrity: every r:embed in document.xml + header1.xml must exist in rels
   console.log("\n=== RELS INTEGRITY ===");

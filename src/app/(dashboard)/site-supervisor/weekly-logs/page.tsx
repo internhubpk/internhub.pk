@@ -283,11 +283,13 @@ export default function SiteSupervisorWeeklyLogsPage() {
   }, [logs, searchQuery, statusFilter, showLateOnly]);
 
   async function handleReview(action: "approve" | "reject" | "request_revision") {
+    // Supervisor feedback is REQUIRED for every decision (the field is
+    // labelled "*") — it becomes the "Supervisor Remarks" section of the
+    // student's generated Word report, so approving without remarks would
+    // ship an empty remarks section (bug fix 2026-08-27).
     if (!selectedLog || !reviewFeedback.trim()) {
-      if (action !== "approve") {
-        toast.error("Feedback Required", { description: "Please provide feedback before rejecting or requesting revision." });
-        return;
-      }
+      toast.error("Remarks Required", { description: "Please provide supervisor remarks/feedback before submitting your decision — they are included in the student's weekly report." });
+      return;
     }
 
     setIsSubmittingReview(true);
@@ -801,10 +803,10 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                           <div className="space-y-2">
-                            <Label htmlFor="feedback">Supervisor Feedback *</Label>
+                            <Label htmlFor="feedback">Supervisor Remarks *</Label>
                             <Textarea
                               id="feedback"
-                              placeholder="Provide detailed feedback on the student's weekly performance..."
+                              placeholder="Your remarks are included in the student's generated weekly report..."
                               value={reviewFeedback}
                               onChange={(e) => setReviewFeedback(e.target.value)}
                               rows={6}

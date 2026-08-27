@@ -159,18 +159,28 @@ export async function POST(
     // We use computed column names so external_evaluator writes to
     // external_evaluator_*_url etc., and site_supervisor writes to
     // site_supervisor_*_url as before.
+    //
+    // BUG FIX 2026-08-27 ("make sure supervisor remarks are added" to the Word
+    // report): signing WITHOUT typing new remarks used to overwrite
+    // supervisor_feedback / the role remarks column with NULL — wiping the
+    // feedback the supervisor wrote during review, so the generated report's
+    // "Supervisor Remarks" section went empty. Remarks columns are now only
+    // written when the signer actually supplied remarks; otherwise the
+    // review-time feedback is preserved.
     const updatePayload: Record<string, any> = {
       [supervisorColumn]: user.id,
       [signatureColumn]: signatureUrl,
-      [remarksColumn]: remarks || null,
       [signedAtColumn]: new Date().toISOString(),
-      // Maintain back-compat columns — keep supervisor_id / feedback in sync.
+      // Maintain back-compat columns — keep supervisor_id in sync.
       supervisor_id: user.id,
-      supervisor_feedback: remarks || null,
       reviewed_at: new Date().toISOString(),
       status: newStatus,
       updated_at: new Date().toISOString(),
     };
+    if (remarks && remarks.trim().length > 0) {
+      updatePayload[remarksColumn] = remarks;
+      updatePayload.supervisor_feedback = remarks;
+    }
 
     const { data: updatedLog, error: updateError } = await supabase
       .from("weekly_logs")

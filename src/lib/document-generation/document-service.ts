@@ -635,34 +635,18 @@ export async function assembleWeeklyReportData(
   );
 
   // 7a. Body-section summary text ("Supporting Evidence (Mandatory)").
-  //     Each item states where it can be found in the document:
-  //     images are embedded below, files are attached below, links are live.
+  //     Per the template-owner's request (2026-08-27): NO file listing in the
+  //     body — the reader just needs a tick confirming the supporting
+  //     documents are attached. The actual files / images / links live in the
+  //     Attachments section at the end of the document.
   const supportingEvidenceSummary: string = (() => {
-    if (evidenceAttachments.length > 0) {
-      return evidenceAttachments
-        .map((e, i) => {
-          if (e.kind === "link") return `${i + 1}. Link: ${e.url || e.name}`;
-          const ext = (e.ext || "").toUpperCase();
-          if (e.kind === "image") return `${i + 1}. ${e.name} (image — embedded in the Attachments section)`;
-          return `${i + 1}. ${e.name}${ext ? ` (${ext} file — attached in the Attachments section)` : " (attached in the Attachments section)"}`;
-        })
-        .join("\n");
-    }
-    if (
-      weeklyLogAny.supporting_evidence &&
-      Array.isArray(weeklyLogAny.supporting_evidence)
-    ) {
-      const list = weeklyLogAny.supporting_evidence as Array<{
-        name?: string;
-        url?: string;
-      }>;
-      if (list.length > 0) {
-        return list
-          .map((e, i) => `${i + 1}. ${e.name || e.url || "evidence"}`)
-          .join("\n");
-      }
-    }
-    return "No supporting evidence was attached for this week.";
+    const hasEvidence =
+      evidenceAttachments.length > 0 ||
+      (Array.isArray(weeklyLogAny.supporting_evidence) &&
+        (weeklyLogAny.supporting_evidence as unknown[]).length > 0);
+    return hasEvidence
+      ? "✓ Supporting documents attached"
+      : "✗ No supporting documents attached";
   })();
 
   // Supervisor remarks: prefer site_supervisor_remarks (Industry Supervisor),
@@ -1343,6 +1327,155 @@ function removeProgramOptionRows(documentXml: string): string {
   const rebuilt = tblPrefix + kept.join("") + "</w:tbl>";
   // Function replacement — avoids interpreting $ patterns in the XML.
   return documentXml.replace(tblXml, () => rebuilt);
+}
+
+/**
+ * Remove the template's blank-form guidance bullets that sit under the
+ * "Supporting Evidence (Mandatory)" heading ("Attendance record or
+ * timesheet", "Screenshots of completed work", …).
+ *
+ * The template ships these as instructions for the STUDENT filling the blank
+ * form; in a GENERATED report the section must show only the attach/tick
+ * confirmation, so the bullets are stripped (template-owner request
+ * 2026-08-27).
+ *
+ * Match strategy: walk LEAF paragraphs; delete every paragraph whose plain
+ * text equals one of the known template bullet strings (whitespace-collapsed,
+ * case-sensitive). Unknown/edited paragraphs are left untouched, and the
+ * heading itself + the injected confirmation line are never removed.
+ */
+function removeTemplateEvidenceBullets(documentXml: string): {
+  xml: string;
+  removedCount: number;
+} {
+  const templateBullets = new Set([
+    "Attendance record or timesheet",
+    "Screenshots of completed work",
+    "Source code or GitHub commits (if applicable)",
+    "Design documents, reports, or presentations",
+    "Meeting minutes or task assignments",
+    "Photographs of activities (where appropriate)",
+    "Any certificate, email, or verification issued by the host organization",
+    // The intro sentence the template prints above the bullets (in case the
+    // value injection did not replace it, e.g. unknown template variant).
+    "Students must attach relevant supporting documents with this weekly report. Acceptable evidence includes:",
+  ]);
+
+  const pRegex = new RegExp(LEAF_P_REGEX.source, "g");
+  let removedCount = 0;
+  let out = "";
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pRegex.exec(documentXml)) !== null) {
+    const pXml = match[0];
+    const plain = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+      .map((t) => unescapeXml(t.replace(/<[^>]*>/g, "")))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (templateBullets.has(plain)) {
+      out += documentXml.slice(cursor, match.index);
+      cursor = match.index + pXml.length;
+      removedCount += 1;
+    }
+  }
+  if (removedCount === 0) return { xml: documentXml, removedCount: 0 };
+  out += documentXml.slice(cursor);
+  return { xml: out, removedCount };
+}
+
+/**
+ * Center-align the CONTENT of the Program table (the "Program" label cell +
+ * the program-value cell below it).
+ *
+ * The template ships the table with all cell content LEFT-aligned (no <w:jc>,
+ * <w:ind w:left="107">, vAlign top) even though the table itself is already
+ * horizontally centered on the page. The template owner's request
+ * (2026-08-27): "make this table center aligned" — i.e. the label and the
+ * program value must read centered inside their cells.
+ *
+ * What this does to EVERY cell of the Program table:
+ *   - every paragraph gets <w:jc w:val="center"/> (horizontal centering)
+ *   - the template's left indent (<w:ind w:left="…"/>) is dropped so the
+ *     centering is exact
+ *   - <w:vAlign w:val="center"/> is added to the cell properties (vertical
+ *     centering)
+ *
+ * Safe by construction: only the FIRST table is touched, and only when its
+ * first row's plain text is exactly "Program" (the same shape check
+ * removeProgramOptionRows uses). Tables with nested tables are skipped.
+ */
+function centerProgramTable(documentXml: string): string {
+  const tblMatch = documentXml.match(/<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>/);
+  if (!tblMatch) return documentXml;
+
+  const tblXml = tblMatch[0];
+  // Bail out on nested tables — the row regex below would mis-split them.
+  // NOTE: "<w:tbl" is also the prefix of <w:tblPr>/<w:tblGrid>, so the check
+  // must require the full opening tag (<w:tbl> or <w:tbl with attributes).
+  if (/<w:tbl[ >]/.test(tblXml.slice(6))) return documentXml;
+
+  const rows = tblXml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+  if (rows.length === 0) return documentXml;
+
+  const rowPlainText = (rowXml: string) =>
+    Array.from(rowXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g))
+      .map((m) => m[1] ?? "")
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // Only touch the template's program dropdown table.
+  if (rowPlainText(rows[0]!) !== "Program") return documentXml;
+
+  let centered = tblXml;
+
+  // 1. Horizontal centering of every paragraph in the table.
+  centered = centered.replace(
+    /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g,
+    (pXml) => {
+      if (pXml.includes("<w:jc ")) return pXml; // already aligned — idempotent
+      const pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+      if (pPrMatch) {
+        let pPr = pPrMatch[0]
+          // drop the template's left indent so centering is exact
+          .replace(/<w:ind\b[^/>]*\/>/g, "");
+        // <w:jc> must come AFTER spacing/ind but BEFORE <w:rPr> (CT_PPr order).
+        if (pPr.includes("<w:rPr>")) {
+          pPr = pPr.replace("<w:rPr>", `<w:jc w:val="center"/><w:rPr>`);
+        } else {
+          pPr = pPr.replace(/<\/w:pPr>$/, `<w:jc w:val="center"/></w:pPr>`);
+        }
+        return pXml.replace(pPrMatch[0], () => pPr);
+      }
+      // No pPr — insert one as the first child of the paragraph.
+      const openTagMatch = pXml.match(/^<w:p\b[^>]*>/);
+      if (!openTagMatch) return pXml;
+      return pXml.replace(
+        openTagMatch[0],
+        () => `${openTagMatch[0]}<w:pPr><w:jc w:val="center"/></w:pPr>`
+      );
+    }
+  );
+
+  // 2. Vertical centering of every cell.
+  centered = centered.replace(
+    /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g,
+    (tcXml) => {
+      if (tcXml.includes("<w:vAlign ")) return tcXml; // idempotent
+      const tcPrMatch = tcXml.match(/<w:tcPr>[\s\S]*?<\/w:tcPr>/);
+      if (!tcPrMatch) return tcXml; // no cell props — leave untouched
+      const newTcPr = tcPrMatch[0].replace(
+        /<\/w:tcPr>$/,
+        `<w:vAlign w:val="center"/></w:tcPr>`
+      );
+      return tcXml.replace(tcPrMatch[0], () => newTcPr);
+    }
+  );
+
+  // Function replacement — avoids interpreting $ patterns in the XML.
+  return documentXml.replace(tblXml, () => centered);
 }
 
 /**
@@ -2081,6 +2214,18 @@ export async function populateWeeklyReportTemplate(
     }
   }
 
+  // 8a. Strip the template's blank-form GUIDANCE bullets under "Supporting
+  //     Evidence (Mandatory)" ("Attendance record or timesheet", "Screenshots
+  //     of completed work", …). In the GENERATED report the section should
+  //     carry only the attach/tick confirmation — the instructions belong to
+  //     the blank form, not the finished document (template-owner request
+  //     2026-08-27: "remove this yapping").
+  const bulletsRemoved = removeTemplateEvidenceBullets(documentXml);
+  if (bulletsRemoved.removedCount > 0) {
+    documentXml = bulletsRemoved.xml;
+    fieldsPopulated.push(`evidence_guidance_bullets_removed (${bulletsRemoved.removedCount})`);
+  }
+
   // 9. Inject program name (find "Program" label and inject the value).
   // The template emulates a dropdown with FOUR separate table rows after the
   // "Program" label row ("Computer Science" / "Software Engineering" /
@@ -2110,6 +2255,10 @@ export async function populateWeeklyReportTemplate(
       // option rows so they can never leak into the generated document.
       documentXml = removeProgramOptionRows(documentXml);
     }
+    // Center the label + value content inside the Program table's cells
+    // (template-owner request 2026-08-27: "make this table center aligned").
+    documentXml = centerProgramTable(documentXml);
+    fieldsPopulated.push("program_table_centered");
   }
 
   // 10. Inject signature images.
@@ -2182,12 +2331,11 @@ export async function populateWeeklyReportTemplate(
 
     // Page break + section heading (same Heading1 style the template uses
     // for "Weekly Activities" / "Supporting Evidence (Mandatory)").
+    // NOTE: no explanatory intro paragraph — the template owner asked for the
+    // evidence to speak for itself (2026-08-27).
     sectionXmlParts.push(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`);
     sectionXmlParts.push(
       `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="202" w:after="45"/></w:pPr><w:r><w:t>Attachments — Supporting Evidence</w:t></w:r></w:p>`
-    );
-    sectionXmlParts.push(
-      `<w:p><w:pPr><w:spacing w:after="160"/></w:pPr><w:r><w:rPr><w:i/><w:color w:val="595959"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">The supporting evidence submitted with this weekly log is attached below. Images are embedded in full; document files are attached as objects which open on double-click; links open in the browser.</w:t></w:r></w:p>`
     );
 
     let figureNo = 0;
@@ -2231,7 +2379,7 @@ export async function populateWeeklyReportTemplate(
       }
 
       if (ev.kind === "link" && (ev.url || ev.name)) {
-        // ---- Live hyperlink ----
+        // ---- Live hyperlink (CENTERED per template-owner request) ----
         evidenceLinkSeq += 1;
         const relId = `rIdEvLnk${evidenceLinkSeq}`;
         const label = ev.name && ev.name !== ev.url ? `${ev.name} — ${ev.url}` : ev.url || ev.name;
@@ -2242,7 +2390,7 @@ export async function populateWeeklyReportTemplate(
           targetMode: "External",
         });
         sectionXmlParts.push(
-          `<w:p><w:pPr><w:spacing w:before="60" w:after="60"/><w:ind w:left="360"/></w:pPr><w:hyperlink r:id="${relId}" w:history="1"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r></w:hyperlink></w:p>`
+          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="60" w:after="60"/></w:pPr><w:hyperlink r:id="${relId}" w:history="1"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r></w:hyperlink></w:p>`
         );
         continue;
       }
@@ -2280,11 +2428,12 @@ export async function populateWeeklyReportTemplate(
         extraZipFiles.push({ path: `word/${iconPath}`, buffer: icon });
 
         // 32pt icon centered; w:dxaOrig/dyaOrig are twips (32pt = 640 twips).
+        // NOTE: no caption paragraph under the icon — the template owner
+        // asked to drop the "… — double-click to open (PDF file, X KB)"
+        // helper text (2026-08-27). The embedded object itself stays
+        // double-clickable.
         sectionXmlParts.push(
-          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="200"/></w:pPr><w:r><w:object w:dxaOrig="640" w:dyaOrig="640"><v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f"><v:stroke joinstyle="miter"/><v:formulas><v:f eqn="if lineDrawn pixelLineWidth 0"/><v:f eqn="sum @0 1 0"/><v:f eqn="sum 0 0 @1"/><v:f eqn="prod @2 1 2"/><v:f eqn="prod @3 21600 pixelWidth"/><v:f eqn="prod @3 21600 pixelHeight"/><v:f eqn="sum @0 0 1"/><v:f eqn="prod @6 1 2"/><v:f eqn="prod @7 21600 pixelWidth"/><v:f eqn="sum @8 21600 0"/><v:f eqn="prod @7 21600 pixelHeight"/><v:f eqn="sum @10 21600 0"/></v:formulas><v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/><o:lock v:ext="edit" aspectratio="t"/></v:shapetype><v:shape id="${shapeId}" type="#_x0000_t75" style="width:32pt;height:32pt" o:ole=""><v:imagedata r:id="${iconRelId}" o:title=""/></v:shape><o:OLEObject Type="Embed" ProgID="Package" ShapeID="${shapeId}" DrawAspect="Icon" ObjectID="${objectId}" r:id="${oleRelId}"/></w:object></w:r></w:p>`
-        );
-        sectionXmlParts.push(
-          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="280"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="595959"/></w:rPr><w:t xml:space="preserve">${escapeXml(ev.name)} — double-click to open${ev.ext ? ` (${ev.ext.toUpperCase()} file, ${(Math.max(1, Math.round((ev.buffer.length || 0) / 1024)) + "").toString()} KB)` : ""}</w:t></w:r></w:p>`
+          `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="200" w:after="280"/></w:pPr><w:r><w:object w:dxaOrig="640" w:dyaOrig="640"><v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f"><v:stroke joinstyle="miter"/><v:formulas><v:f eqn="if lineDrawn pixelLineWidth 0"/><v:f eqn="sum @0 1 0"/><v:f eqn="sum 0 0 @1"/><v:f eqn="prod @2 1 2"/><v:f eqn="prod @3 21600 pixelWidth"/><v:f eqn="prod @3 21600 pixelHeight"/><v:f eqn="sum @0 0 1"/><v:f eqn="prod @6 1 2"/><v:f eqn="prod @7 21600 pixelWidth"/><v:f eqn="sum @8 21600 0"/><v:f eqn="prod @7 21600 pixelHeight"/><v:f eqn="sum @10 21600 0"/></v:formulas><v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/><o:lock v:ext="edit" aspectratio="t"/></v:shapetype><v:shape id="${shapeId}" type="#_x0000_t75" style="width:32pt;height:32pt" o:ole=""><v:imagedata r:id="${iconRelId}" o:title=""/></v:shape><o:OLEObject Type="Embed" ProgID="Package" ShapeID="${shapeId}" DrawAspect="Icon" ObjectID="${objectId}" r:id="${oleRelId}"/></w:object></w:r></w:p>`
         );
         imagesEmbedded.push(`evidence_file:${ev.name}`);
       }

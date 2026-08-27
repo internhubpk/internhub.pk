@@ -37,6 +37,10 @@ interface PlatformStorageStats {
 // Roles that can view storage stats
 const VIEW_ROLES: UserRole[] = ["super_admin", "university_admin"];
 
+/** Pseudo-id for the "Other (company & unattributed)" row — documents that
+ *  belong to no university. The UI excludes it from the university COUNT. */
+const UNATTRIBUTED_ID = "__unattributed__";
+
 /**
  * GET /api/storage/stats
  * Get storage usage statistics
@@ -102,6 +106,16 @@ function bytesToGb(bytes: number): number {
 }
 
 /**
+ * NOTE on the size column (bug fix 2026-08-27 — "storage statistics show 0
+ * files / 0 MB / No documents uploaded yet"): the `documents` table's byte
+ * column is named **size**, NOT file_size. The previous queries selected
+ * `file_size`, which PostgREST rejects (column does not exist) — and because
+ * the fetch errors were silently ignored, the page rendered zeros. All
+ * queries now select `size` and surface fetch errors instead of swallowing
+ * them.
+ */
+
+/**
  * Build a UniversityStorageStats object.
  */
 function buildUniStats(
@@ -133,26 +147,42 @@ function buildUniStats(
  *
  * Strategy:
  * 1. Fetch ALL active universities.
- * 2. Fetch ALL documents (id, file_size, entity_id, entity_type).
+ * 2. Fetch ALL documents (id, size, entity_id, entity_type).
  * 3. Fetch students (user_id, university_id) to map documents → universities.
- * 4. Aggregate per-university: file count, sum(file_size), student count.
+ * 4. Aggregate per-university: file count, sum(size), student count.
  * 5. Compute platform totals.
  */
 async function getPlatformStorageStats(): Promise<NextResponse<ApiResponse<PlatformStorageStats>>> {
   const supabase = await createServiceRoleClient();
 
   // 1. Fetch all active universities
-  const { data: universities } = await supabase
+  const { data: universities, error: unisError } = await supabase
     .from("universities")
     .select("id, name")
     .eq("is_active", true);
 
+  if (unisError) {
+    console.error("[storage-stats] universities fetch failed:", unisError.message);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: `Failed to load universities: ${unisError.message}` },
+      { status: 500 }
+    );
+  }
+
   const uniList = universities || [];
 
-  // 2. Fetch all documents with file sizes
-  const { data: documents } = await supabase
+  // 2. Fetch all documents with file sizes (column is `size` — see note above)
+  const { data: documents, error: docsError } = await supabase
     .from("documents")
-    .select("id, file_size, entity_id, entity_type, uploaded_by");
+    .select("id, size, entity_id, entity_type, uploaded_by");
+
+  if (docsError) {
+    console.error("[storage-stats] documents fetch failed:", docsError.message);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: `Failed to load documents: ${docsError.message}` },
+      { status: 500 }
+    );
+  }
 
   const docList = documents || [];
 
@@ -196,13 +226,22 @@ async function getPlatformStorageStats(): Promise<NextResponse<ApiResponse<Platf
     }
   }
 
-  // Map each document to a university and accumulate
+  // Map each document to a university and accumulate. Documents that cannot
+  // be attributed to any university (e.g. company-HR uploads) are tracked
+  // separately so the platform TOTALS still count every document.
+  let unattributedBytes = 0;
+  let unattributedCount = 0;
   for (const doc of docList) {
-    const fileSize = doc.file_size || 0;
+    const fileSize = doc.size || 0;
     let universityId: string | undefined;
 
+    // University-scoped docs (logos etc.): entity_id IS the university id.
+    if (doc.entity_type === "university" && doc.entity_id) {
+      universityId = doc.entity_id;
+    }
+
     // Try entity_id first (for student docs, entity_id = user_id)
-    if (doc.entity_id) {
+    if (!universityId && doc.entity_id) {
       universityId = userToUniversity.get(doc.entity_id);
     }
 
@@ -215,10 +254,13 @@ async function getPlatformStorageStats(): Promise<NextResponse<ApiResponse<Platf
       const stats = uniStatsMap.get(universityId)!;
       stats.usedBytes += fileSize;
       stats.fileCount += 1;
+    } else {
+      unattributedBytes += fileSize;
+      unattributedCount += 1;
     }
   }
 
-  // 5. Build final stats
+  // 5. Build final stats. Totals count EVERY document in the table.
   let totalUsedBytes = 0;
   let totalFileCount = 0;
 
@@ -231,6 +273,17 @@ async function getPlatformStorageStats(): Promise<NextResponse<ApiResponse<Platf
     );
     totalUsedBytes += stats.usedBytes;
     totalFileCount += stats.fileCount;
+  }
+  totalUsedBytes += unattributedBytes;
+  totalFileCount += unattributedCount;
+
+  // Pseudo-row for documents that belong to no university (company uploads
+  // etc.) so the per-university table still sums to the platform totals.
+  // The UI hides zero-file rows and counts only REAL universities.
+  if (unattributedCount > 0) {
+    finalUniversityStats.push(
+      buildUniStats(UNATTRIBUTED_ID, "Other (company & unattributed)", unattributedBytes, unattributedCount, 0)
+    );
   }
 
   // Sort by used_bytes descending
@@ -281,20 +334,20 @@ async function getUniversityStorageStats(
 
   // Fetch documents: match by entity_id or uploaded_by being one of the student user IDs
   // We do two separate queries because Supabase JS doesn't support OR across columns easily
-  let allDocs: Array<{ id: string; file_size: number | null }> = [];
+  let allDocs: Array<{ id: string; size: number | null }> = [];
 
   if (studentUserIds.size > 0) {
- const ids = Array.from(studentUserIds);
+    const ids = Array.from(studentUserIds);
     // Query 1: entity_id IN studentUserIds
     const { data: docsByEntity } = await supabase
       .from("documents")
-      .select("id, file_size")
+      .select("id, size")
       .in("entity_id", ids);
 
     // Query 2: uploaded_by IN studentUserIds
     const { data: docsByUploader } = await supabase
       .from("documents")
-      .select("id, file_size")
+      .select("id, size")
       .in("uploaded_by", ids);
 
     // Merge and deduplicate by id
@@ -316,7 +369,7 @@ async function getUniversityStorageStats(
   // Also fetch documents where entity_type = 'university' and entity_id = universityId
   const { data: uniDocs } = await supabase
     .from("documents")
-    .select("id, file_size")
+    .select("id, size")
     .eq("entity_type", "university")
     .eq("entity_id", universityId);
 
@@ -330,7 +383,7 @@ async function getUniversityStorageStats(
   // Aggregate
   let usedBytes = 0;
   for (const doc of allDocs) {
-    usedBytes += doc.file_size || 0;
+    usedBytes += doc.size || 0;
   }
 
   const stats: UniversityStorageStats = buildUniStats(

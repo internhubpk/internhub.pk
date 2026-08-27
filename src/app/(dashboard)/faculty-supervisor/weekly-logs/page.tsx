@@ -174,6 +174,14 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
   const handleReview = async (action: "approve" | "reject" | "request_revision") => {
     if (!user || !selectedLog) return;
+    // Supervisor feedback is REQUIRED for every decision — it becomes the
+    // "Supervisor Remarks" section of the student's generated Word report,
+    // so approving without remarks would ship an empty remarks section
+    // (bug fix 2026-08-27).
+    if (!reviewFeedback.trim()) {
+      toast.error("Remarks Required", { description: "Please provide supervisor remarks/feedback before submitting your decision — they are included in the student's weekly report." });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const supabase = createClient();
@@ -190,6 +198,10 @@ export default function FacultySupervisorWeeklyLogsPage() {
         .update({
           status: newStatus,
           supervisor_feedback: reviewFeedback || null,
+          // The generated Word report's "Supervisor Remarks" section reads
+          // faculty_supervisor_remarks FIRST — keep it in sync with the
+          // review feedback so the remarks always reach the document.
+          faculty_supervisor_remarks: reviewFeedback || null,
           reviewed_at: new Date().toISOString(),
           supervisor_id: user.id,
         })
@@ -466,10 +478,12 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="feedback">Supervisor Feedback</Label>
+                  <Label htmlFor="feedback">
+                    Supervisor Remarks <span className="text-destructive">*</span>
+                  </Label>
                   <Textarea
                     id="feedback"
-                    placeholder="Provide feedback to the student (optional for approve, recommended for reject/revision)..."
+                    placeholder="Your remarks are included in the student's generated weekly report..."
                     value={reviewFeedback}
                     onChange={(e) => setReviewFeedback(e.target.value)}
                     rows={4}

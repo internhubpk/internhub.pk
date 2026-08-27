@@ -112,6 +112,21 @@ interface StorageState {
   error: string | null;
 }
 
+/** Pseudo-id of the API's "Other (company & unattributed)" row — excluded
+ *  from the university COUNT but shown in the breakdown table. */
+const UNATTRIBUTED_ROW_ID = "__unattributed__";
+
+/** Human-readable byte formatting — sub-megabyte usage shows KB instead of a
+ *  misleading "0 MB" (bug fix 2026-08-27: 327 KB of documents rendered as
+ *  "0 MB" and looked like the stats were broken). */
+function formatStorageBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
 const defaultSettings: PlatformSettings = {
   platform_name: "CareerStep",
   support_email: "support@careerstep.tech",
@@ -762,14 +777,14 @@ export default function SuperAdminSettingsPage() {
                     <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                       <p className="text-sm font-medium text-muted-foreground">Total Used</p>
                       <p className="text-2xl font-bold mt-1">
-                        {storage.stats.total_used_bytes >= 1024 * 1024 * 1024
-                          ? `${storage.stats.universities.reduce((a, u) => a + u.used_gb, 0).toFixed(2)} GB`
-                          : `${storage.stats.universities.reduce((a, u) => a + u.used_mb, 0)} MB`}
+                        {formatStorageBytes(storage.stats.total_used_bytes)}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
                       <p className="text-sm font-medium text-muted-foreground">Universities</p>
-                      <p className="text-2xl font-bold mt-1">{storage.stats.universities.length}</p>
+                      <p className="text-2xl font-bold mt-1">
+                        {storage.stats.universities.filter((u) => u.university_id !== UNATTRIBUTED_ROW_ID).length}
+                      </p>
                     </div>
                   </div>
 
@@ -794,7 +809,7 @@ export default function SuperAdminSettingsPage() {
                                 <td className="p-3 text-right text-muted-foreground">{u.student_count}</td>
                                 <td className="p-3 text-right text-muted-foreground">{u.file_count}</td>
                                 <td className="p-3 text-right font-mono">
-                                  {u.used_gb >= 1 ? `${u.used_gb} GB` : `${u.used_mb} MB`}
+                                  {formatStorageBytes(u.used_bytes)}
                                 </td>
                               </tr>
                             ))}

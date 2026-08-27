@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import type { ApiResponse, PaginatedResponse } from "@/types";
-import { getSupervisorColumn, isSupervisorRole } from "@/lib/supervisor-role";
+import { getSupervisorColumn, getRemarksColumn, isSupervisorRole } from "@/lib/supervisor-role";
 
 // GET: Get weekly logs from assigned students
 export async function GET(request: NextRequest) {
@@ -205,6 +205,11 @@ export async function PUT(request: NextRequest) {
       );
     }
     const supervisorColumn = getSupervisorColumn(putProfile.role as any);
+    // Role-specific remarks column (site_supervisor_remarks /
+    // external_evaluator_remarks) — the Word report's "Supervisor Remarks"
+    // section reads this FIRST, so the review feedback must land there too,
+    // not only in the legacy supervisor_feedback column.
+    const remarksColumn = getRemarksColumn(putProfile.role as any);
 
     const body = await request.json();
     const { logId, action, feedback } = body;
@@ -264,6 +269,10 @@ export async function PUT(request: NextRequest) {
     const updatePayload: Record<string, unknown> = {
       status: newStatus,
       supervisor_feedback: feedback || null,
+      // Also persist the feedback into the role-specific remarks column —
+      // the generated Word report prefers site_supervisor_remarks /
+      // external_evaluator_remarks over the legacy supervisor_feedback.
+      [remarksColumn]: feedback || null,
       reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
