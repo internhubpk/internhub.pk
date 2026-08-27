@@ -41,11 +41,16 @@
 
 import JSZip from "jszip";
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createServiceRoleClient } from "@supabase/supabase-js";
+import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js";
 import path from "path";
 import { promises as fs } from "fs";
 import { buildOleObjectBin } from "./ole-package";
 import { PDF_ICON, DOCX_ICON, XLS_ICON, FILE_ICON } from "./ole-icons";
+import {
+  EVIDENCE_OPTIONS,
+  BOX_CHECKED,
+  BOX_UNCHECKED,
+} from "@/lib/constants/evidence-options";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -60,10 +65,12 @@ export interface WeeklyReportData {
   departmentName: string;
   // Program info
   programName: string;
-  /** ALL degree programs of the student's university — the Program section
-   *  renders each of them as a checklist line, with a tick (✓) on the
-   *  student's own program and an empty box (☐) on the rest
-   *  (template-owner request 2026-08-27). */
+  /** ALL degree programs of the student's university — the Program table
+   *  renders one row per program: the program NAME in the left cell and a
+   *  checkbox in the right cell — ☑ (checked) for the student's own program,
+   *  ☐ (empty) for the rest (template-owner request 2026-08-27, refined same
+   *  day: "the check should be on the right empty box in front of the relevant
+   *  department, others should be empty boxes in front of them"). */
   allPrograms: string[];
   // Student info
   studentName: string;
@@ -96,6 +103,12 @@ export interface WeeklyReportData {
   learningOutcomes: string;
   challengesFaced: string;
   supportingEvidence: string;
+  /** Which canonical evidence options (EVIDENCE_OPTIONS) the student TICKED
+   *  on the submission form. The Word report renders the full option list
+   *  with ☑ on these and ☐ on the rest (request 2026-08-27). Optional —
+   *  callers without tick data fall back to the attachment-name heuristic
+   *  or an all-empty checklist. */
+  evidenceTicks?: string[];
   // Supporting-evidence attachments — the ACTUAL files/links, appended at the
   // end of the generated document (centered images for pictures, hyperlinks
   // for links, embedded OLE package objects for PDF/DOCX/other files so the
@@ -144,7 +157,7 @@ export interface GenerationResult {
  * Create a service-role Supabase client for privileged operations
  * (fetching private storage assets, logos from private buckets).
  */
-function getServiceRoleClient() {
+export function getServiceRoleClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
@@ -375,9 +388,18 @@ async function fetchEvidenceBuffer(url: string, name: string): Promise<Buffer | 
  * @returns The assembled data, or throws on missing required fields.
  */
 export async function assembleWeeklyReportData(
-  weeklyLogId: string
+  weeklyLogId: string,
+  /**
+   * Optional Supabase client override. The generate API authorizes the
+   * caller FIRST (student owner / assigned supervisors / coordinators /
+   * admins) and then passes a SERVICE-ROLE client here so RLS on
+   * `students` / `internships` / `profiles` — which company-side site
+   * supervisors legitimately fail — can never block report assembly
+   * (bug fix 2026-08-27: site supervisor Word download → 500).
+   */
+  clientOverride?: SupabaseClient
 ): Promise<WeeklyReportData> {
-  const supabase = await createClient();
+  const supabase = clientOverride ?? (await createClient());
 
   // 1. Fetch the weekly log with all its scalar columns (NO embedded joins —
   //    see note below).
@@ -721,27 +743,64 @@ export async function assembleWeeklyReportData(
   );
 
   // 7a. Body-section checklist ("Supporting Evidence (Mandatory)").
-  //     Per the template-owner's request (2026-08-27): the student ticks the
-  //     supporting evidence they attached — the document renders one line per
-  //     attached item with a tick mark (✓), instead of verbose file
-  //     descriptions. The actual files / images / links live in the
-  //     Attachments section at the end of the document.
-  const supportingEvidenceSummary: string = (() => {
-    const names: string[] = evidenceAttachments
-      .map((a) => (a.name || "").trim())
-      .filter((n) => n.length > 0);
+  //     Per the template-owner's request (2026-08-27, refined): the student
+  //     TICKS the evidence types they attached on the submission form; the
+  //     document renders the FULL canonical option list with a checked box
+  //     (☑) on the ticked options and an empty box (☐) on the rest. The
+  //     actual files / images / links live in the Attachments section at the
+  //     end of the document.
+  const evidenceTicks: string[] = (() => {
     const rawEvidence = Array.isArray(weeklyLogAny.supporting_evidence)
       ? (weeklyLogAny.supporting_evidence as Array<Record<string, unknown>>)
       : [];
-    for (const item of rawEvidence) {
-      const n = String((item as any)?.name || "").trim();
-      if (n && !names.includes(n)) names.push(n);
+    // 1. Explicit checklist selections from the submission form
+    //    ({ name, ticked: true, type: "checklist" } entries).
+    const ticked = rawEvidence
+      .filter(
+        (item) =>
+          item &&
+          (item.type === "checklist" || item.ticked === true) &&
+          typeof item.name === "string"
+      )
+      .map((item) => String(item.name).trim())
+      .filter((n) => n.length > 0);
+    if (ticked.length > 0) {
+      // Keep only canonical options (order preserved from the constant).
+      return EVIDENCE_OPTIONS.filter((opt) => ticked.includes(opt));
     }
-    if (names.length === 0) {
-      return "✗ No supporting documents attached";
-    }
-    return names.map((n) => `✓ ${n}`).join("\n");
+    // 2. LEGACY logs (submitted before the tick-list existed): infer the
+    //    ticked options from the attached file names / link URLs so the
+    //    checklist still reflects what was actually attached.
+    const hay = [
+      ...evidenceAttachments.map((a) => `${a.name} ${a.url || ""}`),
+      ...rawEvidence.map((item) => `${String(item?.name || "")} ${String(item?.url || "")}`),
+    ]
+      .join(" ")
+      .toLowerCase();
+    if (!hay.trim()) return [];
+    const keywords: Array<[string, RegExp]> = [
+      ["Attendance record or timesheet", /attendance|timesheet|time.?sheet|punch/],
+      ["Screenshots of completed work", /screenshot|screen.?shot|screen capture/],
+      ["Source code or GitHub commits (if applicable)", /github|gitlab|source|commit|repo|code/],
+      ["Design documents, reports, or presentations", /design|report|presentation|slide|doc/],
+      ["Meeting minutes or task assignments", /minutes|meeting|task assign/],
+      ["Photographs of activities (where appropriate)", /photo|image|pic|picture|\.png|\.jpe?g/],
+      [
+        "Any certificate, email, or verification issued by the host organization",
+        /certificate|email|verification|\.eml|\.msg/,
+      ],
+    ];
+    return EVIDENCE_OPTIONS.filter(
+      (opt) => keywords.some(([name, re]) => name === opt && re.test(hay))
+    );
   })();
+
+  // Plain-text fallback summary — used only when the checklist injection
+  // below cannot locate the template's evidence paragraph.
+  const supportingEvidenceSummary: string =
+    evidenceTicks.length > 0
+      ? evidenceTicks.map((n) => `${BOX_CHECKED} ${n}`).join("\n")
+      : `${BOX_UNCHECKED} No supporting evidence ticked`;
 
   // Supervisor remarks: prefer site_supervisor_remarks (Industry Supervisor),
   // then faculty_supervisor_remarks (Faculty Supervisor), then the legacy
@@ -778,6 +837,7 @@ export async function assembleWeeklyReportData(
     challengesFaced: weeklyLogAny.challenges_solutions || weeklyLog.challenges || "",
     // Supporting Evidence (Mandatory)
     supportingEvidence: supportingEvidenceSummary,
+    evidenceTicks,
     // Evidence attachments (rendered at the very end of the document)
     evidenceAttachments,
     // Supervisor Remarks
@@ -1480,6 +1540,169 @@ function removeTemplateEvidenceBullets(documentXml: string): {
   if (removedCount === 0) return { xml: documentXml, removedCount: 0 };
   out += documentXml.slice(cursor);
   return { xml: out, removedCount };
+}
+
+/**
+ * REBUILD THE PROGRAM TABLE'S OPTION ROWS AS A TWO-COLUMN CHECKLIST
+ * (request 2026-08-27: "the check should be on the right empty box in front
+ * of the relevant department, others should be empty boxes in front of them").
+ *
+ * The template's Program table looks like:
+ *   row 0:  [ "Program" (label, single wide cell) ]
+ *   row 1+: [ program-name cell | empty box cell ]   ← the "dropdown" rows
+ *
+ * This function keeps row 0 untouched and replaces ALL option rows with one
+ * row per program, preserving each cell's borders/width (tcPr) and the
+ * template's run formatting:
+ *   [ program name | ☑ for the student's program, ☐ for the rest ]
+ *
+ * The name cell's paragraph is centered by centerProgramTable afterwards,
+ * matching the blank-form look. Returns { replaced: false } (xml untouched)
+ * when the first table doesn't follow the "Program" label-row shape, so the
+ * caller can fall back to inline text injection.
+ */
+function rebuildProgramChecklistTable(
+  documentXml: string,
+  programs: Array<{ name: string; checked: boolean }>
+): { xml: string; replaced: boolean } {
+  const tblMatch = documentXml.match(/<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>/);
+  if (!tblMatch) return { xml: documentXml, replaced: false };
+  const tblXml = tblMatch[0];
+  if (/<w:tbl[ >]/.test(tblXml.slice(6))) return { xml: documentXml, replaced: false };
+
+  const rowRegex = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+  const rows: string[] = [];
+  let rm: RegExpExecArray | null;
+  while ((rm = rowRegex.exec(tblXml)) !== null) rows.push(rm[0]);
+  if (rows.length < 2) return { xml: documentXml, replaced: false };
+
+  const rowPlainText = (rowXml: string) =>
+    Array.from(rowXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g))
+      .map((m) => m[1])
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (rowPlainText(rows[0]) !== "Program") {
+    return { xml: documentXml, replaced: false };
+  }
+
+  // Donor row = first option row (two cells: name + empty box).
+  const donorRow = rows[1];
+  const cells: string[] = [];
+  const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = tcRe.exec(donorRow)) !== null) cells.push(cm[0]);
+  if (cells.length !== 2) return { xml: documentXml, replaced: false };
+
+  // Extract reusable skeleton pieces from the donor cells.
+  const cellSkeleton = (cellXml: string) => {
+    const tcPrMatch = cellXml.match(/<w:tcPr>[\s\S]*?<\/w:tcPr>/);
+    const firstP = cellXml.match(new RegExp(LEAF_P_REGEX.source));
+    const pPrMatch = firstP?.[0]?.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const rPr = extractRPrForInjection(firstP?.[0] || cellXml);
+    return {
+      tcPr: tcPrMatch ? tcPrMatch[0] : "",
+      pPr: pPrMatch ? pPrMatch[0] : "",
+      rPr,
+    };
+  };
+  const nameSk = cellSkeleton(cells[0]);
+  const boxSk = cellSkeleton(cells[1]);
+
+  // Row properties (height etc.) from the donor row.
+  const trPrMatch = donorRow.match(/<w:trPr>[\s\S]*?<\/w:trPr>/);
+  const trPr = trPrMatch ? trPrMatch[0] : "";
+
+  const buildRow = (name: string, checked: boolean) => {
+    const nameCell = `<w:tc>${nameSk.tcPr}<w:p>${nameSk.pPr}${buildTextRun(
+      name,
+      nameSk.rPr
+    )}</w:p></w:tc>`;
+    // Box cell: reuse the donor paragraph properties, ensuring the box is
+    // horizontally CENTERED inside its cell.
+    const boxPPr = /<w:jc\b/.test(boxSk.pPr)
+      ? boxSk.pPr
+      : `<w:pPr>${boxSk.pPr.replace(/<\/?w:pPr>/g, "")}<w:jc w:val="center"/></w:pPr>`;
+    const boxCell = `<w:tc>${boxSk.tcPr}<w:p>${boxPPr}${buildTextRun(
+      checked ? BOX_CHECKED : BOX_UNCHECKED,
+      boxSk.rPr
+    )}</w:p></w:tc>`;
+    return `<w:tr>${trPr}${nameCell}${boxCell}</w:tr>`;
+  };
+
+  const rebuiltRows = rows[0] + programs.map((p) => buildRow(p.name, p.checked)).join("");
+  const firstRowIdx = tblXml.indexOf(rows[0]);
+  const tblPrefix = tblXml.slice(0, firstRowIdx);
+  const rebuiltTable = tblPrefix + rebuiltRows + "</w:tbl>";
+  return {
+    xml: documentXml.replace(tblXml, () => rebuiltTable),
+    replaced: true,
+  };
+}
+
+/**
+ * Inject the Supporting-Evidence tick list under the
+ * "Supporting Evidence (Mandatory)" heading.
+ *
+ * Each option renders as ONE body paragraph:
+ *     <option text>  <tab/>  ☑/☐
+ * with a right-aligned tab stop near the right margin so every box lands in
+ * the same column — name on the left, box on the right (matching the blank
+ * form's checklist layout). Replaces the paragraph that follows the label
+ * (which the earlier reflections loop filled with the plain-text summary).
+ *
+ * Page geometry: Letter (12240 twips) with 1440-twip side margins →
+ * content width 9360; the tab stop sits at 9000 twips.
+ */
+function injectEvidenceChecklistAfterLabel(
+  documentXml: string,
+  labelText: string,
+  options: Array<{ name: string; checked: boolean }>
+): { xml: string; replaced: boolean } {
+  const normalizedLabel = labelText.replace(/\s+/g, " ").trim();
+  const pRegex = new RegExp(LEAF_P_REGEX.source, "g");
+  let match: RegExpExecArray | null;
+  let labelPEndIdx = -1;
+
+  while ((match = pRegex.exec(documentXml)) !== null) {
+    const pXml = match[0];
+    const parts: string[] = [];
+    let tExec: RegExpExecArray | null;
+    const tRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+    while ((tExec = tRe.exec(pXml)) !== null) parts.push(unescapeXml(tExec[1]));
+    const plain = parts.join("").replace(/\s+/g, " ").trim();
+    if (plain === normalizedLabel) {
+      labelPEndIdx = match.index + pXml.length;
+      break;
+    }
+  }
+  if (labelPEndIdx === -1) return { xml: documentXml, replaced: false };
+
+  const afterLabel = documentXml.slice(labelPEndIdx);
+  const nextPMatch = afterLabel.match(new RegExp(LEAF_P_REGEX.source));
+  if (!nextPMatch) return { xml: documentXml, replaced: false };
+  const nextPStartIdx = labelPEndIdx + afterLabel.indexOf(nextPMatch[0]);
+  const nextPEndIdx = nextPStartIdx + nextPMatch[0].length;
+
+  // Run formatting inherited from the paragraph we replace.
+  const rPr = extractRPrForInjection(nextPMatch[0]);
+
+  const buildChecklistPara = (opt: { name: string; checked: boolean }) =>
+    `<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="9000"/></w:tabs></w:pPr>` +
+    `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ""}<w:t xml:space="preserve">${escapeXml(
+      opt.name
+    )}</w:t></w:r>` +
+    `<w:r><w:tab/></w:r>` +
+    `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ""}<w:t xml:space="preserve">${
+      opt.checked ? BOX_CHECKED : BOX_UNCHECKED
+    }</w:t></w:r></w:p>`;
+
+  const paras = options.map(buildChecklistPara).join("");
+  return {
+    xml: documentXml.slice(0, nextPStartIdx) + paras + documentXml.slice(nextPEndIdx),
+    replaced: true,
+  };
 }
 
 /**
@@ -2345,48 +2568,91 @@ export async function populateWeeklyReportTemplate(
   // 9. Inject the Program checklist (find "Program" label and inject the value).
   // The template emulates a dropdown with FOUR separate table rows after the
   // "Program" label row ("Computer Science" / "Software Engineering" /
-  // "Artificial Intelligence" / "Rob & AI").
+  // "Artificial Intelligence" / "Rob & AI"). Each option row is
+  // [ name cell (2448 twips) | empty box cell (2160 twips) ].
   //
-  // UPDATE 2026-08-27 (template-owner request): the Program cell now lists
-  // ALL degree programs of the student's university — one per line — with a
-  // tick (✓) on the STUDENT'S program and an empty box (☐) on the rest:
+  // UPDATE 2 2026-08-27 (template-owner refined request): the Program table
+  // keeps its per-row two-column shape — the program NAME sits in the LEFT
+  // cell and the CHECKBOX sits in the RIGHT cell, exactly like the blank
+  // form: the student's program row gets a CHECKED box (☑) in the right
+  // cell; every other program row gets an EMPTY box (☐):
   //
-  //     ☐ BSCS
-  //     ✓ BBA
-  //     ☐ MBA
+  //     ┌──────────────────────────────┬──────────┐
+  //     │ Computer Science             │    ☐     │
+  //     │ Software Engineering         │    ☑     │
+  //     │ Artificial Intelligence      │    ☐     │
+  //     └──────────────────────────────┴──────────┘
   {
     const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-    let programValue: string;
-    if (data.allPrograms.length > 0) {
-      const studentProgramNorm = normalize(data.programName);
-      programValue = data.allPrograms
-        .map((p) =>
-          normalize(p) === studentProgramNorm && studentProgramNorm !== "—" && studentProgramNorm !== ""
-            ? `✓ ${p}`
-            : `☐ ${p}`
-        )
+    const studentProgramNorm = normalize(data.programName);
+    const programsWithBox =
+      data.allPrograms.length > 0
+        ? data.allPrograms.map((p) => ({
+            name: p,
+            checked:
+              normalize(p) === studentProgramNorm &&
+              studentProgramNorm !== "—" &&
+              studentProgramNorm !== "",
+          }))
+        : [
+            {
+              name:
+                data.programName && String(data.programName).trim().length > 0
+                  ? data.programName
+                  : "—",
+              checked: data.programName !== "—" && !!String(data.programName).trim(),
+            },
+          ];
+
+    const rebuilt = rebuildProgramChecklistTable(documentXml, programsWithBox);
+    if (rebuilt.replaced) {
+      documentXml = rebuilt.xml;
+      fieldsPopulated.push(
+        `program (${programsWithBox.length} rows, box-in-right-cell)`
+      );
+    } else {
+      // Fallback (template variant without the recognizable shape): inject
+      // the whole checklist as text lines into the Program value cell.
+      const programValue = programsWithBox
+        .map((p) => `${p.checked ? BOX_CHECKED : BOX_UNCHECKED} ${p.name}`)
         .join("\n");
-    } else {
-      // No program list available (legacy university without programs rows)
-      // — fall back to the single program value.
-      programValue =
-        data.programName && String(data.programName).trim().length > 0
-          ? `✓ ${data.programName}`
-          : "—";
+      const result = injectValueAfterLabel(documentXml, "Program", programValue, true);
+      if (result.replaced) {
+        documentXml = removeProgramOptionRows(result.xml);
+        fieldsPopulated.push(`program (${programsWithBox.length} options, inline)`);
+      } else {
+        documentXml = removeProgramOptionRows(documentXml);
+      }
     }
-    const result = injectValueAfterLabel(documentXml, "Program", programValue, true);
-    if (result.replaced) {
-      documentXml = removeProgramOptionRows(result.xml);
-      fieldsPopulated.push(`program (${data.allPrograms.length} options, ticked)`);
-    } else {
-      // Even if the label cell moved/renamed, still strip the hardcoded
-      // option rows so they can never leak into the generated document.
-      documentXml = removeProgramOptionRows(documentXml);
-    }
-    // Center the label + value content inside the Program table's cells
+    // Center the label + row content inside the Program table's cells
     // (template-owner request 2026-08-27: "make this table center aligned").
     documentXml = centerProgramTable(documentXml);
     fieldsPopulated.push("program_table_centered");
+  }
+
+  // 9b. Inject the Supporting-Evidence TICK LIST.
+  //     The student ticks evidence options on the submission form; the report
+  //     renders the FULL canonical list — ticked options get a checked box
+  //     (☑) on the RIGHT of the line, the rest get an empty box (☐) —
+  //     "in word template tick or check that one also but [the] other[s]
+  //     [should] be there" (request 2026-08-27).
+  {
+    const ticked = new Set(data.evidenceTicks ?? []);
+    const evResult = injectEvidenceChecklistAfterLabel(
+      documentXml,
+      "Supporting Evidence (Mandatory)",
+      EVIDENCE_OPTIONS.map((opt) => ({
+        name: opt,
+        checked: ticked.has(opt),
+      }))
+    );
+    if (evResult.replaced) {
+      documentXml = evResult.xml;
+      fieldsPopulated.push(`evidence_checklist (${ticked.size}/${EVIDENCE_OPTIONS.length} ticked)`);
+    }
+    // Fallback: the plain-text summary injected by the reflections loop
+    // (below) already carries the ☑/☐ lines if the checklist injector
+    // could not find the label paragraph.
   }
 
   // 10. Inject signature images.

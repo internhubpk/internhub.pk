@@ -56,12 +56,13 @@ async function main() {
   const texts = Array.from(xml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)).map(m => m[1]).join(" ~ ");
 
   const checks: Record<string, unknown> = {
-    programChecklist: (xml.match(/☐/g) || []).length,
-    programTicks: (xml.match(/✓/g) || []).length,
+    emptyBoxes: (xml.match(/☐/g) || []).length,
+    checkedBoxes: (xml.match(/☑/g) || []).length,
+    evidenceTabStops: (xml.match(/<w:tab w:val="right" w:pos="9000"\/>/g) || []).length,
+    programRowCount: (xml.match(/QA Demo (BSCS|BBA|Software Engineering)/g) || []).length,
     siteSupervisorName: texts.includes("QA Site Supervisor"),
     facultySupervisorName: texts.includes("QA Faculty Supervisor"),
     studentName: texts.includes("QA Demo Student"),
-    supervisorRemarks: texts.includes("E2E: great work on the deliverables"),
     noXireaLinks: !xml.includes("xirea.tech"),
   };
   // signature images embedded?

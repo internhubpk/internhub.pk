@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
+import { EVIDENCE_OPTIONS } from "@/lib/constants/evidence-options";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
@@ -203,6 +204,10 @@ export default function StudentWeeklyLogsPage() {
   // in the generated Word report's Attachments section).
   const [evidenceLinks, setEvidenceLinks] = useState<string[]>([]);
   const [evidenceLinkInput, setEvidenceLinkInput] = useState("");
+  // Evidence TYPES the student TICKED (multi-select checkbox list). The Word
+  // report renders the same list with ☑ on these and ☐ on the rest
+  // (request 2026-08-27).
+  const [evidenceTicks, setEvidenceTicks] = useState<string[]>([]);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [uploadStage, setUploadStage] = useState("");
@@ -340,6 +345,7 @@ export default function StudentWeeklyLogsPage() {
       setEvidenceFiles([]);
       setEvidenceLinks([]);
       setEvidenceLinkInput("");
+      setEvidenceTicks([]);
       setSignatureData(null);
       setSignatureFile(null);
       setUploadStage("");
@@ -592,15 +598,24 @@ export default function StudentWeeklyLogsPage() {
           // Evidence LINKS are stored up-front as supporting_evidence entries
           // (files are uploaded after creation and appended by the evidence
           // upload route). The Word report renders links as live hyperlinks
-          // in its Attachments section.
+          // in its Attachments section. Ticked evidence TYPES are stored as
+          // { type: "checklist", ticked: true } entries — the report renders
+          // the full option list with ☑ on the ticked ones.
           supporting_evidence:
-            evidenceLinks.length > 0
-              ? evidenceLinks.map((url) => ({
-                  name: url,
-                  url,
-                  link: true,
-                  type: "link",
-                }))
+            evidenceLinks.length > 0 || evidenceTicks.length > 0
+              ? [
+                  ...evidenceLinks.map((url) => ({
+                    name: url,
+                    url,
+                    link: true,
+                    type: "link",
+                  })),
+                  ...evidenceTicks.map((t) => ({
+                    name: t,
+                    ticked: true,
+                    type: "checklist",
+                  })),
+                ]
               : null,
         }),
       });
@@ -1090,8 +1105,40 @@ export default function StudentWeeklyLogsPage() {
                               Supporting Evidence
                             </Label>
                             <p className="text-xs text-muted-foreground">
-                              Attach relevant documents — attendance records or timesheets, screenshots of completed work, source code / GitHub commits, design documents, meeting minutes, photos, or certificates. Images are embedded in the Word report and files are attached at the end of the document; links appear as clickable hyperlinks.
+                              Tick the evidence you are attaching — the generated Word report shows the same list with a checked box (☑) on your selection and empty boxes (☐) on the rest. Then attach the files/links below; images are embedded in the report and other files are attached at the end.
                             </p>
+
+                            {/* Evidence TYPE multi-select (tick list) — mirrors the
+                                Word report checklist 1:1. */}
+                            <div className="grid gap-1.5 sm:grid-cols-2 p-3 rounded-lg border bg-background/50">
+                              {EVIDENCE_OPTIONS.map((opt) => {
+                                const checked = evidenceTicks.includes(opt);
+                                return (
+                                  <label
+                                    key={opt}
+                                    className="flex items-start gap-2.5 rounded-md px-2.5 py-2 text-xs cursor-pointer select-none hover:bg-accent/60 transition-colors"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() =>
+                                        setEvidenceTicks((prev) =>
+                                          prev.includes(opt)
+                                            ? prev.filter((t) => t !== opt)
+                                            : [...prev, opt]
+                                        )
+                                      }
+                                      className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                                      aria-label={opt}
+                                    />
+                                    <span className={checked ? "text-foreground" : "text-muted-foreground"}>
+                                      {opt}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
                             <Label
                               htmlFor="wl-evidence"
                               className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-3 text-xs font-medium hover:bg-accent transition-colors"

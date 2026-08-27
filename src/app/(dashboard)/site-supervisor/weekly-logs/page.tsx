@@ -58,7 +58,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { downloadCsv, generatePdf } from "@/lib/export-helpers";
+import { downloadCsv } from "@/lib/export-helpers";
 import { toast } from "@/components/shared/toast";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
 import { signatureToFile } from "@/lib/signature";
@@ -384,6 +384,40 @@ export default function SiteSupervisorWeeklyLogsPage() {
     });
   }
 
+  // Download the SAME generated Word report the student downloads
+  // (POST /api/reports/weekly-logs/[id]/generate → DOCX). Replaces the old
+  // jsPDF one-pager (request 2026-08-27). The API authorizes the assigned
+  // site supervisor.
+  async function handleDownloadWord(logId: string, studentName: string, weekNumber: number) {
+    try {
+      const res = await fetch(`/api/reports/weekly-logs/${logId}/generate`, { method: "POST" });
+      const json = await res.json();
+      if (json.success && json.data?.downloadUrl) {
+        const dlRes = await fetch(json.data.downloadUrl);
+        if (dlRes.ok) {
+          const blob = await dlRes.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `weekly-report-${studentName.replace(/\s+/g, "-").toLowerCase()}-week-${weekNumber}.docx`;
+          a.click();
+          URL.revokeObjectURL(url);
+          toast.success("Downloaded", { description: "Weekly report (Word) downloaded." });
+        } else {
+          toast.error("Download Failed", { description: "Could not download the report." });
+        }
+      } else {
+        toast.error("Generation Failed", {
+          description:
+            (json.error && typeof json.error === "object" ? json.error.message : json.error) ||
+            "Could not generate report.",
+        });
+      }
+    } catch {
+      toast.error("Error", { description: "Failed to generate report." });
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -555,7 +589,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         <div className="flex items-center gap-2 mt-1">
                           <StatusBadge status={log.status} />
                           {log.isLate && (
-                            <Badge variant="outline" className="text-yellow-700 border-yellow-300">
+                            <Badge variant="outline" className="text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-500/40">
                               {log.daysLate}d late
                             </Badge>
                           )}
@@ -613,50 +647,8 @@ export default function SiteSupervisorWeeklyLogsPage() {
                       <Button
                         variant="outline"
                         size="icon"
-                        title="Download PDF"
-                        onClick={() => {
-                          generatePdf(
-                            {
-                              title: `Weekly Log — ${log.studentName}`,
-                              subtitle: `Week ${log.weekNumber} · ${log.weekStart} to ${log.weekEnd} · ${log.status}`,
-                              metadata: [
-                                { label: "Student", value: log.studentName },
-                                { label: "Email", value: log.studentEmail },
-                                { label: "Week #", value: String(log.weekNumber) },
-                                { label: "Period", value: `${log.weekStart} to ${log.weekEnd}` },
-                                { label: "Status", value: log.status },
-                                { label: "Hours Worked", value: String(log.hoursWorked ?? "—") },
-                                { label: "Submitted", value: log.submittedAt || "—" },
-                                { label: "Reviewed", value: log.reviewedAt || "—" },
-                                { label: "Late", value: log.isLate ? `Yes (${log.daysLate} day${log.daysLate === 1 ? "" : "s"})` : "No" },
-                              ],
-                              sections: [
-                                {
-                                  title: "Tasks Completed",
-                                  bullets: log.tasksCompleted?.length ? log.tasksCompleted : ["(no tasks recorded)"],
-                                },
-                                {
-                                  title: "Challenges",
-                                  lines: [log.challenges || "(none reported)"],
-                                },
-                                {
-                                  title: "Learnings",
-                                  lines: [log.learnings || "(none reported)"],
-                                },
-                                {
-                                  title: "Next Week Goals",
-                                  lines: [log.nextWeekGoals || "(none reported)"],
-                                },
-                                {
-                                  title: "Supervisor Feedback",
-                                  lines: [log.supervisorFeedback || "(no feedback yet)"],
-                                },
-                              ],
-                              footer: `CareerStep — Site Supervisor Weekly Log exported on ${new Date().toLocaleString()}`,
-                            },
-                            `weekly-log-${log.studentName.replace(/\s+/g, "-").toLowerCase()}-week-${log.weekNumber}.pdf`
-                          );
-                        }}
+                        title="Download Word Report"
+                        onClick={() => handleDownloadWord(log.id, log.studentName, log.weekNumber)}
                       >
                         <FileDown className="h-4 w-4" />
                       </Button>
@@ -712,7 +704,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         <div className="text-right">
                           <StatusBadge status={selectedLog.status} />
                           {selectedLog.isLate && (
-                            <p className="text-sm text-yellow-600 mt-1">
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
                               Submitted {selectedLog.daysLate} days late
                             </p>
                           )}
@@ -751,7 +743,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                         Tasks Completed
                       </CardTitle>
                     </CardHeader>
@@ -816,9 +808,9 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 {/* Review Tab */}
                 <TabsContent value="review" className="space-y-4 mt-4">
                   {selectedLog.status !== "submitted" && selectedLog.supervisorFeedback && (
-                    <Card className="border-green-200 bg-green-50/30">
+                    <Card className="border-green-200 dark:border-green-500/40 bg-green-50/30">
                       <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-green-800">Previous Review</CardTitle>
+                        <CardTitle className="text-base text-green-800 dark:text-green-300">Previous Review</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="flex items-center gap-2 mb-2">
@@ -872,7 +864,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                       <div className="flex flex-col sm:flex-row gap-3 justify-end">
                         <Button
                           variant="outline"
-                          className="border-green-300 text-green-700 hover:bg-green-50"
+                          className="border-green-300 dark:border-green-500/40 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-500/15"
                           onClick={() => handleReview("approve")}
                           disabled={isSubmittingReview}
                         >
@@ -881,7 +873,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         </Button>
                         <Button
                           variant="outline"
-                          className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                          className="border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-500/15"
                           onClick={() => handleReview("request_revision")}
                           disabled={isSubmittingReview || !reviewFeedback.trim()}
                         >
@@ -890,7 +882,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                         </Button>
                         <Button
                           variant="outline"
-                          className="border-red-300 text-red-700 hover:bg-red-50"
+                          className="border-red-300 dark:border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/15"
                           onClick={() => handleReview("reject")}
                           disabled={isSubmittingReview || !reviewFeedback.trim()}
                         >

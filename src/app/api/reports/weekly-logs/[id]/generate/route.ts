@@ -21,7 +21,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { assembleWeeklyReportData, populateWeeklyReportTemplate, saveGeneratedReport } from "@/lib/document-generation/document-service";
+import { assembleWeeklyReportData, populateWeeklyReportTemplate, saveGeneratedReport, getServiceRoleClient } from "@/lib/document-generation/document-service";
 import { notifyReportFinalized } from "@/lib/notify";
 import type { ApiResponse } from "@/types";
 
@@ -122,6 +122,15 @@ export async function POST(
 
     // Supervisors: check via student_internships assignments.
     //    student_internships uses `student_user_id` (NOT `student_id`).
+    //
+    //    BUG FIX 2026-08-27 (supervisors got 403 on the Word download): the
+    //    columns `faculty_supervisor_id` / `site_supervisor_id` store the
+    //    supervisor's AUTH USER id (the same convention as
+    //    src/lib/supervised-students.ts and the faculty-supervisor tasks
+    //    API: `.eq("faculty_supervisor_id", user.id)`), but this check
+    //    compared them against the SUPERVISORS-TABLE row id — they only
+    //    matched by coincidence. Compare against user.id first, and keep
+    //    the supervisors-row comparison as a legacy fallback.
     let isAssignedSupervisor = false;
     if (callerProfile.role === "faculty_supervisor" || callerProfile.role === "site_supervisor") {
       const { data: si } = await supabase
@@ -129,16 +138,22 @@ export async function POST(
         .select("faculty_supervisor_id, site_supervisor_id")
         .eq("internship_id", weeklyLog.internship_id)
         .eq("student_user_id", weeklyLog.student_user_id)
-        .single();
+        .maybeSingle();
       if (si) {
-        const { data: sup } = await supabase
-          .from("supervisors")
-          .select("id, type")
-          .eq("user_id", user.id)
-          .single();
-        if (sup) {
-          if (sup.type === "faculty" && si.faculty_supervisor_id === sup.id) isAssignedSupervisor = true;
-          if (sup.type === "site" && si.site_supervisor_id === sup.id) isAssignedSupervisor = true;
+        // Primary check — direct user-id match on the assignment columns.
+        if (si.faculty_supervisor_id === user.id || si.site_supervisor_id === user.id) {
+          isAssignedSupervisor = true;
+        } else {
+          // Legacy fallback — rows written with the supervisors-table id.
+          const { data: sup } = await supabase
+            .from("supervisors")
+            .select("id, type")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (sup) {
+            if (sup.type === "faculty" && si.faculty_supervisor_id === sup.id) isAssignedSupervisor = true;
+            if (sup.type === "site" && si.site_supervisor_id === sup.id) isAssignedSupervisor = true;
+          }
         }
       }
     }
@@ -151,7 +166,13 @@ export async function POST(
     }
 
     // 5. Assemble the data (fetches all related records).
-    const data = await assembleWeeklyReportData(weeklyLogId);
+    //    Authorization is DONE (step 4) — use a service-role client so RLS
+    //    on students/internships/profiles (which company-side site
+    //    supervisors legitimately fail) cannot block assembly.
+    const data = await assembleWeeklyReportData(
+      weeklyLogId,
+      getServiceRoleClient()
+    );
 
     // 6. Populate the template.
     const result = await populateWeeklyReportTemplate(data);

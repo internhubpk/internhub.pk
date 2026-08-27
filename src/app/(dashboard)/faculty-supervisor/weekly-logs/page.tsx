@@ -48,7 +48,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { downloadCsv, generatePdf } from "@/lib/export-helpers";
+import { downloadCsv } from "@/lib/export-helpers";
 import { toast } from "@/components/shared/toast";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
 import { signatureToFile } from "@/lib/signature";
@@ -277,6 +277,41 @@ export default function FacultySupervisorWeeklyLogsPage() {
     }
   };
 
+  // Download the SAME generated Word report the student downloads
+  // (POST /api/reports/weekly-logs/[id]/generate → DOCX). Replaces the old
+  // jsPDF one-pager (request 2026-08-27: "remove the pdf download and the
+  // same word report should also be implemented there, they can also
+  // download it"). The API authorizes the assigned faculty supervisor.
+  const handleDownloadWord = async (logId: string, studentName: string, weekNumber: number) => {
+    try {
+      const res = await fetch(`/api/reports/weekly-logs/${logId}/generate`, { method: "POST" });
+      const json = await res.json();
+      if (json.success && json.data?.downloadUrl) {
+        const dlRes = await fetch(json.data.downloadUrl);
+        if (dlRes.ok) {
+          const blob = await dlRes.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `weekly-report-${studentName.replace(/\s+/g, "-").toLowerCase()}-week-${weekNumber}.docx`;
+          a.click();
+          URL.revokeObjectURL(url);
+          toast.success("Downloaded", { description: "Weekly report (Word) downloaded." });
+        } else {
+          toast.error("Download Failed", { description: "Could not download the report." });
+        }
+      } else {
+        toast.error("Generation Failed", {
+          description:
+            (json.error && typeof json.error === "object" ? json.error.message : json.error) ||
+            "Could not generate report.",
+        });
+      }
+    } catch {
+      toast.error("Error", { description: "Failed to generate report." });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -425,32 +460,8 @@ export default function FacultySupervisorWeeklyLogsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Download PDF"
-                            onClick={() => {
-                              generatePdf(
-                                {
-                                  title: `Weekly Log — ${log.student_name} — Week ${log.week_number}`,
-                                  subtitle: `${log.week_start_date} → ${log.week_end_date}`,
-                                  metadata: [
-                                    { label: "Student", value: log.student_name },
-                                    { label: "Status", value: log.status },
-                                    { label: "Hours Worked", value: String(log.hours_worked ?? "—") },
-                                    { label: "Submitted At", value: log.submitted_at ? new Date(log.submitted_at).toLocaleString() : "—" },
-                                  ],
-                                  sections: [
-                                    {
-                                      title: "Tasks Completed",
-                                      bullets: log.tasks_completed && log.tasks_completed.length > 0 ? log.tasks_completed : ["(no tasks recorded)"],
-                                    },
-                                    { title: "Challenges", lines: [log.challenges || "(none)"] },
-                                    { title: "Learnings", lines: [log.learnings || "(none)"] },
-                                    { title: "Supervisor Feedback", lines: [log.supervisor_feedback || "(none)"] },
-                                  ],
-                                  footer: `CareerStep — Weekly Log exported on ${new Date().toLocaleString()}`,
-                                },
-                                `weekly-log-${log.student_name.replace(/\s+/g, "-").toLowerCase()}-week-${log.week_number}.pdf`
-                              );
-                            }}
+                            title="Download Word Report"
+                            onClick={() => handleDownloadWord(log.id, log.student_name, log.week_number)}
                           >
                             <FileDown className="h-4 w-4" />
                           </Button>
@@ -485,7 +496,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                   <Card>
                     <CardContent className="p-4 text-center">
                       <p className="text-xs text-muted-foreground">Hours Worked</p>
-                      <p className="text-2xl font-bold text-blue-600">{selectedLog.hours_worked}h</p>
+                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{selectedLog.hours_worked}h</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -562,7 +573,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  className="gap-2 border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-500/15"
                   onClick={() => handleReview("request_revision")}
                   disabled={isSubmitting || selectedLog.status !== "submitted"}
                 >

@@ -502,28 +502,28 @@ export default function SiteSupervisorEvaluationsPage() {
   function getEvaluationStatusBadge(status: EvaluationStudent["evaluationStatus"]) {
     switch (status) {
       case "current":
-        return <Badge className="bg-green-100 text-green-800">On Track</Badge>;
+        return <Badge className="bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300">On Track</Badge>;
       case "due":
-        return <Badge className="bg-yellow-100 text-yellow-800">Due Soon</Badge>;
+        return <Badge className="bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300">Due Soon</Badge>;
       case "overdue":
-        return <Badge className="bg-red-100 text-red-800">Overdue</Badge>;
+        return <Badge className="bg-red-100 dark:bg-red-500/15 text-red-800 dark:text-red-300">Overdue</Badge>;
       case "completed":
-        return <Badge className="bg-gray-100 text-gray-800">Completed</Badge>;
+        return <Badge className="bg-gray-100 dark:bg-gray-500/15 text-gray-800 dark:text-gray-300">Completed</Badge>;
     }
   }
 
   function getDecisionBadge(decision: EvaluationRecord["decision"]) {
     switch (decision) {
       case "satisfactory":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+        return <Badge className="bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300 hover:bg-green-100">
           <CheckCircle2 className="h-3 w-3 mr-1" /> Satisfactory
         </Badge>;
       case "needs_improvement":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+        return <Badge className="bg-yellow-100 dark:bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 hover:bg-yellow-100">
           <AlertCircle className="h-3 w-3 mr-1" /> Needs Improvement
         </Badge>;
       case "unsatisfactory":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
+        return <Badge className="bg-red-100 dark:bg-red-500/15 text-red-800 dark:text-red-300 hover:bg-red-100">
           <XCircle className="h-3 w-3 mr-1" /> Unsatisfactory
         </Badge>;
     }
@@ -806,8 +806,8 @@ export default function SiteSupervisorEvaluationsPage() {
                 </div>
               </div>
               
-              <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                <p className="text-sm text-blue-800">
+              <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/40">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
                   <strong>HEC Requirement:</strong> Site supervisors must evaluate their assigned interns every 3 weeks throughout the internship duration. Each evaluation must include digital signature and be timestamped.
                 </p>
               </div>
@@ -921,7 +921,7 @@ export default function SiteSupervisorEvaluationsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Target className="h-5 w-5 text-blue-600" />
+                  <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   Technical Skills Assessment
                 </CardTitle>
                 <CardDescription>Rate each criterion on a scale of 0-10 (Weight: 30%)</CardDescription>
@@ -955,10 +955,10 @@ export default function SiteSupervisorEvaluationsPage() {
                   (v) => handleScoreChange("learningAgility", v)
                 )}
                 
-                <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/40">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-blue-800">Technical Skills Average</span>
-                    <span className="text-xl font-bold text-blue-700">
+                    <span className="font-medium text-blue-800 dark:text-blue-300">Technical Skills Average</span>
+                    <span className="text-xl font-bold text-blue-700 dark:text-blue-300">
                       {calculatedScores.technicalAvg.toFixed(1)} / 10
                     </span>
                   </div>
@@ -971,7 +971,7 @@ export default function SiteSupervisorEvaluationsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" />
+                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   Professional Skills Assessment
                 </CardTitle>
                 <CardDescription>Rate each criterion on a scale of 0-10 (Weight: 35%)</CardDescription>
@@ -1012,10 +1012,10 @@ export default function SiteSupervisorEvaluationsPage() {
                   (v) => handleScoreChange("adaptability", v)
                 )}
 
-                <div className="p-4 rounded-lg bg-purple-50 border border-purple-200">
+                <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/40">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-purple-800">Professional Skills Average</span>
-                    <span className="text-xl font-bold text-purple-700">
+                    <span className="font-medium text-purple-800 dark:text-purple-300">Professional Skills Average</span>
+                    <span className="text-xl font-bold text-purple-700 dark:text-purple-300">
                       {calculatedScores.professionalAvg.toFixed(1)} / 10
                     </span>
                   </div>
@@ -1028,7 +1028,7 @@ export default function SiteSupervisorEvaluationsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Award className="h-5 w-5 text-green-600" />
+                  <Award className="h-5 w-5 text-green-600 dark:text-green-400" />
                   Work Quality Metrics
                 </CardTitle>
                 <CardDescription>Rate each criterion on a scale of 0-10 (Weight: 35%)</CardDescription>
@@ -1062,10 +1062,10 @@ export default function SiteSupervisorEvaluationsPage() {
                   (v) => handleScoreChange("documentationQuality", v)
                 )}
 
-                <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/40">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-green-800">Work Quality Average</span>
-                    <span className="text-xl font-bold text-green-700">
+                    <span className="font-medium text-green-800 dark:text-green-300">Work Quality Average</span>
+                    <span className="text-xl font-bold text-green-700 dark:text-green-300">
                       {calculatedScores.workQualityAvg.toFixed(1)} / 10
                     </span>
                   </div>
@@ -1087,15 +1087,15 @@ export default function SiteSupervisorEvaluationsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="text-center p-4 rounded-lg bg-white">
                       <p className="text-sm text-muted-foreground">Technical (30%)</p>
-                      <p className="text-3xl font-bold text-blue-600">{calculatedScores.technicalAvg.toFixed(1)}</p>
+                      <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{calculatedScores.technicalAvg.toFixed(1)}</p>
                     </div>
                     <div className="text-center p-4 rounded-lg bg-white">
                       <p className="text-sm text-muted-foreground">Professional (35%)</p>
-                      <p className="text-3xl font-bold text-purple-600">{calculatedScores.professionalAvg.toFixed(1)}</p>
+                      <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{calculatedScores.professionalAvg.toFixed(1)}</p>
                     </div>
                     <div className="text-center p-4 rounded-lg bg-white">
                       <p className="text-sm text-muted-foreground">Work Quality (35%)</p>
-                      <p className="text-3xl font-bold text-green-600">{calculatedScores.workQualityAvg.toFixed(1)}</p>
+                      <p className="text-3xl font-bold text-green-600 dark:text-green-400">{calculatedScores.workQualityAvg.toFixed(1)}</p>
                     </div>
                   </div>
                   
@@ -1123,19 +1123,19 @@ export default function SiteSupervisorEvaluationsPage() {
                     <SelectContent>
                       <SelectItem value="satisfactory">
                         <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                           Satisfactory Progress
                         </div>
                       </SelectItem>
                       <SelectItem value="needs_improvement">
                         <div className="flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-600" />
+                          <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                           Needs Improvement
                         </div>
                       </SelectItem>
                       <SelectItem value="unsatisfactory">
                         <div className="flex items-center gap-2">
-                          <XCircle className="h-4 w-4 text-red-600" />
+                          <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
                           Unsatisfactory Progress
                         </div>
                       </SelectItem>
@@ -1156,7 +1156,7 @@ export default function SiteSupervisorEvaluationsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="strengths" className="flex items-center gap-2 text-green-700">
+                  <Label htmlFor="strengths" className="flex items-center gap-2 text-green-700 dark:text-green-300">
                     <CheckCircle2 className="h-4 w-4" />
                     Strengths & Achievements
                   </Label>
@@ -1170,7 +1170,7 @@ export default function SiteSupervisorEvaluationsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="improvements" className="flex items-center gap-2 text-orange-700">
+                  <Label htmlFor="improvements" className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
                     <AlertCircle className="h-4 w-4" />
                     Areas for Improvement
                   </Label>
@@ -1294,15 +1294,15 @@ export default function SiteSupervisorEvaluationsPage() {
                           <div className="grid grid-cols-3 gap-4 text-center">
                             <div>
                               <p className="text-xs text-muted-foreground">Technical</p>
-                              <p className="font-semibold text-blue-600">{evaluation.technicalScore.toFixed(1)}</p>
+                              <p className="font-semibold text-blue-600 dark:text-blue-400">{evaluation.technicalScore.toFixed(1)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Professional</p>
-                              <p className="font-semibold text-purple-600">{evaluation.professionalScore.toFixed(1)}</p>
+                              <p className="font-semibold text-purple-600 dark:text-purple-400">{evaluation.professionalScore.toFixed(1)}</p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Work Quality</p>
-                              <p className="font-semibold text-green-600">{evaluation.workQualityScore.toFixed(1)}</p>
+                              <p className="font-semibold text-green-600 dark:text-green-400">{evaluation.workQualityScore.toFixed(1)}</p>
                             </div>
                           </div>
 
@@ -1404,17 +1404,17 @@ export default function SiteSupervisorEvaluationsPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-4 my-6">
-                  <div className="text-center p-3 rounded-lg bg-blue-50">
+                  <div className="text-center p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10">
                     <p className="text-sm text-muted-foreground">Technical</p>
-                    <p className="text-2xl font-bold text-blue-600">{calculatedScores.technicalAvg.toFixed(1)}</p>
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{calculatedScores.technicalAvg.toFixed(1)}</p>
                   </div>
-                  <div className="text-center p-3 rounded-lg bg-purple-50">
+                  <div className="text-center p-3 rounded-lg bg-purple-50 dark:bg-purple-500/10">
                     <p className="text-sm text-muted-foreground">Professional</p>
-                    <p className="text-2xl font-bold text-purple-600">{calculatedScores.professionalAvg.toFixed(1)}</p>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{calculatedScores.professionalAvg.toFixed(1)}</p>
                   </div>
-                  <div className="text-center p-3 rounded-lg bg-green-50">
+                  <div className="text-center p-3 rounded-lg bg-green-50 dark:bg-green-500/10">
                     <p className="text-sm text-muted-foreground">Work Quality</p>
-                    <p className="text-2xl font-bold text-green-600">{calculatedScores.workQualityAvg.toFixed(1)}</p>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">{calculatedScores.workQualityAvg.toFixed(1)}</p>
                   </div>
                 </div>
 

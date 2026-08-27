@@ -465,15 +465,15 @@ export default function FacultySupervisorEvaluationsPage() {
   const getSubmissionTypeBadge = (type: SubmissionType) => {
     switch (type) {
       case "weekly_log":
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Weekly Log</Badge>;
+        return <Badge className="bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/40">Weekly Log</Badge>;
       case "task_submission":
-        return <Badge className="bg-green-100 text-green-700 border-green-200">Task</Badge>;
+        return <Badge className="bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-200 dark:border-green-500/40">Task</Badge>;
       case "document":
-        return <Badge className="bg-purple-100 text-purple-700 border-purple-200">Document</Badge>;
+        return <Badge className="bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/40">Document</Badge>;
       case "midterm":
-        return <Badge className="bg-orange-100 text-orange-700 border-orange-200">Midterm</Badge>;
+        return <Badge className="bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-500/40">Midterm</Badge>;
       case "final":
-        return <Badge className="bg-red-100 text-red-700 border-red-200">Final</Badge>;
+        return <Badge className="bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/40">Final</Badge>;
       default:
         return <Badge variant="outline">{type}</Badge>;
     }
@@ -484,7 +484,7 @@ export default function FacultySupervisorEvaluationsPage() {
       case "high":
         return <Badge variant="destructive">High Priority</Badge>;
       case "medium":
-        return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Medium</Badge>;
+        return <Badge className="bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/40">Medium</Badge>;
       case "low":
         return <Badge variant="secondary">Low</Badge>;
       default:
@@ -750,11 +750,11 @@ export default function FacultySupervisorEvaluationsPage() {
         <TabsContent value="queue" className="space-y-4">
           {/* High Priority Alert */}
           {stats.highPriority > 0 && (
-            <Card className="border-red-200 bg-red-50/50">
+            <Card className="border-red-200 dark:border-red-500/40 bg-red-50/50">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
-                  <span className="font-medium text-red-800">
+                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
+                  <span className="font-medium text-red-800 dark:text-red-300">
                     You have {stats.highPriority} high-priority evaluation(s) requiring immediate attention.
                   </span>
                 </div>
@@ -964,11 +964,11 @@ export default function FacultySupervisorEvaluationsPage() {
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-semibold">{report.studentName}</h3>
                         {report.status === "approved" ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                          <Badge className="bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/40">
                             <CheckCircle2 className="mr-1 h-3 w-3" /> Approved
                           </Badge>
                         ) : (
-                          <Badge className="bg-blue-100 text-blue-700 border-blue-200">
+                          <Badge className="bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/40">
                             <Clock className="mr-1 h-3 w-3" /> Submitted
                           </Badge>
                         )}
@@ -981,19 +981,19 @@ export default function FacultySupervisorEvaluationsPage() {
                     {/* Report Metrics */}
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xl font-bold text-emerald-600">{report.tasksCompleted}</p>
+                        <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{report.tasksCompleted}</p>
                         <p className="text-xs text-muted-foreground">Tasks Done</p>
                       </div>
                       <div className="text-center p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xl font-bold text-amber-600">{report.tasksPending}</p>
+                        <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{report.tasksPending}</p>
                         <p className="text-xs text-muted-foreground">Tasks Pending</p>
                       </div>
                       <div className="text-center p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xl font-bold text-blue-600">{report.hoursLogged}h</p>
+                        <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{report.hoursLogged}h</p>
                         <p className="text-xs text-muted-foreground">Hours Logged</p>
                       </div>
                       <div className="text-center p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xl font-bold text-purple-600">{report.overallScore}%</p>
+                        <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{report.overallScore}%</p>
                         <p className="text-xs text-muted-foreground">Overall Score</p>
                       </div>
                     </div>
@@ -1253,9 +1253,9 @@ export default function FacultySupervisorEvaluationsPage() {
                             onChange={() => setEvaluationForm(prev => ({ ...prev, decision: option }))}
                             className="sr-only"
                           />
-                          {option === "approve" && <ThumbsUp className="h-5 w-5 text-emerald-600" />}
-                          {option === "reject" && <ThumbsDown className="h-5 w-5 text-red-600" />}
-                          {option === "request_revision" && <AlertCircle className="h-5 w-5 text-orange-600" />}
+                          {option === "approve" && <ThumbsUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+                          {option === "reject" && <ThumbsDown className="h-5 w-5 text-red-600 dark:text-red-400" />}
+                          {option === "request_revision" && <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
                           <span className="font-medium capitalize">
                             {option.replace("_", " ")}
                           </span>
