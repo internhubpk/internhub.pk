@@ -96,7 +96,7 @@ export const PLATFORM_DEFAULT_TENANT: TenantConfig = {
     tagline: "Enterprise Internship Management Platform",
     description:
       "CareerStep is a comprehensive multi-tenant SaaS platform for managing university internships.",
-    supportEmail: "support@careerstep.tech",
+    supportEmail: "info@ailab99.com",
     supportPhone: "+92-300-1234567",
   },
 };

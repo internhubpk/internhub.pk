@@ -292,7 +292,7 @@ export default function ProgramsPage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
-              <form onSubmit={handleSubmit}>
+              <form className="px-8 pb-5" onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>
                     {editingProgram ? "Edit Program" : "Create New Program"}

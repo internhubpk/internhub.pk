@@ -1116,7 +1116,7 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6 px-8 pb-6">
                 {/* Student Info Header */}
                 <Card>
                   <CardContent className="p-4">
@@ -1307,7 +1307,7 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="preview" className="mt-4">
+              <Tabs defaultValue="preview" className="mt-4 px-8 pb-6">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                   <TabsTrigger value="customize">Customize</TabsTrigger>

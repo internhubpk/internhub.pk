@@ -60,6 +60,11 @@ export interface WeeklyReportData {
   departmentName: string;
   // Program info
   programName: string;
+  /** ALL degree programs of the student's university — the Program section
+   *  renders each of them as a checklist line, with a tick (✓) on the
+   *  student's own program and an empty box (☐) on the rest
+   *  (template-owner request 2026-08-27). */
+  allPrograms: string[];
   // Student info
   studentName: string;
   studentRegistrationNumber: string;
@@ -69,8 +74,15 @@ export interface WeeklyReportData {
   weekNumber: number;
   reportingPeriodStart: string; // ISO date (YYYY-MM-DD)
   reportingPeriodEnd: string;
-  // Supervisor info
+  // Supervisor info (the direct workplace supervisor — shown as "Supervisor"
+  // in the student-information table)
   supervisorName: string;
+  // Signer names printed UNDER the signature boxes so the document shows
+  // WHO signed even when the signature image is missing (request 2026-08-27:
+  // "missing the site supervisor name and site and faculty supervisor's
+  // signatures").
+  industrySupervisorName: string;
+  facultySupervisorName: string;
   // Weekly activities (Monday-Friday)
   dailyEntries: Array<{
     dayName: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
@@ -506,6 +518,29 @@ export async function assembleWeeklyReportData(
     internship?.programs?.name ||
     null;
 
+  // All degree programs of the student's university — rendered as a
+  // checklist in the Program section with a tick on the student's program
+  // (template-owner request 2026-08-27: "The program should add all the
+  // programs and should check or tick the student's program").
+  let allPrograms: string[] = [];
+  {
+    const { data: programRows } = await supabase
+      .from("programs")
+      .select("name")
+      .eq("university_id", university.id)
+      .order("name", { ascending: true });
+    allPrograms = (programRows || [])
+      .map((r: any) => (r.name || "").trim())
+      .filter((n: string) => n.length > 0);
+    // If the student's program is somehow not part of the university's list
+    // (cross-university internship, renamed program, …) still show it —
+    // ticked — at the top so the checklist is never missing the answer.
+    const normalizedList = allPrograms.map((n) => n.toLowerCase());
+    if (programName && !normalizedList.includes(programName.toLowerCase())) {
+      allPrograms.unshift(programName);
+    }
+  }
+
   // 3. Fetch the daily entries (Monday-Friday structured data).
   const { data: dailyEntriesRows } = await supabase
     .from("weekly_log_daily_entries")
@@ -560,25 +595,76 @@ export async function assembleWeeklyReportData(
     });
   }
 
-  // 5. Resolve the supervisor name (faculty or site supervisor).
-  let supervisorName = "—";
-  if (weeklyLog.supervisor_id) {
-    const { data: sup } = await supabase
-      .from("supervisors")
-      .select("user_id, profiles:user_id ( full_name )")
-      .eq("id", weeklyLog.supervisor_id)
-      .single();
-    const supProfiles = sup?.profiles as any;
-    if (supProfiles?.full_name) {
-      supervisorName = supProfiles.full_name as string;
+  const weeklyLogAny = weeklyLog as any;
+
+  // 5. Resolve the supervisor name (the direct workplace supervisor).
+  //    Priority (request 2026-08-27 — the site supervisor's name was missing
+  //    from generated reports):
+  //      1. weekly_logs.site_supervisor_name snapshot (migration 0058)
+  //      2. student_internships.site_supervisor_id → profiles.full_name
+  //         (authoritative assignment; also fixes the fact that
+  //          weekly_logs.supervisor_id is repointed to whoever signed LAST —
+  //          faculty OR site — so it can't identify the site supervisor)
+  //      3. weekly_logs.supervisor_id → profiles.full_name (legacy fallback)
+  //      (⚠ these id columns reference profiles.user_id — NOT supervisors.id;
+  //        the old lookup against the supervisors table always failed, which
+  //        is why generated reports showed "—" for the Supervisor.)
+  let supervisorName: string | null = (weeklyLog as any).site_supervisor_name || null;
+  if (!supervisorName) {
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("site_supervisor_id, site_profile:site_supervisor_id(full_name)")
+      .eq("internship_id", weeklyLog.internship_id)
+      .eq("student_user_id", weeklyLog.student_user_id)
+      .maybeSingle();
+    const siteProfile = (si as any)?.site_profile as any;
+    if (siteProfile?.full_name) {
+      supervisorName = siteProfile.full_name as string;
     }
   }
+  if (!supervisorName && weeklyLog.supervisor_id) {
+    const { data: supProfile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", weeklyLog.supervisor_id)
+      .maybeSingle();
+    if (supProfile?.full_name) {
+      supervisorName = supProfile.full_name as string;
+    }
+  }
+
+  // 5b. Faculty supervisor name — printed under the Faculty Supervisor
+  //     signature box (falls back to "—" when unassigned).
+  let facultySupervisorName: string | null = (weeklyLog as any).faculty_supervisor_name || null;
+  if (!facultySupervisorName && weeklyLogAny.faculty_supervisor_id) {
+    const { data: fsProfile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", weeklyLogAny.faculty_supervisor_id)
+      .maybeSingle();
+    if (fsProfile?.full_name) {
+      facultySupervisorName = fsProfile.full_name as string;
+    }
+  }
+  if (!facultySupervisorName) {
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("faculty_supervisor_id, faculty_profile:faculty_supervisor_id(full_name)")
+      .eq("internship_id", weeklyLog.internship_id)
+      .eq("student_user_id", weeklyLog.student_user_id)
+      .maybeSingle();
+    const facultyProfile = (si as any)?.faculty_profile as any;
+    if (facultyProfile?.full_name) {
+      facultySupervisorName = facultyProfile.full_name as string;
+    }
+  }
+  const industrySupervisorName = supervisorName || "—";
+  if (!supervisorName) supervisorName = "—";
 
   // 6. Fetch logo + signatures (in parallel).
   //    Prefer the weekly_log's denormalized columns (snapshotted at submit
   //    time — migrations 0058, 0071) when available; fall back to live
   //    relationship queries for legacy rows / missing snapshots.
-  const weeklyLogAny = weeklyLog as any;
 
   const [universityLogoBuffer, studentSignatureBuffer, industrySupervisorSignatureBuffer, facultySupervisorSignatureBuffer] =
     await Promise.all([
@@ -634,19 +720,27 @@ export async function assembleWeeklyReportData(
     (weeklyLogAny as any).supporting_evidence
   );
 
-  // 7a. Body-section summary text ("Supporting Evidence (Mandatory)").
-  //     Per the template-owner's request (2026-08-27): NO file listing in the
-  //     body — the reader just needs a tick confirming the supporting
-  //     documents are attached. The actual files / images / links live in the
+  // 7a. Body-section checklist ("Supporting Evidence (Mandatory)").
+  //     Per the template-owner's request (2026-08-27): the student ticks the
+  //     supporting evidence they attached — the document renders one line per
+  //     attached item with a tick mark (✓), instead of verbose file
+  //     descriptions. The actual files / images / links live in the
   //     Attachments section at the end of the document.
   const supportingEvidenceSummary: string = (() => {
-    const hasEvidence =
-      evidenceAttachments.length > 0 ||
-      (Array.isArray(weeklyLogAny.supporting_evidence) &&
-        (weeklyLogAny.supporting_evidence as unknown[]).length > 0);
-    return hasEvidence
-      ? "✓ Supporting documents attached"
-      : "✗ No supporting documents attached";
+    const names: string[] = evidenceAttachments
+      .map((a) => (a.name || "").trim())
+      .filter((n) => n.length > 0);
+    const rawEvidence = Array.isArray(weeklyLogAny.supporting_evidence)
+      ? (weeklyLogAny.supporting_evidence as Array<Record<string, unknown>>)
+      : [];
+    for (const item of rawEvidence) {
+      const n = String((item as any)?.name || "").trim();
+      if (n && !names.includes(n)) names.push(n);
+    }
+    if (names.length === 0) {
+      return "✗ No supporting documents attached";
+    }
+    return names.map((n) => `✓ ${n}`).join("\n");
   })();
 
   // Supervisor remarks: prefer site_supervisor_remarks (Industry Supervisor),
@@ -664,6 +758,7 @@ export async function assembleWeeklyReportData(
     universityLogoBuffer,
     departmentName: departmentName || "—",
     programName: programName || "—",
+    allPrograms,
     studentName: profile.full_name || "—",
     studentRegistrationNumber:
       weeklyLogAny.student_registration_no ||
@@ -674,6 +769,8 @@ export async function assembleWeeklyReportData(
     reportingPeriodStart: weeklyLog.week_start_date,
     reportingPeriodEnd: weeklyLog.week_end_date,
     supervisorName,
+    industrySupervisorName,
+    facultySupervisorName: facultySupervisorName || "—",
     dailyEntries,
     // Learning Outcomes / Skills Gained
     learningOutcomes: weeklyLogAny.learning_outcomes || weeklyLog.learnings || "",
@@ -1750,9 +1847,14 @@ function injectParagraphAfterLabel(
 function insertSignatureIntoBox(
   documentXml: string,
   labelText: string,
-  imageBuffer: Buffer | null
+  imageBuffer: Buffer | null,
+  /** Signer's printed name rendered as a small centered line inside the box,
+   *  under the signature image (request 2026-08-27 — the document must show
+   *  WHO signed under each box even when the image is missing). */
+  signerName?: string | null
 ): { xml: string; relId?: string; imageAdded: boolean } {
-  if (!imageBuffer) {
+  const trimmedName = (signerName || "").replace(/\s+/g, " ").trim();
+  if (!imageBuffer && !trimmedName) {
     return { xml: documentXml, imageAdded: false };
   }
 
@@ -1808,20 +1910,34 @@ function insertSignatureIntoBox(
   // 3. Scale the signature to fit the box (2881 twips ≈ 2.0" wide × 1457
   //    twips ≈ 1.0" tall) while PRESERVING the image's aspect ratio.
   //    Box-safe target: ≤ 1.8" wide, ≤ 0.8" tall (216×96 px @ 96 DPI).
-  const dims = readImageDimensions(imageBuffer);
   let wPx = 150;
   let hPx = 60;
-  if (dims && dims.width > 0 && dims.height > 0) {
-    const scale = Math.min(216 / dims.width, 96 / dims.height);
-    wPx = Math.max(24, Math.round(dims.width * scale));
-    hPx = Math.max(16, Math.round(dims.height * scale));
+  if (imageBuffer) {
+    const dims = readImageDimensions(imageBuffer);
+    if (dims && dims.width > 0 && dims.height > 0) {
+      // Shrink further when a name line shares the box, so image + name fit.
+      const hasName = trimmedName.length > 0;
+      const maxW = hasName ? 216 : 216;
+      const maxH = hasName ? 72 : 96;
+      const scale = Math.min(maxW / dims.width, maxH / dims.height);
+      wPx = Math.max(24, Math.round(dims.width * scale));
+      hPx = Math.max(16, Math.round(dims.height * scale));
+    }
   }
 
-  const relId = generateRelId();
-  const drawingXml = buildInlineImageXml(relId, wPx, hPx);
-  // Centered paragraph inside the box cell (w:jc=center), replacing the
+  // Centered paragraph(s) inside the box cell (w:jc=center), replacing the
   // template's empty spacer paragraph so the signature sits dead-center.
-  const newPara = `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${drawingXml}</w:r></w:p>`;
+  // When a signer name is supplied, a small centered name line is added
+  // UNDER the image (or on its own when no image exists).
+  const namePara = trimmedName
+    ? `<w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(trimmedName)}</w:t></w:r></w:p>`
+    : "";
+  const relId = imageBuffer ? generateRelId() : undefined;
+  const drawingXml = relId ? buildInlineImageXml(relId, wPx, hPx) : "";
+  const imagePara = drawingXml
+    ? `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${drawingXml}</w:r></w:p>`
+    : "";
+  const newPara = `${imagePara}${namePara}`;
 
   const pMatch = boxCell.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/);
   let newBoxCell: string;
@@ -1859,7 +1975,7 @@ function insertSignatureIntoBox(
 
   const newXml =
     documentXml.slice(0, sigTblStart) + newTbl + documentXml.slice(sigTblEnd);
-  return { xml: newXml, relId, imageAdded: true };
+  return { xml: newXml, relId, imageAdded: Boolean(relId) };
 }
 
 // ----------------------------------------------------------------------------
@@ -2226,30 +2342,42 @@ export async function populateWeeklyReportTemplate(
     fieldsPopulated.push(`evidence_guidance_bullets_removed (${bulletsRemoved.removedCount})`);
   }
 
-  // 9. Inject program name (find "Program" label and inject the value).
+  // 9. Inject the Program checklist (find "Program" label and inject the value).
   // The template emulates a dropdown with FOUR separate table rows after the
   // "Program" label row ("Computer Science" / "Software Engineering" /
-  // "Artificial Intelligence" / "Rob & AI"). We (a) write the student's
-  // program into the FIRST option row and (b) DELETE the remaining option
-  // rows so the generated document shows exactly one program value.
+  // "Artificial Intelligence" / "Rob & AI").
   //
-  // BUG FIX 2026-08-26 ("the program should not be hardcoded"): the previous
-  // code GATED this injection behind a naive regex that required "Program"
-  // to live in a single <w:t> run. When the gate failed, the template's
-  // hardcoded option rows ("Computer Science" etc.) shipped unchanged in
-  // the generated report. The injection now runs unconditionally (the
-  // label-matching itself already handles split runs via cell-plain-text
-  // walking), always strips the extra option rows, and falls back to "—"
-  // so a hardcoded program can NEVER reach the output.
+  // UPDATE 2026-08-27 (template-owner request): the Program cell now lists
+  // ALL degree programs of the student's university — one per line — with a
+  // tick (✓) on the STUDENT'S program and an empty box (☐) on the rest:
+  //
+  //     ☐ BSCS
+  //     ✓ BBA
+  //     ☐ MBA
   {
-    const programValue =
-      data.programName && String(data.programName).trim().length > 0
-        ? data.programName
-        : "—";
+    const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+    let programValue: string;
+    if (data.allPrograms.length > 0) {
+      const studentProgramNorm = normalize(data.programName);
+      programValue = data.allPrograms
+        .map((p) =>
+          normalize(p) === studentProgramNorm && studentProgramNorm !== "—" && studentProgramNorm !== ""
+            ? `✓ ${p}`
+            : `☐ ${p}`
+        )
+        .join("\n");
+    } else {
+      // No program list available (legacy university without programs rows)
+      // — fall back to the single program value.
+      programValue =
+        data.programName && String(data.programName).trim().length > 0
+          ? `✓ ${data.programName}`
+          : "—";
+    }
     const result = injectValueAfterLabel(documentXml, "Program", programValue, true);
     if (result.replaced) {
       documentXml = removeProgramOptionRows(result.xml);
-      fieldsPopulated.push("program");
+      fieldsPopulated.push(`program (${data.allPrograms.length} options, ticked)`);
     } else {
       // Even if the label cell moved/renamed, still strip the hardcoded
       // option rows so they can never leak into the generated document.
@@ -2282,19 +2410,34 @@ export async function populateWeeklyReportTemplate(
     return true;
   };
 
-  const sig1Result = insertSignatureIntoBox(documentXml, "Student Signature", data.studentSignatureBuffer);
+  const sig1Result = insertSignatureIntoBox(
+    documentXml,
+    "Student Signature",
+    data.studentSignatureBuffer,
+    data.studentName
+  );
   documentXml = sig1Result.xml;
   if (registerSignature(sig1Result, data.studentSignatureBuffer, "Student")) {
     imagesEmbedded.push("student_signature");
   }
 
-  const sig2Result = insertSignatureIntoBox(documentXml, "Industry Supervisor", data.industrySupervisorSignatureBuffer);
+  const sig2Result = insertSignatureIntoBox(
+    documentXml,
+    "Industry Supervisor",
+    data.industrySupervisorSignatureBuffer,
+    data.industrySupervisorName
+  );
   documentXml = sig2Result.xml;
   if (registerSignature(sig2Result, data.industrySupervisorSignatureBuffer, "Industry supervisor")) {
     imagesEmbedded.push("industry_supervisor_signature");
   }
 
-  const sig3Result = insertSignatureIntoBox(documentXml, "Faculty Supervisor", data.facultySupervisorSignatureBuffer);
+  const sig3Result = insertSignatureIntoBox(
+    documentXml,
+    "Faculty Supervisor",
+    data.facultySupervisorSignatureBuffer,
+    data.facultySupervisorName
+  );
   documentXml = sig3Result.xml;
   if (registerSignature(sig3Result, data.facultySupervisorSignatureBuffer, "Faculty supervisor")) {
     imagesEmbedded.push("faculty_supervisor_signature");

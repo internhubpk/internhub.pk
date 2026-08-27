@@ -312,6 +312,53 @@ export async function POST(request: NextRequest) {
     );
 
     // ==========================================================
+    // 4b. DUPLICATE-EMAIL GUARD.
+    //
+    //     Previously, an email that already exists surfaced as a raw
+    //     Supabase 500 ("A user with this email address has already been
+    //     registered") — or, worse, on some configurations
+    //     auth.admin.createUser() succeeds and the profiles upsert then
+    //     HIJACKS the existing user's profile (re-assigning their company /
+    //     university / role). Both are unacceptable. We now check FIRST
+    //     and return a clear 409 the UI can show as a friendly toast.
+    // ==========================================================
+    {
+      const { data: existingUsers, error: listErr } = await adminClient.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000,
+      });
+      if (!listErr && existingUsers?.users) {
+        // Supabase may hold multiple pages; search progressively until found.
+        let all = existingUsers.users;
+        let page = 2;
+        const target = email.trim().toLowerCase();
+        let found = all.some((u) => (u.email || "").toLowerCase() === target);
+        while (
+          !found &&
+          existingUsers.users.length === 1000 &&
+          page <= 20 // hard cap: 20k users
+        ) {
+          const next = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+          if (next.error || !next.data?.users?.length) break;
+          all = next.data.users;
+          found = all.some((u) => (u.email || "").toLowerCase() === target);
+          page += 1;
+        }
+        if (found) {
+          return NextResponse.json<ApiResponse<never>>(
+            {
+              success: false,
+              error: `An account with this email already exists (${email.trim()}). If the person already registered, they don't need a new account — edit their existing one instead.`,
+            },
+            { status: 409 }
+          );
+        }
+      }
+      // If listUsers itself failed (network hiccup), fall through — the
+      // createUser call below will still catch the duplicate natively.
+    }
+
+    // ==========================================================
     // 5. Create the auth.users row. email_confirm: true so the new
     //    user can sign in immediately without clicking an email link.
     //
@@ -365,12 +412,20 @@ export async function POST(request: NextRequest) {
 
     if (authError2) {
       console.error("[/api/admin/create-user] createUser error:", authError2);
+      // Map the common duplicate-email failure to a friendly 409 — the
+      // raw Supabase message ("A user with this email address has already
+      // been registered") leaking through a 500 is confusing in the UI.
+      const isDuplicate =
+        (authError2.message || "").toLowerCase().includes("already") &&
+        (authError2.message || "").toLowerCase().includes("registered");
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
-          error: authError2.message || "Failed to create auth account",
+          error: isDuplicate
+            ? `An account with this email already exists (${email.trim()}). If the person already registered, edit their existing account instead of creating a new one.`
+            : authError2.message || "Failed to create auth account",
         },
-        { status: 500 }
+        { status: isDuplicate ? 409 : 500 }
       );
     }
 

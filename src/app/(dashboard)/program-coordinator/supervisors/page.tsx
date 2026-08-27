@@ -596,7 +596,7 @@ export default function ProgramCoordinatorSupervisorsPage() {
               Create a new faculty supervisor account linked to your program.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 px-8 pb-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="supervisor-first-name">First Name *</Label>

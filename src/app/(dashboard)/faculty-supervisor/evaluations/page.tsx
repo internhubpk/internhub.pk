@@ -338,7 +338,11 @@ export default function FacultySupervisorEvaluationsPage() {
           studentEmail: e.student_profile?.email || "",
           studentAvatar: e.student_profile?.avatar_url,
           submissionType: e.type === "weekly_log" ? "weekly_log" : e.type === "task" ? "task_submission" : e.type === "midterm" ? "midterm" : e.type === "final" ? "final" : "document",
-          title: `${(e.type || "evaluation").replace(/_/g, " ")} evaluation`,
+          // Title-case the type so the card reads "Task Evaluation",
+          // "Weekly Log Evaluation", … (request 2026-08-27: T and E capital).
+          title: `${(e.type || "evaluation")
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase())} Evaluation`,
           description: e.comments || "Please complete this evaluation.",
           submittedAt: e.created_at || "",
           dueDate: e.submitted_at || new Date().toISOString(),
@@ -362,7 +366,9 @@ export default function FacultySupervisorEvaluationsPage() {
             id: e.id,
             studentName: e.student_profile?.full_name || "Unknown Student",
             type: e.type === "weekly_log" ? "weekly_log" : e.type === "task" ? "task_submission" : e.type === "midterm" ? "midterm" : e.type === "final" ? "final" : "document",
-            title: `${(e.type || "evaluation").replace(/_/g, " ")} evaluation`,
+            title: `${(e.type || "evaluation")
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase())} Evaluation`,
             submittedAt: e.submitted_at || e.created_at || "",
             evaluatedAt: e.submitted_at || e.created_at || "",
             status: (e.status === "approved" ? "approved" : e.status === "rejected" ? "rejected" : e.status === "submitted" ? "submitted" : "revision_required") as EvaluationStatus,
@@ -1070,7 +1076,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6 px-8 pb-6">
                 {/* Submission Info */}
                 <Card>
                   <CardHeader className="pb-3">

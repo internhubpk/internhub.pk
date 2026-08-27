@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ScrollText,
   Search,
@@ -50,6 +50,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { downloadCsv, generatePdf } from "@/lib/export-helpers";
 import { toast } from "@/components/shared/toast";
+import { SignaturePad } from "@/components/supervisors/signature-pad";
+import { signatureToFile } from "@/lib/signature";
 
 interface WeeklyLog {
   id: string;
@@ -59,7 +61,7 @@ interface WeeklyLog {
   week_start_date: string;
   week_end_date: string;
   hours_worked: number;
-  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required";
+  status: "draft" | "submitted" | "approved" | "rejected" | "revision_required" | "site_signed" | "faculty_signed";
   submitted_at?: string;
   reviewed_at?: string;
   // Review-only fields (populated when a log is opened in the dialog)
@@ -80,33 +82,35 @@ export default function FacultySupervisorWeeklyLogsPage() {
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<WeeklyLog | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [signatureData, setSignatureData] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    async function fetchLogs() {
-      if (!user) {
-        setIsLoading(false);
+  // Component-level fetch so the review handlers can refresh the list after
+  // a sign/decision (previously trapped inside the useEffect closure).
+  const fetchLogs = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+
+      // Get this supervisor's assigned students from BOTH sources
+      // (internship-time + pre-internship). Previously only
+      // student_internships.faculty_supervisor_id was checked, which missed
+      // students the coordinator pre-assigned via students.faculty_supervisor_id.
+      const { fetchSupervisedStudentIds } = await import("@/lib/supervised-students");
+      const studentIds = await fetchSupervisedStudentIds(supabase, user.id);
+
+      if (studentIds.length === 0) {
+        setLogs([]);
         return;
       }
 
-      try {
-        const supabase = createClient();
-
-        // Get this supervisor's assigned students from BOTH sources
-        // (internship-time + pre-internship). Previously only
-        // student_internships.faculty_supervisor_id was checked, which missed
-        // students the coordinator pre-assigned via students.faculty_supervisor_id.
-        const { fetchSupervisedStudentIds } = await import("@/lib/supervised-students");
-        const studentIds = await fetchSupervisedStudentIds(supabase, user.id);
-
-        if (studentIds.length === 0) {
-          setLogs([]);
-          return;
-        }
-
-        const { data: weeklyLogs, error } = await supabase
-          .from("weekly_logs")
-          .select(`
+      const { data: weeklyLogs, error } = await supabase
+        .from("weekly_logs")
+        .select(`
             id,
             week_number,
             week_start_date,
@@ -122,8 +126,8 @@ export default function FacultySupervisorWeeklyLogsPage() {
             supervisor_feedback,
             student_profile:student_user_id(full_name, email)
           `)
-          .in("student_user_id", studentIds)
-          .order("week_start_date", { ascending: false });
+        .in("student_user_id", studentIds)
+        .order("week_start_date", { ascending: false });
 
         if (error) throw error;
 
@@ -153,10 +157,11 @@ export default function FacultySupervisorWeeklyLogsPage() {
       } finally {
         setIsLoading(false);
       }
-    }
+    }, [user]);
 
+  useEffect(() => {
     fetchLogs();
-  }, [user]);
+  }, [fetchLogs]);
 
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
@@ -169,6 +174,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
   const openReviewDialog = (log: WeeklyLog) => {
     setSelectedLog(log);
     setReviewFeedback(log.supervisor_feedback || "");
+    setSignatureData(null);
     setIsReviewOpen(true);
   };
 
@@ -184,12 +190,56 @@ export default function FacultySupervisorWeeklyLogsPage() {
     }
     setIsSubmitting(true);
     try {
+      if (action === "approve") {
+        // APPROVE → sign the weekly log with the faculty supervisor's digital
+        // signature (persisted on weekly_logs.faculty_supervisor_signature_url)
+        // so the generated Word report carries the signature image + name
+        // under the "Faculty Supervisor" box. The log reaches "approved"
+        // once the site supervisor has signed too (dual-signature workflow).
+        if (!signatureData) {
+          toast.error("Signature Required", { description: "Please draw or type your signature before approving — it is included in the student's weekly report." });
+          setIsSubmitting(false);
+          return;
+        }
+        const file = await signatureToFile(signatureData, "faculty-supervisor-signature.png");
+        if (!file) {
+          toast.error("Signature Invalid", { description: "Could not read the signature image. Please redraw it and try again." });
+          setIsSubmitting(false);
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("remarks", reviewFeedback);
+        const res = await fetch(`/api/faculty-supervisor/weekly-logs/${encodeURIComponent(selectedLog.id)}/sign`, {
+          method: "POST",
+          body: fd,
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success !== false) {
+          toast.success("Signed & Approved", { description: json?.data?.status === "approved"
+            ? "Both supervisors have signed — the weekly log is fully approved."
+            : "Your signature was recorded. The log is fully approved once the site supervisor signs too." });
+          setIsReviewOpen(false);
+          setSelectedLog(null);
+          setReviewFeedback("");
+          setSignatureData(null);
+          fetchLogs();
+        } else {
+          const msg = json?.error?.message || json?.error || "Failed to sign the log. Please try again.";
+          toast.error("Sign Failed", { description: typeof msg === "string" ? msg : "Failed to sign the log. Please try again." });
+        }
+        return;
+      }
+
       const supabase = createClient();
       // weekly_log_status enum: draft, submitted, approved, rejected, revision_required
+      // ("approve" never reaches this point — it returns inside the sign
+      // branch above, so a plain non-narrowed check keeps the map exhaustive.)
+      const act = action as "approve" | "reject" | "request_revision";
       const newStatus =
-        action === "approve"
+        act === "approve"
           ? "approved"
-          : action === "reject"
+          : act === "reject"
           ? "rejected"
           : "revision_required";
 
@@ -430,7 +480,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4">
+              <div className="mt-4 space-y-4 px-8 pb-6">
                 <div className="grid grid-cols-2 gap-4">
                   <Card>
                     <CardContent className="p-4 text-center">
@@ -489,6 +539,17 @@ export default function FacultySupervisorWeeklyLogsPage() {
                     rows={4}
                   />
                 </div>
+
+                {/* Digital signature — REQUIRED to approve. Rendered in the
+                    student's Word report under the "Faculty Supervisor"
+                    signature box. */}
+                {(selectedLog.status === "submitted" || selectedLog.status === "site_signed") && (
+                  <SignaturePad
+                    label="Digital Signature (required to approve)"
+                    onSignatureChange={setSignatureData}
+                    value={signatureData}
+                  />
+                )}
               </div>
 
               <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
@@ -518,7 +579,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 <Button
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleReview("approve")}
-                  disabled={isSubmitting || selectedLog.status !== "submitted"}
+                  disabled={isSubmitting || (selectedLog.status !== "submitted" && selectedLog.status !== "site_signed")}
                 >
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

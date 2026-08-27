@@ -88,6 +88,38 @@
  */
 const DEFAULT_PRODUCTION_URL = "https://careerstep.tech";
 
+/**
+ * Dedicated env override for certificate verification URLs ONLY.
+ *
+ * Priority for verification URLs (see getCertificateBaseUrl):
+ *   1. NEXT_PUBLIC_CERTIFICATES_BASE_URL   (explicit override, if ever needed)
+ *   2. "https://careerstep.tech"           (platform canonical — ALWAYS wins)
+ *
+ * ⚠️ IMPORTANT — why verification URLs do NOT read NEXT_PUBLIC_APP_URL /
+ * NEXT_PUBLIC_SITE_URL anymore:
+ *
+ *   Those generic vars point at whatever domain the CURRENT deployment is
+ *   served from (e.g. the legacy domain `xirea.tech`, a Vercel preview, or a
+ *   nip.io dev hostname). Verification URLs are PERMANENT public links baked
+ *   into the `certificates.verification_url` column and shared on printed
+ *   certificates and LinkedIn — they must ALWAYS point at the canonical
+ *   platform domain `https://careerstep.tech`, no matter which deployment
+ *   generated them. Reading the generic site env vars here is what caused
+ *   newly-uploaded certificates to keep getting legacy-domain URLs even
+ *   after migrations 0093/0094 rewrote the historical rows.
+ */
+const CERTIFICATES_BASE_URL_ENV = "NEXT_PUBLIC_CERTIFICATES_BASE_URL";
+
+/**
+ * The base URL used for certificate verification links.
+ * Always resolves to `https://careerstep.tech` unless the dedicated
+ * NEXT_PUBLIC_CERTIFICATES_BASE_URL override is set.
+ */
+export function getCertificateBaseUrl(): string {
+  const override = (process.env[CERTIFICATES_BASE_URL_ENV] || "").trim().replace(/\/+$/, "");
+  return override || DEFAULT_PRODUCTION_URL;
+}
+
 export function getCanonicalBaseUrl(): string {
   const fromEnv =
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -117,57 +149,26 @@ export function getCanonicalBaseUrl(): string {
  * deployment URLs.
  */
 export function buildVerificationUrl(verificationCode: string): string {
-  const base = getCanonicalBaseUrl();
+  const base = getCertificateBaseUrl();
   const path = `/verify/${verificationCode}`;
   return `${base}${path}`;
 }
 
 /**
- * Build a public verification URL using the request's origin as a
- * LAST-RESORT fallback.
+ * Build a public verification URL — ALWAYS on the canonical certificate
+ * domain (https://careerstep.tech), regardless of which deployment or
+ * hostname generated the certificate.
  *
- * Use this in server components / API routes that store the URL into
- * the `certificates.verification_url` column.
- *
- * Priority:
- *   1. `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_SITE_URL` (canonical)
- *   2. `DEFAULT_PRODUCTION_URL` (platform default: https://careerstep.tech)
- *   3. `requestOrigin` (only when both env vars AND the platform
- *      default are somehow unset — should never happen in practice)
- *
- * WHY we now prefer the platform default over the request origin:
- *
- * The previous version fell back to `requestOrigin` whenever the env
- * var was unset. On Vercel preview deployments (where the env var is
- * often not set), `requestOrigin` was the Vercel deployment URL
- * (e.g. `https://internhub-ommxwuglg-intern-hub1.vercel.app`), and
- * that URL got baked into the `verification_url` column. When a
- * student later clicked the verify link, Vercel's "Vercel
- * Authentication" deployment-protection intercepted the request and
- * redirected to `https://vercel.com/sso/access/request?...` — a
- * Vercel SSO login wall. That broke public verification entirely.
- *
- * The platform default `https://careerstep.tech` is the correct
- * canonical production domain (declared in
- * `PLATFORM_DEFAULT_TENANT.domain`). Certificates generated on a
- * preview deployment should still point to production — they're
- * real certificates that students share on LinkedIn, and the
- * verification page is publicly accessible.
- *
- * The `requestOrigin` parameter is retained for backward compat
- * but is effectively dead code now — it only runs if both the env
- * var AND the platform default are unset, which is impossible.
+ * The `requestOrigin` parameter is retained for backward compatibility but
+ * is intentionally NOT used: verification URLs are permanent public links
+ * and must never point at a deployment-specific origin (legacy domain,
+ * Vercel preview, localhost, nip.io dev hostname, …).
  */
 export function buildVerificationUrlFromRequest(
   verificationCode: string,
-  requestOrigin: string
+  _requestOrigin: string
 ): string {
-  const base = getCanonicalBaseUrl(); // env var > platform default
-  const path = `/verify/${verificationCode}`;
-  if (base) return `${base}${path}`;
-  // Dead branch — getCanonicalBaseUrl() always returns a value.
-  const trimmedOrigin = requestOrigin.replace(/\/+$/, "");
-  return `${trimmedOrigin}${path}`;
+  return buildVerificationUrl(verificationCode);
 }
 
 /**

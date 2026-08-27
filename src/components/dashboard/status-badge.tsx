@@ -15,6 +15,7 @@ import {
   Send,
   Eye,
   Ban,
+  PenTool,
 } from "lucide-react";
 
 type BadgeVariant =
@@ -59,6 +60,9 @@ const statusConfig: Record<string, { variant: BadgeVariant; icon: LucideIcon; la
   trial: { variant: "info", icon: Clock, label: "Trial" },
   submitted: { variant: "info", icon: Send, label: "Submitted" },
   resubmitted: { variant: "info", icon: Send, label: "Resubmitted" },
+  site_signed: { variant: "info", icon: PenTool, label: "Site Supervisor Signed" },
+  faculty_signed: { variant: "info", icon: PenTool, label: "Faculty Supervisor Signed" },
+  revision_required: { variant: "warning", icon: AlertTriangle, label: "Revision Required" },
 
   // Negative states
   inactive: { variant: "secondary", icon: Pause, label: "Inactive" },

@@ -523,14 +523,14 @@ export default function HelpPage() {
                   <div className="space-y-3">
                     {/* Email */}
                     <a
-                      href="mailto:support@careerstep.tech"
+                      href="mailto:info@ailab99.com"
                       className="flex items-center gap-3 p-3 rounded-lg bg-background/60 border border-border/30 hover:border-primary/30 transition-colors group"
                     >
                       <Mail className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                       <div>
                         <p className="text-sm font-medium">Email Support</p>
                         <p className="text-xs text-muted-foreground">
-                          support@careerstep.tech
+                          info@ailab99.com
                         </p>
                       </div>
                       <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -108,8 +108,8 @@ export default function SupportPage() {
                   <Mail className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Email</p>
-                    <a href="mailto:support@careerstep.tech" className="text-sm text-primary hover:underline break-all">
-                      support@careerstep.tech
+                    <a href="mailto:info@ailab99.com" className="text-sm text-primary hover:underline break-all">
+                      info@ailab99.com
                     </a>
                   </div>
                 </div>

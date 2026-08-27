@@ -29,6 +29,9 @@ function baseData(overrides: Partial<WeeklyReportData>): WeeklyReportData {
     reportingPeriodStart: "2026-08-24",
     reportingPeriodEnd: "2026-08-28",
     supervisorName: "Test Supervisor",
+    industrySupervisorName: "Test Site Supervisor",
+    facultySupervisorName: "Test Faculty Supervisor",
+    allPrograms: ["Computer Science", "Software Engineering"],
     dailyEntries: [
       { dayName: "Monday", date: "2026-08-24", tasksPerformed: "Task A", hoursWorked: 8, isHoliday: false },
       { dayName: "Tuesday", date: "2026-08-25", tasksPerformed: "Task B", hoursWorked: 8, isHoliday: false },

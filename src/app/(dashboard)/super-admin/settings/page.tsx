@@ -129,7 +129,7 @@ function formatStorageBytes(bytes: number): string {
 
 const defaultSettings: PlatformSettings = {
   platform_name: "CareerStep",
-  support_email: "support@careerstep.tech",
+  support_email: "info@ailab99.com",
   default_language: "en",
   email_notifications: true,
   registration_alerts: true,

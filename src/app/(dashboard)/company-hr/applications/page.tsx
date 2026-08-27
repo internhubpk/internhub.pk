@@ -569,7 +569,7 @@ export default function CompanyHRApplicationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6 px-8 pb-6">
                 {/* Status & Quick Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">

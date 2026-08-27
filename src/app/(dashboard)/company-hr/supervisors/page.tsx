@@ -1212,7 +1212,7 @@ export default function CompanyHRSupervisorsPage() {
             </DialogDescription>
           </DialogHeader>
           {importPhase === "upload" && (
-            <div className="space-y-4">
+            <div className="space-y-4 px-8 pb-6">
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={downloadSupervisorTemplate}><FileSpreadsheet className="h-4 w-4 mr-2" />Download CSV Template</Button>
                 <Button variant="outline" onClick={() => (document.getElementById("hr-sup-csv-input") as HTMLInputElement | null)?.click()}><Upload className="h-4 w-4 mr-2" />Choose CSV File</Button>

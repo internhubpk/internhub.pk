@@ -1384,7 +1384,7 @@ export default function SiteSupervisorEvaluationsPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 mt-4">
+          <div className="space-y-4 mt-4 px-8 pb-6">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4 mb-4">
@@ -1472,7 +1472,7 @@ export default function SiteSupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-6 mt-4">
+              <div className="space-y-6 mt-4 px-8 pb-6">
                 {/* Score Breakdown */}
                 <Card>
                   <CardHeader>

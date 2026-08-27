@@ -33,6 +33,7 @@ async function main() {
     universityLogoBuffer: logo,
     departmentName: "Faculty of Computer Science",
     programName: "Computer Science",
+    allPrograms: ["Computer Science", "Software Engineering", "Artificial Intelligence", "BBA"],
     studentName: "Muhammad Sami",
     studentRegistrationNumber: "IIUI-21-1234",
     hostOrganization: "Gohar Publishers",
@@ -40,6 +41,8 @@ async function main() {
     reportingPeriodStart: "2026-08-17",
     reportingPeriodEnd: "2026-08-21",
     supervisorName: "Dr. Ahmad",
+    industrySupervisorName: "Dr. Ahmad",
+    facultySupervisorName: "Prof. Bilal",
     dailyEntries: [
       { dayName: "Monday", date: "2026-08-17", tasksPerformed: "Onboarding and setup", hoursWorked: 8, isHoliday: false },
       { dayName: "Tuesday", date: "2026-08-18", tasksPerformed: "Data cleaning", hoursWorked: 7, isHoliday: false },

@@ -60,6 +60,8 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { downloadCsv, generatePdf } from "@/lib/export-helpers";
 import { toast } from "@/components/shared/toast";
+import { SignaturePad } from "@/components/supervisors/signature-pad";
+import { signatureToFile } from "@/lib/signature";
 
 // Types
 interface WeeklyLogEntry {
@@ -71,7 +73,7 @@ interface WeeklyLogEntry {
   weekNumber: number;
   weekStart: string;
   weekEnd: string;
-  status: "submitted" | "approved" | "rejected" | "revision_required" | "pending" | "late";
+  status: "submitted" | "approved" | "rejected" | "revision_required" | "pending" | "late" | "site_signed" | "faculty_signed";
   tasksCompleted: string[];
   challenges: string | null;
   learnings: string | null;
@@ -105,6 +107,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
   // Review dialog state
   const [selectedLog, setSelectedLog] = useState<WeeklyLogEntry | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [signatureData, setSignatureData] = useState<string | null>(null);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   useEffect(() => {
@@ -296,6 +299,46 @@ export default function SiteSupervisorWeeklyLogsPage() {
     
     try {
       if (!selectedLog) return;
+
+      if (action === "approve") {
+        // APPROVE → sign the weekly log with the supervisor's digital
+        // signature (uploaded to the signatures bucket; persisted on
+        // weekly_logs.site_supervisor_signature_url) so the generated Word
+        // report carries the signature image + the supervisor's name.
+        // Reject / request-revision keep the plain PUT path — a signature
+        // is only meaningful on approval.
+        if (!signatureData) {
+          toast.error("Signature Required", { description: "Please draw or type your signature before approving — it is included in the student's weekly report." });
+          setIsSubmittingReview(false);
+          return;
+        }
+        const file = await signatureToFile(signatureData, "site-supervisor-signature.png");
+        if (!file) {
+          toast.error("Signature Invalid", { description: "Could not read the signature image. Please redraw it and try again." });
+          setIsSubmittingReview(false);
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("remarks", reviewFeedback);
+        const response = await fetch(`/api/site-supervisor/weekly-logs/${encodeURIComponent(selectedLog.id)}/sign`, {
+          method: "POST",
+          body: fd,
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success !== false) {
+          toast.success("Log Approved & Signed", { description: "Your signature and remarks have been added to the student's weekly report." });
+          setSignatureData(null);
+          setSelectedLog(null);
+          setReviewFeedback("");
+          fetchWeeklyLogs();
+        } else {
+          const msg = json?.error?.message || json?.error || "Error signing the log. Please try again.";
+          toast.error("Sign Failed", { description: typeof msg === "string" ? msg : "Error signing the log. Please try again." });
+        }
+        return;
+      }
+
       const response = await fetch("/api/site-supervisor/weekly-logs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -307,13 +350,15 @@ export default function SiteSupervisorWeeklyLogsPage() {
       });
 
       if (response.ok) {
-        const actionText = action === "approve" ? "approved" : action === "reject" ? "rejected" : "flagged for revision";
+        // ("approve" never reaches the PUT — it returns inside the sign
+        // branch above.)
+        const actionText = action === "reject" ? "rejected" : "flagged for revision";
         toast.success(`Log ${actionText}`, { description: "The weekly log has been updated successfully." });
         
         // Update local state
         setLogs(prev => prev.map(log =>
           log.id === selectedLog!.id
-            ? { ...log, status: action === "approve" ? "approved" as const : action === "reject" ? "rejected" as const : "revision_required" as const, supervisorFeedback: reviewFeedback, reviewedAt: new Date().toISOString() }
+            ? { ...log, status: action === "reject" ? "rejected" as const : "revision_required" as const, supervisorFeedback: reviewFeedback, reviewedAt: new Date().toISOString() }
             : log
         ));
 
@@ -639,7 +684,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="content" className="mt-4">
+              <Tabs defaultValue="content" className="mt-4 px-8 pb-6">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="content">Log Content</TabsTrigger>
                   <TabsTrigger value="review">Your Review</TabsTrigger>
@@ -792,7 +837,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                     </Card>
                   )}
 
-                  {selectedLog.status === "submitted" && (
+                  {(selectedLog.status === "submitted" || selectedLog.status === "faculty_signed") && (
                     <>
                       <Card>
                         <CardHeader className="pb-3">
@@ -814,6 +859,15 @@ export default function SiteSupervisorWeeklyLogsPage() {
                           </div>
                         </CardContent>
                       </Card>
+
+                      {/* Digital signature — REQUIRED to approve. Rendered in the
+                          student's Word report under the "Industry Supervisor"
+                          signature box. */}
+                      <SignaturePad
+                        label="Digital Signature (required to approve)"
+                        onSignatureChange={setSignatureData}
+                        value={signatureData}
+                      />
 
                       <div className="flex flex-col sm:flex-row gap-3 justify-end">
                         <Button

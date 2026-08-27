@@ -921,7 +921,7 @@ export default function FacultySupervisorStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="overview" className="mt-4">
+              <Tabs defaultValue="overview" className="mt-4 px-8 pb-6">
                 <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>

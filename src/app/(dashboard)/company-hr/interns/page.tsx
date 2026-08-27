@@ -921,7 +921,7 @@ export default function CompanyHRInternsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6 px-8 pb-6">
                 {/* Contact Info */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
@@ -1089,7 +1089,7 @@ export default function CompanyHRInternsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-4 px-8 pb-6">
             <div className="space-y-2">
               <Label>Select Supervisor / Evaluator</Label>
               <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>

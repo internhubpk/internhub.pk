@@ -55,6 +55,9 @@ async function main() {
     reportingPeriodStart: "2026-08-24",
     reportingPeriodEnd: "2026-08-30",
     supervisorName: "Test Supervisor Name",
+    industrySupervisorName: "Test Site Supervisor",
+    facultySupervisorName: "Test Faculty Supervisor",
+    allPrograms: ["Test Program X", "Other Program"],
     dailyEntries: [
       { dayName: "Monday" as const, date: "2026-08-24", tasksPerformed: "Monday task A", hoursWorked: 8, isHoliday: false },
       { dayName: "Tuesday" as const, date: "2026-08-25", tasksPerformed: "Tuesday task B", hoursWorked: 7, isHoliday: false },

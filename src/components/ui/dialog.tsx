@@ -91,7 +91,9 @@ function DialogContent({
           // <DialogHeader> and <DialogFooter> without a <DialogBody> wrapper:
           // such middle children become scrollable instead of being clipped by
           // the parent's overflow-hidden when the content grows too tall.
-          "[&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close])]:min-h-0 [&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close])]:shrink [&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close])]:overflow-y-auto",
+          // (Padding is intentionally NOT forced here — a parent-selector
+          // rule would out-specify children's own px/py classes.)
+          "[&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close]):not([data-slot=dialog-body])]:min-h-0 [&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close]):not([data-slot=dialog-body])]:shrink [&>*:not([data-slot=dialog-header]):not([data-slot=dialog-footer]):not([data-slot=dialog-close]):not([data-slot=dialog-body])]:overflow-y-auto",
           className
         )}
         {...props}

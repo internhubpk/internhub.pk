@@ -1246,7 +1246,7 @@ export default function UniversityAdminMOUsPage() {
       <Dialog open={isDetailOpen} onOpenChange={(open) => { if (!open) setDetailMOU(null); setIsDetailOpen(open); }}>
         <DialogContent className="sm:max-w-[560px]">
           {detailMOU && (
-            <div>
+            <div className="px-8 pb-5">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />

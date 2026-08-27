@@ -880,7 +880,7 @@ export default function ProgramCoordinatorStudentsPage() {
               Create a new student in your department. The student will be assigned to the selected program.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 px-8 pb-6">
             <div className="space-y-2">
               <Label htmlFor="student-full-name">Full Name *</Label>
               <Input

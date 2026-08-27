@@ -1003,7 +1003,7 @@ export default function FacultySupervisorTasksPage() {
                 </div>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6 px-8 pb-6">
                 {/* Description */}
                 {selectedTask.description && (
                   <Card>

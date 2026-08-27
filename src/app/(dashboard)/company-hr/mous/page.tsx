@@ -1206,7 +1206,7 @@ export default function CompanyHRMOUsPage() {
       >
         <DialogContent className="sm:max-w-[560px]">
           {detailMOU && (
-            <div>
+            <div className="px-8 pb-5">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -1322,7 +1322,7 @@ export default function CompanyHRMOUsPage() {
       >
         <DialogContent className="sm:max-w-[500px]">
           {editMOU && (
-            <div>
+            <div className="px-8 pb-5">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Pencil className="h-5 w-5" />

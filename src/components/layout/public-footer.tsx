@@ -24,7 +24,7 @@
  */
 
 import Link from "next/link";
-import { ChevronRight, Lock } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { ContactSupportButton } from "@/components/shared/whatsapp-cta";
 import { useTenantBranding } from "@/components/providers/tenant-provider";
 import { ThemeAwareLogo } from "./theme-aware-logo";
@@ -122,17 +122,59 @@ export function PublicFooter({
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+        <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
           <p className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
             {/* Hardcoded year — new Date().getFullYear() in a "use client"
                 footer is a hydration-mismatch anti-pattern at the year
                 boundary across timezones (server UTC vs client TZ). */}
             © 2026 {isTenant ? branding.name : "CareerStep"}. All rights reserved.
           </p>
-          <p className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
-            <Lock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            Data is isolated per university
-          </p>
+
+          {/* Partner logos — AILAB99 (platform) + Ibadat International University.
+              Responsive: stacked on mobile, inline on larger screens, with
+              breathing room (padding/margin) and compressed assets. */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-5 sm:divide-x sm:divide-border/60">
+            <a
+              href="https://www.ailab99.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="AILAB99 — Powered by"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors group"
+            >
+              <img
+                src="/ailab99-logo.png"
+                alt="AILAB99 logo"
+                width={36}
+                height={36}
+                loading="lazy"
+                className="h-8 w-8 sm:h-9 sm:w-9 object-contain"
+              />
+              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors whitespace-nowrap">
+                Powered by <span className="font-semibold">AILAB99</span>
+              </span>
+            </a>
+
+            <a
+              href="https://iiui.edu.pk/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Ibadat International University — In collaboration with"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent/60 transition-colors group sm:pl-5"
+            >
+              <img
+                src="/ibadat-logo.png"
+                alt="Ibadat International University logo"
+                width={36}
+                height={36}
+                loading="lazy"
+                className="h-8 w-8 sm:h-9 sm:w-9 object-contain"
+              />
+              <span className="text-[10px] sm:text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                In collaboration with{" "}
+                <span className="font-semibold">Ibadat International University</span>
+              </span>
+            </a>
+          </div>
         </div>
       </div>
     </footer>
