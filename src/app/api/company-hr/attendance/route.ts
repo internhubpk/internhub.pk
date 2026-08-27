@@ -182,3 +182,121 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// POST /api/company-hr/attendance — manually create an attendance record
+// for an intern of the caller's company (e.g. a missed day, a leave entry
+// recorded after the fact).
+// body: { student_internship_id, date: YYYY-MM-DD, status, notes? }
+export async function POST(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    const body = await request.json();
+    const { student_internship_id, date, status, notes } = body;
+
+    const validStatuses = ["present", "absent", "late", "half_day", "leave", "holiday"];
+    if (!student_internship_id || !date || !status || !validStatuses.includes(status)) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: `student_internship_id, date and a valid status (${validStatuses.join(", ")}) are required`,
+          },
+        },
+        { status: 400 }
+      );
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+      return NextResponse.json(
+        { error: { code: "VALIDATION_ERROR", message: "date must be YYYY-MM-DD" } },
+        { status: 400 }
+      );
+    }
+
+    // Verify the placement belongs to this company and get its ids.
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("id, student_user_id, internship_id, company_id")
+      .eq("id", student_internship_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!si) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Intern placement not found in your company" } },
+        { status: 404 }
+      );
+    }
+
+    // Replace any existing record for the same placement + date.
+    const { data: existing } = await supabase
+      .from("attendance")
+      .select("id")
+      .eq("student_internship_id", student_internship_id)
+      .eq("date", date)
+      .maybeSingle();
+
+    const payload = {
+      student_internship_id,
+      student_user_id: si.student_user_id,
+      internship_id: si.internship_id,
+      date,
+      status,
+      notes: notes || null,
+    };
+
+    let record;
+    if (existing?.id) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("attendance")
+        .update(payload)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      record = updated;
+    } else {
+      const { data: inserted, error: insertErr } = await supabase
+        .from("attendance")
+        .insert(payload)
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      record = inserted;
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "company_hr.create_attendance",
+      entity_type: "attendance",
+      entity_id: record.id,
+      new_values: { date, status },
+    });
+
+    return NextResponse.json(
+      { success: true, data: record, message: "Attendance record saved" },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("Unexpected error in POST attendance:", error);
+    return NextResponse.json(
+      { error: { code: "DATABASE_ERROR", message: error?.message || "Failed to save attendance record" } },
+      { status: 500 }
+    );
+  }
+}

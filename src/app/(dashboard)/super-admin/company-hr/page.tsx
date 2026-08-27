@@ -57,6 +57,7 @@ import {
 import { toast } from "@/components/shared/toast";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { Power, ShieldAlert } from "lucide-react";
 
 interface Company {
   id: string;
@@ -119,6 +120,9 @@ export default function SuperAdminCompanyHrPage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HrProfile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Suspend / reactivate (cascades to every account of the HR's company)
+  const [statusTarget, setStatusTarget] = useState<HrProfile | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   useEffect(() => {
     fetchData();
   }, []);
@@ -270,26 +274,56 @@ export default function SuperAdminCompanyHrPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const supabase = createClient();
-      // Soft-delete: deactivate the profile rather than deleting the auth user
-      // (deleting auth.users requires the service role).
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          is_active: false,
-          status: "disabled",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", deleteTarget.user_id);
-
-      if (error) throw error;
-      toast.success("HR account deactivated");
+      // HARD DELETE via the super-admin API: removes the profile, the
+      // auth.users row (so they can never sign in again) and all personal
+      // data. Internships the HR created survive for the company
+      // (created_by is detached), so removing one HR never wipes the
+      // company's listings.
+      const res = await fetch(`/api/super-admin/users/${deleteTarget.user_id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("HR account permanently deleted", {
+        description: `${deleteTarget.full_name || deleteTarget.email} and their personal data were removed.`,
+      });
       setDeleteTarget(null);
       fetchData();
     } catch (error: any) {
-      toast.error("Failed to deactivate", { description: error.message });
+      toast.error("Failed to delete", { description: error.message });
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  async function confirmToggleStatus() {
+    if (!statusTarget) return;
+    const newStatus = statusTarget.is_active ? "suspended" : "active";
+    setIsTogglingStatus(true);
+    try {
+      // Cascade API: suspending a company HR admin suspends EVERY account
+      // of their company (site supervisors, evaluators…); reactivating
+      // reactivates them too.
+      const res = await fetch(`/api/super-admin/users/${statusTarget.user_id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success(newStatus === "suspended" ? "HR account suspended" : "HR account reactivated", {
+        description: json.message,
+      });
+      setStatusTarget(null);
+      fetchData();
+    } catch (error: any) {
+      toast.error("Failed to update status", { description: error.message });
+    } finally {
+      setIsTogglingStatus(false);
     }
   }
 
@@ -458,13 +492,24 @@ export default function SuperAdminCompanyHrPage() {
                           size="sm"
                           variant="ghost"
                           onClick={() => openEditDialog(hr)}
+                          title="Edit HR account"
                         >
                           <Edit className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
+                          onClick={() => setStatusTarget(hr)}
+                          title={hr.is_active ? "Suspend (cascades to the company's accounts)" : "Reactivate (cascades to the company's accounts)"}
+                          className={hr.is_active ? "text-amber-600 hover:text-amber-700" : "text-emerald-600 hover:text-emerald-700"}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => setDeleteTarget(hr)}
+                          title="Permanently delete"
                           className="text-red-600 hover:text-red-700"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -695,18 +740,27 @@ export default function SuperAdminCompanyHrPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete (deactivate) confirmation */}
+      {/* Delete (permanently) confirmation */}
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate HR account?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will deactivate <strong>{deleteTarget?.email}</strong>. The
-              user will no longer be able to sign in. Their data is preserved.
-              To permanently delete the auth user, use the Supabase dashboard.
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5 shrink-0" />
+              Delete HR account permanently?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <span className="block">
+                This will permanently delete <strong>{deleteTarget?.full_name || deleteTarget?.email}</strong>{" "}
+                ({deleteTarget?.email}) — the account, its sign-in credentials and personal data.
+              </span>
+              <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+                This action <strong>cannot be undone</strong>. Internships this HR created stay live
+                for the company (they are detached, not deleted). To remove a whole company with
+                every account under it, use the Companies page.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -719,10 +773,57 @@ export default function SuperAdminCompanyHrPage() {
               {isDeleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deactivating...
+                  Deleting...
                 </>
               ) : (
-                "Deactivate"
+                "Delete Permanently"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Suspend / Reactivate confirmation (cascade-aware) */}
+      <AlertDialog
+        open={!!statusTarget}
+        onOpenChange={(open) => !open && setStatusTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 shrink-0" />
+              {statusTarget?.is_active ? "Suspend HR account?" : "Reactivate HR account?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <span className="block">
+                {statusTarget?.is_active
+                  ? "They will lose access to their dashboard immediately and cannot sign in."
+                  : "They will be able to sign in and access their dashboard again."}
+              </span>
+              <span className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300">
+                <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  {statusTarget?.is_active
+                    ? "This is a COMPANY ADMIN — suspending them also suspends ALL accounts of their company (site supervisors, evaluators). None of them will be able to sign in."
+                    : "Reactivating this company admin also reactivates ALL accounts of their company."}
+                </span>
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isTogglingStatus}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmToggleStatus}
+              disabled={isTogglingStatus}
+              className={statusTarget?.is_active ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : "bg-emerald-600 hover:bg-emerald-700"}
+            >
+              {isTogglingStatus ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {statusTarget?.is_active ? "Suspending..." : "Reactivating..."}
+                </>
+              ) : (
+                statusTarget?.is_active ? "Suspend" : "Reactivate"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -52,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/shared/toast";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -68,6 +70,20 @@ interface CoordinatorFormData {
   password: string;
   department_id: string;
 }
+
+interface EditCoordinatorForm {
+  full_name: string;
+  email: string;
+  phone: string;
+  password: string;
+}
+
+const emptyEditForm: EditCoordinatorForm = {
+  full_name: "",
+  email: "",
+  phone: "",
+  password: "",
+};
 
 const emptyForm: CoordinatorFormData = {
   email: "",
@@ -87,6 +103,17 @@ export default function CoordinatorsPage() {
   const [formData, setFormData] = useState<CoordinatorFormData>(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // ── Edit Coordinator dialog state ────────────────────────────
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<CoordinatorWithDetails | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState<EditCoordinatorForm>(emptyEditForm);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // ── Delete Coordinator confirmation state ────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<CoordinatorWithDetails | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchCoordinators = useCallback(async () => {
     const universityId = profile?.university_id || university?.id;
@@ -319,6 +346,101 @@ export default function CoordinatorsPage() {
     setIsDialogOpen(true);
   };
 
+  // ── Edit Coordinator ─────────────────────────────────────────
+  const openEditDialog = (coordinator: CoordinatorWithDetails) => {
+    setEditTarget(coordinator);
+    setEditForm({
+      full_name: coordinator.full_name || "",
+      email: coordinator.email || "",
+      phone: coordinator.phone || "",
+      password: "",
+    });
+    setShowEditPassword(false);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveCoordinator = async () => {
+    if (!editTarget) return;
+
+    if (!editForm.full_name.trim() || editForm.full_name.trim().length < 2) {
+      toast.error("Validation Error", { description: "Full name must be at least 2 characters" });
+      return;
+    }
+    if (!editForm.email.trim() || !editForm.email.includes("@")) {
+      toast.error("Validation Error", { description: "Please enter a valid email address" });
+      return;
+    }
+    if (editForm.password && editForm.password.length < 8) {
+      toast.error("Validation Error", {
+        description: "Password must be at least 8 characters (or leave it blank to keep the current one)",
+      });
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/coordinators/${editTarget.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: editForm.full_name.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+          password: editForm.password || undefined,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+
+      toast.success("Coordinator Updated", {
+        description: `${editForm.full_name.trim()}'s account has been updated.`,
+      });
+      setIsEditDialogOpen(false);
+      setEditTarget(null);
+      fetchCoordinators();
+    } catch (error) {
+      console.error("Error updating coordinator:", error);
+      toast.error("Failed to update coordinator", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ── Delete Coordinator ───────────────────────────────────────
+  const handleDeleteCoordinator = async () => {
+    if (!deleteTarget) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/coordinators/${deleteTarget.user_id}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+
+      toast.success("Coordinator Deleted", {
+        description: `${deleteTarget.full_name || deleteTarget.email} and all their personal data were permanently deleted.`,
+      });
+      setDeleteTarget(null);
+      fetchCoordinators();
+    } catch (error) {
+      console.error("Error deleting coordinator:", error);
+      toast.error("Failed to delete coordinator", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData(emptyForm);
     setShowPassword(false);
@@ -526,12 +648,16 @@ export default function CoordinatorsPage() {
 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-9 w-9">
+                          <Button variant="ghost" size="icon" className="h-9 w-9" title="More actions">
                             <MoreVertical className="h-4 w-4" />
                             <span className="sr-only">Actions</span>
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(coordinator)}>
+                            <Edit2 className="mr-2 h-4 w-4" />
+                            Edit Details
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleToggleStatus(coordinator)}
                           >
@@ -546,6 +672,14 @@ export default function CoordinatorsPage() {
                                 Activate Account
                               </>
                             )}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => setDeleteTarget(coordinator)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Coordinator
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -571,7 +705,7 @@ export default function CoordinatorsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 px-6 py-4 overflow-y-auto max-h-[60vh]">
+          <DialogBody className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="coord-full-name">Full Name *</Label>
               <Input
@@ -663,7 +797,7 @@ export default function CoordinatorsPage() {
                 You can assign the coordinator to a department later.
               </p>
             </div>
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -689,6 +823,152 @@ export default function CoordinatorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Coordinator Dialog */}
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) setEditTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="h-5 w-5" />
+              Edit Coordinator
+            </DialogTitle>
+            <DialogDescription>
+              Update {editTarget?.full_name || editTarget?.email}'s account details.
+              Leave the password blank to keep the current one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-coord-name">Full Name *</Label>
+              <Input
+                id="edit-coord-name"
+                placeholder="e.g., Dr. Sarah Johnson"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-coord-email">Email Address *</Label>
+              <Input
+                id="edit-coord-email"
+                type="email"
+                placeholder="e.g., sarah.johnson@university.edu"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Changing the email updates their sign-in address immediately.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-coord-phone">Phone</Label>
+              <Input
+                id="edit-coord-phone"
+                placeholder="+92 300 0000000"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-coord-password">New Password (optional)</Label>
+              <div className="relative">
+                <Input
+                  id="edit-coord-password"
+                  type={showEditPassword ? "text" : "password"}
+                  placeholder="Leave blank to keep the current password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  className="pr-12"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                  onClick={() => setShowEditPassword(!showEditPassword)}
+                  tabIndex={-1}
+                  title={showEditPassword ? "Hide password" : "Show password"}
+                >
+                  {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
+            </div>
+
+            {editTarget?.departmentName && (
+              <div className="p-3 rounded-lg bg-muted/50 text-sm">
+                <span className="text-muted-foreground">Department:</span>{" "}
+                {editTarget.departmentName}
+                <span className="text-muted-foreground"> — reassign it from the list using the
+                department selector.</span>
+              </div>
+            )}
+          </DialogBody>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditDialogOpen(false)}
+              disabled={isSavingEdit}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCoordinator} disabled={isSavingEdit} className="gap-2">
+              {isSavingEdit ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Edit2 className="h-4 w-4" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Coordinator Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete coordinator permanently?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This will permanently delete{" "}
+              <strong>{deleteTarget?.full_name || deleteTarget?.email}</strong> ({deleteTarget?.email})
+              and their sign-in credentials.
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. Their personal data (evaluations,
+              notifications, audit history) is removed. Programs they coordinate and departments
+              they head are <strong>preserved</strong> — the reference to them is simply detached.
+            </span>
+          </span>
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete Coordinator"}
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteCoordinator}
+      />
     </div>
   );
 }

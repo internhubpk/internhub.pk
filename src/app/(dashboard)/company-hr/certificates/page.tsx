@@ -57,6 +57,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 interface CertificateRow {
   id: string;
@@ -103,6 +104,11 @@ export default function CompanyHrCertificatesPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  // ConfirmDialog targets — the shared dialog replaced the previous native
+  // browser prompts for both revoke and re-issue.
+  const [revokeTarget, setRevokeTarget] = useState<CertificateRow | null>(null);
+  const [reissueTarget, setReissueTarget] = useState<CertificateRow | null>(null);
 
   // Upload form state
   const [availableStudents, setAvailableStudents] = useState<StudentByInternship[]>([]);
@@ -322,9 +328,6 @@ export default function CompanyHrCertificatesPage() {
   }
 
   async function handleRevoke(cert: CertificateRow) {
-    if (!confirm(`Revoke certificate #${cert.certificate_number}? The student will be notified and the public verification page will show "REVOKED".`)) {
-      return;
-    }
     setRevokingId(cert.id);
     try {
       const res = await fetch(`/api/company-hr/certificates/${cert.id}`, {
@@ -349,13 +352,11 @@ export default function CompanyHrCertificatesPage() {
       });
     } finally {
       setRevokingId(null);
+      setRevokeTarget(null);
     }
   }
 
   async function handleReissue(cert: CertificateRow) {
-    if (!confirm(`Re-issue certificate #${cert.certificate_number}? This will mark it as valid again.`)) {
-      return;
-    }
     setRevokingId(cert.id);
     try {
       const res = await fetch(`/api/company-hr/certificates/${cert.id}`, {
@@ -380,6 +381,7 @@ export default function CompanyHrCertificatesPage() {
       });
     } finally {
       setRevokingId(null);
+      setReissueTarget(null);
     }
   }
 
@@ -586,7 +588,7 @@ export default function CompanyHrCertificatesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRevoke(cert)}
+                              onClick={() => setRevokeTarget(cert)}
                               disabled={revokingId === cert.id}
                               title="Revoke certificate"
                               className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -601,7 +603,7 @@ export default function CompanyHrCertificatesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleReissue(cert)}
+                              onClick={() => setReissueTarget(cert)}
                               disabled={revokingId === cert.id}
                               title="Re-issue certificate"
                               className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
@@ -770,6 +772,55 @@ export default function CompanyHrCertificatesPage() {
           </DialogBody>
         </DialogContent>
       </Dialog>
+
+      {/* Revoke Certificate Confirmation */}
+      <ConfirmDialog
+        open={!!revokeTarget}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        title={
+          <>
+            <Ban className="h-5 w-5 shrink-0" />
+            Revoke certificate #{revokeTarget?.certificate_number}?
+          </>
+        }
+        description={
+          <span className="block">
+            The student will be notified and the public verification page will show
+            <strong> REVOKED</strong>. The certificate record is kept for the audit trail — it can
+            be re-issued later if the situation changes.
+          </span>
+        }
+        confirmLabel="Revoke Certificate"
+        variant="danger"
+        loading={!!revokeTarget && revokingId === revokeTarget.id}
+        onConfirm={() => {
+          if (revokeTarget) handleRevoke(revokeTarget);
+        }}
+      />
+
+      {/* Re-issue Certificate Confirmation */}
+      <ConfirmDialog
+        open={!!reissueTarget}
+        onOpenChange={(open) => !open && setReissueTarget(null)}
+        title={
+          <>
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            Re-issue certificate #{reissueTarget?.certificate_number}?
+          </>
+        }
+        description={
+          <span className="block">
+            This will mark the certificate as valid again. The student will be notified that their
+            certificate has been re-issued.
+          </span>
+        }
+        confirmLabel="Re-issue Certificate"
+        variant="warning"
+        loading={!!reissueTarget && revokingId === reissueTarget.id}
+        onConfirm={() => {
+          if (reissueTarget) handleReissue(reissueTarget);
+        }}
+      />
     </div>
   );
 }

@@ -395,3 +395,338 @@ export async function PATCH(
     );
   }
 }
+
+/**
+ * PUT /api/coordinators/[id]
+ *
+ * FULL edit of a coordinator account (University Admin / Super Admin):
+ *   { full_name?, email?, phone?, password? }
+ *
+ * - profile fields updated via service role
+ * - email change + password reset via GoTrue admin API
+ * Same authorization rules as PATCH (university scope).
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: coordUserId } = await params;
+    if (!coordUserId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Missing coordinator id" },
+        { status: 400 }
+      );
+    }
+
+    const body = (await request.json().catch(() => ({}))) as {
+      full_name?: string;
+      email?: string;
+      phone?: string;
+      password?: string;
+    };
+
+    // ==========================================================
+    // 1. Authenticate the caller (cookie-bound client).
+    // ==========================================================
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // ==========================================================
+    // 2. Service role client + caller profile.
+    // ==========================================================
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfigured (service role key missing)" },
+        { status: 500 }
+      );
+    }
+    const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: adminProfile } = await admin
+      .from("profiles")
+      .select("user_id, role, university_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const adminRole = adminProfile?.role as UserRole | undefined;
+    const isSuperAdmin = adminRole === "super_admin";
+    const isUniAdmin = adminRole === "university_admin";
+
+    if (!isSuperAdmin && !isUniAdmin) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    // ==========================================================
+    // 3. Fetch the target + scope check.
+    // ==========================================================
+    const { data: coord } = await admin
+      .from("profiles")
+      .select("user_id, role, university_id, email, full_name")
+      .eq("user_id", coordUserId)
+      .maybeSingle();
+
+    if (!coord) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Coordinator not found" },
+        { status: 404 }
+      );
+    }
+
+    if (!isSuperAdmin) {
+      if (!adminProfile?.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Your profile has no university_id" },
+          { status: 403 }
+        );
+      }
+      if (coord.university_id && coord.university_id !== adminProfile.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Coordinator belongs to a different university" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ==========================================================
+    // 4. Validate inputs.
+    // ==========================================================
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (typeof body.full_name === "string") {
+      const name = body.full_name.trim();
+      if (name.length < 2) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Full name must be at least 2 characters" },
+          { status: 400 }
+        );
+      }
+      updates.full_name = name;
+      updates.first_name = name.split(" ")[0];
+      updates.last_name = name.split(" ").slice(1).join(" ") || null;
+    }
+    if (typeof body.phone === "string") updates.phone = body.phone.trim() || null;
+
+    const newEmail =
+      typeof body.email === "string" ? body.email.trim().toLowerCase() : undefined;
+    if (newEmail !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Invalid email address" },
+        { status: 400 }
+      );
+    }
+    if (body.password !== undefined && body.password !== "" && body.password.length < 8) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Password must be at least 8 characters" },
+        { status: 400 }
+      );
+    }
+
+    // ==========================================================
+    // 5. Update auth user (email / password).
+    // ==========================================================
+    const authUpdates: Record<string, unknown> = {};
+    if (newEmail && newEmail !== coord.email) {
+      authUpdates.email = newEmail;
+      authUpdates.email_confirm = true;
+    }
+    if (body.password) authUpdates.password = body.password;
+    if (Object.keys(authUpdates).length > 0) {
+      const { error: authError } = await admin.auth.admin.updateUserById(coordUserId, authUpdates);
+      if (authError) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `Failed to update auth account: ${authError.message}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ==========================================================
+    // 6. Update profile row.
+    // ==========================================================
+    if (newEmail) updates.email = newEmail;
+    if (Object.keys(updates).length > 1) {
+      const { error: updateErr } = await admin
+        .from("profiles")
+        .update(updates)
+        .eq("user_id", coordUserId);
+      if (updateErr) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: `Database error: ${updateErr.message}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    await admin.from("audit_logs").insert({
+      user_id: user.id,
+      action: "university_admin.update_coordinator",
+      entity_type: "profile",
+      entity_id: coordUserId,
+      new_values: { ...updates, password_changed: Boolean(body.password) },
+    });
+
+    return NextResponse.json<ApiResponse<Record<string, unknown>>>({
+      success: true,
+      data: updates,
+      message: "Coordinator updated",
+    });
+  } catch (err) {
+    console.error(`[PUT /api/coordinators/[id]] unhandled`, err);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: err instanceof Error ? err.message : "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/coordinators/[id]
+ *
+ * Permanently delete a coordinator account (University Admin / Super Admin).
+ * Runs hard_delete_user(uuid) — profile + auth user + personal data.
+ * Rows referencing them as an actor (programs they coordinate,
+ * departments they head) are detached (set NULL), never destroyed.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: coordUserId } = await params;
+    if (!coordUserId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Missing coordinator id" },
+        { status: 400 }
+      );
+    }
+
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfigured (service role key missing)" },
+        { status: 500 }
+      );
+    }
+    const admin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: adminProfile } = await admin
+      .from("profiles")
+      .select("user_id, role, university_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const adminRole = adminProfile?.role as UserRole | undefined;
+    const isSuperAdmin = adminRole === "super_admin";
+    if (!isSuperAdmin && adminRole !== "university_admin") {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    if (coordUserId === user.id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "You cannot delete your own account" },
+        { status: 400 }
+      );
+    }
+
+    const { data: coord } = await admin
+      .from("profiles")
+      .select("user_id, role, university_id, email, full_name")
+      .eq("user_id", coordUserId)
+      .maybeSingle();
+
+    if (!coord) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Coordinator not found" },
+        { status: 404 }
+      );
+    }
+
+    if (!isSuperAdmin) {
+      if (!adminProfile?.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Your profile has no university_id" },
+          { status: 403 }
+        );
+      }
+      if (coord.university_id && coord.university_id !== adminProfile.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Coordinator belongs to a different university" },
+          { status: 403 }
+        );
+      }
+    }
+
+    const { data: rpcResult, error: rpcError } = await admin.rpc("hard_delete_user", {
+      p_user_id: coordUserId,
+    });
+
+    if (rpcError) {
+      console.error("[DELETE /api/coordinators/[id]] RPC failed:", rpcError);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: `Failed to delete coordinator: ${rpcError.message}` },
+        { status: 500 }
+      );
+    }
+
+    const result = (rpcResult ?? {}) as Record<string, unknown>;
+    if (result.error) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: String(result.error) },
+        { status: 400 }
+      );
+    }
+
+    await admin.from("audit_logs").insert({
+      user_id: user.id,
+      action: `${isSuperAdmin ? "super_admin" : "university_admin"}.delete_coordinator`,
+      entity_type: "profile",
+      entity_id: coordUserId,
+      old_values: { email: coord.email, role: coord.role },
+      new_values: null,
+    });
+
+    return NextResponse.json<ApiResponse<Record<string, unknown>>>({
+      success: true,
+      data: result,
+      message: `${coord.full_name || coord.email} permanently deleted`,
+    });
+  } catch (err) {
+    console.error(`[DELETE /api/coordinators/[id]] unhandled`, err);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: err instanceof Error ? err.message : "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

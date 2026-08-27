@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   UserCheck,
   UserX,
+  Pencil,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,13 @@ export default function UniversityAdminMOUsPage() {
   const [detailMOU, setDetailMOU] = useState<MOU | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MOU | null>(null);
+
+  // Edit dialog state
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<MOU | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editEndsAt, setEditEndsAt] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Invite dialog state
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -495,6 +503,56 @@ export default function UniversityAdminMOUsPage() {
     }
   };
 
+  // ── Edit MOU fields ──────────────────────────────────────────
+  const openEditDialog = (mou: MOU) => {
+    setEditTarget(mou);
+    setEditNotes(mou.notes || "");
+    setEditEndsAt(mou.ends_at ? mou.ends_at.slice(0, 10) : "");
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTarget) return;
+    try {
+      setIsSavingEdit(true);
+      const res = await fetch(`/api/mous/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // Only the editable fields — status transitions go through the
+        // dedicated action buttons.
+        body: JSON.stringify({
+          notes: editNotes.trim() || null,
+          ends_at: editEndsAt || null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error("Failed to update MOU", {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success("MOU updated successfully");
+      setIsEditOpen(false);
+      setEditTarget(null);
+      // Keep the detail dialog in sync when it is showing this MOU. The
+      // PATCH response returns the bare row (no company join), so we merge
+      // the edited fields into the existing snapshot instead.
+      if (detailMOU?.id === editTarget.id) {
+        setDetailMOU({
+          ...detailMOU,
+          notes: editNotes.trim() || null,
+          ends_at: editEndsAt || null,
+        });
+      }
+      fetchMOUs();
+    } catch (err) {
+      toast.fromError(err, "Failed to update MOU");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // ── Delete MOU ─────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -668,6 +726,10 @@ export default function UniversityAdminMOUsPage() {
                           <DropdownMenuItem onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}>
                             <FileText className="h-4 w-4 mr-2" />
                             View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(mou)}>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit Details
                           </DropdownMenuItem>
                           {getNextActions(mou).map((action) => (
                             <DropdownMenuItem
@@ -1276,6 +1338,14 @@ export default function UniversityAdminMOUsPage() {
                 )}
               </DialogBody>
               <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => openEditDialog(detailMOU)}
+                  title="Edit notes and end date"
+                >
+                  <Pencil className="h-4 w-4" />
+                  <span className="ml-1.5">Edit</span>
+                </Button>
                 {getNextActions(detailMOU).map((action) => (
                   <Button
                     key={action.status}
@@ -1296,6 +1366,60 @@ export default function UniversityAdminMOUsPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit MOU Dialog ────────────────────────────────────── */}
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+          setIsEditOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Edit MOU
+            </DialogTitle>
+            <DialogDescription>
+              Update the agreement with {editTarget?.companies?.name || "this company"}. Status
+              changes are made with the action buttons.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-mou-ends-at">End Date</Label>
+              <Input
+                id="edit-mou-ends-at"
+                type="date"
+                value={editEndsAt}
+                onChange={(e) => setEditEndsAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Clear the field to remove the end date (open-ended agreement).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-mou-notes">Notes</Label>
+              <Textarea
+                id="edit-mou-notes"
+                placeholder="Any additional notes about this MOU..."
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSavingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+              {isSavingEdit ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

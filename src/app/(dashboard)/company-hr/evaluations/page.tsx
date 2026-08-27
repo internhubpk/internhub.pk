@@ -66,6 +66,7 @@ import {
   Zap,
   Upload,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -76,6 +77,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -133,6 +135,14 @@ export default function CompanyHREvaluationsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [issuingCert, setIssuingCert] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // When set, the evaluate dialog edits THIS evaluation via
+  // PUT /api/company-hr/evaluations/[id] instead of the upserting POST.
+  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<FinalEvaluation | null>(null);
+  const [isDeletingEvaluation, setIsDeletingEvaluation] = useState(false);
 
   useEffect(() => {
     fetchEvaluations();
@@ -206,36 +216,54 @@ export default function CompanyHREvaluationsPage() {
   }
 
   const handleSubmitEvaluation = async (status: "submitted" | "in_progress") => {
-    if (!evaluateTarget) {
+    if (!evaluateTarget && !editingEvaluationId) {
       toast.error("Action required", { description: "Please select an intern to evaluate." });
       return;
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/company-hr/evaluations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          student_internship_id: evaluateTarget.student_internship_id,
-          student_user_id: evaluateTarget.student_user_id,
-          internship_id: evaluateTarget.internship_id,
-          scores: {
-            overall: formState.overall_rating,
-            technical: formState.skills_rating,
-            attitude: formState.attitude_rating,
-            punctuality: formState.punctuality_rating,
-            quality: formState.quality_rating,
-            strengths: formState.strengths,
-            areas_for_improvement: formState.areas_for_improvement,
-            recommendation: formState.recommendation,
-          },
-          comments: formState.comments,
-          strengths: formState.strengths,
-          areas_for_improvement: formState.areas_for_improvement,
-          recommendation: formState.recommendation,
-          status,
-        }),
-      });
+      const scores = {
+        overall: formState.overall_rating,
+        technical: formState.skills_rating,
+        attitude: formState.attitude_rating,
+        punctuality: formState.punctuality_rating,
+        quality: formState.quality_rating,
+      };
+      const res = editingEvaluationId
+        ? // Edit/revise an existing evaluation by id.
+          await fetch(`/api/company-hr/evaluations/${editingEvaluationId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              scores,
+              comments: formState.comments,
+              strengths: formState.strengths,
+              areas_for_improvement: formState.areas_for_improvement,
+              recommendation: formState.recommendation || undefined,
+              status,
+            }),
+          })
+        : // New evaluation — the POST endpoint upserts on (student + internship).
+          await fetch("/api/company-hr/evaluations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              student_internship_id: evaluateTarget?.student_internship_id,
+              student_user_id: evaluateTarget?.student_user_id,
+              internship_id: evaluateTarget?.internship_id,
+              scores: {
+                ...scores,
+                strengths: formState.strengths,
+                areas_for_improvement: formState.areas_for_improvement,
+                recommendation: formState.recommendation,
+              },
+              comments: formState.comments,
+              strengths: formState.strengths,
+              areas_for_improvement: formState.areas_for_improvement,
+              recommendation: formState.recommendation,
+              status,
+            }),
+          });
       const j = await res.json().catch(() => null);
       if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
       toast.success(
@@ -250,6 +278,7 @@ export default function CompanyHREvaluationsPage() {
         recommendation: "",
       });
       setEvaluateTarget(null);
+      setEditingEvaluationId(null);
       await fetchEvaluations();
     } catch (e: any) {
       toast.error("Error", { description: e.message || "Failed to save evaluation" });
@@ -285,10 +314,10 @@ export default function CompanyHREvaluationsPage() {
   // LinkedIn right away. HR can attach the actual PDF later from the
   // Certificates page.
   const [quickIssuingId, setQuickIssuingId] = useState<string | null>(null);
+  // The shared ConfirmDialog replaced the previous native browser prompt
+  // here: the issuing flow is confirmed via the dialog before running.
+  const [quickIssueTarget, setQuickIssueTarget] = useState<FinalEvaluation | null>(null);
   const handleQuickIssueCertificate = async (evaluation: FinalEvaluation) => {
-    if (!confirm(`Issue a certificate for ${evaluation.intern_name}? The student will be notified and a verification URL will be generated. You can attach the actual PDF later from the Certificates page.`)) {
-      return;
-    }
     setQuickIssuingId(evaluation.id);
     try {
       const res = await fetch("/api/company-hr/certificates", {
@@ -317,6 +346,7 @@ export default function CompanyHREvaluationsPage() {
       });
     } finally {
       setQuickIssuingId(null);
+      setQuickIssueTarget(null);
     }
   };
 
@@ -327,6 +357,36 @@ export default function CompanyHREvaluationsPage() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<FinalEvaluation | null>(null);
   const [activeTab, setActiveTab] = useState("all");
+
+  // Delete an evaluation (DELETE /api/company-hr/evaluations/[id]).
+  // Blocked server-side with 409 when a certificate was issued from it —
+  // the API's explanation is surfaced in the error toast.
+  const handleDeleteEvaluation = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingEvaluation(true);
+    try {
+      const res = await fetch(`/api/company-hr/evaluations/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Evaluation deleted", {
+        description: `${deleteTarget.intern_name} — ${deleteTarget.internship_title}`,
+      });
+      setDeleteTarget(null);
+      if (selectedEvaluation?.id === deleteTarget.id) {
+        setSelectedEvaluation(null);
+        setIsViewOpen(false);
+      }
+      await fetchEvaluations();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to delete evaluation" });
+    } finally {
+      setIsDeletingEvaluation(false);
+    }
+  };
   
   // Form state for evaluation
   const [formState, setFormState] = useState({
@@ -603,6 +663,9 @@ export default function CompanyHREvaluationsPage() {
                             size="sm"
                             onClick={() => {
                               setSelectedEvaluation(evaluation);
+                              // Editing an existing evaluation → submit via
+                              // PUT /api/company-hr/evaluations/[id].
+                              setEditingEvaluationId(evaluation.id);
                               // Pre-populate the form with existing scores if available
                               setFormState({
                                 overall_rating: evaluation.overall_rating || 0,
@@ -631,7 +694,7 @@ export default function CompanyHREvaluationsPage() {
                               setIsEvaluateOpen(true);
                             }}
                           >
-                            <Edit3 className="h-3 w-3 mr-1" /> Evaluate
+                            <Edit3 className="h-3 w-3 mr-1" /> {evaluation.status === "in_progress" ? "Revise" : "Evaluate"}
                           </Button>
                         )}
 
@@ -641,7 +704,7 @@ export default function CompanyHREvaluationsPage() {
                               size="sm"
                               className="bg-purple-600 hover:bg-purple-700"
                               disabled={quickIssuingId === evaluation.id}
-                              onClick={() => handleQuickIssueCertificate(evaluation)}
+                              onClick={() => setQuickIssueTarget(evaluation)}
                             >
                               {quickIssuingId === evaluation.id ? (
                                 <>
@@ -676,6 +739,12 @@ export default function CompanyHREvaluationsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => { setSelectedEvaluation(evaluation); setIsViewOpen(true); }}>
                               <Eye className="mr-2 h-4 w-4" /> Full Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteTarget(evaluation)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Evaluation
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={!evaluation.certificate_issued}
@@ -861,7 +930,7 @@ export default function CompanyHREvaluationsPage() {
                     <Button
                       className="bg-purple-600 hover:bg-purple-700"
                       disabled={quickIssuingId === selectedEvaluation.id}
-                      onClick={() => handleQuickIssueCertificate(selectedEvaluation)}
+                      onClick={() => setQuickIssueTarget(selectedEvaluation)}
                     >
                       {quickIssuingId === selectedEvaluation.id ? (
                         <>
@@ -889,12 +958,20 @@ export default function CompanyHREvaluationsPage() {
       </Dialog>
 
       {/* Evaluate Dialog */}
-      <Dialog open={isEvaluateOpen} onOpenChange={setIsEvaluateOpen}>
+      <Dialog
+        open={isEvaluateOpen}
+        onOpenChange={(open) => {
+          setIsEvaluateOpen(open);
+          if (!open) setEditingEvaluationId(null);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Complete Final Evaluation</DialogTitle>
+            <DialogTitle>{editingEvaluationId ? "Revise Final Evaluation" : "Complete Final Evaluation"}</DialogTitle>
             <DialogDescription>
-              Rate this intern&apos;s performance during their internship.
+              {editingEvaluationId
+                ? "Update the ratings and feedback for this evaluation. Your changes are logged."
+                : "Rate this intern's performance during their internship."}
             </DialogDescription>
           </DialogHeader>
 
@@ -996,26 +1073,83 @@ export default function CompanyHREvaluationsPage() {
           )}
           {selectedEvaluation && (
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEvaluateOpen(false)} disabled={submitting}>
+                <Button
+                  variant="outline"
+                  onClick={() => { setIsEvaluateOpen(false); setEditingEvaluationId(null); }}
+                  disabled={submitting}
+                >
                   Cancel
                 </Button>
                 <Button
                   variant="secondary"
                   onClick={() => handleSubmitEvaluation("in_progress")}
-                  disabled={submitting || !evaluateTarget}
+                  disabled={submitting || (!editingEvaluationId && !evaluateTarget)}
                 >
                   {submitting ? "Saving..." : "Save Draft"}
                 </Button>
                 <Button
-                  disabled={!formState.overall_rating || submitting || !evaluateTarget}
+                  disabled={!formState.overall_rating || submitting || (!editingEvaluationId && !evaluateTarget)}
                   onClick={() => handleSubmitEvaluation("submitted")}
                 >
-                  {submitting ? "Submitting..." : "Submit Evaluation"}
+                  {submitting ? "Submitting..." : editingEvaluationId ? "Save Changes" : "Submit Evaluation"}
                 </Button>
               </DialogFooter>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Quick Issue Certificate Confirmation */}
+      <ConfirmDialog
+        open={!!quickIssueTarget}
+        onOpenChange={(open) => !open && setQuickIssueTarget(null)}
+        title={
+          <>
+            <Award className="h-5 w-5 shrink-0" />
+            Issue certificate for {quickIssueTarget?.intern_name}?
+          </>
+        }
+        description={
+          <span className="block">
+            The student will be notified and a verification URL will be generated. You can
+            attach the actual PDF later from the Certificates page.
+          </span>
+        }
+        confirmLabel="Issue Certificate"
+        variant="info"
+        loading={!!quickIssueTarget && quickIssuingId === quickIssueTarget.id}
+        onConfirm={() => {
+          if (quickIssueTarget) handleQuickIssueCertificate(quickIssueTarget);
+        }}
+      />
+
+      {/* Delete Evaluation Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete evaluation?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This permanently deletes the evaluation for{" "}
+              <strong>{deleteTarget?.intern_name}</strong> ({deleteTarget?.internship_title}).
+              This action cannot be undone.
+            </span>
+            <span className="block bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+              If a completion certificate was issued from this evaluation, deletion is blocked
+              until the certificate is revoked or removed.
+            </span>
+          </span>
+        }
+        confirmLabel="Delete Evaluation"
+        variant="danger"
+        loading={isDeletingEvaluation}
+        onConfirm={handleDeleteEvaluation}
+      />
     </div>
   );
 }

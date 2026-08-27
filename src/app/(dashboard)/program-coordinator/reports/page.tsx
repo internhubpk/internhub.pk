@@ -260,45 +260,95 @@ export default function ProgramCoordinatorReportsPage() {
   const pendingLogs = weeklyLogs.filter((l) => l.status === "submitted").length;
   const totalEvaluations = evaluations.length;
 
-  // Generate Word document report
+  // Export the current report data as a CSV file.
+  // (The old flow POSTed to /api/department-coordinator/reports which only
+  // implements GET — every export died with 405. Replaced with a reliable
+  // client-side CSV export of the currently visible data.)
   const handleGenerateReport = async () => {
     try {
       setIsGenerating(true);
-      toast.info("Generating Report", {
-        description: "Preparing your program report document...",
+      toast.info("Exporting Report", {
+        description: "Preparing your program report...",
       });
 
-      // Call the reports API to generate a Word document
-      const response = await fetch("/api/department-coordinator/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "program_summary",
-          department_id: profile?.department_id,
-          include_weekly_logs: activeTab !== "evaluations",
-          include_evaluations: activeTab !== "weekly_logs",
-        }),
+      const esc = (v: unknown) => {
+        const s = v === null || v === undefined ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const stamp = new Date().toISOString().slice(0, 10);
+
+      const lines: string[] = [];
+      lines.push(["Program Report", stamp].map(esc).join(","));
+
+      if (activeTab !== "evaluations") {
+        lines.push("");
+        lines.push(["WEEKLY LOGS"].join(","));
+        lines.push(
+          ["Student", "Email", "Week", "Start", "End", "Status", "Hours", "Submitted", "Tasks"]
+            .map(esc)
+            .join(",")
+        );
+        for (const l of filteredWeeklyLogs) {
+          lines.push(
+            [
+              l.student_name,
+              l.student_email,
+              l.week_number,
+              l.week_start_date?.slice(0, 10) ?? "",
+              l.week_end_date?.slice(0, 10) ?? "",
+              l.status,
+              l.hours_worked ?? "",
+              l.submitted_at?.slice(0, 16).replace("T", " ") ?? "",
+              (l.tasks_completed || []).join("; "),
+            ]
+              .map(esc)
+              .join(",")
+          );
+        }
+      }
+
+      if (activeTab !== "weekly_logs") {
+        lines.push("");
+        lines.push(["EVALUATIONS"].join(","));
+        lines.push(
+          ["Student", "Email", "Type", "Evaluator", "Rating", "Status", "Date"]
+            .map(esc)
+            .join(",")
+        );
+        for (const e of filteredEvaluations) {
+          lines.push(
+            [
+              e.student_name,
+              e.student_email,
+              e.type,
+              e.evaluator_name ?? "",
+              e.rating ?? "",
+              e.status,
+              e.submitted_at?.slice(0, 16).replace("T", " ") ?? "",
+            ]
+              .map(esc)
+              .join(",")
+          );
+        }
+      }
+
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `program-report-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success("Report Exported", {
+        description: "Your program report has been downloaded.",
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate report");
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.data?.file_url) {
-        // Download the file
-        window.open(data.data.file_url, "_blank");
-        toast.success("Report Generated", {
-          description: "Your report is ready for download.",
-        });
-      } else {
-        throw new Error(data.error || "Unknown error");
-      }
     } catch (error) {
       console.error("Error generating report:", error);
-      toast.error("Generation Failed", {
-        description: "Could not generate the report. Please try again.",
+      toast.error("Export Failed", {
+        description: "Could not export the report. Please try again.",
       });
     } finally {
       setIsGenerating(false);

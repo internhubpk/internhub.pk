@@ -9,6 +9,7 @@ import {
   Mail,
   BookOpen,
   Calendar,
+  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -162,6 +163,29 @@ export default function CoordinatorsPage() {
         description="Program coordinators in your department"
       />
 
+      {/* Permission notice — verified against the live backend:
+          PUT / PATCH / DELETE /api/coordinators/[id] accept
+          university_admin / super_admin only, and RLS blocks
+          department_coordinator profile updates (0 rows affected), so no
+          edit / deactivate / delete actions are offered on this page. */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3 rounded-lg border border-muted bg-muted/40 p-4 text-sm">
+            <Info className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium">Read-only for Department Coordinators</p>
+              <p className="text-muted-foreground mt-1">
+                Program Coordinator accounts are created automatically when a
+                program is added, and only a <strong>University Admin</strong>{" "}
+                can edit, deactivate or delete them. Contact your university&apos;s
+                administrator for account changes — you can still view the
+                coordinators, their programs and their status below.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
@@ -230,7 +254,7 @@ export default function CoordinatorsPage() {
               description={
                 searchQuery || filterStatus !== "all"
                   ? "Try adjusting your search or filter."
-                  : "Program Coordinators are automatically created when you create a Program. Go to Programs to create one."
+                  : "Program Coordinators are automatically created when you create a Program. Go to Programs to create one. Only a University Admin can edit, deactivate, or delete coordinator accounts."
               }
               action={
                 !searchQuery && filterStatus === "all"

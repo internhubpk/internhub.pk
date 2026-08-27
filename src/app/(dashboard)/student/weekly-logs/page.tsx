@@ -51,6 +51,7 @@ import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { SignaturePad } from "@/components/supervisors/signature-pad";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -167,6 +168,10 @@ export default function StudentWeeklyLogsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  // Delete confirmation state (per submitted log).
+  const [deleteLogTarget, setDeleteLogTarget] = useState<WeeklyLog | null>(null);
+  const [isDeletingLog, setIsDeletingLog] = useState(false);
 
   const [weekFromDate, setWeekFromDate] = useState("");
   const [weekToDate, setWeekToDate] = useState("");
@@ -424,6 +429,39 @@ export default function StudentWeeklyLogsPage() {
       console.error("Error fetching weekly logs:", err);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  // Delete one of the student's own submitted logs — always by the LOG's id
+  // (never the student id, which previously wiped every week at once).
+  // Approved logs are blocked server-side with a 409; that message is
+  // surfaced through the error toast below.
+  async function handleDeleteLog() {
+    if (!deleteLogTarget) return;
+    setIsDeletingLog(true);
+    try {
+      const res = await fetch(`/api/student/weekly-logs/${encodeURIComponent(deleteLogTarget.id)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || json?.error || "Request failed");
+      }
+      toast.success("Weekly log deleted", {
+        description:
+          json?.message ||
+          `Your ${deleteLogTarget.week_number ? `Week ${deleteLogTarget.week_number}` : formatDate(deleteLogTarget.week_start_date)} log has been removed.`,
+      });
+      setDeleteLogTarget(null);
+      setExpandedLogId(null);
+      fetchWeeklyLogs();
+    } catch (err) {
+      console.error("Error deleting weekly log:", err);
+      toast.error("Failed to delete log", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setIsDeletingLog(false);
     }
   }
 
@@ -1262,6 +1300,29 @@ export default function StudentWeeklyLogsPage() {
                             <Printer className="h-3.5 w-3.5" />
                             Word
                           </Button>
+                          {log.status === "approved" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 h-7"
+                              disabled
+                              title="Approved logs are part of the academic record and cannot be deleted — ask your supervisor to request a revision instead"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 h-7 text-destructive hover:text-destructive"
+                              title="Delete weekly log"
+                              onClick={() => setDeleteLogTarget(log)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          )}
                           {hasDailyEntries && (
                             <Button variant="ghost" size="sm" className="gap-1 h-7" onClick={() => setExpandedLogId(isExpanded ? null : log.id)}>
                               {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -1381,6 +1442,33 @@ export default function StudentWeeklyLogsPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Weekly Log Confirmation */}
+      <ConfirmDialog
+        open={deleteLogTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteLogTarget(null);
+        }}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete weekly log?
+          </>
+        }
+        description={
+          deleteLogTarget
+            ? `This permanently deletes your ${
+                deleteLogTarget.week_number ? `Week ${deleteLogTarget.week_number}` : ""
+              } log (${formatDate(deleteLogTarget.week_start_date)} – ${formatDate(
+                deleteLogTarget.week_end_date
+              )}, status: ${deleteLogTarget.status}) including its daily entries, hours and attachments. Approved logs cannot be deleted — they are part of the academic record. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={isDeletingLog ? "Deleting..." : "Delete Log"}
+        variant="danger"
+        loading={isDeletingLog}
+        onConfirm={handleDeleteLog}
+      />
     </div>
   );
 }

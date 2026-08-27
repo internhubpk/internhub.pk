@@ -16,6 +16,8 @@ import {
   UserCheck,
   UserX,
   Trash2,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState, ErrorState } from "@/components/layout/empty-state";
 import { toast } from "@/components/shared/toast";
@@ -241,6 +244,17 @@ export default function CompanyHRMOUsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRespondingInv, setIsRespondingInv] = useState(false);
   const [isRevokingInv, setIsRevokingInv] = useState(false);
+
+  // Edit MOU dialog state (PATCH /api/mous/[id] — route + RLS both allow
+  // company_hr for their own company's MOUs).
+  const [editMOU, setEditMOU] = useState<MOU | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editEndsAt, setEditEndsAt] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Terminate MOU confirmation state
+  const [terminateMOU, setTerminateMOU] = useState<MOU | null>(null);
+  const [isTerminating, setIsTerminating] = useState(false);
 
   // ── Fetch MOUs ─────────────────────────────────────────────────
   const fetchMOUs = useCallback(async () => {
@@ -465,6 +479,71 @@ export default function CompanyHRMOUsPage() {
     setFormEndsAt("");
   };
 
+  // ── Edit MOU (notes + end date) ───────────────────────────────
+  const openEditDialog = (mou: MOU) => {
+    setEditMOU(mou);
+    setEditNotes(mou.notes || "");
+    setEditEndsAt(mou.ends_at ? mou.ends_at.slice(0, 10) : "");
+  };
+
+  const handleSaveMOUEdit = async () => {
+    if (!editMOU) return;
+    try {
+      setIsSavingEdit(true);
+      const res = await fetch(`/api/mous/${editMOU.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: editNotes.trim() || null,
+          ends_at: editEndsAt || null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error("Failed to update MOU", {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success("MOU updated successfully");
+      setEditMOU(null);
+      fetchMOUs();
+    } catch (err) {
+      toast.fromError(err, "Failed to update MOU");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ── Terminate an active MOU ───────────────────────────────────
+  const handleTerminateMOU = async () => {
+    if (!terminateMOU) return;
+    try {
+      setIsTerminating(true);
+      const res = await fetch(`/api/mous/${terminateMOU.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "terminated" }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error("Failed to terminate MOU", {
+          description: json.error || `Error ${res.status}`,
+        });
+        return;
+      }
+      toast.success("MOU terminated", {
+        description: "Your internships are no longer visible to this university.",
+      });
+      setTerminateMOU(null);
+      fetchMOUs();
+    } catch (err) {
+      toast.fromError(err, "Failed to terminate MOU");
+    } finally {
+      setIsTerminating(false);
+    }
+  };
+
   // ── Status counts for quick overview ────────────────────────────
   const statusCounts = mous.reduce(
     (acc, mou) => {
@@ -606,14 +685,37 @@ export default function CompanyHRMOUsPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}
-                        >
-                          <FileText className="h-4 w-4" />
-                          <span className="sr-only">View details</span>
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(mou)}
+                            title="Edit MOU notes and end date"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Edit MOU</span>
+                          </Button>
+                          {mou.status === "active" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setTerminateMOU(mou)}
+                              title="Terminate this MOU"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              <span className="sr-only">Terminate MOU</span>
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setDetailMOU(mou); setIsDetailOpen(true); }}
+                          >
+                            <FileText className="h-4 w-4" />
+                            <span className="sr-only">View details</span>
+                          </Button>
+                        </div>
                       </TableCell>
                     </motion.tr>
                   ))}
@@ -1210,6 +1312,111 @@ export default function CompanyHRMOUsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Edit MOU Dialog ────────────────────────────────────── */}
+      <Dialog
+        open={!!editMOU}
+        onOpenChange={(open) => {
+          if (!open) setEditMOU(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          {editMOU && (
+            <div>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5" />
+                  Edit MOU
+                </DialogTitle>
+                <DialogDescription>
+                  Update the notes and end date of the agreement with{" "}
+                  {editMOU.universities?.name || "this university"}.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody className="space-y-4">
+                <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">University</span>
+                    <span className="font-medium">
+                      {editMOU.universities?.name || "Unknown"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Status</span>
+                    <StatusBadge status={editMOU.status} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-ends-at">End Date</Label>
+                  <Input
+                    id="edit-ends-at"
+                    type="date"
+                    value={editEndsAt}
+                    onChange={(e) => setEditEndsAt(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Clear the field to remove the end date.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-mou-notes">Notes</Label>
+                  <Textarea
+                    id="edit-mou-notes"
+                    placeholder="Any additional notes about this MOU..."
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditMOU(null)} disabled={isSavingEdit}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveMOUEdit} disabled={isSavingEdit}>
+                  {isSavingEdit ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Terminate MOU Confirmation ─────────────────────────── */}
+      <ConfirmDialog
+        open={!!terminateMOU}
+        onOpenChange={(open) => !open && setTerminateMOU(null)}
+        title={
+          <>
+            <XCircle className="h-5 w-5 shrink-0" />
+            Terminate MOU with {terminateMOU?.universities?.name || "this university"}?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              Terminating ends the active agreement. Students of this university will no longer
+              see your internships, and new applications from them are blocked.
+            </span>
+            <span className="block bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+              This cannot be undone from this page — a new MOU would need to be created to
+              restore the partnership.
+            </span>
+          </span>
+        }
+        confirmLabel="Terminate MOU"
+        variant="warning"
+        loading={isTerminating}
+        onConfirm={handleTerminateMOU}
+      />
     </div>
   );
 }

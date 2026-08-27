@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import { UpdateStudentSchema } from "@/lib/validations";
+import { getCaller, isCallerError, callerErrorBody, canManageTarget } from "@/lib/user-admin";
 import type { ApiResponse, Student, UserRole } from "@/types";
 
 // Roles that can view student details
@@ -189,8 +190,15 @@ export async function PUT(
     const isDepartmentCoordinator =
       profile.role === "department_coordinator" &&
       existingStudent.department_id === profile.department_id;
+    // Program coordinators manage the students of their own university
+    // (the PC dashboard creates/edits/deletes students). Scope: the PC's
+    // university must match the student's university.
+    const isProgramCoordinator =
+      profile.role === "program_coordinator" &&
+      !!profile.university_id &&
+      (existingStudent as Student).university_id === profile.university_id;
 
-    if (!isOwnProfile && !isAdmin && !isDepartmentCoordinator) {
+    if (!isOwnProfile && !isAdmin && !isDepartmentCoordinator && !isProgramCoordinator) {
       return NextResponse.json<ApiResponse<never>>(
         { success: false, error: "Forbidden: Cannot update this student" },
         { status: 403 }
@@ -278,6 +286,133 @@ export async function PUT(
     });
   } catch (error) {
     console.error("Error in PUT /api/students/[id]:", error);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/students/[id]
+ * Permanently delete a student account.
+ *
+ * Permissions: super_admin (any) OR university_admin / department_coordinator /
+ * program_coordinator limited to students of THEIR OWN university.
+ *
+ * Runs public.hard_delete_user(uuid) (migration 0100): removes the profile +
+ * auth.users row + everything the student owns (applications, weekly logs,
+ * evaluations, submissions, attendance, certificates, documents, …).
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    const ctx = await getCaller();
+    if (isCallerError(ctx)) {
+      const err = callerErrorBody(ctx.error);
+      return NextResponse.json<ApiResponse<never>>(err.body, { status: err.status });
+    }
+    const { callerUserId, caller, admin } = ctx;
+
+    if (!admin) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Server misconfigured (missing service role key)" },
+        { status: 500 }
+      );
+    }
+
+    if (id === callerUserId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "You cannot delete your own account" },
+        { status: 400 }
+      );
+    }
+
+    // Fetch the student's scope (students table row carries university_id).
+    const { data: studentRow } = await admin
+      .from("students")
+      .select("user_id, university_id, department_id, program_id")
+      .eq("user_id", id)
+      .maybeSingle();
+
+    if (!studentRow) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Student not found" },
+        { status: 404 }
+      );
+    }
+
+    // Verify the caller's profile row as well (the students table could be
+    // stale) — target university must match the caller's scope.
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("user_id, role, university_id")
+      .eq("user_id", id)
+      .maybeSingle();
+
+    const targetUniversity =
+      studentRow.university_id || targetProfile?.university_id || null;
+
+    if (!canManageTarget(caller, { university_id: targetUniversity })) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: you can only delete students of your own university" },
+        { status: 403 }
+      );
+    }
+
+    // Department coordinators can only delete students of their department.
+    if (
+      caller.role === "department_coordinator" &&
+      caller.department_id &&
+      studentRow.department_id &&
+      caller.department_id !== studentRow.department_id
+    ) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: this student belongs to another department" },
+        { status: 403 }
+      );
+    }
+
+    const { data: rpcResult, error: rpcError } = await admin.rpc("hard_delete_user", {
+      p_user_id: id,
+    });
+
+    if (rpcError) {
+      console.error("Error in DELETE /api/students/[id] RPC:", rpcError);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: `Failed to delete student: ${rpcError.message}` },
+        { status: 500 }
+      );
+    }
+
+    const result = (rpcResult ?? {}) as Record<string, unknown>;
+    if (result.error) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: String(result.error) },
+        { status: 400 }
+      );
+    }
+
+    // Audit trail
+    await admin.from("audit_logs").insert({
+      user_id: callerUserId,
+      action: `${caller.role}.delete_student`,
+      entity_type: "student",
+      entity_id: id,
+      new_values: null,
+    });
+
+    return NextResponse.json<ApiResponse<Record<string, unknown>>>({
+      success: true,
+      data: result,
+      message: "Student and all their personal data were permanently deleted",
+    });
+  } catch (error) {
+    console.error("Error in DELETE /api/students/[id]:", error);
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Internal server error" },
       { status: 500 }

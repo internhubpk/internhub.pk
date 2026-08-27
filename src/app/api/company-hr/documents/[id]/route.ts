@@ -39,6 +39,116 @@ async function getCompanyProfile(supabase: any, userId: string) {
   return { profile, errorResponse: null };
 }
 
+// PUT /api/company-hr/documents/[id] — rename / re-type a document
+// body: { name?, type?, status? }
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    const body = await request.json();
+    const { name, type, status } = body;
+
+    if (name === undefined && type === undefined && status === undefined) {
+      return NextResponse.json(
+        { error: { code: "VALIDATION_ERROR", message: "Provide name, type or status to update" } },
+        { status: 400 }
+      );
+    }
+    if (name !== undefined && (typeof name !== "string" || name.trim().length < 1)) {
+      return NextResponse.json(
+        { error: { code: "VALIDATION_ERROR", message: "Name cannot be empty" } },
+        { status: 400 }
+      );
+    }
+
+    // Look up the document and verify company scope (same as DELETE).
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("id, entity_id, entity_type, name, type, status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!doc) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Document not found" } },
+        { status: 404 }
+      );
+    }
+    if (doc.entity_type !== "student" || !doc.entity_id) {
+      return NextResponse.json(
+        { error: { code: "FORBIDDEN", message: "Document is not linked to a student" } },
+        { status: 403 }
+      );
+    }
+
+    const { data: si } = await supabase
+      .from("student_internships")
+      .select("id")
+      .eq("student_user_id", doc.entity_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!si) {
+      return NextResponse.json(
+        { error: { code: "FORBIDDEN", message: "Document does not belong to your company" } },
+        { status: 403 }
+      );
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (type !== undefined) updates.type = type;
+    if (status !== undefined) updates.status = status;
+
+    const { data: updated, error: updateError } = await supabase
+      .from("documents")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Error updating document:", updateError);
+      return NextResponse.json(
+        { error: { code: "DATABASE_ERROR", message: "Failed to update document" } },
+        { status: 500 }
+      );
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "company_hr.update_document",
+      entity_type: "document",
+      entity_id: id,
+      new_values: updates,
+    });
+
+    return NextResponse.json({ success: true, data: updated, message: "Document updated" });
+  } catch (error) {
+    console.error("Unexpected error in PUT document:", error);
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE /api/company-hr/documents/[id] — remove a document
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

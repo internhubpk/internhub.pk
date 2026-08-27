@@ -16,6 +16,7 @@ import {
   Search,
   Filter,
   Trash2,
+  Pencil,
   Eye,
   Copy,
   RefreshCw,
@@ -25,6 +26,7 @@ import {
   Calendar,
   FileText,
   ClipboardList,
+  X,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "@/components/shared/toast";
@@ -72,6 +75,46 @@ interface NotificationRecord {
   readCount: number;
 }
 
+// Map rows from GET /api/site-supervisor/notifications into the display
+// shape. The API returns RAW notifications-table rows (one row per
+// recipient), so normalize the column names; already-mapped legacy records
+// pass through unchanged.
+function mapSentNotificationRows(rows: any[]): NotificationRecord[] {
+  return (rows || []).map((row: any) => {
+    if (!row) return null;
+    if (row.message !== undefined || row.created_at !== undefined) {
+      // Raw notifications-table row.
+      const meta =
+        row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      return {
+        id: row.id,
+        title: row.title || "",
+        content: row.message ?? row.content ?? "",
+        recipientType: meta.recipient_type === "broadcast" ? "broadcast" : "individual",
+        recipientCount: 1,
+        recipients: row.user_id ? [row.user_id] : [],
+        priority: (row.priority as NotificationRecord["priority"]) || "medium",
+        sentAt: row.created_at || row.sentAt || new Date().toISOString(),
+        deliveryStatus: row.is_read ? "read" : "sent",
+        readCount: row.is_read ? 1 : 0,
+      } as NotificationRecord;
+    }
+    // Already-mapped record (legacy shape).
+    return {
+      id: row.id,
+      title: row.title || "",
+      content: row.content ?? row.message ?? "",
+      recipientType: row.recipientType || "individual",
+      recipientCount: row.recipientCount ?? 1,
+      recipients: Array.isArray(row.recipients) ? row.recipients : [],
+      priority: row.priority || "medium",
+      sentAt: row.sentAt || row.createdAt || new Date().toISOString(),
+      deliveryStatus: row.deliveryStatus || "sent",
+      readCount: row.readCount ?? 0,
+    } as NotificationRecord;
+  }).filter(Boolean) as NotificationRecord[];
+}
+
 interface NotificationTemplate {
   id: string;
   name: string;
@@ -98,6 +141,12 @@ export default function SiteSupervisorNotificationsPage() {
   const [isLoadingSent, setIsLoadingSent] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Edit / Delete state for sent notifications. The API stores one row PER
+  // RECIPIENT — editing updates only the copy that was clicked.
+  const [editingNotification, setEditingNotification] = useState<NotificationRecord | null>(null);
+  const [deletingNotification, setDeletingNotification] = useState<NotificationRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
     fetchAssignedStudents();
     fetchSentNotifications();
@@ -109,15 +158,18 @@ export default function SiteSupervisorNotificationsPage() {
       const res = await fetch("/api/site-supervisor/notifications", { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json();
-      // API may return either { data: [...] } or [...] — handle both.
-      const list: NotificationRecord[] = Array.isArray(json)
+      // API may return { data: { items } }, { data: [...] }, { items } or a
+      // plain array — handle all shapes.
+      const rows: any[] = Array.isArray(json)
         ? json
         : Array.isArray(json?.data)
           ? json.data
-          : Array.isArray(json?.items)
-            ? json.items
-            : [];
-      setSentNotifications(list);
+          : Array.isArray(json?.data?.items)
+            ? json.data.items
+            : Array.isArray(json?.items)
+              ? json.items
+              : [];
+      setSentNotifications(mapSentNotificationRows(rows));
     } catch {
       // Non-fatal — leave the list empty.
     } finally {
@@ -214,6 +266,53 @@ export default function SiteSupervisorNotificationsPage() {
       return;
     }
 
+    // EDIT mode — updating an already-sent notification. Recipients can't
+    // be changed after sending; only this copy's title/message/priority are
+    // updated (direct supabase update guarded by sender_id).
+    if (editingNotification) {
+      if (!user) {
+        toast.error("Not signed in", { description: "Please refresh the page and try again." });
+        return;
+      }
+      setIsSending(true);
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("notifications")
+          .update({
+            title: notificationTitle,
+            message: notificationContent,
+            priority,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingNotification.id)
+          .eq("sender_id", user.id);
+        if (error) throw error;
+
+        toast.success("Notification updated", {
+          description: `"${notificationTitle}" has been updated${
+            recipientDisplayName(editingNotification)
+              ? ` for ${recipientDisplayName(editingNotification)}`
+              : ""
+          }.`,
+        });
+        setEditingNotification(null);
+        setNotificationTitle("");
+        setNotificationContent("");
+        setSelectedStudentIds([]);
+        fetchSentNotifications();
+        setActiveTab("sent");
+      } catch (error) {
+        console.error("Error updating notification:", error);
+        toast.error("Failed to update", {
+          description: error instanceof Error ? error.message : "An error occurred while updating the notification.",
+        });
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     if (recipientType === "individual" && selectedStudentIds.length === 0) {
       toast.error("No recipients selected", { description: "Please select at least one recipient." });
       return;
@@ -265,6 +364,64 @@ export default function SiteSupervisorNotificationsPage() {
         ? prev.filter(id => id !== studentId)
         : [...prev, studentId]
     );
+  }
+
+  // Resolve the recipient's display name for a sent-notification row
+  // (each row is the copy sent to ONE student).
+  function recipientDisplayName(notification: NotificationRecord): string | null {
+    const recipientId = notification.recipients?.[0];
+    if (!recipientId) return null;
+    return students.find(s => s.id === recipientId)?.name || null;
+  }
+
+  // Open the compose tab pre-filled to EDIT an already-sent notification.
+  function startEditNotification(notification: NotificationRecord) {
+    setEditingNotification(notification);
+    setNotificationTitle(notification.title);
+    setNotificationContent(notification.content);
+    setPriority(notification.priority);
+    setSelectedStudentIds([]);
+    setActiveTab("compose");
+  }
+
+  // Exit edit mode and clear the form.
+  function cancelEditing() {
+    setEditingNotification(null);
+    setNotificationTitle("");
+    setNotificationContent("");
+    setSelectedStudentIds([]);
+  }
+
+  // Delete a sent notification (direct supabase delete guarded by sender_id).
+  async function handleDeleteNotification() {
+    if (!deletingNotification || !user) return;
+    setIsDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", deletingNotification.id)
+        .eq("sender_id", user.id);
+      if (error) throw error;
+
+      toast.success("Notification deleted", {
+        description: `"${deletingNotification.title}" has been removed${
+          recipientDisplayName(deletingNotification)
+            ? ` for ${recipientDisplayName(deletingNotification)}`
+            : ""
+        }.`,
+      });
+      setDeletingNotification(null);
+      fetchSentNotifications();
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      toast.error("Failed to delete", {
+        description: error instanceof Error ? error.message : "An error occurred while deleting the notification.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   function selectAllStudents() {
@@ -415,6 +572,27 @@ export default function SiteSupervisorNotificationsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Compose Form */}
             <div className="lg:col-span-2 space-y-6">
+              {/* Edit mode banner */}
+              {editingNotification && (
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+                  <div className="flex items-start gap-3">
+                    <Pencil className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                    <div className="text-sm">
+                      <p className="font-medium text-amber-800 dark:text-amber-300">Editing a sent notification</p>
+                      <p className="mt-1 text-amber-700 dark:text-amber-400">
+                        {recipientDisplayName(editingNotification)
+                          ? `Edits the copy sent to ${recipientDisplayName(editingNotification)}. Recipients can't be changed after sending — other copies keep the original text.`
+                          : "Updates this notification's title, message and priority. Recipients can't be changed after sending."}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={cancelEditing}>
+                    <X className="h-3.5 w-3.5" />
+                    Cancel Edit
+                  </Button>
+                </div>
+              )}
+
               {/* Recipients */}
               <Card>
                 <CardHeader>
@@ -425,10 +603,12 @@ export default function SiteSupervisorNotificationsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex gap-2">
+                    {/* Disabled while editing — recipients can't be changed after sending. */}
                     <Button
                       variant={recipientType === "individual" ? "default" : "outline"}
                       onClick={() => setRecipientType("individual")}
                       className="flex-1"
+                      disabled={!!editingNotification}
                     >
                       <User className="h-4 w-4 mr-2" />
                       Individual Students
@@ -437,6 +617,7 @@ export default function SiteSupervisorNotificationsPage() {
                       variant={recipientType === "broadcast" ? "default" : "outline"}
                       onClick={() => setRecipientType("broadcast")}
                       className="flex-1"
+                      disabled={!!editingNotification}
                     >
                       <Megaphone className="h-4 w-4 mr-2" />
                       Broadcast to All
@@ -468,16 +649,19 @@ export default function SiteSupervisorNotificationsPage() {
                           students.map((student) => (
                             <label
                               key={student.id}
-                              className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                                selectedStudentIds.includes(student.id)
-                                  ? "bg-primary/10 border border-primary/20"
-                                  : "hover:bg-muted/50"
+                              className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${
+                                editingNotification
+                                  ? "opacity-60"
+                                  : selectedStudentIds.includes(student.id)
+                                  ? "bg-primary/10 border border-primary/20 cursor-pointer"
+                                  : "hover:bg-muted/50 cursor-pointer"
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={selectedStudentIds.includes(student.id)}
                                 onChange={() => toggleStudentSelection(student.id)}
+                                disabled={!!editingNotification}
                                 className="rounded"
                               />
                               <Avatar className="h-8 w-8">
@@ -584,12 +768,16 @@ export default function SiteSupervisorNotificationsPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setNotificationTitle("");
-                    setNotificationContent("");
-                    setSelectedStudentIds([]);
+                    if (editingNotification) {
+                      cancelEditing();
+                    } else {
+                      setNotificationTitle("");
+                      setNotificationContent("");
+                      setSelectedStudentIds([]);
+                    }
                   }}
                 >
-                  Clear Form
+                  {editingNotification ? "Cancel Edit" : "Clear Form"}
                 </Button>
                 <Button
                   size="lg"
@@ -598,14 +786,21 @@ export default function SiteSupervisorNotificationsPage() {
                     isSending ||
                     !notificationTitle.trim() ||
                     !notificationContent.trim() ||
-                    (recipientType === "individual" && selectedStudentIds.length === 0)
+                    (!editingNotification &&
+                      recipientType === "individual" &&
+                      selectedStudentIds.length === 0)
                   }
                   className="min-w-[160px]"
                 >
                   {isSending ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Sending...
+                      {editingNotification ? "Saving..." : "Sending..."}
+                    </>
+                  ) : editingNotification ? (
+                    <>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Save Changes
                     </>
                   ) : (
                     <>
@@ -768,7 +963,13 @@ export default function SiteSupervisorNotificationsPage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-4 ml-11 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-4 ml-11 text-sm text-muted-foreground flex-wrap">
+                            {recipientDisplayName(notification) && (
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                To: {recipientDisplayName(notification)}
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
                               <Users className="h-3 w-3" />
                               {notification.recipientType === "broadcast" 
@@ -790,12 +991,50 @@ export default function SiteSupervisorNotificationsPage() {
                           </div>
                         </div>
 
-                        <div className="flex gap-2 shrink-0">
-                          <Button variant="outline" size="icon">
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="View notification"
+                            aria-label="View notification"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="icon">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Copy into a new message"
+                            aria-label="Copy into a new message"
+                            onClick={() => {
+                              setEditingNotification(null);
+                              setNotificationTitle(notification.title);
+                              setNotificationContent(notification.content);
+                              setActiveTab("compose");
+                            }}
+                          >
                             <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Edit notification"
+                            aria-label="Edit notification"
+                            onClick={() => startEditNotification(notification)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title="Delete notification"
+                            aria-label="Delete notification"
+                            onClick={() => setDeletingNotification(notification)}
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -866,6 +1105,33 @@ export default function SiteSupervisorNotificationsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Notification Confirmation */}
+      <ConfirmDialog
+        open={deletingNotification !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingNotification(null);
+        }}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete notification?
+          </>
+        }
+        description={
+          deletingNotification
+            ? `This removes the notification "${deletingNotification.title}"${
+                recipientDisplayName(deletingNotification)
+                  ? ` sent to ${recipientDisplayName(deletingNotification)}`
+                  : ""
+              }. The student will no longer see it in their inbox. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteNotification}
+      />
     </div>
   );
 }

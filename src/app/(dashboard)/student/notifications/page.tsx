@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { toast } from "@/components/shared/toast";
 
 interface Notification {
   id: string;
@@ -98,6 +100,10 @@ export default function StudentNotificationsPage() {
   const [filterUnread, setFilterUnread] = useState(false);
   const [markingRead, setMarkingRead] = useState<Set<string>>(new Set());
   const [tableNote, setTableNote] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deletingNotification, setDeletingNotification] = useState<Notification | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchNotifications = useCallback(async (pageNum: number = 1, unreadOnly: boolean = false) => {
     setIsLoading(true);
@@ -190,6 +196,38 @@ export default function StudentNotificationsPage() {
   };
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const handleDeleteNotification = async () => {
+    if (!deletingNotification) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/notifications/inbox?id=${encodeURIComponent(deletingNotification.id)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || json?.error || "Request failed");
+      }
+      toast.success("Notification deleted", {
+        description: `"${deletingNotification.title}" has been removed from your inbox.`,
+      });
+      setDeletingNotification(null);
+      // If we deleted the last item on a page beyond the first, step back one
+      // page (this re-triggers the fetch effect); otherwise just refetch.
+      if (notifications.length === 1 && page > 1) {
+        setPage(p => p - 1);
+      } else {
+        fetchNotifications(page, filterUnread);
+      }
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+      toast.error("Failed to delete notification", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -408,6 +446,20 @@ export default function StudentNotificationsPage() {
                                     Mark Read
                                   </Button>
                                 )}
+
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:text-destructive"
+                                  title="Delete notification"
+                                  aria-label="Delete notification"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeletingNotification(notification);
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -444,6 +496,29 @@ export default function StudentNotificationsPage() {
           </Button>
         </div>
       )}
+      {/* Delete Notification Confirmation */}
+      <ConfirmDialog
+        open={deletingNotification !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingNotification(null);
+        }}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete notification?
+          </>
+        }
+        description={
+          deletingNotification
+            ? `This removes "${deletingNotification.title}" from your inbox. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteNotification}
+        contentClassName="sm:max-w-[425px]"
+      />
     </div>
   );
 }

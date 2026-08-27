@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   Loader2,
   Users,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -58,6 +60,7 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { Label } from "@/components/ui/label";
 import { PasswordField } from "@/components/ui/password-field";
 import { toast } from "@/components/shared/toast";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 interface StudentRow {
   user_id: string;
@@ -65,6 +68,7 @@ interface StudentRow {
   email: string;
   student_id_number: string | null;
   semester: number | null;
+  cgpa: number | null;
   program_id: string | null;
   program_name: string | null;
   faculty_supervisor_id: string | null;
@@ -119,6 +123,20 @@ export default function ProgramCoordinatorStudentsPage() {
   // Kept for backwards-compat with the CSV template generator which lists the
   // expected column names.
   const programId = profile?.program_id;
+
+  // ===== Edit / Delete student state =====
+  const [editTarget, setEditTarget] = useState<StudentRow | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: "",
+    student_id_number: "",
+    cgpa: "",
+    semester: "",
+    program_id: "",
+  });
+  const [deleteTarget, setDeleteTarget] = useState<StudentRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ===== CSV Bulk Import state =====
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -256,6 +274,7 @@ export default function ProgramCoordinatorStudentsPage() {
           user_id,
           student_id_number,
           semester,
+          cgpa,
           program_id,
           faculty_supervisor_id,
           department_id,
@@ -320,6 +339,7 @@ export default function ProgramCoordinatorStudentsPage() {
           email: profileRow?.email || "",
           student_id_number: s.student_id_number,
           semester: s.semester ?? null,
+          cgpa: s.cgpa ?? null,
           program_id: s.program_id || null,
           program_name: s.program_id ? programMap[s.program_id] || null : null,
           faculty_supervisor_id: s.faculty_supervisor_id,
@@ -454,6 +474,190 @@ export default function ProgramCoordinatorStudentsPage() {
     }
   };
 
+  // ===== Edit student =====
+  const openEditDialog = (s: StudentRow) => {
+    setEditTarget(s);
+    setEditForm({
+      full_name: s.full_name || "",
+      student_id_number: s.student_id_number || "",
+      cgpa: s.cgpa != null ? String(s.cgpa) : "",
+      semester: s.semester != null ? String(s.semester) : "",
+      program_id: s.program_id || "",
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleSaveStudentEdit = async () => {
+    if (!editTarget) return;
+    const fullName = editForm.full_name.trim();
+    const rollNo = editForm.student_id_number.trim();
+    if (fullName.length < 2) {
+      toast.error("Full name must be at least 2 characters");
+      return;
+    }
+    if (rollNo.length < 3) {
+      toast.error("Roll No must be at least 3 characters");
+      return;
+    }
+    let cgpaValue: number | null = null;
+    if (editForm.cgpa.trim()) {
+      cgpaValue = parseFloat(editForm.cgpa);
+      if (Number.isNaN(cgpaValue) || cgpaValue < 0 || cgpaValue > 4) {
+        toast.error("CGPA must be between 0 and 4");
+        return;
+      }
+    }
+    const semester = editForm.semester ? parseInt(editForm.semester, 10) : null;
+
+    setIsSavingEdit(true);
+    try {
+      // Primary path: the students CRUD API (PUT /api/students/[id]).
+      // Only the fields UpdateStudentSchema allows are sent.
+      const payload: Record<string, unknown> = {
+        full_name: fullName,
+        student_id_number: rollNo,
+        cgpa: cgpaValue,
+        semester,
+      };
+      if (editForm.program_id) payload.program_id = editForm.program_id;
+
+      const res = await fetch(`/api/students/${editTarget.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
+      }
+      if (res.ok && json?.success) {
+        toast.success("Student updated", {
+          description: `${fullName}'s record was saved.`,
+        });
+        setIsEditOpen(false);
+        setEditTarget(null);
+        fetchStudents();
+        return;
+      }
+
+      let apiError = "Request failed";
+      if (json?.error) {
+        apiError =
+          typeof json.error === "string"
+            ? json.error
+            : (json.error as { message?: string }).message || "Request failed";
+      } else if (typeof json?.message === "string") {
+        apiError = json.message;
+      }
+
+      // The route currently accepts university_admin / department_coordinator
+      // (and the student themself) — program_coordinator callers get 403.
+      // Fall back to the RLS-permitted direct update of the `students` table
+      // (migration 0086 grants PC updates for students in their own
+      // department). The profile full_name lives in `profiles`, which RLS
+      // does NOT let a PC edit — that is detected and reported honestly.
+      if (res.status !== 403) {
+        toast.error("Failed to update student", { description: apiError });
+        return;
+      }
+
+      const supabase = createClient();
+      const updates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+        student_id_number: rollNo,
+        cgpa: cgpaValue,
+        semester,
+      };
+      if (editForm.program_id) updates.program_id = editForm.program_id;
+
+      const { data: updatedRows, error: updateError } = await supabase
+        .from("students")
+        .update(updates)
+        .eq("user_id", editTarget.user_id)
+        .select("user_id");
+
+      if (updateError) {
+        const code = (updateError as { code?: string }).code;
+        toast.error(code === "23505" ? "Roll No already in use" : "Failed to update student", {
+          description:
+            code === "23505"
+              ? "A student with this Roll No already exists in your university."
+              : updateError.message,
+        });
+        return;
+      }
+      if (!updatedRows || updatedRows.length === 0) {
+        toast.error("Failed to update student", {
+          description:
+            apiError !== "Request failed"
+              ? apiError
+              : "You can only update students in your own department.",
+        });
+        return;
+      }
+
+      // Try to save the name on the profile row (RLS blocks PC → 0 rows).
+      let nameSaved = fullName === (editTarget.full_name || "");
+      if (!nameSaved) {
+        const { data: nameRows } = await supabase
+          .from("profiles")
+          .update({ full_name: fullName, updated_at: new Date().toISOString() })
+          .eq("user_id", editTarget.user_id)
+          .select("user_id");
+        nameSaved = !!nameRows && nameRows.length > 0;
+      }
+
+      setIsEditOpen(false);
+      setEditTarget(null);
+      fetchStudents();
+      if (nameSaved) {
+        toast.success("Student updated", { description: "Academic record saved." });
+      } else {
+        toast.warning("Academic record saved — name unchanged", {
+          description:
+            "Roll No, CGPA, semester and program were saved. Changing the student's profile name requires a University Admin or Department Coordinator.",
+        });
+      }
+    } catch (err) {
+      toast.error("Failed to update student", { err });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ===== Delete student =====
+  const handleDeleteStudent = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/students/${deleteTarget.user_id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || json?.error || "Request failed");
+      }
+      toast.success("Student deleted", {
+        description: `${deleteTarget.full_name || deleteTarget.email} and all their personal data were permanently removed.`,
+      });
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.user_id);
+        return next;
+      });
+      setDeleteTarget(null);
+      fetchStudents();
+    } catch (err) {
+      toast.error("Failed to delete student", {
+        description: err instanceof Error ? err.message : "Request failed",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!departmentId) {
     return (
       <div className="space-y-6">
@@ -580,6 +784,7 @@ export default function ProgramCoordinatorStudentsPage() {
                   <TableHead>Sem.</TableHead>
                   <TableHead>Supervisor</TableHead>
                   <TableHead>Internship</TableHead>
+                  <TableHead className="w-[96px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -633,6 +838,30 @@ export default function ProgramCoordinatorStudentsPage() {
                       ) : (
                         <Badge variant="secondary" className="text-xs">None</Badge>
                       )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          title="Edit student"
+                          onClick={() => openEditDialog(s)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">Edit student</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                          title="Delete student"
+                          onClick={() => setDeleteTarget(s)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Delete student</span>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -948,6 +1177,167 @@ export default function ProgramCoordinatorStudentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ===== Edit Student Dialog ===== */}
+      <Dialog open={isEditOpen} onOpenChange={(open) => {
+        setIsEditOpen(open);
+        if (!open) setEditTarget(null);
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Edit Student
+            </DialogTitle>
+            <DialogDescription>
+              Update the record for {editTarget?.full_name || editTarget?.email}.
+              Roll No, CGPA, semester and program are saved immediately; the
+              profile name may require an administrator.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-student-full-name">Full Name *</Label>
+              <Input
+                id="edit-student-full-name"
+                placeholder="e.g. Ahmed Khan"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Requires University Admin / Department Coordinator permissions —
+                you will be told if the name could not be saved.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-roll">Roll No *</Label>
+                <Input
+                  id="edit-student-roll"
+                  placeholder="e.g. 2022-CS-001"
+                  value={editForm.student_id_number}
+                  onChange={(e) => setEditForm((f) => ({ ...f, student_id_number: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-cgpa">CGPA</Label>
+                <Input
+                  id="edit-student-cgpa"
+                  type="number"
+                  min="0"
+                  max="4"
+                  step="0.01"
+                  placeholder="0 - 4"
+                  value={editForm.cgpa}
+                  onChange={(e) => setEditForm((f) => ({ ...f, cgpa: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-semester">Semester</Label>
+                <Select
+                  value={editForm.semester}
+                  onValueChange={(v) => setEditForm((f) => ({ ...f, semester: v }))}
+                >
+                  <SelectTrigger id="edit-student-semester">
+                    <SelectValue placeholder="Select semester" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((s) => (
+                      <SelectItem key={s} value={String(s)}>
+                        Semester {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-student-program">Program</Label>
+                {programs.length > 0 ? (
+                  <Select
+                    value={editForm.program_id}
+                    onValueChange={(v) => setEditForm((f) => ({ ...f, program_id: v }))}
+                  >
+                    <SelectTrigger id="edit-student-program">
+                      <SelectValue placeholder="Select program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {programs.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}{p.code ? ` (${p.code})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div
+                    id="edit-student-program"
+                    className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground"
+                  >
+                    {editTarget?.program_name || "No programs available"}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Students stay within your department.
+                </p>
+              </div>
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSavingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveStudentEdit} disabled={isSavingEdit}>
+              {isSavingEdit ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Delete Student Confirmation ===== */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete student permanently?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This will permanently delete <strong>{deleteTarget?.full_name || deleteTarget?.email}</strong>{" "}
+              ({deleteTarget?.email}).
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. The account, its sign-in
+              credentials and all of the student&apos;s data are permanently removed:
+              internship applications, weekly logs, evaluations, submissions,
+              attendance, certificates and documents.
+            </span>
+          </span>
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete Student"}
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteStudent}
+      />
 
       {/* ===== CSV Bulk Import Dialog ===== */}
       <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>

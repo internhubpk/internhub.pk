@@ -71,6 +71,7 @@ import {
   Users,
   TrendingUp,
   BarChart3,
+  Trash2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -80,6 +81,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -205,6 +207,10 @@ export default function CompanyHRApplicationsPage() {
   const [selectedForBatch, setSelectedForBatch] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("inbox");
 
+  // Delete-application confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
+  const [isDeletingApplication, setIsDeletingApplication] = useState(false);
+
   const filteredApplications = applications.filter((app) => {
     const matchesSearch = 
       app.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -288,6 +294,38 @@ export default function CompanyHRApplicationsPage() {
   const openRejectDialog = (appId: string) => {
     setRejectingAppId(appId);
     setIsRejectDialogOpen(true);
+  };
+
+  // Permanently remove an application record (cleanup of test/spam/
+  // withdrawn applications). Blocked server-side when the applicant was
+  // already accepted & placed — the API then responds 409 with an
+  // explanation, which we surface in the toast.
+  const handleDeleteApplication = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingApplication(true);
+    try {
+      const res = await fetch(`/api/company-hr/applications/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Application deleted", {
+        description: `${deleteTarget.student_name} — ${deleteTarget.internship_title}`,
+      });
+      const deletedId = deleteTarget.id;
+      setDeleteTarget(null);
+      if (selectedApplication?.id === deletedId) {
+        setSelectedApplication(null);
+        setIsDetailOpen(false);
+      }
+      await fetchApplications();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to delete application" });
+    } finally {
+      setIsDeletingApplication(false);
+    }
   };
 
   const handleBatchAccept = async () => {
@@ -447,6 +485,7 @@ export default function CompanyHRApplicationsPage() {
             getInitials={getInitials}
             onAccept={handleAccept}
             onReject={openRejectDialog}
+            onDelete={setDeleteTarget}
             selectedForBatch={selectedForBatch}
             toggleSelectForBatch={toggleSelectForBatch}
             toggleSelectAll={toggleSelectAll}
@@ -471,6 +510,7 @@ export default function CompanyHRApplicationsPage() {
             getInitials={getInitials}
             onAccept={handleAccept}
             onReject={openRejectDialog}
+            onDelete={setDeleteTarget}
             selectedForBatch={[]}
             toggleSelectForBatch={() => {}}
             toggleSelectAll={() => {}}
@@ -496,6 +536,7 @@ export default function CompanyHRApplicationsPage() {
             getInitials={getInitials}
             onAccept={handleAccept}
             onReject={openRejectDialog}
+            onDelete={setDeleteTarget}
             selectedForBatch={[]}
             toggleSelectForBatch={() => {}}
             toggleSelectAll={() => {}}
@@ -748,6 +789,27 @@ export default function CompanyHRApplicationsPage() {
                   </Button>
                 </div>
                 )}
+
+                {/* Delete record — available for every status EXCEPT
+                    accepted (accepted applicants are placed into the
+                    internship; remove the placement first). */}
+                {selectedApplication.status !== "accepted" && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
+                    <p className="text-sm text-muted-foreground">
+                      Need to clean up this application record? Deleting it permanently removes
+                      it from your inbox — the applicant is not notified.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-destructive hover:text-destructive shrink-0"
+                      onClick={() => setDeleteTarget(selectedApplication)}
+                      disabled={isDeletingApplication}
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete Record
+                    </Button>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -817,6 +879,35 @@ export default function CompanyHRApplicationsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Application Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete application permanently?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This permanently removes <strong>{deleteTarget?.student_name}</strong>&apos;s application
+              for <strong>{deleteTarget?.internship_title}</strong> from your records.
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. Rejected, withdrawn and pending
+              applications can be cleaned up this way. If the applicant was already accepted and
+              placed, deletion is blocked until the intern placement is removed.
+            </span>
+          </span>
+        }
+        confirmLabel="Delete Application"
+        variant="danger"
+        loading={isDeletingApplication}
+        onConfirm={handleDeleteApplication}
+      />
     </div>
   );
 }
@@ -838,6 +929,7 @@ function ApplicationTable({
   getInitials,
   onAccept,
   onReject,
+  onDelete,
   selectedForBatch,
   toggleSelectForBatch,
   toggleSelectAll,
@@ -859,6 +951,7 @@ function ApplicationTable({
   getInitials: (n: string) => string;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onDelete: (app: Application) => void;
   selectedForBatch: string[];
   toggleSelectForBatch: (id: string) => void;
   toggleSelectAll: () => void;
@@ -958,6 +1051,17 @@ function ApplicationTable({
                           <XCircle className="h-4 w-4" />
                         </Button>
                       </>
+                    )}
+                    {app.status !== "accepted" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => onDelete(app)}
+                        title="Delete application record"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                     <Button
                       size="sm"
@@ -1090,6 +1194,19 @@ function ApplicationTable({
                               <a href={`mailto:${app.student_email}`}>
                                 <MessageSquare className="mr-2 h-4 w-4" /> Send Message
                               </a>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={app.status === "accepted"}
+                              title={
+                                app.status === "accepted"
+                                  ? "Accepted applicants are placed into the internship — remove the intern placement first"
+                                  : "Permanently delete this application record"
+                              }
+                              onClick={() => onDelete(app)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Application
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

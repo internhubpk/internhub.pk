@@ -65,6 +65,7 @@ import {
   Filter,
   FileDown,
   Loader2,
+  UserMinus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -74,6 +75,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { createClient } from "@/utils/supabase/client";
@@ -180,6 +182,10 @@ export default function CompanyHRInternsPage() {
   // show a spinner and prevent duplicate clicks.
   const [downloadingFor, setDownloadingFor] = useState<string | null>(null);
 
+  // Unassign-supervisor confirmation state
+  const [unassignTarget, setUnassignTarget] = useState<ActiveIntern | null>(null);
+  const [isUnassigning, setIsUnassigning] = useState(false);
+
   const filteredInterns = interns.filter((intern) => {
     const matchesSearch = 
       intern.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -238,6 +244,49 @@ export default function CompanyHRInternsPage() {
   const openAssignDialog = (internId: string) => {
     setAssigningInternId(internId);
     setIsAssignOpen(true);
+  };
+
+  // Unassign the current supervisor from an intern — same endpoint &
+  // payload shape the Supervisors page uses (DELETE
+  // /api/company-hr/assignments with { supervisor_id, intern_id }).
+  const handleUnassignSupervisor = async () => {
+    if (!unassignTarget?.supervisor_id) return;
+    setIsUnassigning(true);
+    try {
+      const res = await fetch("/api/company-hr/assignments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supervisor_id: unassignTarget.supervisor_id,
+          intern_id: unassignTarget.student_id,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error?.message || `Failed (${res.status})`);
+      toast.success("Supervisor unassigned", {
+        description: `${unassignTarget.supervisor_name || "Supervisor"} is no longer supervising ${unassignTarget.student_name}.`,
+      });
+      const unassignedId = unassignTarget.id;
+      setUnassignTarget(null);
+      if (selectedIntern?.id === unassignedId) {
+        setSelectedIntern((prev) =>
+          prev && prev.id === unassignedId
+            ? { ...prev, supervisor_id: null, supervisor_name: null }
+            : prev
+        );
+      }
+      setInterns(
+        interns.map((i) =>
+          i.id === unassignedId
+            ? { ...i, supervisor_id: null, supervisor_name: null }
+            : i
+        )
+      );
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to unassign supervisor" });
+    } finally {
+      setIsUnassigning(false);
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -683,6 +732,17 @@ export default function CompanyHRInternsPage() {
                           <UserPlus className="h-3 w-3 mr-1" /> Assign
                         </Button>
                       )}
+                      {intern.supervisor_id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-amber-600 hover:text-amber-700"
+                          onClick={() => setUnassignTarget(intern)}
+                          disabled={isUnassigning}
+                        >
+                          <UserMinus className="h-3 w-3 mr-1" /> Unassign
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -798,6 +858,14 @@ export default function CompanyHRInternsPage() {
                               <DropdownMenuItem onClick={() => openAssignDialog(intern.id)} disabled={!intern.status.includes('active')}>
                                 <ArrowRightLeft className="mr-2 h-4 w-4" /> Reassign Supervisor
                               </DropdownMenuItem>
+                              {intern.supervisor_id && (
+                                <DropdownMenuItem
+                                  className="text-amber-600 focus:text-amber-700"
+                                  onClick={() => setUnassignTarget(intern)}
+                                >
+                                  <UserMinus className="mr-2 h-4 w-4" /> Unassign Supervisor
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem asChild>
                                 <Link href={`/company-hr/attendance?intern=${intern.id}`}>
                                   <ClipboardList className="mr-2 h-4 w-4" /> View Attendance
@@ -885,14 +953,25 @@ export default function CompanyHRInternsPage() {
                     {selectedIntern.supervisor_name ? (
                       <>
                         <InfoRow label="Assigned To" value={selectedIntern.supervisor_name} icon={<Shield className="h-3 w-3" />} highlight />
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="mt-2 w-full"
-                          onClick={() => openAssignDialog(selectedIntern.id)}
-                        >
-                          <ArrowRightLeft className="h-3 w-3 mr-1" /> Reassign
-                        </Button>
+                        <div className="flex flex-col gap-2 mt-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="w-full"
+                            onClick={() => openAssignDialog(selectedIntern.id)}
+                          >
+                            <ArrowRightLeft className="h-3 w-3 mr-1" /> Reassign
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-amber-600 hover:text-amber-700"
+                            onClick={() => setUnassignTarget(selectedIntern)}
+                            disabled={isUnassigning}
+                          >
+                            <UserMinus className="h-3 w-3 mr-1" /> Unassign Supervisor
+                          </Button>
+                        </div>
                       </>
                     ) : (
                       <div className="py-4 text-center">
@@ -1082,6 +1161,29 @@ export default function CompanyHRInternsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Unassign Supervisor Confirmation */}
+      <ConfirmDialog
+        open={!!unassignTarget}
+        onOpenChange={(open) => !open && setUnassignTarget(null)}
+        title={
+          <>
+            <UserMinus className="h-5 w-5 shrink-0" />
+            Unassign supervisor?
+          </>
+        }
+        description={
+          <span className="block">
+            <strong>{unassignTarget?.supervisor_name}</strong> will no longer supervise{" "}
+            {unassignTarget?.student_name}. The intern will have no supervisor until you assign
+            a new one — you can assign one anytime from this page.
+          </span>
+        }
+        confirmLabel="Unassign Supervisor"
+        variant="warning"
+        loading={isUnassigning}
+        onConfirm={handleUnassignSupervisor}
+      />
     </div>
   );
 }

@@ -135,3 +135,78 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
 }
+
+// DELETE /api/company-hr/attendance/[id] — remove a (manually created or
+// erroneous) attendance record. Company scope verified like PATCH.
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    // Verify ownership via internship_id → company_id
+    const { data: record } = await supabase
+      .from("attendance")
+      .select("id, internship_id, internships!inner(company_id)")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!record) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Attendance record not found" } },
+        { status: 404 }
+      );
+    }
+
+    const internship = record.internships as { company_id?: string } | null;
+    if (!internship || internship.company_id !== profile.company_id) {
+      return NextResponse.json(
+        { error: { code: "FORBIDDEN", message: "This attendance record belongs to another company" } },
+        { status: 403 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Error deleting attendance record:", deleteError);
+      return NextResponse.json(
+        { error: { code: "DATABASE_ERROR", message: "Failed to delete attendance record" } },
+        { status: 500 }
+      );
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "company_hr.delete_attendance",
+      entity_type: "attendance",
+      entity_id: id,
+      new_values: null,
+    });
+
+    return NextResponse.json({ success: true, message: "Attendance record deleted" });
+  } catch (error) {
+    console.error("Unexpected error in DELETE attendance:", error);
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
+}

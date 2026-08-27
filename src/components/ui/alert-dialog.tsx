@@ -44,6 +44,23 @@ function AlertDialogOverlay({
   )
 }
 
+/**
+ * AlertDialogContent
+ *
+ * PRODUCTION SCROLLABLE MODAL (mobile-first):
+ *
+ * Layout strategy (same bulletproof pattern as Dialog):
+ * - The content is a flex column with `overflow-hidden` and `max-h-[calc(100dvh-2rem)]`
+ * - Header (title + description + any warning boxes inside it) is `shrink` +
+ *   `min-h-0` + `overflow-y-auto` — it takes its natural height when content is
+ *   short (compact dialog) and scrolls internally when content is long.
+ * - Footer (buttons) is `shrink-0` — ALWAYS fully visible, never overlapped.
+ * - On mobile the footer buttons stack full-width (flex-col-reverse + stretch).
+ *
+ * This replaces the previous `sticky` + negative-margin approach, which broke on
+ * mobile browsers: the sticky footer overlapped the description text (text
+ * rendered behind/below the buttons) and the scroll region never engaged.
+ */
 function AlertDialogContent({
   className,
   ...props
@@ -54,7 +71,7 @@ function AlertDialogContent({
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-y-auto rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-lg border p-5 shadow-lg duration-200 sm:max-w-lg sm:p-6",
           className
         )}
         {...props}
@@ -70,7 +87,10 @@ function AlertDialogHeader({
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn("sticky top-0 z-10 -mt-6 bg-background pt-6 flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn(
+        "flex min-h-0 shrink flex-col gap-2 overflow-y-auto text-center sm:text-left",
+        className
+      )}
       {...props}
     />
   )
@@ -84,7 +104,7 @@ function AlertDialogFooter({
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "sticky bottom-0 z-10 -mb-6 bg-background pb-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "mt-4 flex shrink-0 flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -99,7 +119,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn("text-lg font-semibold", className)}
+      className={cn("text-base leading-snug font-semibold break-words sm:text-lg", className)}
       {...props}
     />
   )
@@ -112,7 +132,7 @@ function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-sm leading-relaxed break-words", className)}
       {...props}
     />
   )

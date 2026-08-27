@@ -55,6 +55,8 @@ import {
   FileSignature,
   Copy,
   Trash2,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -64,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { createClient } from "@/utils/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -195,6 +198,59 @@ export default function CompanyHRDocumentsPage() {
     }
   };
 
+  // Rename / re-type an existing document (PUT /api/company-hr/documents/[id])
+  const openRenameDialog = (doc: InternDocument) => {
+    setRenameTarget(doc);
+    setRenameName(doc.file_name || "");
+    setRenameType(doc.document_type === "certificate" ? "certificate" : "offer_letter");
+  };
+
+  const handleRenameDocument = async () => {
+    if (!renameTarget || !renameName.trim()) return;
+    setIsRenaming(true);
+    try {
+      const res = await fetch(`/api/company-hr/documents/${renameTarget.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim(), type: renameType }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Document updated", { description: renameName.trim() });
+      setRenameTarget(null);
+      await fetchDocuments();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to update document" });
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  // Delete a document (DELETE /api/company-hr/documents/[id])
+  const handleDeleteDocument = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingDoc(true);
+    try {
+      const res = await fetch(`/api/company-hr/documents/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Document deleted", { description: deleteTarget.file_name });
+      setDeleteTarget(null);
+      await fetchDocuments();
+      await fetchInterns();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to delete document" });
+    } finally {
+      setIsDeletingDoc(false);
+    }
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -203,6 +259,16 @@ export default function CompanyHRDocumentsPage() {
   const [uploadDocumentType, setUploadDocumentType] = useState<"offer_letter" | "certificate">("offer_letter");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState("documents");
+
+  // Rename / re-type dialog state
+  const [renameTarget, setRenameTarget] = useState<InternDocument | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameType, setRenameType] = useState<"offer_letter" | "certificate">("offer_letter");
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<InternDocument | null>(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
 
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch = 
@@ -559,27 +625,13 @@ export default function CompanyHRDocumentsPage() {
                             >
                               <Download className="mr-2 h-4 w-4" /> Download
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openRenameDialog(doc)}>
+                              <Pencil className="mr-2 h-4 w-4" /> Rename / Re-type
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
-                              onClick={async () => {
-                                if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
-                                try {
-                                  const res = await fetch(`/api/company-hr/documents/${doc.id}`, {
-                                    method: "DELETE",
-                                  });
-                                  if (res.ok) {
-                                    // Refresh the documents list on success.
-                                    toast.success("Document deleted", { description: doc.file_name });
-                                    window.location.reload();
-                                  } else {
-                                    const err = await res.json().catch(() => ({}));
-                                    toast.error("Error", { description: err.error || "Failed to delete document." });
-                                  }
-                                } catch (e) {
-                                  toast.error("Failed", { description: "Network error while deleting document." });
-                                }
-                              }}
+                              onClick={() => setDeleteTarget(doc)}
                             >
                               <Trash2 className="mr-2 h-4 w-4" /> Delete
                             </DropdownMenuItem>
@@ -698,6 +750,78 @@ export default function CompanyHRDocumentsPage() {
         </TabsContent>
 
       </Tabs>
+
+      {/* Rename / Re-type Dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Document</DialogTitle>
+            <DialogDescription>
+              Update the display name and document type. The uploaded file itself is not changed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename-name">Document Name *</Label>
+              <Input
+                id="rename-name"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                placeholder="e.g., Offer Letter — Jane Doe"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Document Type</Label>
+              <Select value={renameType} onValueChange={(v) => setRenameType(v as "offer_letter" | "certificate")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="offer_letter">Offer Letter</SelectItem>
+                  <SelectItem value="certificate">Completion Certificate</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)} disabled={isRenaming}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameDocument} disabled={isRenaming || !renameName.trim()}>
+              {isRenaming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Document Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete document?
+          </>
+        }
+        description={
+          <span className="block">
+            This will permanently delete <strong>{deleteTarget?.file_name}</strong> for{" "}
+            {deleteTarget?.intern_name}, including the stored file. This action cannot be undone.
+          </span>
+        }
+        confirmLabel="Delete Document"
+        variant="danger"
+        loading={isDeletingDoc}
+        onConfirm={handleDeleteDocument}
+      />
     </div>
   );
 }

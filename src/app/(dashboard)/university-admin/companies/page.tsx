@@ -18,6 +18,9 @@ import {
   Eye,
   EyeOff,
   UserPlus,
+  Pencil,
+  Ban,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +48,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/shared/toast";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -58,6 +62,7 @@ interface CompanyWithStats {
   website: string | null;
   size: string | null;
   description: string | null;
+  address: string | null;
   city: string | null;
   country: string | null;
   contact_person: string | null;
@@ -68,6 +73,38 @@ interface CompanyWithStats {
   created_at: string;
   internship_count: number;
 }
+
+interface CompanyForm {
+  name: string;
+  industry: string;
+  website: string;
+  size: string;
+  address: string;
+  contact_person: string;
+  contact_email: string;
+  contact_phone: string;
+  city: string;
+  country: string;
+  description: string;
+  is_verified: boolean;
+  is_active: boolean;
+}
+
+const emptyCompanyForm: CompanyForm = {
+  name: "",
+  industry: "",
+  website: "",
+  size: "",
+  address: "",
+  contact_person: "",
+  contact_email: "",
+  contact_phone: "",
+  city: "",
+  country: "",
+  description: "",
+  is_verified: false,
+  is_active: true,
+};
 
 export default function UniversityAdminCompaniesPage() {
   const { profile, university } = useAuth();
@@ -80,22 +117,21 @@ export default function UniversityAdminCompaniesPage() {
   // ── Create Company dialog ──────────────────────────────────────
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
-  const emptyCompanyForm = {
-    name: "",
-    industry: "",
-    website: "",
-    size: "",
-    address: "",
-    contact_person: "",
-    contact_email: "",
-    contact_phone: "",
-    city: "",
-    country: "",
-    description: "",
-    is_verified: false,
-    is_active: true,
-  };
-  const [companyForm, setCompanyForm] = useState(emptyCompanyForm);
+  const [companyForm, setCompanyForm] = useState<CompanyForm>(emptyCompanyForm);
+
+  // ── Edit Company dialog ────────────────────────────────────────
+  const [isEditCompanyOpen, setIsEditCompanyOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<CompanyWithStats | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editCompanyForm, setEditCompanyForm] = useState<CompanyForm>(emptyCompanyForm);
+
+  // ── Activate / deactivate confirmation state ───────────────────
+  const [statusTarget, setStatusTarget] = useState<CompanyWithStats | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+
+  // ── Delete confirmation state ──────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<CompanyWithStats | null>(null);
+  const [isDeletingCompany, setIsDeletingCompany] = useState(false);
 
   // ── Create Company HR dialog ───────────────────────────────────
   const [isCreateHrOpen, setIsCreateHrOpen] = useState(false);
@@ -219,6 +255,138 @@ export default function UniversityAdminCompaniesPage() {
     }
   }
 
+  // ── Edit Company ─────────────────────────────────────────────────
+  function openEditCompanyDialog(company: CompanyWithStats) {
+    setEditTarget(company);
+    setEditCompanyForm({
+      name: company.name || "",
+      industry: company.industry || "",
+      website: company.website || "",
+      size: company.size || "",
+      address: company.address || "",
+      contact_person: company.contact_person || "",
+      contact_email: company.contact_email || "",
+      contact_phone: company.contact_phone || "",
+      city: company.city || "",
+      country: company.country || "",
+      description: company.description || "",
+      is_verified: company.is_verified,
+      is_active: company.is_active,
+    });
+    setIsEditCompanyOpen(true);
+  }
+
+  async function handleSaveCompany() {
+    if (!editTarget) return;
+    if (!editCompanyForm.name.trim()) {
+      toast.error("Company name is required");
+      return;
+    }
+    if (!editCompanyForm.contact_email.trim()) {
+      toast.error("Contact email is required");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/companies/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // NOTE: is_verified is intentionally NOT sent — only super admins
+        // can change it (the server ignores it for university admins).
+        body: JSON.stringify({
+          name: editCompanyForm.name.trim(),
+          industry: editCompanyForm.industry.trim() || null,
+          website: editCompanyForm.website.trim() || null,
+          size: editCompanyForm.size.trim() || null,
+          address: editCompanyForm.address.trim() || null,
+          contact_person: editCompanyForm.contact_person.trim() || null,
+          contact_email: editCompanyForm.contact_email.trim() || null,
+          contact_phone: editCompanyForm.contact_phone.trim() || null,
+          city: editCompanyForm.city.trim() || null,
+          country: editCompanyForm.country.trim() || null,
+          description: editCompanyForm.description.trim() || null,
+          is_active: editCompanyForm.is_active,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Company updated", {
+        description: `${editCompanyForm.name.trim()} has been saved.`,
+      });
+      setIsEditCompanyOpen(false);
+      setEditTarget(null);
+      if (detailCompany?.id === editTarget.id) setDetailCompany(null);
+      fetchCompanies();
+    } catch (error: any) {
+      console.error("Error updating company:", error);
+      toast.error("Failed to update company", { description: error.message });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
+
+  // ── Deactivate / Activate ────────────────────────────────────────
+  async function handleToggleCompanyStatus() {
+    if (!statusTarget) return;
+    const nextActive = !statusTarget.is_active;
+
+    setIsTogglingStatus(true);
+    try {
+      const res = await fetch(`/api/companies/${statusTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success(nextActive ? "Company activated" : "Company deactivated", {
+        description: `${statusTarget.name} is now ${nextActive ? "active" : "inactive"}.`,
+      });
+      if (detailCompany?.id === statusTarget.id) {
+        setDetailCompany((prev) => (prev ? { ...prev, is_active: nextActive } : prev));
+      }
+      setStatusTarget(null);
+      fetchCompanies();
+    } catch (error: any) {
+      console.error("Error updating company status:", error);
+      toast.error("Failed to update company status", { description: error.message });
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  }
+
+  // ── Delete Company ───────────────────────────────────────────────
+  async function handleDeleteCompany() {
+    if (!deleteTarget) return;
+
+    setIsDeletingCompany(true);
+    try {
+      const res = await fetch(`/api/companies/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Company deleted", {
+        description: json.message || `${deleteTarget.name} was permanently deleted.`,
+      });
+      if (detailCompany?.id === deleteTarget.id) setDetailCompany(null);
+      setDeleteTarget(null);
+      fetchCompanies();
+    } catch (error: any) {
+      console.error("Error deleting company:", error);
+      toast.error("Failed to delete company", { description: error.message });
+    } finally {
+      setIsDeletingCompany(false);
+    }
+  }
+
   const fetchCompanies = useCallback(async () => {
     // Companies are publicly listed (RLS co_select is `USING (true)`),
     // so we don't need a university_id scoping filter — but we still
@@ -230,7 +398,7 @@ export default function UniversityAdminCompaniesPage() {
 
       let query = supabase
         .from("companies")
-        .select("id, name, slug, logo_url, industry, website, size, description, city, country, contact_person, contact_email, contact_phone, is_verified, is_active, created_at")
+        .select("id, name, slug, logo_url, industry, website, size, description, address, city, country, contact_person, contact_email, contact_phone, is_verified, is_active, created_at")
         .order("name", { ascending: true });
 
       if (!showInactive) {
@@ -451,9 +619,53 @@ export default function UniversityAdminCompaniesPage() {
                     <Badge variant="secondary" className="text-xs">
                       {company.internship_count} internship{company.internship_count !== 1 ? "s" : ""}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      View details →
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="Edit company"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditCompanyDialog(company);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit company</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title={company.is_active ? "Deactivate company" : "Activate company"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusTarget(company);
+                        }}
+                      >
+                        {company.is_active ? (
+                          <Ban className="h-4 w-4 text-amber-600" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        )}
+                        <span className="sr-only">
+                          {company.is_active ? "Deactivate company" : "Activate company"}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="Delete company"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(company);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                        <span className="sr-only">Delete company</span>
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -734,7 +946,7 @@ export default function UniversityAdminCompaniesPage() {
                   <span>{detailCompany.name}</span>
                 </DialogTitle>
                 <DialogDescription>
-                  Company profile — read only.
+                  Company profile and management actions.
                 </DialogDescription>
               </DialogHeader>
 
@@ -835,8 +1047,50 @@ export default function UniversityAdminCompaniesPage() {
                 </div>
               </DialogBody>
 
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDetailCompany(null)}>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditCompanyDialog(detailCompany)}
+                  title="Edit this company"
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStatusTarget(detailCompany)}
+                  className={
+                    detailCompany.is_active
+                      ? "text-amber-600 hover:text-amber-700"
+                      : "text-emerald-600 hover:text-emerald-700"
+                  }
+                  title={detailCompany.is_active ? "Deactivate this company" : "Activate this company"}
+                >
+                  {detailCompany.is_active ? (
+                    <>
+                      <Ban className="h-4 w-4 mr-2" />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Activate
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteTarget(detailCompany)}
+                  title="Permanently delete this company"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setDetailCompany(null)}>
                   Close
                 </Button>
               </DialogFooter>
@@ -844,6 +1098,226 @@ export default function UniversityAdminCompaniesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Company Dialog */}
+      <Dialog
+        open={isEditCompanyOpen}
+        onOpenChange={(o) => {
+          setIsEditCompanyOpen(o);
+          if (!o) setEditTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader className="px-8 pt-6 pb-4">
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Edit Company
+            </DialogTitle>
+            <DialogDescription>
+              Update {editTarget?.name}'s details. Changes take effect immediately for everyone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="px-8 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="edit-co-name">Company name *</Label>
+                <Input
+                  id="edit-co-name"
+                  value={editCompanyForm.name}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
+                  placeholder="Acme Corporation"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-industry">Industry</Label>
+                <Input
+                  id="edit-co-industry"
+                  value={editCompanyForm.industry}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, industry: e.target.value })}
+                  placeholder="Software"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-size">Company size</Label>
+                <Input
+                  id="edit-co-size"
+                  value={editCompanyForm.size}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, size: e.target.value })}
+                  placeholder="11-50"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-website">Website</Label>
+                <Input
+                  id="edit-co-website"
+                  value={editCompanyForm.website}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, website: e.target.value })}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-contact-person">Contact person</Label>
+                <Input
+                  id="edit-co-contact-person"
+                  value={editCompanyForm.contact_person}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, contact_person: e.target.value })}
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-contact-email">Contact email *</Label>
+                <Input
+                  id="edit-co-contact-email"
+                  type="email"
+                  value={editCompanyForm.contact_email}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, contact_email: e.target.value })}
+                  placeholder="hr@acme.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-contact-phone">Contact phone</Label>
+                <Input
+                  id="edit-co-contact-phone"
+                  value={editCompanyForm.contact_phone}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, contact_phone: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-city">City</Label>
+                <Input
+                  id="edit-co-city"
+                  value={editCompanyForm.city}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-co-country">Country</Label>
+                <Input
+                  id="edit-co-country"
+                  value={editCompanyForm.country}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, country: e.target.value })}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="edit-co-address">Address</Label>
+                <Input
+                  id="edit-co-address"
+                  value={editCompanyForm.address}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, address: e.target.value })}
+                  placeholder="Street, building, etc."
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="edit-co-description">Description</Label>
+                <Textarea
+                  id="edit-co-description"
+                  value={editCompanyForm.description}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="col-span-2 flex items-center justify-between gap-4 pt-2 border-t">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="edit-co-is-active"
+                    checked={editCompanyForm.is_active}
+                    onCheckedChange={(v) => setEditCompanyForm({ ...editCompanyForm, is_active: v })}
+                  />
+                  <Label htmlFor="edit-co-is-active" className="cursor-pointer">
+                    Active (inactive companies are hidden from lists)
+                  </Label>
+                </div>
+              </div>
+            </div>
+            {editTarget?.is_verified === false && (
+              <p className="text-xs text-muted-foreground">
+                Verification is managed by InternHub super admins.
+              </p>
+            )}
+          </DialogBody>
+          <DialogFooter className="px-8 pt-5 pb-6">
+            <Button variant="outline" onClick={() => setIsEditCompanyOpen(false)} disabled={isSavingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCompany} disabled={isSavingEdit}>
+              {isSavingEdit ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deactivate / Activate Confirmation */}
+      <ConfirmDialog
+        open={!!statusTarget}
+        onOpenChange={(open) => !open && setStatusTarget(null)}
+        title={
+          statusTarget?.is_active ? (
+            <>
+              <Ban className="h-5 w-5 shrink-0" />
+              Deactivate company?
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+              Activate company?
+            </>
+          )
+        }
+        description={
+          statusTarget?.is_active ? (
+            <span className="space-y-3 block">
+              <span className="block">
+                This will deactivate <strong>{statusTarget?.name}</strong>. It will be hidden from
+                active company lists and its HR accounts can no longer post new internships for
+                your university.
+              </span>
+              <span className="block bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                Nothing is deleted — the company profile, internships, MOUs and applications are
+                all preserved. You can reactivate it at any time.
+              </span>
+            </span>
+          ) : (
+            <span>
+              This will reactivate <strong>{statusTarget?.name}</strong> so it shows up in active
+              lists again and its HR accounts can post internships.
+            </span>
+          )
+        }
+        confirmLabel={statusTarget?.is_active ? "Deactivate Company" : "Activate Company"}
+        variant={statusTarget?.is_active ? "warning" : "success"}
+        loading={isTogglingStatus}
+        onConfirm={handleToggleCompanyStatus}
+      />
+
+      {/* Delete Company Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete company permanently?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This will permanently delete <strong>{deleteTarget?.name}</strong> together with its
+              HR and supervisor accounts.
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. If the company already has
+              internships, MOUs or applications, the deletion is blocked — you will see an
+              explanation of what to do instead (deactivate it, or ask a Super Admin to remove it
+              with all of its data).
+            </span>
+          </span>
+        }
+        confirmLabel={isDeletingCompany ? "Deleting..." : "Delete Company"}
+        variant="danger"
+        loading={isDeletingCompany}
+        onConfirm={handleDeleteCompany}
+      />
     </div>
   );
 }

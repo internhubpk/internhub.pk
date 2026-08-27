@@ -258,28 +258,64 @@ export async function POST(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const overallRating = Number(scores.overall) || 0;
 
-    const { data: evaluation, error: insertError } = await supabase
+    // UPSERT semantics: if this HR already has a final evaluation for the
+    // same placement, UPDATE it instead of inserting a duplicate row.
+    // (Previously every "Evaluate" click created a new row.)
+    const { data: existingEval } = await supabase
       .from("evaluations")
-      .insert({
-        type: "final",
-        student_user_id,
-        internship_id,
-        student_internship_id,
-        evaluator_id: user.id,
-        evaluator_role: "company_hr",
-        status: evalStatus,
-        scores: scoresPayload,
-        comments: comments || null,
-        rating: overallRating,
-        submitted_at: evalStatus === "submitted" ? nowIso : null,
-      })
-      .select()
-      .single();
+      .select("id")
+      .eq("student_internship_id", student_internship_id)
+      .eq("evaluator_role", "company_hr")
+      .eq("type", "final")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (insertError) {
-      console.error("Error creating evaluation:", insertError);
+    let evaluation: Record<string, unknown> | null = null;
+    let insertError: { message?: string } | null = null;
+
+    if (existingEval?.id) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("evaluations")
+        .update({
+          scores: scoresPayload,
+          comments: comments || null,
+          rating: overallRating,
+          status: evalStatus,
+          submitted_at: evalStatus === "submitted" ? nowIso : null,
+          updated_at: nowIso,
+        })
+        .eq("id", existingEval.id)
+        .select()
+        .single();
+      evaluation = updated;
+      insertError = updateErr;
+    } else {
+      const { data: inserted, error: insertErr } = await supabase
+        .from("evaluations")
+        .insert({
+          type: "final",
+          student_user_id,
+          internship_id,
+          student_internship_id,
+          evaluator_id: user.id,
+          evaluator_role: "company_hr",
+          status: evalStatus,
+          scores: scoresPayload,
+          comments: comments || null,
+          rating: overallRating,
+          submitted_at: evalStatus === "submitted" ? nowIso : null,
+        })
+        .select()
+        .single();
+      evaluation = inserted;
+      insertError = insertErr;
+    }
+
+    if (insertError || !evaluation) {
+      console.error("Error saving evaluation:", insertError);
       return NextResponse.json(
-        { error: { code: "DATABASE_ERROR", message: "Failed to create evaluation" } },
+        { error: { code: "DATABASE_ERROR", message: "Failed to save evaluation" } },
         { status: 500 }
       );
     }

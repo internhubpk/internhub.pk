@@ -51,6 +51,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PushNotificationsStatusCard } from "@/components/shared/enable-push-notifications";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -70,6 +71,7 @@ import {
   Clock,
   Eye,
   Trash2,
+  Pencil,
   MoreVertical,
   Loader2,
   Reply,
@@ -102,6 +104,7 @@ interface Notification {
   priority: NotificationPriority;
   target: NotificationTarget;
   targetName: string; // Display name for who it was sent to
+  recipientName?: string; // Per-row recipient (each send inserts one row per student)
   recipientCount: number;
   readCount: number;
   status: NotificationStatus;
@@ -109,6 +112,39 @@ interface Notification {
   deliveredAt?: string;
   createdAt: string;
   senderName: string;
+}
+
+// Map raw notifications-table rows (sent by this supervisor) to the display
+// shape. Shared by the initial load and the post-mutation refetch.
+function mapNotificationRows(
+  rows: any[],
+  recipientNameById: Map<string, string>
+): Notification[] {
+  return (rows || []).map((n: any) => {
+    const meta = (n.metadata && typeof n.metadata === "object") ? n.metadata : {};
+    const target = (meta.target as NotificationTarget) || "all";
+    const recipientCount = (meta.recipient_count as number) || 1;
+    const readCount = n.is_read ? 1 : 0;
+    return {
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      priority: (n.priority as NotificationPriority) || "medium",
+      target,
+      targetName: target === "all"
+        ? "All Students"
+        : target === "individual"
+        ? recipientNameById.get(n.user_id) || "Student"
+        : "Program",
+      recipientName: recipientNameById.get(n.user_id),
+      recipientCount,
+      readCount,
+      status: n.is_read ? "read" : "sent",
+      sentAt: n.created_at,
+      createdAt: n.created_at,
+      senderName: "You",
+    };
+  });
 }
 
 // Default empty data - will be populated from database
@@ -131,6 +167,12 @@ export default function FacultySupervisorNotificationsPage() {
   const [isComposeDialogOpen, setIsComposeDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+
+  // Edit / Delete state for sent notifications. Notifications are stored as
+  // one row PER RECIPIENT — editing updates only the copy that was clicked.
+  const [editingNotification, setEditingNotification] = useState<Notification | null>(null);
+  const [deletingNotification, setDeletingNotification] = useState<Notification | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Compose form state
   const [composeForm, setComposeForm] = useState({
@@ -311,31 +353,7 @@ export default function FacultySupervisorNotificationsPage() {
         const recipientNameById = new Map<string, string>();
         studentList.forEach(s => recipientNameById.set(s.id, s.name));
 
-        const notificationList: Notification[] = (notificationData || []).map((n: any) => {
-          const meta = (n.metadata && typeof n.metadata === "object") ? n.metadata : {};
-          const target = (meta.target as NotificationTarget) || "all";
-          const recipientCount = (meta.recipient_count as number) || 1;
-          const readCount = n.is_read ? 1 : 0;
-          return {
-            id: n.id,
-            title: n.title,
-            message: n.message,
-            priority: (n.priority as NotificationPriority) || "medium",
-            target,
-            targetName: target === "all"
-              ? "All Students"
-              : target === "individual"
-              ? recipientNameById.get(n.user_id) || "Student"
-              : "Program",
-            recipientCount,
-            readCount,
-            status: n.is_read ? "read" : "sent",
-            sentAt: n.created_at,
-            createdAt: n.created_at,
-            senderName: "You",
-          };
-        });
-        setNotifications(notificationList);
+        setNotifications(mapNotificationRows(notificationData || [], recipientNameById));
       } catch (error) {
         console.error("Error fetching notification data:", error);
         // Keep empty state on error
@@ -456,7 +474,39 @@ export default function FacultySupervisorNotificationsPage() {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase();
   };
 
+  // Re-fetch just the sent notifications (used after edit/delete mutations).
+  // `students` is loaded by the initial effect, so recipient names resolve.
+  const fetchNotifications = async () => {
+    if (!user) return;
+    try {
+      const supabase = createClient();
+      const { data: notificationData } = await supabase
+        .from("notifications")
+        .select(`
+            id,
+            title,
+            message,
+            category,
+            priority,
+            is_read,
+            action_url,
+            metadata,
+            created_at,
+            user_id
+          `)
+        .eq("sender_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const recipientNameById = new Map<string, string>();
+      students.forEach(s => recipientNameById.set(s.id, s.name));
+      setNotifications(mapNotificationRows(notificationData || [], recipientNameById));
+    } catch (error) {
+      console.error("Error refetching notifications:", error);
+    }
+  };
+
   const resetComposeForm = () => {
+    setEditingNotification(null);
     setComposeForm({
       title: "",
       message: "",
@@ -467,8 +517,91 @@ export default function FacultySupervisorNotificationsPage() {
     });
   };
 
+  // Open the compose dialog pre-filled to EDIT an already-sent notification.
+  // Each notification row is one recipient's copy — only that copy is edited.
+  const startEditNotification = (notification: Notification) => {
+    setEditingNotification(notification);
+    setComposeForm({
+      title: notification.title,
+      message: notification.message,
+      priority: notification.priority,
+      target: "all",
+      selectedStudentId: "",
+      selectedProgramId: "",
+    });
+    setIsViewDialogOpen(false);
+    setIsComposeDialogOpen(true);
+  };
+
+  const handleDeleteNotification = async () => {
+    if (!deletingNotification || !user) return;
+    setIsDeleting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", deletingNotification.id)
+        .eq("sender_id", user.id);
+      if (error) throw error;
+      toast.success("Notification deleted", {
+        description: `"${deletingNotification.title}" has been removed.${
+          deletingNotification.recipientName ? ` (${deletingNotification.recipientName} will no longer see it.)` : ""
+        }`,
+      });
+      setDeletingNotification(null);
+      fetchNotifications();
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      toast.error("Failed to delete notification", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSendNotification = async () => {
     if (!user) return;
+
+    // EDIT mode — updating an already-sent notification. Recipients cannot
+    // be changed after sending; only the title and message are updated, and
+    // only for the clicked row (one row per recipient).
+    if (editingNotification) {
+      setIsSending(true);
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("notifications")
+          .update({
+            title: composeForm.title,
+            message: composeForm.message,
+            priority: composeForm.priority,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingNotification.id)
+          .eq("sender_id", user.id);
+        if (error) throw error;
+
+        toast.success("Notification updated", {
+          description: `“${composeForm.title}” has been updated${
+            editingNotification.recipientName ? ` for ${editingNotification.recipientName}` : ""
+          }.`,
+        });
+        setIsComposeDialogOpen(false);
+        resetComposeForm();
+        fetchNotifications();
+      } catch (error) {
+        console.error("Error updating notification:", error);
+        toast.error("Failed to update notification", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     setIsSending(true);
 
     try {
@@ -548,6 +681,9 @@ export default function FacultySupervisorNotificationsPage() {
       });
       setIsComposeDialogOpen(false);
       resetComposeForm();
+      // Re-fetch so the locally-added row is replaced with the real DB rows
+      // (with real UUIDs that the edit/delete actions can act on).
+      fetchNotifications();
     } catch (error) {
       console.error("Error sending notification:", error);
       toast.error("Failed to send notification", { description: error instanceof Error ? error.message : "Please try again." });
@@ -600,7 +736,10 @@ export default function FacultySupervisorNotificationsPage() {
         title="Notifications"
         description="Send announcements and track communication with students"
         actions={
-          <Dialog open={isComposeDialogOpen} onOpenChange={setIsComposeDialogOpen}>
+          <Dialog open={isComposeDialogOpen} onOpenChange={(open) => {
+            setIsComposeDialogOpen(open);
+            if (!open) setEditingNotification(null);
+          }}>
             <DialogTrigger asChild>
               <Button className="gap-2" onClick={resetComposeForm}>
                 <Plus className="h-4 w-4" /> New Notification
@@ -608,13 +747,31 @@ export default function FacultySupervisorNotificationsPage() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Compose Notification</DialogTitle>
+                <DialogTitle>{editingNotification ? "Edit Notification" : "Compose Notification"}</DialogTitle>
                 <DialogDescription>
-                  Send a notification to students in your supervised programs.
+                  {editingNotification
+                    ? editingNotification.recipientName
+                      ? `Edits the copy sent to ${editingNotification.recipientName}. Recipients can't be changed after sending — other copies keep the original text.`
+                      : "Updates this notification's title and message. Recipients can't be changed after sending."
+                    : "Send a notification to students in your supervised programs."}
                 </DialogDescription>
               </DialogHeader>
 
             <DialogBody className="space-y-4">
+              {/* Edit banner */}
+              {editingNotification && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                  <Pencil className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>
+                    You are editing an already-sent notification
+                    {editingNotification.recipientName
+                      ? ` — the copy sent to ${editingNotification.recipientName}`
+                      : ""}
+                    . Saving overwrites its title and message.
+                  </p>
+                </div>
+              )}
+
               {/* Title */}
               <div className="space-y-2">
                 <Label htmlFor="title">Title *</Label>
@@ -648,19 +805,30 @@ export default function FacultySupervisorNotificationsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="target">Send To</Label>
-                  <Select 
-                    value={composeForm.target} 
-                    onValueChange={(value) => setComposeForm(prev => ({ ...prev, target: value as NotificationTarget }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select recipients" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Students</SelectItem>
-                      <SelectItem value="program">Specific Program</SelectItem>
-                      <SelectItem value="individual">Individual Student</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {editingNotification ? (
+                    // Recipients can't be changed after sending — show the
+                    // original recipient instead of an editable selector.
+                    <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground min-h-[36px]">
+                      {getTargetIcon(editingNotification.target)}
+                      <span className="truncate">
+                        {editingNotification.recipientName || editingNotification.targetName}
+                      </span>
+                    </div>
+                  ) : (
+                    <Select
+                      value={composeForm.target}
+                      onValueChange={(value) => setComposeForm(prev => ({ ...prev, target: value as NotificationTarget }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select recipients" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Students</SelectItem>
+                        <SelectItem value="program">Specific Program</SelectItem>
+                        <SelectItem value="individual">Individual Student</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
 
@@ -747,7 +915,9 @@ export default function FacultySupervisorNotificationsPage() {
                       {composeForm.message || "No content..."}
                     </p>
                     <div className="text-xs text-muted-foreground pt-2 border-t">
-                      To: {composeForm.target === "all" 
+                      To: {editingNotification
+                        ? (editingNotification.recipientName || "Original recipient — unchanged")
+                        : composeForm.target === "all" 
                         ? "All Students" 
                         : composeForm.target === "individual"
                         ? students.find(s => s.id === composeForm.selectedStudentId)?.name || "Selected Student"
@@ -767,8 +937,8 @@ export default function FacultySupervisorNotificationsPage() {
                 disabled={!composeForm.title || !composeForm.message || isSending}
               >
                 {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Send className="mr-2 h-4 w-4" />
-                Send Notification
+                {editingNotification ? <Pencil className="mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
+                {editingNotification ? "Save Changes" : "Send Notification"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -883,9 +1053,37 @@ export default function FacultySupervisorNotificationsPage() {
                     <Eye className="h-3 w-3" />
                     <span>{notification.readCount}/{notification.recipientCount} read ({getReadRate(notification)}%)</span>
                   </div>
-                  <Button variant="ghost" size="sm" className="gap-1">
-                    View Details
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Edit notification"
+                      aria-label="Edit notification"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditNotification(notification);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      title="Delete notification"
+                      aria-label="Delete notification"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingNotification(notification);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="gap-1">
+                      View Details
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -904,7 +1102,7 @@ export default function FacultySupervisorNotificationsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Read Rate</TableHead>
                   <TableHead>Sent At</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
+                  <TableHead className="w-[140px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -944,14 +1142,38 @@ export default function FacultySupervisorNotificationsPage() {
                     </TableCell>
                     <TableCell>{formatDate(notification.sentAt)}</TableCell>
                     <TableCell>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => openViewDialog(notification)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          onClick={() => openViewDialog(notification)}
+                          title="View details"
+                          aria-label="View notification details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => startEditNotification(notification)}
+                          title="Edit notification"
+                          aria-label="Edit notification"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeletingNotification(notification)}
+                          title="Delete notification"
+                          aria-label="Delete notification"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1074,6 +1296,7 @@ export default function FacultySupervisorNotificationsPage() {
                     if (!selectedNotification) return;
                     // Pre-fill the compose form with this notification's
                     // content so the user can quickly send a similar one.
+                    setEditingNotification(null);
                     setComposeForm({
                       title: selectedNotification.title,
                       message: selectedNotification.message,
@@ -1094,6 +1317,7 @@ export default function FacultySupervisorNotificationsPage() {
                   className="gap-2"
                   onClick={() => {
                     if (!selectedNotification) return;
+                    setEditingNotification(null);
                     setComposeForm({
                       title: selectedNotification.title,
                       message: selectedNotification.message,
@@ -1124,6 +1348,32 @@ export default function FacultySupervisorNotificationsPage() {
           )}
         </DialogContent>
       </Dialog>
+      {/* Delete Notification Confirmation */}
+      <ConfirmDialog
+        open={deletingNotification !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingNotification(null);
+        }}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete notification?
+          </>
+        }
+        description={
+          deletingNotification
+            ? `This removes the notification "${deletingNotification.title}"${
+                deletingNotification.recipientName
+                  ? ` sent to ${deletingNotification.recipientName}`
+                  : ""
+              }. The recipient will no longer see it in their inbox. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel={isDeleting ? "Deleting..." : "Delete"}
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteNotification}
+      />
     </div>
   );
 }

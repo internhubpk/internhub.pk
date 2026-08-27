@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Save,
   Download,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ import {
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -158,6 +160,13 @@ export default function DepartmentCoordinatorEvaluationsPage() {
   const [selectedStudent, setSelectedStudent] = useState<StudentRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [existingEvalByStudent, setExistingEvalByStudent] = useState<Record<string, ExistingEvaluation>>({});
+
+  // ----- Delete (retract) an evaluation the DC wrote -----
+  const [deleteEvalTarget, setDeleteEvalTarget] = useState<{
+    student: StudentRow;
+    evaluation: ExistingEvaluation;
+  } | null>(null);
+  const [isDeletingEval, setIsDeletingEval] = useState(false);
 
   // ----- Load students in the DC's department -----
   const loadStudents = useCallback(async () => {
@@ -299,6 +308,35 @@ export default function DepartmentCoordinatorEvaluationsPage() {
   const handleOpenEvaluate = (student: StudentRow) => {
     setSelectedStudent(student);
     setDialogOpen(true);
+  };
+
+  // ----- Delete (retract) one of the DC's own report evaluations -----
+  // DELETE /api/department-coordinator/evaluations?id=<uuid> — the route
+  // only allows deleting evaluations the caller wrote.
+  const handleDeleteEvaluation = async () => {
+    if (!deleteEvalTarget) return;
+    setIsDeletingEval(true);
+    try {
+      const res = await fetch(
+        `/api/department-coordinator/evaluations?id=${encodeURIComponent(deleteEvalTarget.evaluation.id)}`,
+        { method: "DELETE" }
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || json?.error || "Request failed");
+      }
+      toast.success("Evaluation deleted", {
+        description: `The report evaluation for ${deleteEvalTarget.student.full_name || "the student"} was removed.`,
+      });
+      setDeleteEvalTarget(null);
+      loadStudents();
+    } catch (err) {
+      toast.error("Failed to delete evaluation", {
+        description: err instanceof Error ? err.message : "Request failed",
+      });
+    } finally {
+      setIsDeletingEval(false);
+    }
   };
 
   // ----- Render -----
@@ -474,13 +512,29 @@ export default function DepartmentCoordinatorEvaluationsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Button
-                              size="sm"
-                              variant={evalState ? "outline" : "default"}
-                              onClick={() => handleOpenEvaluate(s)}
-                            >
-                              {evalState ? "Revise" : "Evaluate"}
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant={evalState ? "outline" : "default"}
+                                onClick={() => handleOpenEvaluate(s)}
+                              >
+                                {evalState ? "Revise" : "Evaluate"}
+                              </Button>
+                              {evalState && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  title="Delete this evaluation"
+                                  onClick={() =>
+                                    setDeleteEvalTarget({ student: s, evaluation: evalState })
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Delete this evaluation</span>
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -523,14 +577,30 @@ export default function DepartmentCoordinatorEvaluationsPage() {
                             </Badge>
                           )}
                         </div>
-                        <Button
-                          size="sm"
-                          className="w-full"
-                          variant={evalState ? "outline" : "default"}
-                          onClick={() => handleOpenEvaluate(s)}
-                        >
-                          {evalState ? "Revise Evaluation" : "Evaluate Reports"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            variant={evalState ? "outline" : "default"}
+                            onClick={() => handleOpenEvaluate(s)}
+                          >
+                            {evalState ? "Revise Evaluation" : "Evaluate Reports"}
+                          </Button>
+                          {evalState && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 shrink-0 p-0 text-destructive hover:text-destructive"
+                              title="Delete this evaluation"
+                              onClick={() =>
+                                setDeleteEvalTarget({ student: s, evaluation: evalState })
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Delete this evaluation</span>
+                            </Button>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   );
@@ -556,6 +626,37 @@ export default function DepartmentCoordinatorEvaluationsPage() {
           existingEvaluation={existingEvalByStudent[selectedStudent.user_id] || null}
         />
       )}
+
+      {/* Delete Evaluation Confirmation */}
+      <ConfirmDialog
+        open={!!deleteEvalTarget}
+        onOpenChange={(open) => !open && setDeleteEvalTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete this evaluation?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This permanently removes your report evaluation for{" "}
+              <strong>{deleteEvalTarget?.student.full_name || "this student"}</strong>
+              {deleteEvalTarget ? ` — ${computeEvalTotal(deleteEvalTarget.evaluation)}/100` : ""},
+              including its comments.
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. The student&apos;s final
+              grade refreshes the next time it is computed. You can submit a new
+              evaluation at any time.
+            </span>
+          </span>
+        }
+        confirmLabel={isDeletingEval ? "Deleting..." : "Delete Evaluation"}
+        variant="danger"
+        loading={isDeletingEval}
+        onConfirm={handleDeleteEvaluation}
+      />
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   Key,
   UserPlus,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,6 +81,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { UserRole } from "@/types";
 
 interface UserProfile {
@@ -113,6 +115,13 @@ interface AssignRoleForm {
   department_id: string;
   program_id: string;
   company_id: string;
+}
+
+interface EditUserForm {
+  full_name: string;
+  email: string;
+  phone: string;
+  password: string;
 }
 
 const roleConfig: Record<string, { label: string; icon: any; color: string; description: string }> = {
@@ -178,6 +187,17 @@ export default function SuperAdminUsersPage() {
     newStatus: string;
     cascadeLabel: string;
   }>({ open: false, userId: "", currentStatus: "", newStatus: "", cascadeLabel: "" });
+
+  // Edit user dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<UserProfile | null>(null);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [editForm, setEditForm] = useState<EditUserForm>({ full_name: "", email: "", phone: "", password: "" });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // Delete user confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -531,6 +551,86 @@ export default function SuperAdminUsersPage() {
     setIsViewDialogOpen(true);
   }
 
+  function openEditDialog(targetUser: UserProfile) {
+    setEditTarget(targetUser);
+    setEditForm({
+      full_name: targetUser.full_name || "",
+      email: targetUser.email || "",
+      phone: (targetUser as UserProfile & { phone?: string }).phone || "",
+      password: "",
+    });
+    setIsEditDialogOpen(true);
+  }
+
+  async function handleSaveUser() {
+    if (!editTarget) return;
+    if (!editForm.full_name.trim() || editForm.full_name.trim().length < 2) {
+      setMessage({ type: "error", text: "Full name must be at least 2 characters" });
+      return;
+    }
+    if (!editForm.email.trim() || !editForm.email.includes("@")) {
+      setMessage({ type: "error", text: "Please enter a valid email address" });
+      return;
+    }
+    if (editForm.password && editForm.password.length < 8) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters (or leave it blank to keep the current one)" });
+      return;
+    }
+
+    setIsSavingUser(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/super-admin/users/${editTarget.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: editForm.full_name.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+          password: editForm.password || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      setMessage({ type: "success", text: `${editForm.full_name.trim()} updated successfully` });
+      setIsEditDialogOpen(false);
+      setEditTarget(null);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error updating user:", error);
+      setMessage({ type: "error", text: error.message || "Failed to update user" });
+    } finally {
+      setIsSavingUser(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!deleteTarget) return;
+    setIsDeletingUser(true);
+    try {
+      const res = await fetch(`/api/super-admin/users/${deleteTarget.user_id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      setMessage({
+        type: "success",
+        text: `${deleteTarget.full_name || deleteTarget.email} permanently deleted`,
+      });
+      setDeleteTarget(null);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      setMessage({ type: "error", text: error.message || "Failed to delete user" });
+    } finally {
+      setIsDeletingUser(false);
+    }
+  }
+
   const filteredUsers = users.filter(user => {
     const matchesSearch =
       `${user.full_name} ${user.first_name} ${user.last_name} ${user.email}`.toLowerCase()
@@ -567,17 +667,14 @@ export default function SuperAdminUsersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      {/* Read-only view — super admin can browse users but not create them.
-          New users join via the public /register page; their role is assigned
-          by their university admin (or via the dedicated Companies → Company HR
-          management page for company_hr accounts). */}
       <PageHeader
         title="Platform Users"
-        description="View and manage all registered users across universities"
+        description="Create, edit, suspend and delete users across universities"
         actions={
-          <Badge variant="outline" className="text-sm px-3 py-1">
-            Read-only
-          </Badge>
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Create User
+          </Button>
         }
       />
 
@@ -728,11 +825,15 @@ export default function SuperAdminUsersPage() {
               <p className="text-muted-foreground max-w-md">
                 {searchTerm || roleFilter !== "all" || statusFilter !== "all"
                   ? "Try adjusting your filters."
-                  : "Once universities register their admins, users will appear here."
+                  : "Create your first user or wait for universities to register."
                 }
               </p>
-              {/* Read-only — no "Create First User" button. New users self-register
-                  via /register and are assigned a role by their university admin. */}
+              {!(searchTerm || roleFilter !== "all" || statusFilter !== "all") && (
+                <Button className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create User
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -797,6 +898,10 @@ export default function SuperAdminUsersPage() {
                             <Eye className="h-4 w-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(userItem)}>
+                            <UserCheck className="h-4 w-4 mr-2" />
+                            Edit User
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openAssignRoleDialog(userItem)}>
                             <ShieldCheck className="h-4 w-4 mr-2" />
                             Assign Role
@@ -821,6 +926,14 @@ export default function SuperAdminUsersPage() {
                               </>
                             )}
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setDeleteTarget(userItem)}
+                            disabled={userItem.user_id === user?.id}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete User
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -832,8 +945,7 @@ export default function SuperAdminUsersPage() {
         </Card>
       )}
 
-      {/* (Create User dialog removed — page is read-only. New users join via /register. */}
-      {false && (
+      {/* Create User dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
         setIsCreateDialogOpen(open);
         if (!open) resetCreateForm();
@@ -1047,7 +1159,148 @@ export default function SuperAdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      )}
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) setEditTarget(null);
+      }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Edit User
+            </DialogTitle>
+            <DialogDescription>
+              Update account details for {editTarget?.full_name || editTarget?.email}.
+              Leave the password blank to keep the current one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-full-name">Full Name *</Label>
+              <Input
+                id="edit-full-name"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, full_name: e.target.value }))}
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email Address *</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Changing the email updates the sign-in address immediately.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="+92 300 0000000"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-password">New Password (optional)</Label>
+              <div className="relative">
+                <Input
+                  id="edit-password"
+                  type={showEditPassword ? "text" : "password"}
+                  value={editForm.password}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, password: e.target.value }))}
+                  placeholder="Leave blank to keep current password"
+                  className="pr-12"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                  onClick={() => setShowEditPassword(!showEditPassword)}
+                  tabIndex={-1}
+                >
+                  {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
+            </div>
+
+            {editTarget?.role && (
+              <div className="p-3 rounded-lg bg-muted/50 text-sm">
+                <span className="text-muted-foreground">Role:</span>{" "}
+                {roleConfig[editTarget.role]?.label || editTarget.role}
+                <span className="text-muted-foreground"> — change it via “Assign Role”.</span>
+              </div>
+            )}
+          </DialogBody>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isSavingUser}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveUser} disabled={isSavingUser}>
+              {isSavingUser ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete user permanently?
+          </>
+        }
+        description={
+          <span className="space-y-3 block">
+            <span className="block">
+              This will permanently delete <strong>{deleteTarget?.full_name || deleteTarget?.email}</strong>{" "}
+              ({deleteTarget?.email}).
+            </span>
+            <span className="block bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+              This action <strong>cannot be undone</strong>. The account, its sign-in credentials and all
+              personal data are removed: applications, weekly logs, evaluations, submissions,
+              attendance, certificates, documents and notifications.
+            </span>
+            {deleteTarget?.role === "university_admin" && (
+              <span className="block bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                This is a university admin — the university itself and its other accounts are NOT
+                deleted. Use Universities → Delete if you want to remove the whole university with
+                every account under it.
+              </span>
+            )}
+          </span>
+        }
+        confirmLabel={isDeletingUser ? "Deleting..." : "Delete User"}
+        variant="danger"
+        loading={isDeletingUser}
+        onConfirm={handleDeleteUser}
+      />
 
       {/* View User Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>

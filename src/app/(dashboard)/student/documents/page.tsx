@@ -44,6 +44,7 @@ import {
   Upload,
   Download,
   Trash2,
+  Pencil,
   Eye,
   Plus,
   File,
@@ -165,6 +166,15 @@ export default function StudentDocumentsPage() {
     open: false,
     doc: null,
   });
+
+  // Rename dialog state
+  const [renameDialog, setRenameDialog] = useState<{ open: boolean; doc: Document | null }>({
+    open: false,
+    doc: null,
+  });
+  const [renameName, setRenameName] = useState("");
+  const [renameType, setRenameType] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const fetchDocuments = useCallback(async () => {
     if (!user) return;
@@ -333,6 +343,45 @@ export default function StudentDocumentsPage() {
   // Open the delete confirmation dialog instead of native confirm().
   const handleDelete = (doc: Document) => {
     setDeleteDialog({ open: true, doc });
+  };
+
+  // Open the rename dialog pre-filled with the document's current name/type.
+  const handleRename = (doc: Document) => {
+    setRenameName(doc.name);
+    setRenameType(doc.type || "other");
+    setRenameDialog({ open: true, doc });
+  };
+
+  // Actually perform the rename/re-type after the user confirms. Direct
+  // supabase update — RLS permits owner updates (same path the delete uses).
+  const confirmRename = async () => {
+    const doc = renameDialog.doc;
+    if (!doc || !renameName.trim()) return;
+    setIsRenaming(true);
+    try {
+      const supabase = createClient();
+      const update: Record<string, unknown> = {
+        name: renameName.trim(),
+        updated_at: new Date().toISOString(),
+      };
+      if (renameType) {
+        update.type = renameType as DocumentType;
+      }
+      const { error } = await supabase
+        .from("documents")
+        .update(update)
+        .eq("id", doc.id);
+      if (error) throw error;
+
+      toast.success("Document updated", { description: `Renamed to "${renameName.trim()}".` });
+      setRenameDialog({ open: false, doc: null });
+      fetchDocuments();
+    } catch (error) {
+      console.error("Error renaming document:", error);
+      toast.error("Failed", { description: "Failed to update the document. Please try again." });
+    } finally {
+      setIsRenaming(false);
+    }
   };
 
   // Actually perform the delete after the user confirms.
@@ -714,6 +763,17 @@ export default function StudentDocumentsPage() {
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
+
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleRename(doc)}
+                                    title="Rename"
+                                    aria-label="Rename document"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
                                   
                                   <a href={doc.url} target="_blank" rel="noopener noreferrer">
                                     <Button
@@ -774,6 +834,17 @@ export default function StudentDocumentsPage() {
                           >
                             <Eye className="h-3 w-3" />
                             Preview
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 px-3"
+                            onClick={() => handleRename(doc)}
+                            title="Rename"
+                            aria-label="Rename document"
+                          >
+                            <Pencil className="h-3 w-3" />
                           </Button>
                           
                           <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex-1">
@@ -965,6 +1036,82 @@ export default function StudentDocumentsPage() {
                 Download
               </Button>
             </a>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Document Dialog */}
+      <Dialog
+        open={renameDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !isRenaming) setRenameDialog({ open: false, doc: null });
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Document</DialogTitle>
+            <DialogDescription>
+              Update the name and type of “{renameDialog.doc?.name}”. The file
+              itself is not changed — only how it appears in your document list.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="rename-name">
+                Document Name *
+              </label>
+              <Input
+                id="rename-name"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                placeholder="e.g. Resume — Final Version"
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="rename-type">
+                Document Type
+              </label>
+              <Select value={renameType} onValueChange={setRenameType}>
+                <SelectTrigger id="rename-type">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="resume">Resume/CV</SelectItem>
+                  <SelectItem value="cover_letter">Cover Letter</SelectItem>
+                  <SelectItem value="transcript">Academic Transcript</SelectItem>
+                  <SelectItem value="offer_letter">Offer Letter</SelectItem>
+                  <SelectItem value="weekly_report">Weekly Report</SelectItem>
+                  <SelectItem value="evaluation_form">Evaluation Form</SelectItem>
+                  <SelectItem value="certificate">Certificate</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenameDialog({ open: false, doc: null })}
+              disabled={isRenaming}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmRename}
+              disabled={!renameName.trim() || isRenaming}
+              className="gap-2"
+            >
+              {isRenaming ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Pencil className="h-4 w-4" />
+              )}
+              {isRenaming ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

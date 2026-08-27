@@ -60,6 +60,9 @@ import {
   Coffee,
   Home,
   AlertCircle,
+  Plus,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -70,6 +73,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -140,9 +144,49 @@ export default function CompanyHRAttendancePage() {
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Add-record dialog state (manual attendance entry)
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addInternSiId, setAddInternSiId] = useState<string>("");
+  const [addDate, setAddDate] = useState<string>(todayIso());
+  const [addStatus, setAddStatus] = useState<AttendanceStatus>("present");
+  const [addNotes, setAddNotes] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [internOptions, setInternOptions] = useState<Array<{
+    id: string;
+    name: string;
+    internship_title: string;
+  }>>([]);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<AttendanceRecord | null>(null);
+  const [isDeletingAttendance, setIsDeletingAttendance] = useState(false);
+
   useEffect(() => {
     fetchAttendance();
   }, [profile?.company_id, selectedDate]);
+
+  // Load the company's interns (placements) for the Add Record dropdown.
+  // `id` here is the student_internship_id the POST endpoint expects.
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/company-hr/interns", { cache: "no-store" });
+        if (!res.ok) return;
+        const j = await res.json();
+        const list = (j.data || [])
+          .filter((i: any) => ["active", "assigned", "completed"].includes(i.status))
+          .map((i: any) => ({
+            id: i.id as string,
+            name: i.student_name || i.student_email || "Unknown",
+            internship_title: i.internship_title || "Unknown Internship",
+          }));
+        setInternOptions(list);
+      } catch {
+        // ignore — dialog simply shows no interns
+      }
+    })();
+  }, [profile?.company_id]);
 
   async function fetchAttendance() {
     setIsLoading(true);
@@ -304,6 +348,76 @@ export default function CompanyHRAttendancePage() {
     setIsCorrectionOpen(true);
   };
 
+  // Add a manual attendance record (POST /api/company-hr/attendance).
+  // The API replaces any existing record for the same placement + date.
+  const openAddDialog = () => {
+    setAddInternSiId("");
+    setAddDate(selectedDate || todayIso());
+    setAddStatus("present");
+    setAddNotes("");
+    setIsAddOpen(true);
+  };
+
+  const handleAddAttendance = async () => {
+    if (!addInternSiId || !addDate) return;
+    setIsAdding(true);
+    try {
+      const res = await fetch("/api/company-hr/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_internship_id: addInternSiId,
+          date: addDate,
+          status: addStatus,
+          notes: addNotes.trim() || null,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      const intern = internOptions.find((i) => i.id === addInternSiId);
+      toast.success("Attendance record saved", {
+        description: `${intern?.name || "Intern"} — ${addDate} (${addStatus.replace("_", " ")})`,
+      });
+      setIsAddOpen(false);
+      // If the record was added for the currently viewed date, show it right away.
+      if (addDate === selectedDate) {
+        await fetchAttendance();
+      } else {
+        setSelectedDate(addDate);
+      }
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to save attendance record" });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  // Delete an attendance record (DELETE /api/company-hr/attendance/[id])
+  const handleDeleteAttendance = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingAttendance(true);
+    try {
+      const res = await fetch(`/api/company-hr/attendance/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Attendance record deleted", {
+        description: `${deleteTarget.intern_name} — ${formatDateLong(deleteTarget.date)}`,
+      });
+      setDeleteTarget(null);
+      await fetchAttendance();
+    } catch (e: any) {
+      toast.error("Error", { description: e.message || "Failed to delete attendance record" });
+    } finally {
+      setIsDeletingAttendance(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -311,9 +425,14 @@ export default function CompanyHRAttendancePage() {
         title="Attendance Tracking"
         description="Monitor and manage intern attendance records"
         actions={
-          <Button
-            variant="outline"
-            className="gap-2"
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="default" className="gap-2" onClick={openAddDialog}>
+              <Plus className="h-4 w-4" />
+              Add Record
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
             onClick={() => {
               const rows = [
                 ["Intern", "Email", "Internship", "Date", "Status", "Check-in", "Check-out", "Notes"],
@@ -344,6 +463,7 @@ export default function CompanyHRAttendancePage() {
             <Download className="h-4 w-4" />
             Export Report
           </Button>
+          </div>
         }
       />
 
@@ -556,6 +676,12 @@ export default function CompanyHRAttendancePage() {
                               <Edit3 className="mr-2 h-4 w-4" /> Mark Correction
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteTarget(record)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete Record
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => {
                                 toast.success("Notice", { description: `${record.intern_name}\n\nDate: ${formatDateLong(record.date)}\nStatus: ${record.status}\nCheck-in: ${record.check_in || "--"}\nCheck-out: ${record.check_out || "--"}\nVerified: ${record.verified ? "Yes" : "No"}\n\nNotes: ${record.notes || "—"}` });
                               }}
@@ -745,6 +871,122 @@ export default function CompanyHRAttendancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Record Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Attendance Record</DialogTitle>
+            <DialogDescription>
+              Manually record attendance for an intern — e.g. a missed day or a leave entry
+              recorded after the fact. Any existing record for the same intern and date is replaced.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label>Intern *</Label>
+              <Select value={addInternSiId} onValueChange={setAddInternSiId}>
+                <SelectTrigger><SelectValue placeholder="Choose an intern..." /></SelectTrigger>
+                <SelectContent>
+                  {internOptions.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-muted-foreground text-center">
+                      No active interns found for your company.
+                    </div>
+                  ) : (
+                    internOptions.map((intern) => (
+                      <SelectItem key={intern.id} value={intern.id}>
+                        <div className="flex flex-col">
+                          <span>{intern.name}</span>
+                          <span className="text-xs text-muted-foreground">{intern.internship_title}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="add-date">Date *</Label>
+                <Input
+                  id="add-date"
+                  type="date"
+                  value={addDate}
+                  onChange={(e) => setAddDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Status *</Label>
+                <Select value={addStatus} onValueChange={(v) => setAddStatus(v as AttendanceStatus)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="present">Present</SelectItem>
+                    <SelectItem value="absent">Absent</SelectItem>
+                    <SelectItem value="late">Late</SelectItem>
+                    <SelectItem value="half_day">Half Day</SelectItem>
+                    <SelectItem value="leave">On Leave</SelectItem>
+                    <SelectItem value="holiday">Holiday</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add-notes">Notes (optional)</Label>
+              <Textarea
+                id="add-notes"
+                placeholder="e.g., Approved leave, public holiday, missed check-in..."
+                value={addNotes}
+                onChange={(e) => setAddNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddOpen(false)} disabled={isAdding}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddAttendance}
+              disabled={isAdding || !addInternSiId || !addDate}
+            >
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...
+                </>
+              ) : (
+                "Save Record"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Attendance Record Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Delete attendance record?
+          </>
+        }
+        description={
+          <span className="block">
+            This permanently removes the <strong>{deleteTarget?.status?.replace("_", " ")}</strong>{" "}
+            record for <strong>{deleteTarget?.intern_name}</strong> on{" "}
+            {deleteTarget ? formatDateLong(deleteTarget.date) : ""}. This action cannot be undone.
+          </span>
+        }
+        confirmLabel="Delete Record"
+        variant="danger"
+        loading={isDeletingAttendance}
+        onConfirm={handleDeleteAttendance}
+      />
     </div>
   );
 }

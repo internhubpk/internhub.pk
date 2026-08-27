@@ -357,3 +357,107 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// ============================================================================
+// DELETE /api/department-coordinator/evaluations?id=<uuid>
+//   Retract (delete) a department-coordinator report evaluation the caller
+//   wrote. Only evaluations with evaluator_id = caller and
+//   evaluator_role = 'department_coordinator' can be removed; the student's
+//   final grade is NOT recomputed here (it refreshes on the next compute).
+// ============================================================================
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!user || authError) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id, role, department_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile || profile.role !== "department_coordinator") {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Forbidden: Department Coordinator access required" },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const evalId = searchParams.get("id");
+    if (!evalId) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Missing ?id=<evaluation uuid>" },
+        { status: 400 }
+      );
+    }
+
+    // Ownership: the DC can only retract their OWN evaluations.
+    const { data: evaluation } = await supabase
+      .from("evaluations")
+      .select("id, evaluator_id, evaluator_role, student_user_id, type")
+      .eq("id", evalId)
+      .maybeSingle();
+
+    if (!evaluation) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Evaluation not found" },
+        { status: 404 }
+      );
+    }
+
+    if (evaluation.evaluator_id !== user.id || evaluation.evaluator_role !== "department_coordinator") {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "You can only delete evaluations you wrote" },
+        { status: 403 }
+      );
+    }
+
+    // Department scope check: the evaluated student must be in the caller's dept.
+    const { data: studentProfile } = await supabase
+      .from("profiles")
+      .select("user_id, department_id")
+      .eq("user_id", evaluation.student_user_id)
+      .single();
+
+    if (!studentProfile || studentProfile.department_id !== profile.department_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "This student is no longer in your department" },
+        { status: 403 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("evaluations")
+      .delete()
+      .eq("id", evalId)
+      .eq("evaluator_id", user.id);
+
+    if (deleteError) {
+      console.error("[DELETE /api/department-coordinator/evaluations] db error:", deleteError);
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: `Failed to delete evaluation: ${deleteError.message}` },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json<ApiResponse<null>>({
+      success: true,
+      data: null,
+      message: "Evaluation deleted",
+    });
+  } catch (error: any) {
+    console.error("[DELETE /api/department-coordinator/evaluations] unexpected:", error);
+    return NextResponse.json<ApiResponse<never>>(
+      { success: false, error: error?.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

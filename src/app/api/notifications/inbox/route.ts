@@ -175,3 +175,57 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE: Remove notification(s) from the current user's inbox.
+//
+// Body: { notification_ids?: string[] }  OR  ?id=<uuid> query param.
+// RLS on notifications scopes deletes to rows where user_id = auth.uid().
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let ids: string[] = [];
+    const { searchParams } = new URL(request.url);
+    const single = searchParams.get("id");
+    if (single) {
+      ids = [single];
+    } else {
+      const body = await request.json().catch(() => ({}));
+      const bodyIds = (body as { notification_ids?: string[] }).notification_ids;
+      if (Array.isArray(bodyIds) && bodyIds.length > 0) {
+        ids = bodyIds;
+      }
+    }
+
+    if (ids.length === 0) {
+      return NextResponse.json(
+        { error: "Provide ?id=<uuid> or { notification_ids: [...] }" },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .in("id", ids)
+      .eq("user_id", user.id); // security: own rows only
+
+    if (error) {
+      console.error("Error deleting notifications:", error);
+      return NextResponse.json({ error: "Failed to delete notification" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: ids.length === 1 ? "Notification deleted" : `${ids.length} notifications deleted`,
+    });
+  } catch (error) {
+    console.error("Inbox DELETE API error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

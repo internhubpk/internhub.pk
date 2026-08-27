@@ -245,3 +245,96 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
 }
+
+// DELETE /api/company-hr/applications/[id] — permanently remove an
+// application record (cleanup of test/spam/withdrawn applications).
+// Blocked when the applicant has already been ACCEPTED and placed into the
+// internship (a student_internships row exists) — remove the placement
+// first.
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    // Verify ownership
+    const { data: existing } = await supabase
+      .from("internship_applications")
+      .select("id, internship_id, student_user_id, status, internships!inner(company_id)")
+      .eq("id", id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Application not found" } },
+        { status: 404 }
+      );
+    }
+
+    // Block removal when the applicant is already placed.
+    const { data: placement } = await supabase
+      .from("student_internships")
+      .select("id")
+      .eq("internship_id", existing.internship_id)
+      .eq("student_user_id", existing.student_user_id)
+      .maybeSingle();
+
+    if (placement) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "CONFLICT",
+            message:
+              "This applicant was accepted and placed into the internship. Remove the intern placement first (Interns page).",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("internship_applications")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Error deleting application:", deleteError);
+      return NextResponse.json(
+        { error: { code: "DATABASE_ERROR", message: "Failed to delete application" } },
+        { status: 500 }
+      );
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "company_hr.delete_application",
+      entity_type: "internship_application",
+      entity_id: id,
+      old_values: { status: existing.status },
+      new_values: null,
+    });
+
+    return NextResponse.json({ success: true, message: "Application deleted" });
+  } catch (error) {
+    console.error("Unexpected error in DELETE application:", error);
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
+}
