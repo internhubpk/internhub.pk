@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -1736,7 +1737,7 @@ export default function StudentsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <DialogBody className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="edit-full-name">Full Name</Label>
               <Input
@@ -1792,7 +1793,7 @@ export default function StudentsPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSavingEdit}>

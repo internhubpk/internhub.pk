@@ -8,7 +8,6 @@ import {
   Trash2,
   Edit3,
   X,
-  AlertCircle,
   Clock,
   Ban,
   CheckCircle2,
@@ -44,6 +43,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { toast } from "sonner";
@@ -65,6 +65,8 @@ export default function UniversityAdminHolidaysPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Holiday | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -160,7 +162,7 @@ export default function UniversityAdminHolidaysPage() {
   }
 
   async function handleDelete(holiday: Holiday) {
-    if (!confirm(`Delete holiday "${holiday.name}"? This cannot be undone.`)) return;
+    setIsDeleting(true);
     try {
       const resp = await fetch(`/api/holidays/${holiday.id}`, { method: "DELETE" });
       const data = await resp.json();
@@ -169,9 +171,12 @@ export default function UniversityAdminHolidaysPage() {
         return;
       }
       toast.success("Holiday deleted");
+      setDeleteTarget(null);
       fetchHolidays();
     } catch (err) {
       toast.error("Failed to delete holiday");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -206,7 +211,7 @@ export default function UniversityAdminHolidaysPage() {
     <div className="space-y-6">
       <PageHeader
         title="Holiday Management"
-        description="Define official holidays for your university. On submission-restricted holidays, students cannot submit weekly logs or restricted tasks. The restriction is enforced server-side."
+        description="Define official holidays for your university. On submission-restricted holidays, students cannot submit weekly logs or tasks."
         actions={
           <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4 mr-2" />
@@ -214,21 +219,6 @@ export default function UniversityAdminHolidaysPage() {
           </Button>
         }
       />
-
-      <Card className="border-blue-500/20 bg-blue-500/5">
-        <CardContent className="p-4 flex items-start gap-3">
-          <AlertCircle className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-          <div className="text-sm">
-            <p className="font-medium mb-1">How holiday restrictions work</p>
-            <p className="text-muted-foreground">
-              When a daily weekly-log entry falls on a submission-restricted holiday,
-              the entry is automatically marked as <Badge variant="outline" className="mx-1">Holiday</Badge> and
-              the student cannot submit tasks for that day. Multi-day holidays are supported via the end date field.
-              This restriction is enforced both in the UI and at the server/database layer.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {isLoading ? (
         <div className="space-y-3">
@@ -326,7 +316,7 @@ export default function UniversityAdminHolidaysPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(holiday)}
+                            onClick={() => setDeleteTarget(holiday)}
                             title="Delete"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -353,7 +343,7 @@ export default function UniversityAdminHolidaysPage() {
                 : "Define a new official holiday for your university."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-5 px-1 py-2">
+          <form onSubmit={handleSubmit} className="space-y-5 px-8 py-2">
             <div className="space-y-2">
               <Label htmlFor="name">Holiday Name *</Label>
               <Input
@@ -438,6 +428,22 @@ export default function UniversityAdminHolidaysPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Holiday Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={`Delete "${deleteTarget?.name ?? ""}"?`}
+        description={
+          deleteTarget?.restrict_submissions
+            ? "This holiday will be removed permanently. Submissions will no longer be restricted on these dates."
+            : "This holiday will be removed permanently. This cannot be undone."
+        }
+        confirmLabel="Delete Holiday"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+      />
     </div>
   );
 }

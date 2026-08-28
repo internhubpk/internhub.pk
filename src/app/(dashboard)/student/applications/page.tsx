@@ -647,7 +647,7 @@ export default function StudentApplicationsPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!detailApplication} onOpenChange={() => setDetailApplication(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           {detailApplication && (
             <>
               <DialogHeader>
@@ -854,7 +854,7 @@ export default function StudentApplicationsPage() {
 
       {/* Withdraw Confirmation Dialog */}
       <Dialog open={withdrawDialogOpen} onOpenChange={setWithdrawDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertTriangle className="h-5 w-5" />

@@ -885,7 +885,6 @@ async function getTemplatePath(): Promise<string> {
  */
 function escapeXml(text: string): string {
   if (text == null) return "";
-  // eslint-disable-next-line no-control-regex
   return String(text)
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g, "")
     .replace(/&/g, "&amp;")

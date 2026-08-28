@@ -745,7 +745,7 @@ export default function FacultySupervisorNotificationsPage() {
                 <Plus className="h-4 w-4" /> New Notification
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{editingNotification ? "Edit Notification" : "Compose Notification"}</DialogTitle>
                 <DialogDescription>
@@ -1200,7 +1200,7 @@ export default function FacultySupervisorNotificationsPage() {
 
       {/* View Notification Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           {selectedNotification && (
             <>
               <DialogHeader>

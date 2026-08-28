@@ -1044,7 +1044,7 @@ export default function InternshipDetailPage() {
                         </Button>
                       </DialogTrigger>
 
-                      <DialogContent className="max-w-2xl">
+                      <DialogContent className="sm:max-w-2xl">
                         <DialogHeader>
                           <DialogTitle>Apply for {internship.title}</DialogTitle>
                           <DialogDescription>

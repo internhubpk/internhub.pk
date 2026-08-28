@@ -88,7 +88,7 @@ export function ScrollableDialog({
   titleIcon: TitleIcon,
   footer,
   children,
-  maxWidthClassName = "max-w-2xl",
+  maxWidthClassName = "sm:max-w-2xl",
   hideCloseButton = false,
   bodyClassName,
   headerClassName,

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -1103,7 +1104,7 @@ export default function FacultySupervisorReportsPage() {
 
       {/* Marksheet View Dialog */}
       <Dialog open={isMarksheetDialogOpen} onOpenChange={setIsMarksheetDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -1116,7 +1117,7 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6 px-8 pb-6">
+              <DialogBody className="space-y-6">
                 {/* Student Info Header */}
                 <Card>
                   <CardContent className="p-4">
@@ -1280,7 +1281,7 @@ export default function FacultySupervisorReportsPage() {
                     <Award className="h-4 w-4" /> Generate Certificate
                   </Button>
                 </div>
-              </div>
+              </DialogBody>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsMarksheetDialogOpen(false)}>
@@ -1294,7 +1295,7 @@ export default function FacultySupervisorReportsPage() {
 
       {/* Certificate Generation Dialog */}
       <Dialog open={isCertificateDialogOpen} onOpenChange={setIsCertificateDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -1307,7 +1308,8 @@ export default function FacultySupervisorReportsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="preview" className="mt-4 px-8 pb-6">
+              <DialogBody className="px-8 pb-5">
+              <Tabs defaultValue="preview">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                   <TabsTrigger value="customize">Customize</TabsTrigger>
@@ -1427,6 +1429,7 @@ export default function FacultySupervisorReportsPage() {
                   </div>
                 </TabsContent>
               </Tabs>
+              </DialogBody>
 
               <DialogFooter className="print:hidden">
                 <Button variant="outline" onClick={() => setIsCertificateDialogOpen(false)}>

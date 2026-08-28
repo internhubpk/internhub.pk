@@ -491,7 +491,7 @@ export default function StudentDocumentsPage() {
                   </Button>
                 </DialogTrigger>
 
-                <DialogContent className="max-w-md">
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle>Upload New Document</DialogTitle>
                     <DialogDescription>
@@ -925,7 +925,7 @@ export default function StudentDocumentsPage() {
 
       {/* View Document Dialog */}
       <Dialog open={!!viewDocument} onOpenChange={() => setViewDocument(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {getFileIcon(viewDocument?.mime_type || "", viewDocument?.type)}
@@ -1047,7 +1047,7 @@ export default function StudentDocumentsPage() {
           if (!open && !isRenaming) setRenameDialog({ open: false, doc: null });
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Rename Document</DialogTitle>
             <DialogDescription>

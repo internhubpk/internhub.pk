@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -548,7 +549,7 @@ export default function CompanyHRApplicationsPage() {
 
       {/* Application Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl">
           {selectedApplication && (
             <>
               <DialogHeader>
@@ -569,7 +570,7 @@ export default function CompanyHRApplicationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6 px-8 pb-6">
+              <DialogBody className="space-y-6">
                 {/* Status & Quick Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
@@ -810,7 +811,7 @@ export default function CompanyHRApplicationsPage() {
                     </Button>
                   </div>
                 )}
-              </div>
+              </DialogBody>
             </>
           )}
         </DialogContent>

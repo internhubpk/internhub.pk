@@ -537,8 +537,8 @@ export default function StudentAttendancePage() {
       >
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-50">
-              <Flame className="h-5 w-5 text-purple-600" />
+            <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/50">
+              <Flame className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Best Streak</p>
@@ -549,8 +549,8 @@ export default function StudentAttendancePage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-50">
-              <Calendar className="h-5 w-5 text-blue-600" />
+            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/50">
+              <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Half Days</p>
@@ -561,8 +561,8 @@ export default function StudentAttendancePage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-cyan-50">
-              <Clock className="h-5 w-5 text-cyan-600" />
+            <div className="p-2 rounded-lg bg-cyan-50 dark:bg-cyan-950/50">
+              <Clock className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Leave Days</p>
@@ -573,8 +573,8 @@ export default function StudentAttendancePage() {
 
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-gray-50">
-              <Info className="h-5 w-5 text-gray-600" />
+            <div className="p-2 rounded-lg bg-gray-50 dark:bg-muted">
+              <Info className="h-5 w-5 text-gray-600 dark:text-muted-foreground" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Records</p>
@@ -626,18 +626,6 @@ export default function StudentAttendancePage() {
                   There are no attendance records for {getMonthDisplay()}. 
                   Attendance is automatically recorded when you submit tasks or can be marked by your supervisor.
                 </p>
-                
-                <div className="mt-6 p-4 rounded-lg bg-muted/50 max-w-sm mx-auto text-left">
-                  <p className="font-medium text-sm mb-2 flex items-center gap-2">
-                    <Info className="h-4 w-4" />
-                    How attendance works:
-                  </p>
-                  <ul className="text-xs text-muted-foreground space-y-1 ml-6 list-disc">
-                    <li>Auto-marked when you submit tasks</li>
-                    <li>Can be marked by your supervisor</li>
-                    <li>Weekends and holidays are excluded from calculations</li>
-                  </ul>
-                </div>
               </div>
             ) : (
               <>
@@ -737,28 +725,6 @@ export default function StudentAttendancePage() {
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Info Note */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.25 }}
-      >
-        <Card className="border-dashed">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium text-foreground mb-1">About This Data</p>
-                <p>
-                  Attendance records are automatically generated when you submit tasks and cannot be manually edited.
-                  If you believe there&apos;s an error in your records, please contact your supervisor or faculty advisor.
-                </p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </motion.div>

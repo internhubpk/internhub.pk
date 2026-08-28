@@ -53,8 +53,10 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -804,7 +806,7 @@ export default function SiteSupervisorEvaluationsPage() {
             <CardHeader>
               <CardTitle className="text-lg">Evaluation Schedule by Student</CardTitle>
               <CardDescription>
-                HEC requires evaluations every 3 weeks during internship
+                Evaluation status for each of your assigned interns
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -922,12 +924,6 @@ export default function SiteSupervisorEvaluationsPage() {
                     ))}
                   </div>
                 </div>
-              </div>
-              
-              <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/40">
-                <p className="text-sm text-blue-800 dark:text-blue-300">
-                  <strong>HEC Requirement:</strong> Site supervisors must evaluate their assigned interns every 3 weeks throughout the internship duration. Each evaluation must include digital signature and be timestamped.
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -1544,15 +1540,15 @@ export default function SiteSupervisorEvaluationsPage() {
 
       {/* Preview Dialog before submit */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Review Evaluation Before Submission</DialogTitle>
             <DialogDescription>
               Please review all details carefully. This evaluation will be officially recorded.
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4 mt-4 px-8 pb-6">
+
+          <DialogBody className="space-y-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4 mb-4">
@@ -1609,34 +1605,33 @@ export default function SiteSupervisorEvaluationsPage() {
                 )}
               </CardContent>
             </Card>
-
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
-                Go Back & Edit
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowPreviewDialog(false);
-                  handleSubmitEvaluation();
-                }}
-                disabled={isSubmitting}
-              >
-                {isSubmitting
-                  ? editingEvaluationId
-                    ? "Saving..."
-                    : "Submitting..."
-                  : editingEvaluationId
-                  ? "Confirm & Save Changes"
-                  : "Confirm & Submit"}
-              </Button>
-            </div>
-          </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
+              Go Back &amp; Edit
+            </Button>
+            <Button
+              onClick={() => {
+                setShowPreviewDialog(false);
+                handleSubmitEvaluation();
+              }}
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? editingEvaluationId
+                  ? "Saving..."
+                  : "Submitting..."
+                : editingEvaluationId
+                ? "Confirm & Save Changes"
+                : "Confirm & Submit"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Evaluation Detail Dialog */}
       <Dialog open={!!selectedEvaluation} onOpenChange={() => setSelectedEvaluation(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -1645,8 +1640,8 @@ export default function SiteSupervisorEvaluationsPage() {
                   Full evaluation record for {selectedEvaluation.studentName}
                 </DialogDescription>
               </DialogHeader>
-              
-              <div className="space-y-6 mt-4 px-8 pb-6">
+
+              <DialogBody className="space-y-6">
                 {/* Score Breakdown */}
                 <Card>
                   <CardHeader>
@@ -1703,13 +1698,12 @@ export default function SiteSupervisorEvaluationsPage() {
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4 mr-2" />
-                    Print
-                  </Button>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => window.print()}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </Button>
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1742,9 +1736,8 @@ export default function SiteSupervisorEvaluationsPage() {
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Export PDF
-                  </Button>
-                </div>
-              </div>
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

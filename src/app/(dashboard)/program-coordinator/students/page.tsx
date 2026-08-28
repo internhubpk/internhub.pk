@@ -44,14 +44,12 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DialogBody,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
@@ -1341,7 +1339,7 @@ export default function ProgramCoordinatorStudentsPage() {
 
       {/* ===== CSV Bulk Import Dialog ===== */}
       <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
-        <DialogContent className="sm:max-w-[680px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[680px]">
           <DialogHeader>
             <DialogTitle>Import Students from CSV</DialogTitle>
             <DialogDescription>
@@ -1351,8 +1349,9 @@ export default function ProgramCoordinatorStudentsPage() {
             </DialogDescription>
           </DialogHeader>
 
+          <DialogBody className="space-y-4">
           {importPhase === "upload" && (
-            <div className="space-y-4">
+            <>
               <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
                 <span>
                   Students are always created in <strong>your program</strong> — university,
@@ -1410,25 +1409,11 @@ export default function ProgramCoordinatorStudentsPage() {
                   Students change this after their first sign-in.
                 </p>
               </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={resetImportDialog}>Cancel</Button>
-                <Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>
-                  {isValidating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Validating…
-                    </>
-                  ) : (
-                    "Validate CSV"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            </>
           )}
 
           {importPhase === "preview" && validation && (
-            <div className="space-y-4">
+            <>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-md border p-2">
                   <div className="text-lg font-semibold">{validation.total}</div>
@@ -1477,27 +1462,11 @@ export default function ProgramCoordinatorStudentsPage() {
                   </TableBody>
                 </Table>
               </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>
-                  Back
-                </Button>
-                <Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>
-                  {isCommitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing…
-                    </>
-                  ) : (
-                    `Import ${validation.valid} Student${validation.valid === 1 ? "" : "s"}`
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
+            </>
           )}
 
           {importPhase === "results" && importResult && (
-            <div className="space-y-4">
+            <>
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="font-medium">
@@ -1533,11 +1502,44 @@ export default function ProgramCoordinatorStudentsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <DialogFooter>
-                <Button onClick={resetImportDialog}>Done</Button>
-              </DialogFooter>
-            </div>
+            </>
           )}
+          </DialogBody>
+          <DialogFooter>
+            {importPhase === "upload" && (
+              <>
+                <Button variant="outline" onClick={resetImportDialog}>Cancel</Button>
+                <Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>
+                  {isValidating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Validating…
+                    </>
+                  ) : (
+                    "Validate CSV"
+                  )}
+                </Button>
+              </>
+            )}
+            {importPhase === "preview" && validation && (
+              <>
+                <Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>
+                  Back
+                </Button>
+                <Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>
+                  {isCommitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing…
+                    </>
+                  ) : (
+                    `Import ${validation.valid} Student${validation.valid === 1 ? "" : "s"}`
+                  )}
+                </Button>
+              </>
+            )}
+            {importPhase === "results" && <Button onClick={resetImportDialog}>Done</Button>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

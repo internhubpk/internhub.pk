@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -56,7 +57,6 @@ import {
   Send,
   ListTodo,
   Star,
-  Info,
 } from "lucide-react";
 
 // Types
@@ -281,21 +281,6 @@ export default function FacultySupervisorTasksPage() {
         title="Task Management"
         description="View tasks assigned to your students. Faculty supervisors evaluate tasks; they do not create them."
       />
-
-      {/* Info banner — tasks come from the Site Supervisor */}
-      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30">
-        <CardContent className="p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium text-sm">Tasks from your Site Supervisor</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Tasks are created and assigned by the Site Supervisor. Review
-              them here, then evaluate your students&rsquo; work and
-              submissions from the Evaluations page.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -529,7 +514,7 @@ export default function FacultySupervisorTasksPage() {
 
       {/* View Task Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           {selectedTask && (
             <>
               <DialogHeader>
@@ -547,7 +532,7 @@ export default function FacultySupervisorTasksPage() {
                 </div>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6 px-8 pb-6">
+              <DialogBody className="space-y-6">
                 {/* Description */}
                 {selectedTask.description && (
                   <Card>
@@ -646,7 +631,7 @@ export default function FacultySupervisorTasksPage() {
 
                 {/* Faculty supervisors evaluate from the Evaluations page;
                     task management stays with the Site Supervisor. */}
-              </div>
+              </DialogBody>
             </>
           )}
         </DialogContent>

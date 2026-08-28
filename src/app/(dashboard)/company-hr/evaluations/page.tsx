@@ -816,7 +816,7 @@ export default function CompanyHREvaluationsPage() {
 
       {/* View Detail Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -965,7 +965,7 @@ export default function CompanyHREvaluationsPage() {
           if (!open) setEditingEvaluationId(null);
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingEvaluationId ? "Revise Final Evaluation" : "Complete Final Evaluation"}</DialogTitle>
             <DialogDescription>

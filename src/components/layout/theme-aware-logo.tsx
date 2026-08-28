@@ -63,9 +63,12 @@ export function ThemeAwareLogo({
       ? "/logo-dark.png" 
       : "/logo-light.png";
 
-  // Calculate width based on aspect ratio
-  // Full logo is roughly 2.5:1 (width:height), icon is ~1:1
-  const width = iconOnly ? height : Math.round(height * 2.4);
+  // Calculate width from the ACTUAL intrinsic aspect ratios of the PNGs
+  // (public/logo-icon-*.png = 191×200, public/logo-*.png = 364×240).
+  // Using the true ratio keeps the width/height attributes consistent with
+  // the rendered box so Next.js never fires the "width or height modified,
+  // but not the other" warning and nothing is letterboxed by object-contain.
+  const width = iconOnly ? Math.round(height * (191 / 200)) : Math.round(height * (364 / 240));
 
   // Placeholder while determining theme or before hydration
   if (!mounted) {
@@ -91,8 +94,10 @@ export function ThemeAwareLogo({
         "object-contain relative z-10",
         className
       )}
-      // Ensure smooth transitions when theme changes
-      style={{ transition: "opacity 0.2s ease-in-out" }}
+      // Explicit CSS sizing that matches the width/height attributes keeps
+      // the aspect ratio locked and satisfies Next.js Image's
+      // "modified but not the other" check when parents constrain layout.
+      style={{ transition: "opacity 0.2s ease-in-out", width: `${width}px`, height: `${height}px` }}
     />
   );
 }

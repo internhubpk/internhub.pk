@@ -727,7 +727,7 @@ export default function SiteSupervisorStudentsPage() {
 
       {/* Student Detail Modal */}
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="sm:max-w-4xl">
           {selectedStudent && (
             <>
               <DialogHeader>

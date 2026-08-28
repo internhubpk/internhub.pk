@@ -1378,9 +1378,9 @@ export default function SuperAdminUsersPage() {
           if (!open) setAssignRoleTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="sm:max-w-[560px] p-0">
           {/* Header — accent strip to signal "this is an admin action" */}
-          <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+          <div className="shrink-0 px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent">
             <DialogHeader className="p-0 space-y-0 text-center sm:text-center">
               <DialogTitle className="flex items-center justify-center gap-2 text-lg">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -1392,7 +1392,7 @@ export default function SuperAdminUsersPage() {
           </div>
 
           {/* Body — sectioned for clear visual hierarchy */}
-          <div className="px-6 py-5 space-y-6">
+          <div className="px-6 py-5 space-y-6 flex-1 min-h-0 overflow-y-auto">
 
             {/* SECTION 1: Current state */}
             {assignRoleTarget && (
@@ -1674,7 +1674,7 @@ export default function SuperAdminUsersPage() {
           </div>
 
           {/* Footer — sticky, bordered, well-padded */}
-          <DialogFooter className="px-8 py-4 border-t bg-muted/20 gap-2">
+          <DialogFooter className="shrink-0 px-8 py-4 border-t bg-muted/20 gap-2">
             <Button
               variant="outline"
               onClick={() => setIsAssignRoleOpen(false)}
@@ -1728,7 +1728,7 @@ export default function SuperAdminUsersPage() {
               {statusDialog.cascadeLabel && statusDialog.cascadeLabel !== "Only this account will be affected." && (
                 <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
                   <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-700 dark:text-amber-300">{statusDialog.cascadeLabel}</p>
+                  <span className="text-sm text-amber-700 dark:text-amber-300">{statusDialog.cascadeLabel}</span>
                 </div>
               )}
             </AlertDialogDescription>

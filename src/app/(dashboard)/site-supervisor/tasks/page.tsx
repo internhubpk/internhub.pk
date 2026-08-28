@@ -645,7 +645,7 @@ export default function SiteSupervisorTasksPage() {
             ? "Update the task details. Student assignment changes apply to new students only."
             : "Fill in the task details. Fields marked optional can be left blank."
         }
-        maxWidthClassName="max-w-2xl"
+        maxWidthClassName="sm:max-w-2xl"
         footer={
           <>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={saving}>
@@ -939,7 +939,7 @@ export default function SiteSupervisorTasksPage() {
             {reviewTask?.title} — {reviewSubmission?.student?.full_name || reviewSubmission?.student?.email}
           </span>
         }
-        maxWidthClassName="max-w-3xl"
+        maxWidthClassName="sm:max-w-3xl"
         footer={
           <>
             <Button variant="outline" onClick={() => setReviewTask(null)} disabled={reviewing}>
@@ -1247,10 +1247,10 @@ function TaskRow({
             </Button>
           )}
           <div className="flex gap-1">
-            <Button size="sm" variant="ghost" onClick={onEdit}>
+            <Button size="sm" variant="ghost" onClick={onEdit} aria-label={`Edit task: ${task.title}`}>
               <Edit className="h-3.5 w-3.5" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={onDelete}>
+            <Button size="sm" variant="ghost" onClick={onDelete} aria-label={`Delete task: ${task.title}`}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>

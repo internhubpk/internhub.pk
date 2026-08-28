@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -663,7 +664,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
 
       {/* Review Dialog */}
       <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           {selectedLog && (
             <>
               <DialogHeader>
@@ -676,7 +677,8 @@ export default function SiteSupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="content" className="mt-4 px-8 pb-6">
+              <DialogBody className="px-8 pb-5">
+              <Tabs defaultValue="content">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="content">Log Content</TabsTrigger>
                   <TabsTrigger value="review">Your Review</TabsTrigger>
@@ -894,6 +896,7 @@ export default function SiteSupervisorWeeklyLogsPage() {
                   )}
                 </TabsContent>
               </Tabs>
+              </DialogBody>
             </>
           )}
         </DialogContent>

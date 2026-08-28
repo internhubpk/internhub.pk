@@ -672,7 +672,7 @@ export default function CompanyHrCertificatesPage() {
 
       {/* Upload Modal */}
       <Dialog open={showUploadModal} onOpenChange={(o) => { setShowUploadModal(o); if (!o) resetUploadForm(); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Upload a certificate</DialogTitle>
             <DialogDescription>

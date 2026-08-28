@@ -807,7 +807,7 @@ export default function CompanyHRAttendancePage() {
 
       {/* Correction Dialog */}
       <Dialog open={isCorrectionOpen} onOpenChange={setIsCorrectionOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Mark Attendance Correction</DialogTitle>
             <DialogDescription>
@@ -874,7 +874,7 @@ export default function CompanyHRAttendancePage() {
 
       {/* Add Record Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Attendance Record</DialogTitle>
             <DialogDescription>

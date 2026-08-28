@@ -662,7 +662,7 @@ export default function CompanyHRInternshipsPage() {
                 New Internship
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Create New Internship</DialogTitle>
                 <DialogDescription>
@@ -1251,7 +1251,7 @@ export default function CompanyHRInternshipsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Edit Internship</DialogTitle>
             <DialogDescription>

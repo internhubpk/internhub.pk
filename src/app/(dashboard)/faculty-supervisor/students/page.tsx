@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -898,7 +899,7 @@ export default function FacultySupervisorStudentsPage() {
 
       {/* Student Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl">
           {selectedStudent && (
             <>
               <DialogHeader>
@@ -921,7 +922,8 @@ export default function FacultySupervisorStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="overview" className="mt-4 px-8 pb-6">
+              <DialogBody className="px-8 pb-5">
+              <Tabs defaultValue="overview">
                 <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
@@ -1269,6 +1271,7 @@ export default function FacultySupervisorStudentsPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
+              </DialogBody>
             </>
           )}
         </DialogContent>

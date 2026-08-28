@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -1164,7 +1165,7 @@ export default function FacultySupervisorEvaluationsPage() {
 
       {/* Evaluate Dialog */}
       <Dialog open={isEvaluateDialogOpen} onOpenChange={setIsEvaluateDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -1174,7 +1175,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6 px-8 pb-6">
+              <DialogBody className="space-y-6">
                 {/* Submission Info */}
                 <Card>
                   <CardHeader className="pb-3">
@@ -1362,9 +1363,9 @@ export default function FacultySupervisorEvaluationsPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </div>
+              </DialogBody>
 
-              <DialogFooter className="gap-2 mt-6">
+              <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={() => setIsEvaluateDialogOpen(false)}>
                   Cancel
                 </Button>
@@ -1392,7 +1393,7 @@ export default function FacultySupervisorEvaluationsPage() {
 
       {/* View History Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
+        <DialogContent className="sm:max-w-2xl flex flex-col gap-0 p-0">
           {selectedHistoryItem && (
             <>
               <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
@@ -1402,7 +1403,7 @@ export default function FacultySupervisorEvaluationsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-0 space-y-4 overflow-y-auto flex-1 min-h-0 px-6 py-4">
+              <DialogBody className="space-y-4 px-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-muted-foreground">Student</Label>
@@ -1446,7 +1447,7 @@ export default function FacultySupervisorEvaluationsPage() {
                     </p>
                   </div>
                 )}
-              </div>
+              </DialogBody>
 
               <DialogFooter className="px-6 py-4 border-t shrink-0">
                 <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>

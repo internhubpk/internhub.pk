@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Plus,
   RefreshCw,
   ClipboardList,
   CheckSquare,
@@ -20,6 +19,7 @@ import {
   AlertTriangle,
   Eye,
   XCircle,
+  ListTodo,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -782,8 +782,8 @@ export default function FacultySupervisorDashboard() {
               <div className="grid grid-cols-2 gap-2">
                 <Link href="/faculty-supervisor/tasks">
                   <Button variant="outline" className="w-full h-auto py-3 flex flex-col gap-1">
-                    <Plus className="h-5 w-5" />
-                    <span className="text-xs">Create Task</span>
+                    <ListTodo className="h-5 w-5" />
+                    <span className="text-xs">View Tasks</span>
                   </Button>
                 </Link>
                 <Link href="/faculty-supervisor/evaluations">

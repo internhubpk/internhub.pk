@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -549,7 +550,7 @@ export default function CoordinatorsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <DialogBody className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="pc-full-name">Full Name</Label>
               <Input
@@ -615,7 +616,7 @@ export default function CoordinatorsPage() {
                 </Button>
               )}
             </div>
-          </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isSavingEdit}>

@@ -578,6 +578,13 @@ export default function CompanyHRSupervisorsPage() {
             : "Manage site supervisors who mentor and evaluate your interns"
         }
         actions={
+          <>
+          {supervisorType !== "external" && (
+            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
+          )}
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
@@ -585,7 +592,7 @@ export default function CompanyHRSupervisorsPage() {
                 {supervisorType === "external" ? "Add External Evaluator" : "Add Supervisor"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>
                   {supervisorType === "external" ? "Create External Evaluator Account" : "Create Supervisor Account"}
@@ -719,6 +726,7 @@ export default function CompanyHRSupervisorsPage() {
             </DialogBody>
           </DialogContent>
         </Dialog>
+        </>
         }
       />
 
@@ -943,7 +951,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* View Details Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           {selectedSupervisor && (
             <>
               <DialogHeader>
@@ -1020,7 +1028,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Supervisor</DialogTitle>
             <DialogDescription>
@@ -1096,7 +1104,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* Assign Interns Dialog */}
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Assign Interns to {selectedSupervisor?.first_name} {selectedSupervisor?.last_name}</DialogTitle>
             <DialogDescription>
@@ -1202,7 +1210,7 @@ export default function CompanyHRSupervisorsPage() {
 
       {/* Import CSV Dialog */}
       <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) resetImportDialog(); }}>
-        <DialogContent className="sm:max-w-[680px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[680px]">
           <DialogHeader>
             <DialogTitle>Import Site Supervisors from CSV</DialogTitle>
             <DialogDescription>
@@ -1211,8 +1219,9 @@ export default function CompanyHRSupervisorsPage() {
               {importPhase === "results" && "Import finished. Details below."}
             </DialogDescription>
           </DialogHeader>
+          <DialogBody className="space-y-4">
           {importPhase === "upload" && (
-            <div className="space-y-4 px-8 pb-6">
+            <>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={downloadSupervisorTemplate}><FileSpreadsheet className="h-4 w-4 mr-2" />Download CSV Template</Button>
                 <Button variant="outline" onClick={() => (document.getElementById("hr-sup-csv-input") as HTMLInputElement | null)?.click()}><Upload className="h-4 w-4 mr-2" />Choose CSV File</Button>
@@ -1224,11 +1233,10 @@ export default function CompanyHRSupervisorsPage() {
                 <p>Optional: <code>phone</code>, <code>specialization</code></p>
                 <p>Header row required (case-insensitive). Max 500 rows. Passwords go to Supabase Auth only.</p>
               </div>
-              <DialogFooter><Button variant="outline" onClick={resetImportDialog}>Cancel</Button><Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>{isValidating ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Validating…</>) : "Validate CSV"}</Button></DialogFooter>
-            </div>
+            </>
           )}
           {importPhase === "preview" && validation && (
-            <div className="space-y-4">
+            <>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-md border p-2"><div className="text-lg font-semibold">{validation.total}</div><div className="text-xs text-muted-foreground">Rows</div></div>
                 <div className="rounded-md border p-2"><div className="text-lg font-semibold text-green-600 dark:text-green-400">{validation.valid}</div><div className="text-xs text-muted-foreground">Valid</div></div>
@@ -1239,11 +1247,10 @@ export default function CompanyHRSupervisorsPage() {
                   {validation.details?.map((r: any) => (<TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell>{r.valid ? <Badge variant="default" className="bg-green-600">Ready</Badge> : <Badge variant="destructive" title={r.error}>{r.error || "Invalid"}</Badge>}</TableCell></TableRow>))}
                 </TableBody></Table>
               </div>
-              <DialogFooter><Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>Back</Button><Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>{isCommitting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>) : `Import ${validation.valid} Supervisor${validation.valid === 1 ? "" : "s"}`}</Button></DialogFooter>
-            </div>
+            </>
           )}
           {importPhase === "results" && importResult && (
-            <div className="space-y-4">
+            <>
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400"><CheckCircle2 className="h-5 w-5" /><span className="font-medium">{importResult.created} supervisor account(s) created.</span></div>
               {importResult.invalid > 0 && <p className="text-sm text-muted-foreground">{importResult.invalid} row(s) were skipped:</p>}
               <div className="max-h-64 overflow-y-auto rounded-md border">
@@ -1251,9 +1258,18 @@ export default function CompanyHRSupervisorsPage() {
                   {importResult.details?.filter((r: any) => !r.created).map((r: any) => (<TableRow key={r.row}><TableCell>{r.row}</TableCell><TableCell className="max-w-[220px] truncate">{r.email || "—"}</TableCell><TableCell><Badge variant="destructive" title={r.error}>{r.error || "Skipped"}</Badge></TableCell></TableRow>))}
                 </TableBody></Table>
               </div>
-              <DialogFooter><Button onClick={resetImportDialog}>Done</Button></DialogFooter>
-            </div>
+            </>
           )}
+          </DialogBody>
+          <DialogFooter>
+            {importPhase === "upload" && (
+              <><Button variant="outline" onClick={resetImportDialog}>Cancel</Button><Button onClick={handleValidateCsv} disabled={isValidating || !importCsvText.trim()}>{isValidating ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Validating…</>) : "Validate CSV"}</Button></>
+            )}
+            {importPhase === "preview" && validation && (
+              <><Button variant="outline" onClick={() => setImportPhase("upload")} disabled={isCommitting}>Back</Button><Button onClick={handleConfirmImport} disabled={isCommitting || validation.valid === 0}>{isCommitting ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>) : `Import ${validation.valid} Supervisor${validation.valid === 1 ? "" : "s"}`}</Button></>
+            )}
+            {importPhase === "results" && <Button onClick={resetImportDialog}>Done</Button>}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

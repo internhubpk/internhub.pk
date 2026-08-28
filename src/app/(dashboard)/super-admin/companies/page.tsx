@@ -631,16 +631,16 @@ export default function SuperAdminCompaniesPage() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="font-medium text-red-800 dark:text-red-200">
+                <span className="block font-medium text-red-800 dark:text-red-200">
                   This will permanently delete <strong>{deleteTarget?.name}</strong>.
-                </p>
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                </span>
+                <span className="block text-sm text-red-600 dark:text-red-400 mt-1">
                   This action <strong>cannot be undone</strong>. Deleting a company permanently removes{" "}
                   <strong>all user accounts related to it</strong> — every company HR and site supervisor
                   account (they will no longer be able to sign in) — plus the company&apos;s internships,
                   applications, student internship records, weekly logs written at those internships,
                   evaluations, certificates, documents, supervisors, and MOUs with universities.
-                </p>
+                </span>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

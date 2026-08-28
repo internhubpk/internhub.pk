@@ -324,7 +324,7 @@ export default function CompanyHRDocumentsPage() {
                 Bulk Generate
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Bulk Document Generation</DialogTitle>
                 <DialogDescription>
@@ -419,7 +419,7 @@ export default function CompanyHRDocumentsPage() {
                 Upload Document
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Upload Document</DialogTitle>
                 <DialogDescription>
@@ -753,7 +753,7 @@ export default function CompanyHRDocumentsPage() {
 
       {/* Rename / Re-type Dialog */}
       <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Rename Document</DialogTitle>
             <DialogDescription>

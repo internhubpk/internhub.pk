@@ -716,7 +716,7 @@ export default function SuperAdminUniversitiesPage() {
           </DialogHeader>
 
           {/* Scrollable content area */}
-          <div className="grid gap-4 px-6 py-4 overflow-y-auto flex-1">
+          <div className="grid gap-4 px-8 py-4 overflow-y-auto flex-1">
             {/* University Details Section */}
             <div className="space-y-3">
               <h4 className="font-semibold text-sm text-primary flex items-center gap-2">
@@ -916,25 +916,25 @@ export default function SuperAdminUniversitiesPage() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <div className="bg-red-50 dark:bg-red-950/30 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                <p className="font-medium text-red-800 dark:text-red-200">
+                <span className="block font-medium text-red-800 dark:text-red-200">
                   Are you absolutely sure you want to delete this university?
-                </p>
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                </span>
+                <span className="block text-sm text-red-600 dark:text-red-400 mt-1">
                   This action <strong>cannot be undone</strong>. Deleting a university permanently removes{" "}
                   <strong>all user accounts related to it</strong> — the university admin, every coordinator,
                   supervisor and student (they will no longer be able to sign in) — plus all departments,
                   programs, student records, weekly logs, tasks, internships posted to the university, MOUs,
                   and any companies registered under this university along with their accounts.
-                </p>
+                </span>
               </div>
               
               {deleteTarget && (
                 <div className="space-y-2 bg-muted/50 p-3 rounded-lg">
-                  <p className="font-semibold">{deleteTarget.name}</p>
+                  <span className="block font-semibold">{deleteTarget.name}</span>
                   <div className="text-sm text-muted-foreground space-y-1">
-                    {deleteTarget.slug && <p>Slug: <code className="bg-background px-1 rounded">{deleteTarget.slug}</code></p>}
-                    <p>Students: <strong>{deleteTarget.student_count || 0}</strong></p>
-                    <p>Status: <Badge variant={deleteTarget.is_active !== false ? 'default' : 'secondary'} className="text-xs">{deleteTarget.is_active !== false ? 'active' : 'inactive'}</Badge></p>
+                    {deleteTarget.slug && <span className="block">Slug: <code className="bg-background px-1 rounded">{deleteTarget.slug}</code></span>}
+                    <span className="block">Students: <strong>{deleteTarget.student_count || 0}</strong></span>
+                    <span className="block">Status: <Badge variant={deleteTarget.is_active !== false ? 'default' : 'secondary'} className="text-xs">{deleteTarget.is_active !== false ? 'active' : 'inactive'}</Badge></span>
                   </div>
                 </div>
               )}

@@ -45,7 +45,6 @@ import {
   Download,
   Trash2,
   CheckCircle2,
-  AlertCircle,
   Linkedin,
   Github,
   Globe,
@@ -1129,19 +1128,6 @@ export default function StudentProfilePage() {
                     disabled={!isEditing}
                     placeholder="github.com/username"
                   />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                <div className="flex gap-3">
-                  <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <div className="text-sm text-blue-800">
-                    <p className="font-medium mb-1">Why add these links?</p>
-                    <p className="text-blue-700">
-                      Employers often check GitHub and LinkedIn profiles to learn more about candidates. 
-                      A complete professional presence can significantly increase your chances of getting noticed!
-                    </p>
-                  </div>
                 </div>
               </div>
             </CardContent>

@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -478,7 +479,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
 
       {/* Review Dialog */}
       <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           {selectedLog && (
             <>
               <DialogHeader>
@@ -491,7 +492,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-4 px-8 pb-6">
+              <DialogBody className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <Card>
                     <CardContent className="p-4 text-center">
@@ -561,7 +562,7 @@ export default function FacultySupervisorWeeklyLogsPage() {
                     value={signatureData}
                   />
                 )}
-              </div>
+              </DialogBody>
 
               <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
                 <Button

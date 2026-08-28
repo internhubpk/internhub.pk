@@ -423,7 +423,7 @@ export default function StudentTasksPage() {
             )}
           </span>
         }
-        maxWidthClassName="max-w-2xl"
+        maxWidthClassName="sm:max-w-2xl"
         footer={
           <>
             <Button variant="outline" onClick={() => setSubmitTask(null)} disabled={submitting}>
@@ -594,7 +594,7 @@ export default function StudentTasksPage() {
             <span className="capitalize">{viewTask?.assignment_status}</span>
           </span>
         }
-        maxWidthClassName="max-w-2xl"
+        maxWidthClassName="sm:max-w-2xl"
         footer={
           viewTask && viewTask.submission_status === "resubmitted" ? (
             <>

@@ -4,6 +4,7 @@ import React, { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -167,7 +168,7 @@ export function WeeklyLogForm({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px]">
         <AnimatePresence mode="wait">
           <motion.div
             key="weekly-log-form"
@@ -175,6 +176,7 @@ export function WeeklyLogForm({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
+            className="flex min-h-0 flex-col"
           >
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -186,7 +188,7 @@ export function WeeklyLogForm({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-6 py-4 px-6 overflow-y-auto max-h-[60vh]">
+            <DialogBody className="space-y-6">
               {/* Week Info */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -301,7 +303,7 @@ export function WeeklyLogForm({
                   maxLength={MAX_CHARS.next_week_goals}
                 />
               </div>
-            </div>
+            </DialogBody>
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button

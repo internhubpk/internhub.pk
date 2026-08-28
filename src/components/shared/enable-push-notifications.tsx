@@ -94,7 +94,8 @@ export function EnablePushNotificationsCard() {
 
   const permission = push.permission as string;
 
-  // User has explicitly blocked notifications — show a recovery banner.
+  // User has explicitly blocked notifications — show a recovery banner
+  // (dismissible — the user has already made a deliberate choice).
   if (permission === "denied") {
     return (
       <Card className="border-orange-500/30 bg-orange-500/5">
@@ -109,6 +110,15 @@ export function EnablePushNotificationsCard() {
               this page.
             </p>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDismissed(true)}
+            className="text-muted-foreground hover:text-foreground flex-shrink-0 -mt-1 -mr-2"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </CardContent>
       </Card>
     );

@@ -280,7 +280,7 @@ export default function StudentWeeklyLogsPage() {
     } else {
       setDailyEntries([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [weekFromDate, weekToDate]);
 
   // Derive the week's From/To dates from the week number + internship start
@@ -350,7 +350,7 @@ export default function StudentWeeklyLogsPage() {
       setSignatureFile(null);
       setUploadStage("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isDialogOpen]);
 
   // Fetch on login/logout only (user IDENTITY), not on every Supabase
@@ -361,7 +361,7 @@ export default function StudentWeeklyLogsPage() {
   useEffect(() => {
     if (!user?.id) { setIsLoading(false); return; }
     fetchWeeklyLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [user?.id]);
 
   async function fetchWeeklyLogs() {

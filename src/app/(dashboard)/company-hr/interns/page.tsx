@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -945,7 +946,7 @@ export default function CompanyHRInternsPage() {
 
       {/* View Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl">
           {selectedIntern && (
             <>
               <DialogHeader>
@@ -965,7 +966,7 @@ export default function CompanyHRInternsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 space-y-6 px-8 pb-6">
+              <DialogBody className="space-y-6">
                 {/* Contact Info */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
@@ -1082,42 +1083,42 @@ export default function CompanyHRInternsPage() {
                     </div>
                   </div>
                 </div>
+              </DialogBody>
 
-                <div className="flex flex-wrap justify-end pt-4 border-t gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={downloadingFor === `weekly:${selectedIntern.id}`}
-                    onClick={() => handleDownloadWeeklyLogsPdf(selectedIntern)}
-                  >
-                    {downloadingFor === `weekly:${selectedIntern.id}` ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <FileDown className="h-4 w-4 mr-2" />
-                    )}
-                    Weekly Logs (PDF)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={downloadingFor === `final:${selectedIntern.id}`}
-                    onClick={() => handleDownloadFinalReportPdf(selectedIntern)}
-                  >
-                    {downloadingFor === `final:${selectedIntern.id}` ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <FileDown className="h-4 w-4 mr-2" />
-                    )}
-                    Final Report (PDF)
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
-                  <Button asChild>
-                    <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
-                      <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
-                    </Link>
-                  </Button>
-                </div>
-              </div>
+              <DialogFooter className="flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={downloadingFor === `weekly:${selectedIntern.id}`}
+                  onClick={() => handleDownloadWeeklyLogsPdf(selectedIntern)}
+                >
+                  {downloadingFor === `weekly:${selectedIntern.id}` ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4 mr-2" />
+                  )}
+                  Weekly Logs (PDF)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={downloadingFor === `final:${selectedIntern.id}`}
+                  onClick={() => handleDownloadFinalReportPdf(selectedIntern)}
+                >
+                  {downloadingFor === `final:${selectedIntern.id}` ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4 mr-2" />
+                  )}
+                  Final Report (PDF)
+                </Button>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
+                <Button asChild>
+                  <Link href={`/company-hr/attendance?intern=${selectedIntern.id}`}>
+                    <ClipboardList className="h-4 w-4 mr-2" /> View Full Record
+                  </Link>
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
@@ -1125,7 +1126,7 @@ export default function CompanyHRInternsPage() {
 
       {/* Assign Supervisor / Evaluator Dialog */}
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Assign Supervisor / Evaluator</DialogTitle>
             <DialogDescription>
@@ -1133,7 +1134,7 @@ export default function CompanyHRInternsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 space-y-4 px-8 pb-6">
+          <DialogBody className="space-y-4">
             <div className="space-y-2">
               <Label>Select Supervisor / Evaluator</Label>
               <Select value={selectedSupervisorForAssignment} onValueChange={setSelectedSupervisorForAssignment}>
@@ -1190,19 +1191,18 @@ export default function CompanyHRInternsPage() {
                 </div>
               );
             })()}
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }} disabled={assigning}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAssignSupervisor}
-                disabled={!selectedSupervisorForAssignment || assigning}
-              >
-                {assigning ? "Assigning..." : "Assign"}
-              </Button>
-            </DialogFooter>
-          </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsAssignOpen(false); setSelectedSupervisorForAssignment(""); }} disabled={assigning}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignSupervisor}
+              disabled={!selectedSupervisorForAssignment || assigning}
+            >
+              {assigning ? "Assigning..." : "Assign"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

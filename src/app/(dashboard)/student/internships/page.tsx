@@ -40,7 +40,6 @@ import {
   Users,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   ExternalLink,
   Heart,
   Share2,
@@ -711,7 +710,7 @@ export default function StudentInternshipsPage() {
 
       {/* Apply Dialog */}
       <Dialog open={applyDialogOpen} onOpenChange={setApplyDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Briefcase className="h-5 w-5" />
@@ -780,20 +779,6 @@ export default function StudentInternshipsPage() {
                 {coverLetter.length}/2000 characters
               </p>
             </div>
-
-            {/* Resume Note */}
-            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-              <div className="flex gap-3">
-                <AlertTriangle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">Your resume will be included</p>
-                  <p className="text-blue-700">
-                    The CV from your profile will be automatically attached. Make sure it&apos;s up to date in your{" "}
-                    <Link href="/student/profile" className="underline font-medium">Profile Settings</Link>.
-                  </p>
-                </div>
-              </div>
-            </div>
           </DialogBody>
           <DialogFooter>
             <Button
@@ -825,7 +810,7 @@ export default function StudentInternshipsPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!detailInternship} onOpenChange={() => setDetailInternship(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           {detailInternship && (
             <>
               <DialogHeader>
