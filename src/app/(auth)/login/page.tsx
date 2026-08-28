@@ -77,6 +77,9 @@ const MAIN_DOMAIN_ALLOWED_ROLES = new Set([
 // to the JWT's `tenant_domain` (set by migration 0038) or a DB lookup.
 function getApexDomain(hostname: string): string | null {
   if (isInfraDomain(hostname)) return null;
+  // Dev convenience: <tenant>.localhost → apex is "localhost" (prevents
+  // double-prefixing the slug on local subdomain testing).
+  if (hostname.endsWith(".localhost")) return "localhost";
   const parts = hostname.split(".");
   return parts.length >= 3 ? parts.slice(1).join(".") : hostname;
 }

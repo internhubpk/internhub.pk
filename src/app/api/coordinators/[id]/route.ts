@@ -141,7 +141,7 @@ export async function PATCH(
     // ==========================================================
     const { data: adminProfile, error: adminErr } = await admin
       .from("profiles")
-      .select("user_id, role, university_id, email, full_name")
+      .select("user_id, role, university_id, department_id, email, full_name")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -155,10 +155,14 @@ export async function PATCH(
     const adminRole = adminProfile.role as UserRole;
     const isSuperAdmin = adminRole === "super_admin";
     const isUniAdmin = adminRole === "university_admin";
+    // Department Coordinators create programs, which auto-creates the
+    // Program Coordinator account — so they can manage (edit / toggle /
+    // delete) the PCs of their OWN department.
+    const isDeptCoordinator = adminRole === "department_coordinator";
 
-    if (!isSuperAdmin && !isUniAdmin) {
+    if (!isSuperAdmin && !isUniAdmin && !isDeptCoordinator) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
+        { success: false, error: "Forbidden: University Admin, Super Admin or Department Coordinator access required" },
         { status: 403 }
       );
     }
@@ -171,6 +175,13 @@ export async function PATCH(
             "Your profile has no university_id. Sign out and back in, or " +
             "ask a super admin to set your university_id.",
         },
+        { status: 403 }
+      );
+    }
+
+    if (isDeptCoordinator && !adminProfile.department_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Your profile has no department assigned." },
         { status: 403 }
       );
     }
@@ -218,6 +229,37 @@ export async function PATCH(
     //        treat it as "unassigned" — the admin may claim it by
     //        setting their own university_id on it (heal).
     // ==========================================================
+    // Department Coordinators manage only Program Coordinators of their
+    // own department + university.
+    if (isDeptCoordinator) {
+      if (coord.role !== "program_coordinator") {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: You can only manage Program Coordinators of your department" },
+          { status: 403 }
+        );
+      }
+      if (coord.university_id && coord.university_id !== adminProfile.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Coordinator belongs to a different university" },
+          { status: 403 }
+        );
+      }
+      if (!coord.department_id || coord.department_id !== (adminProfile as { department_id?: string }).department_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: This Program Coordinator belongs to another department" },
+          { status: 403 }
+        );
+      }
+      // A PC's department is derived from their program — DCs cannot move
+      // a PC to another department.
+      if (department_id !== undefined && department_id !== null && department_id !== "") {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Department changes are managed by your University Admin" },
+          { status: 403 }
+        );
+      }
+    }
+
     let effectiveUniversityId: string | null = null;
     let shouldHealUniversityId = false;
 
@@ -457,17 +499,25 @@ export async function PUT(
 
     const { data: adminProfile } = await admin
       .from("profiles")
-      .select("user_id, role, university_id")
+      .select("user_id, role, university_id, department_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
     const adminRole = adminProfile?.role as UserRole | undefined;
     const isSuperAdmin = adminRole === "super_admin";
     const isUniAdmin = adminRole === "university_admin";
+    const isDeptCoordinator = adminRole === "department_coordinator";
 
-    if (!isSuperAdmin && !isUniAdmin) {
+    if (!isSuperAdmin && !isUniAdmin && !isDeptCoordinator) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
+        { success: false, error: "Forbidden: University Admin, Super Admin or Department Coordinator access required" },
+        { status: 403 }
+      );
+    }
+
+    if (isDeptCoordinator && !adminProfile?.department_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Your profile has no department assigned." },
         { status: 403 }
       );
     }
@@ -477,7 +527,7 @@ export async function PUT(
     // ==========================================================
     const { data: coord } = await admin
       .from("profiles")
-      .select("user_id, role, university_id, email, full_name")
+      .select("user_id, role, university_id, department_id, email, full_name")
       .eq("user_id", coordUserId)
       .maybeSingle();
 
@@ -488,7 +538,28 @@ export async function PUT(
       );
     }
 
-    if (!isSuperAdmin) {
+    if (isDeptCoordinator) {
+      if (coord.role !== "program_coordinator") {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: You can only manage Program Coordinators of your department" },
+          { status: 403 }
+        );
+      }
+      if (coord.department_id !== adminProfile?.department_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: This Program Coordinator belongs to another department" },
+          { status: 403 }
+        );
+      }
+      if (coord.university_id && coord.university_id !== adminProfile?.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Coordinator belongs to a different university" },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (!isSuperAdmin && !isDeptCoordinator) {
       if (!adminProfile?.university_id) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Your profile has no university_id" },
@@ -574,7 +645,7 @@ export async function PUT(
 
     await admin.from("audit_logs").insert({
       user_id: user.id,
-      action: "university_admin.update_coordinator",
+      action: `${adminRole || "unknown"}.update_coordinator`,
       entity_type: "profile",
       entity_id: coordUserId,
       new_values: { ...updates, password_changed: Boolean(body.password) },
@@ -640,15 +711,23 @@ export async function DELETE(
 
     const { data: adminProfile } = await admin
       .from("profiles")
-      .select("user_id, role, university_id")
+      .select("user_id, role, university_id, department_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
     const adminRole = adminProfile?.role as UserRole | undefined;
     const isSuperAdmin = adminRole === "super_admin";
-    if (!isSuperAdmin && adminRole !== "university_admin") {
+    const isDeptCoordinator = adminRole === "department_coordinator";
+    if (!isSuperAdmin && adminRole !== "university_admin" && !isDeptCoordinator) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: "Forbidden: University Admin or Super Admin access required" },
+        { success: false, error: "Forbidden: University Admin, Super Admin or Department Coordinator access required" },
+        { status: 403 }
+      );
+    }
+
+    if (isDeptCoordinator && !adminProfile?.department_id) {
+      return NextResponse.json<ApiResponse<never>>(
+        { success: false, error: "Your profile has no department assigned." },
         { status: 403 }
       );
     }
@@ -662,7 +741,7 @@ export async function DELETE(
 
     const { data: coord } = await admin
       .from("profiles")
-      .select("user_id, role, university_id, email, full_name")
+      .select("user_id, role, university_id, department_id, email, full_name")
       .eq("user_id", coordUserId)
       .maybeSingle();
 
@@ -673,7 +752,28 @@ export async function DELETE(
       );
     }
 
-    if (!isSuperAdmin) {
+    if (isDeptCoordinator) {
+      if (coord.role !== "program_coordinator") {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: You can only delete Program Coordinators of your department" },
+          { status: 403 }
+        );
+      }
+      if (coord.department_id !== adminProfile?.department_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Forbidden: This Program Coordinator belongs to another department" },
+          { status: 403 }
+        );
+      }
+      if (coord.university_id && coord.university_id !== adminProfile?.university_id) {
+        return NextResponse.json<ApiResponse<never>>(
+          { success: false, error: "Coordinator belongs to a different university" },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (!isSuperAdmin && !isDeptCoordinator) {
       if (!adminProfile?.university_id) {
         return NextResponse.json<ApiResponse<never>>(
           { success: false, error: "Your profile has no university_id" },
@@ -710,7 +810,7 @@ export async function DELETE(
 
     await admin.from("audit_logs").insert({
       user_id: user.id,
-      action: `${isSuperAdmin ? "super_admin" : "university_admin"}.delete_coordinator`,
+      action: `${isSuperAdmin ? "super_admin" : adminRole}.delete_coordinator`,
       entity_type: "profile",
       entity_id: coordUserId,
       old_values: { email: coord.email, role: coord.role },

@@ -419,9 +419,9 @@ export default function CompanyHRSettingsPage() {
                   <Input id="last_name" value={profileForm.last_name} onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email (read-only)</Label>
+                  <Label htmlFor="email">Email</Label>
                   <Input id="email" value={profileForm.email} disabled />
-                  <p className="text-xs text-muted-foreground">Email cannot be changed here. Contact your administrator if needed.</p>
+                  <p className="text-xs text-muted-foreground">This is your sign-in email. Contact your administrator to change it.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>

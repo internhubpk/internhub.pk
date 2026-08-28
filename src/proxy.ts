@@ -222,6 +222,18 @@ function getCurrentSubdomain(hostname: string): string | null {
     return null;
   }
 
+  // Dev convenience: <tenant>.localhost is a tenant subdomain for local
+  // testing (mirrors tenant.ts::extractSubdomain). Never matches production.
+  if (hostWithoutPort.endsWith(".localhost")) {
+    const devParts = hostWithoutPort.slice(0, -".localhost".length).split(".");
+    const devSub = devParts[devParts.length - 1];
+    if (devSub && !RESERVED_SUBDOMAINS.has(devSub)
+        && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(devSub)) {
+      return devSub;
+    }
+    return null;
+  }
+
   // Infrastructure / hosting domains: leftmost label is a deployment name.
   if (INFRA_DOMAINS.has(hostWithoutPort)) return null;
   for (const d of INFRA_DOMAINS) {

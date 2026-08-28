@@ -220,6 +220,19 @@ export function extractSubdomain(hostname: string): string | null {
     return null;
   }
 
+  // Dev convenience: <tenant>.localhost (Chrome resolves *.localhost to
+  // loopback) is a tenant subdomain for local testing — e.g.
+  // "qa-demo-uni.localhost" → "qa-demo-uni". Never matches production.
+  if (hostWithoutPort.endsWith(".localhost")) {
+    const devParts = hostWithoutPort.slice(0, -".localhost".length).split(".");
+    const devSub = devParts[devParts.length - 1];
+    if (devSub && !RESERVED_SUBDOMAINS.includes(devSub)
+        && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(devSub)) {
+      return devSub;
+    }
+    return null;
+  }
+
   // Infrastructure / hosting domains: leftmost label is a deployment name,
   // not a tenant slug. Treat as main platform.
   if (isInfrastructureDomain(hostWithoutPort)) {

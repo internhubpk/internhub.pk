@@ -293,3 +293,77 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE: Permanently delete one of the faculty supervisor's OWN
+// evaluations. ?id=<evaluation uuid>
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id, role")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile || profile.role !== "faculty_supervisor") {
+      return NextResponse.json(
+        { error: "Forbidden: Faculty supervisor access required" },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const evalId = searchParams.get("id");
+    if (!evalId) {
+      return NextResponse.json(
+        { error: "Missing ?id=<evaluation uuid>" },
+        { status: 400 }
+      );
+    }
+
+    // Ownership: the FS can only delete their OWN evaluations.
+    const { data: evaluation } = await supabase
+      .from("evaluations")
+      .select("id, evaluator_id, evaluator_role, student_user_id, type")
+      .eq("id", evalId)
+      .maybeSingle();
+
+    if (!evaluation) {
+      return NextResponse.json({ error: "Evaluation not found" }, { status: 404 });
+    }
+
+    if (
+      evaluation.evaluator_id !== user.id ||
+      evaluation.evaluator_role !== "faculty_supervisor"
+    ) {
+      return NextResponse.json(
+        { error: "You can only delete evaluations you wrote" },
+        { status: 403 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("evaluations")
+      .delete()
+      .eq("id", evalId);
+
+    if (deleteError) {
+      console.error("Error deleting evaluation:", deleteError);
+      return NextResponse.json({ error: "Failed to delete evaluation" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Evaluation deleted",
+    });
+  } catch (error) {
+    console.error("Delete evaluation error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

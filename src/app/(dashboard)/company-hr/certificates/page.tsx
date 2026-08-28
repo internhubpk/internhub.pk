@@ -21,6 +21,7 @@ import {
   Loader2,
   FileText,
   Eye,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
@@ -109,6 +110,10 @@ export default function CompanyHrCertificatesPage() {
   // browser prompts for both revoke and re-issue.
   const [revokeTarget, setRevokeTarget] = useState<CertificateRow | null>(null);
   const [reissueTarget, setReissueTarget] = useState<CertificateRow | null>(null);
+
+  // Hard-delete target — permanently removes the certificate row.
+  const [deleteTarget, setDeleteTarget] = useState<CertificateRow | null>(null);
+  const [deletingCertId, setDeletingCertId] = useState<string | null>(null);
 
   // Upload form state
   const [availableStudents, setAvailableStudents] = useState<StudentByInternship[]>([]);
@@ -385,6 +390,35 @@ export default function CompanyHrCertificatesPage() {
     }
   }
 
+  // Permanently delete the certificate row (the HR owns the certificates
+  // they upload, so they may also remove them entirely).
+  async function handleHardDelete(cert: CertificateRow) {
+    setDeletingCertId(cert.id);
+    try {
+      const res = await fetch(`/api/company-hr/certificates/${cert.id}?hard=true`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => ({ success: false }));
+      if (res.ok && json.success) {
+        toast.success("Certificate deleted", {
+          description: `Certificate #${cert.certificate_number} was permanently removed.`,
+        });
+        fetchCertificates();
+      } else {
+        toast.error("Couldn't delete", {
+          description: json.error?.message || json.error || "Please try again.",
+        });
+      }
+    } catch (err) {
+      toast.error("Couldn't delete", {
+        description: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setDeletingCertId(null);
+      setDeleteTarget(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b bg-card">
@@ -615,6 +649,16 @@ export default function CompanyHrCertificatesPage() {
                               )}
                             </Button>
                           ) : null}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteTarget(cert)}
+                            disabled={revokingId === cert.id}
+                            title="Permanently delete certificate"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -819,6 +863,31 @@ export default function CompanyHrCertificatesPage() {
         loading={!!reissueTarget && revokingId === reissueTarget.id}
         onConfirm={() => {
           if (reissueTarget) handleReissue(reissueTarget);
+        }}
+      />
+      {/* Permanently Delete Certificate Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={
+          <>
+            <Trash2 className="h-5 w-5 shrink-0" />
+            Permanently delete certificate #{deleteTarget?.certificate_number}?
+          </>
+        }
+        description={
+          <span className="block">
+            This removes the certificate record entirely — the student will no longer
+            see it on their profile and the public verification link for
+            <strong> #{deleteTarget?.certificate_number}</strong> will stop working. Unlike a
+            revocation, this cannot be undone.
+          </span>
+        }
+        confirmLabel="Delete Certificate"
+        variant="danger"
+        loading={!!deleteTarget && deletingCertId === deleteTarget.id}
+        onConfirm={() => {
+          if (deleteTarget) handleHardDelete(deleteTarget);
         }}
       />
     </div>

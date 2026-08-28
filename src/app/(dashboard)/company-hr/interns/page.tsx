@@ -289,6 +289,43 @@ export default function CompanyHRInternsPage() {
     }
   };
 
+  // ── Remove Placement ──────────────────────────────────────
+  // Deletes the student_internships row for this intern. Weekly logs,
+  // evaluations and attendance history are preserved; the intern simply
+  // no longer has an active placement at the company.
+  const [removeTarget, setRemoveTarget] = useState<ActiveIntern | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  const handleRemovePlacement = async () => {
+    if (!removeTarget) return;
+    setIsRemoving(true);
+    try {
+      const res = await fetch(`/api/company-hr/interns/${encodeURIComponent(removeTarget.id)}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.success) {
+        throw new Error(j?.error?.message || j?.error || `Failed (${res.status})`);
+      }
+      toast.success("Placement removed", {
+        description: `${removeTarget.student_name} is no longer placed in "${removeTarget.internship_title}".`,
+      });
+      const removedId = removeTarget.id;
+      setRemoveTarget(null);
+      if (selectedIntern?.id === removedId) {
+        setSelectedIntern(null);
+        setIsDetailOpen(false);
+      }
+      setInterns((prev) => prev.filter((i) => i.id !== removedId));
+    } catch (e: any) {
+      toast.error("Failed to remove placement", {
+        description: e.message || "Please try again.",
+      });
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Per-intern PDF downloads.
   //
@@ -876,6 +913,13 @@ export default function CompanyHRInternsPage() {
                                   <FolderOpen className="mr-2 h-4 w-4" /> Documents
                                 </Link>
                               </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setRemoveTarget(intern)}
+                              >
+                                <UserMinus className="mr-2 h-4 w-4" /> Remove Placement
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -1183,6 +1227,26 @@ export default function CompanyHRInternsPage() {
         variant="warning"
         loading={isUnassigning}
         onConfirm={handleUnassignSupervisor}
+      />
+
+      {/* Remove Placement Confirmation */}
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null);
+        }}
+        title="Remove this intern placement?"
+        description={
+          <span className="block">
+            <strong>{removeTarget?.student_name}</strong> will no longer be placed in{" "}
+            &ldquo;{removeTarget?.internship_title}&rdquo;. Their weekly logs, evaluations and
+            attendance history are kept, but they will no longer appear as an active intern. The
+            student will be notified.
+          </span>
+        }
+        confirmLabel="Remove Placement"
+        loading={isRemoving}
+        onConfirm={handleRemovePlacement}
       />
     </div>
   );

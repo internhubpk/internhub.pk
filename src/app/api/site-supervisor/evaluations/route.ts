@@ -344,8 +344,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT: Update an evaluation (within 48-hour edit window). Not currently
-// called by the page UI, but kept consistent with the schema.
+// PUT: Update an evaluation. Site supervisors own the evaluations they
+// create, so they can revise them at any time (ownership-scoped).
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -376,7 +376,7 @@ export async function PUT(request: NextRequest) {
     const evaluatorRoleValue = getEvaluatorRoleValue(putProfile.role as any);
 
     const body = await request.json();
-    const { evaluationId, scores, rating, comments, status } = body;
+    const { evaluationId, scores, rating, comments, status, submitted_at } = body;
 
     if (!evaluationId) {
       return NextResponse.json<ApiResponse<null>>(
@@ -401,22 +401,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const createdAt = new Date(existingEval.created_at);
-    const now = new Date();
-    const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-    if (hoursSinceCreation > 48) {
-      return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: { code: "EDIT_WINDOW_CLOSED", message: "Edit window closed. Evaluations can only be edited within 48 hours of submission." } },
-        { status: 400 }
-      );
-    }
-
     // Build the update payload from real columns only.
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (scores && typeof scores === "object") updateData.scores = scores;
     if (typeof rating === "number") updateData.rating = Math.max(0, Math.min(5, rating));
     if (typeof comments === "string") updateData.comments = comments;
     if (typeof status === "string") updateData.status = status;
+    if (typeof submitted_at === "string") updateData.submitted_at = submitted_at;
 
     const { data: updatedEval, error: updateError } = await supabase
       .from("evaluations")
@@ -447,7 +438,101 @@ export async function PUT(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Unexpected error updating evaluation:", error);
+    console.error("Unexpected error updating evaluation:");
+    return NextResponse.json<ApiResponse<null>>(
+      { success: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Permanently delete one of the site supervisor's OWN
+// evaluations. ?id=<evaluation uuid>
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "UNAUTHORIZED", message: "Not authenticated" } },
+        { status: 401 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (!profile || !isSupervisorRole(profile.role as any)) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "Supervisor access required" } },
+        { status: 403 }
+      );
+    }
+    const evaluatorRoleValue = getEvaluatorRoleValue(profile.role as any);
+
+    const { searchParams } = new URL(request.url);
+    const evalId = searchParams.get("id");
+    if (!evalId) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "VALIDATION_ERROR", message: "Missing ?id=<evaluation uuid>" } },
+        { status: 400 }
+      );
+    }
+
+    // Ownership: the supervisor can only delete their OWN evaluations.
+    const { data: evaluation, error: fetchError } = await supabase
+      .from("evaluations")
+      .select("id, evaluator_id, evaluator_role, student_user_id")
+      .eq("id", evalId)
+      .maybeSingle();
+
+    if (fetchError || !evaluation) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "NOT_FOUND", message: "Evaluation not found" } },
+        { status: 404 }
+      );
+    }
+
+    if (
+      evaluation.evaluator_id !== user.id ||
+      evaluation.evaluator_role !== evaluatorRoleValue
+    ) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "FORBIDDEN", message: "You can only delete evaluations you wrote" } },
+        { status: 403 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("evaluations")
+      .delete()
+      .eq("id", evalId);
+
+    if (deleteError) {
+      console.error("Error deleting evaluation:", deleteError);
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: { code: "DB_ERROR", message: deleteError.message } },
+        { status: 500 }
+      );
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "delete_evaluation",
+      entity_type: "evaluation",
+      entity_id: evalId,
+      old_values: { student_user_id: evaluation.student_user_id },
+    });
+
+    return NextResponse.json<ApiResponse<null>>({
+      success: true,
+      message: "Evaluation deleted",
+    });
+  } catch (error) {
+    console.error("Unexpected error deleting evaluation:");
     return NextResponse.json<ApiResponse<null>>(
       { success: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
       { status: 500 }

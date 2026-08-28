@@ -187,5 +187,94 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  return changeStatus(request, context, "revoked");
+  // ?hard=true → permanently delete the certificate row (Company HR owns
+  // the certificates they issue, so they may also remove them entirely).
+  // Default (no param) → soft revoke, preserving the audit trail and the
+  // public verification result for already-shared certificate numbers.
+  const hard = new URL(request.url).searchParams.get("hard") === "true";
+  if (!hard) {
+    return changeStatus(request, context, "revoked");
+  }
+
+  try {
+    const { id } = await context.params;
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Server unavailable" }, { status: 500 });
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+
+    const { profile, errorResponse } = await getCompanyProfile(supabase, user.id);
+    if (errorResponse) return errorResponse;
+
+    // Fetch the certificate, scoped to this company.
+    const { data: cert, error: certErr } = await supabase
+      .from("certificates")
+      .select("id, company_id, student_user_id, certificate_number, title, status")
+      .eq("id", id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+
+    if (certErr) {
+      console.error("[/api/company-hr/certificates/[id]] fetch error:", certErr);
+      return NextResponse.json(
+        { error: { code: "DATABASE_ERROR", message: certErr.message } },
+        { status: 500 }
+      );
+    }
+    if (!cert) {
+      return NextResponse.json(
+        { error: { code: "NOT_FOUND", message: "Certificate not found or does not belong to your company" } },
+        { status: 404 }
+      );
+    }
+
+    const { error: delErr } = await supabase
+      .from("certificates")
+      .delete()
+      .eq("id", id);
+
+    if (delErr) {
+      console.error("[/api/company-hr/certificates/[id]] hard delete error:", delErr);
+      return NextResponse.json(
+        { error: { code: "DATABASE_ERROR", message: delErr.message } },
+        { status: 500 }
+      );
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      action: "hard_delete_certificate",
+      entity_type: "certificate",
+      entity_id: id,
+      old_values: {
+        certificate_number: cert.certificate_number,
+        title: cert.title,
+        status: cert.status,
+      },
+      new_values: null,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Certificate #${cert.certificate_number} permanently deleted`,
+    });
+  } catch (err) {
+    console.error("[/api/company-hr/certificates/[id]] DELETE hard unhandled:", err);
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "An unexpected error occurred" } },
+      { status: 500 }
+    );
+  }
 }

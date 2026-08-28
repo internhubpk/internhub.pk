@@ -494,7 +494,7 @@ export default function SuperAdminDashboard() {
   const quickActions = [
     {
       title: "Users",
-      description: "View all platform users (read-only)",
+      description: "Create, edit, suspend or delete platform users",
       icon: Users,
       href: "/super-admin/users",
       color: "bg-blue-50 text-blue-600",

@@ -71,12 +71,15 @@ import {
   ClipboardCheck,
   TrendingUp,
   Award,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 // Types
 type EvaluationStatus = "pending" | "in_progress" | "approved" | "rejected" | "revision_required";
@@ -100,6 +103,7 @@ interface PendingEvaluation {
 
 interface EvaluationRecord {
   id: string;
+  studentId: string;
   studentName: string;
   type: SubmissionType;
   title: string;
@@ -108,6 +112,8 @@ interface EvaluationRecord {
   status: EvaluationStatus;
   score: number;
   maxScore: number;
+  rating: number;
+  scores: Record<string, number>;
   evaluatorComments: string;
 }
 
@@ -364,6 +370,7 @@ export default function FacultySupervisorEvaluationsPage() {
             : 0;
           return {
             id: e.id,
+            studentId: e.student_user_id || "",
             studentName: e.student_profile?.full_name || "Unknown Student",
             type: e.type === "weekly_log" ? "weekly_log" : e.type === "task" ? "task_submission" : e.type === "midterm" ? "midterm" : e.type === "final" ? "final" : "document",
             title: `${(e.type || "evaluation")
@@ -374,6 +381,8 @@ export default function FacultySupervisorEvaluationsPage() {
             status: (e.status === "approved" ? "approved" : e.status === "rejected" ? "rejected" : e.status === "submitted" ? "submitted" : "revision_required") as EvaluationStatus,
             score: normalizedTotal,
             maxScore: max,
+            rating: typeof e.rating === "number" ? e.rating : 0,
+            scores: scoresObj,
             evaluatorComments: e.comments || "",
           };
         });
@@ -537,6 +546,62 @@ export default function FacultySupervisorEvaluationsPage() {
     setIsEvaluateDialogOpen(true);
   };
 
+  // Revise an already-submitted evaluation — reopens the evaluate dialog
+  // prefilled with the previous rating, criteria scores and comments.
+  const openReviseDialog = (record: EvaluationRecord) => {
+    const commentsParts = (record.evaluatorComments || "").split("\n\n--- Feedback for student ---\n");
+    setSelectedEvaluation({
+      id: record.id,
+      studentId: record.studentId,
+      studentName: record.studentName,
+      studentEmail: "",
+      submissionType: record.type,
+      title: record.title,
+      description: "",
+      submittedAt: record.submittedAt,
+      dueDate: "",
+      priority: "medium",
+    });
+    setEvaluationForm({
+      rating: record.rating || 5,
+      criteria: defaultCriteria.map(c => ({ ...c, score: record.scores?.[c.id] ?? 0 })),
+      comments: commentsParts[0] || "",
+      feedback: commentsParts[1] || "",
+      decision: "approve",
+    });
+    setIsEvaluateDialogOpen(true);
+  };
+
+  // ── Delete one of the supervisor's OWN evaluations ──────────
+  const [deleteEvalTarget, setDeleteEvalTarget] = useState<EvaluationRecord | null>(null);
+  const [isDeletingEval, setIsDeletingEval] = useState(false);
+
+  const handleDeleteEvaluation = async () => {
+    if (!deleteEvalTarget) return;
+    setIsDeletingEval(true);
+    try {
+      const res = await fetch(
+        `/api/faculty-supervisor/evaluations?id=${encodeURIComponent(deleteEvalTarget.id)}`,
+        { method: "DELETE" }
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Evaluation deleted", {
+        description: `The evaluation for ${deleteEvalTarget.studentName} was removed.`,
+      });
+      setEvaluationHistory((prev) => prev.filter((h) => h.id !== deleteEvalTarget.id));
+      setDeleteEvalTarget(null);
+    } catch (err) {
+      toast.error("Failed to delete evaluation", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setIsDeletingEval(false);
+    }
+  };
+
   const openViewDialog = (record: EvaluationRecord) => {
     setSelectedHistoryItem(record);
     setIsViewDialogOpen(true);
@@ -620,23 +685,33 @@ export default function FacultySupervisorEvaluationsPage() {
         metadata: { evaluation_id: selectedEvaluation.id, decision: evaluationForm.decision },
       });
 
-      // Move the item from pending → history locally.
+      // Move the item from pending → history locally, or update it in
+      // place when this was a revision of an already-submitted evaluation.
       setPendingEvaluations((prev) => prev.filter((e) => e.id !== selectedEvaluation.id));
-      setEvaluationHistory((prev) => [
-        {
-          id: selectedEvaluation.id,
-          studentName: selectedEvaluation.studentName,
-          type: selectedEvaluation.submissionType,
-          title: selectedEvaluation.title,
-          submittedAt: selectedEvaluation.submittedAt,
-          evaluatedAt: new Date().toISOString(),
-          status: (newStatus === "approved" ? "approved" : newStatus === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
-          score: evaluationForm.criteria.reduce((acc, c) => acc + c.score, 0),
-          maxScore: evaluationForm.criteria.length * 10,
-          evaluatorComments: combinedComments || "",
-        },
-        ...prev,
-      ]);
+      const newRecord: EvaluationRecord = {
+        id: selectedEvaluation.id,
+        studentId: selectedEvaluation.studentId,
+        studentName: selectedEvaluation.studentName,
+        type: selectedEvaluation.submissionType,
+        title: selectedEvaluation.title,
+        submittedAt: selectedEvaluation.submittedAt,
+        evaluatedAt: new Date().toISOString(),
+        status: (newStatus === "approved" ? "approved" : newStatus === "rejected" ? "rejected" : "revision_required") as EvaluationStatus,
+        score: evaluationForm.criteria.reduce((acc, c) => acc + c.score, 0),
+        maxScore: evaluationForm.criteria.length * 10,
+        rating: evaluationForm.rating,
+        scores: scores,
+        evaluatorComments: combinedComments || "",
+      };
+      setEvaluationHistory((prev) => {
+        const existing = prev.findIndex((h) => h.id === selectedEvaluation.id);
+        if (existing >= 0) {
+          const next = [...prev];
+          next[existing] = newRecord;
+          return next;
+        }
+        return [newRecord, ...prev];
+      });
 
       setIsEvaluateDialogOpen(false);
       setSelectedEvaluation(null);
@@ -903,7 +978,7 @@ export default function FacultySupervisorEvaluationsPage() {
                   <TableHead>Submitted</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Score</TableHead>
-                  <TableHead className="w-[80px]">Action</TableHead>
+                  <TableHead className="w-[140px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -930,14 +1005,34 @@ export default function FacultySupervisorEvaluationsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => openViewDialog(record)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          onClick={() => openViewDialog(record)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Revise this evaluation"
+                          onClick={() => openReviseDialog(record)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          title="Delete this evaluation"
+                          onClick={() => setDeleteEvalTarget(record)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1017,6 +1112,7 @@ export default function FacultySupervisorEvaluationsPage() {
                             // we map the weekly report fields onto it.
                             setSelectedHistoryItem({
                               id: String(report.id),
+                              studentId: "",
                               studentName: report.studentName,
                               type: "weekly_log",
                               title: `Weekly Report — Week ${report.weekNumber}`,
@@ -1029,6 +1125,8 @@ export default function FacultySupervisorEvaluationsPage() {
                               status: report.status === "approved" ? "approved" : report.status === "submitted" ? "revision_required" : "revision_required",
                               score: report.overallScore,
                               maxScore: 100,
+                              rating: 0,
+                              scores: {},
                               evaluatorComments: report.supervisorRemarks,
                             });
                             setIsViewDialogOpen(true);
@@ -1354,11 +1452,59 @@ export default function FacultySupervisorEvaluationsPage() {
                 <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                   Close
                 </Button>
+                {selectedHistoryItem && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const target = selectedHistoryItem;
+                        setIsViewDialogOpen(false);
+                        openReviseDialog(target);
+                      }}
+                    >
+                      <Edit2 className="mr-2 h-4 w-4" />
+                      Revise
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        const target = selectedHistoryItem;
+                        setIsViewDialogOpen(false);
+                        setDeleteEvalTarget(target);
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </>
+                )}
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Evaluation Confirmation */}
+      <ConfirmDialog
+        open={!!deleteEvalTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteEvalTarget(null);
+        }}
+        title="Delete this evaluation?"
+        description={
+          <>
+            This permanently removes the evaluation for{" "}
+            <strong>{deleteEvalTarget?.studentName || "this student"}</strong> (submitted{" "}
+            {deleteEvalTarget?.evaluatedAt
+              ? new Date(deleteEvalTarget.evaluatedAt).toLocaleDateString()
+              : ""}
+            ). The student will no longer see it.
+          </>
+        }
+        confirmLabel="Delete Evaluation"
+        loading={isDeletingEval}
+        onConfirm={handleDeleteEvaluation}
+      />
     </div>
   );
 }

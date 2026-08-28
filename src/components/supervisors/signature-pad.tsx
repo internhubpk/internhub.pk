@@ -213,6 +213,7 @@ export function SignaturePad({
             
             <div className="flex gap-2">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={clearCanvas}
@@ -224,6 +225,7 @@ export function SignaturePad({
               
               {showDownload && hasSignature && (
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={downloadSignature}
@@ -264,6 +266,7 @@ export function SignaturePad({
             
             <div className="flex gap-2">
               <Button
+                type="button"
                 onClick={handleTypedSignature}
                 disabled={!typedName.trim()}
                 className="flex items-center gap-2"

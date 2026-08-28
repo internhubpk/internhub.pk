@@ -297,7 +297,7 @@ export default function DepartmentCoordinatorDashboard() {
                     Your Department
                   </CardTitle>
                   <CardDescription>
-                    You can view your department info but cannot modify it. Contact a University Admin to make changes.
+                    Your department details, managed by your University Admin.
                   </CardDescription>
                 </div>
                 <Badge variant={department.is_active ? "default" : "secondary"}>

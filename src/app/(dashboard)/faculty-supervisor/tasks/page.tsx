@@ -36,40 +36,15 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/providers/auth-provider";
-import { createClient } from "@/utils/supabase/client";
-import { toast } from "@/components/shared/toast";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
-  Plus,
   Search,
   Filter,
-  Edit,
-  Trash2,
   Eye,
   Clock,
   CheckCircle2,
@@ -80,13 +55,7 @@ import {
   Users,
   Send,
   ListTodo,
-  BarChart3,
-  X,
-  ChevronDown,
-  ChevronUp,
   Star,
-  MoreVertical,
-  Loader2,
   Info,
 } from "lucide-react";
 
@@ -126,7 +95,6 @@ interface Task {
 }
 
 // Default empty data - will be populated from database
-const DEFAULT_STUDENTS: StudentOption[] = [];
 const DEFAULT_TASKS: Task[] = [];
 
 // Map an API task row (snake_case) to the UI's Task interface (camelCase).
@@ -162,270 +130,44 @@ function mapApiTaskToUi(apiTask: any): Task {
   };
 }
 
-// Interface for task form props
-interface TaskFormProps {
-  formData: {
-    title: string;
-    description: string;
-    priority: TaskPriority;
-    dueDate: string;
-    assignedStudentIds: string[];
-  };
-  students: StudentOption[];
-  onFormDataChange: (data: {
-    title: string;
-    description: string;
-    priority: TaskPriority;
-    dueDate: string;
-    assignedStudentIds: string[];
-  }) => void;
-  onSelectAllStudents: () => void;
-  onDeselectAllStudents: () => void;
-  onToggleStudentSelection: (studentId: string) => void;
-}
-
-// Task Form Component (defined outside to avoid re-creation on each render)
-function TaskForm({ 
-  formData, 
-  students,
-  onFormDataChange, 
-  onSelectAllStudents, 
-  onDeselectAllStudents,
-  onToggleStudentSelection 
-}: TaskFormProps) {
-  return (
-    <div className="space-y-4 py-2">
-      <div className="space-y-2">
-        <Label htmlFor="title">Task Title *</Label>
-        <Input
-          id="title"
-          placeholder="Enter task title..."
-          value={formData.title}
-          onChange={(e) => onFormDataChange({ ...formData, title: e.target.value })}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          placeholder="Enter task description... (Markdown supported)"
-          value={formData.description}
-          onChange={(e) => onFormDataChange({ ...formData, description: e.target.value })}
-          rows={5}
-          className="font-mono text-sm"
-        />
-        <p className="text-xs text-muted-foreground">
-          Markdown formatting is supported. Use **bold**, *italic*, # headings, etc.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="priority">Priority</Label>
-          <Select 
-            value={formData.priority} 
-            onValueChange={(value) => onFormDataChange({ ...formData, priority: value as TaskPriority })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="urgent">Urgent</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="dueDate">Due Date *</Label>
-          <Input
-            id="dueDate"
-            type="date"
-            value={formData.dueDate}
-            onChange={(e) => onFormDataChange({ ...formData, dueDate: e.target.value })}
-          />
-        </div>
-      </div>
-
-      {/* File Attachment */}
-      <div className="space-y-2">
-        <Label>Attachments</Label>
-        <div className="border-2 border-dashed rounded-lg p-4 text-center hover:bg-muted/50 transition-colors cursor-pointer">
-          <Paperclip className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Click to upload or drag files here
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            PDF, DOCX, Images (Max 10MB each)
-          </p>
-        </div>
-      </div>
-
-      {/* Student Assignment */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Assign to Students *</Label>
-          <div className="flex gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onSelectAllStudents}>
-              Select All
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={onDeselectAllStudents}>
-              Deselect All
-            </Button>
-          </div>
-        </div>
-        
-        <div className="border rounded-lg max-h-[180px] overflow-y-auto">
-          {students.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              No students available. Students will appear once they are assigned to your supervision.
-            </div>
-          ) : (
-            students.map((student) => (
-            <label
-              key={student.id}
-              className={`flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0 ${
-                formData.assignedStudentIds.includes(student.id) ? 'bg-primary/5' : ''
-              }`}
-            >
-              <Checkbox
-                checked={formData.assignedStudentIds.includes(student.id)}
-                onCheckedChange={() => onToggleStudentSelection(student.id)}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{student.name}</p>
-                <p className="text-xs text-muted-foreground">{student.program}</p>
-              </div>
-            </label>
-          ))
-          )}
-        </div>
-        
-        <p className="text-xs text-muted-foreground">
-          {formData.assignedStudentIds.length} student(s) selected
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // Note: Mock data removed - page shows empty state until real data is available
 
 export default function FacultySupervisorTasksPage() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>(DEFAULT_TASKS);
-  const [students, setStudents] = useState<StudentOption[]>(DEFAULT_STUDENTS);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   
   // Dialog states
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
-  // Fetch data from database + API
+  // Fetch tasks from the API
   const fetchData = useCallback(async () => {
     if (!user) { setIsLoading(false); return; }
 
+    // Fetch tasks via the API.
+    // Use `scope=assigned` (NOT the default `scope=mine`) — faculty
+    // supervisors should see tasks that SITE SUPERVISORS created for
+    // their students, NOT tasks they created themselves (faculty
+    // supervisors do not create internship tasks per the production
+    // brief). With `scope=mine`, the page shows 0 tasks even when the
+    // site supervisor has assigned real tasks to the faculty
+    // supervisor's students.
     try {
-      const supabase = createClient();
-
-      // Fetch supervised students from BOTH sources (internship-time +
-      // pre-internship). The previous implementation only queried
-      // `student_internships.faculty_supervisor_id`, missing any student
-      // the coordinator pre-assigned via `students.faculty_supervisor_id`.
-      const { fetchSupervisedStudents } = await import("@/lib/supervised-students");
-      const supervisedStudents = await fetchSupervisedStudents(supabase, user.id);
-      const supervisedStudentIds = supervisedStudents.map((s) => s.user_id);
-
-      // For tasks-page display, we need each student's program + profile.
-      // Fetch profiles + program info for each supervised student.
-      let studentList: StudentOption[] = [];
-      if (supervisedStudentIds.length > 0) {
-        const [{ data: profileRows }, { data: internshipRows }] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("user_id, full_name, email")
-            .in("user_id", supervisedStudentIds),
-          supabase
-            .from("student_internships")
-            .select(`
-              student_user_id,
-              program:programs(id, name)
-            `)
-            .in("student_user_id", supervisedStudentIds)
-            .in("status", ["assigned", "active", "paused", "completed"]),
-        ]);
-
-        const programByStudent = new Map<string, string>();
-        for (const row of internshipRows || []) {
-          if (row.student_user_id && (row.program as any)?.name) {
-            programByStudent.set(row.student_user_id, (row.program as any).name);
-          }
-        }
-        // Also fall back to students.program_id for pre-internship students.
-        const studentsWithoutProgram = supervisedStudentIds.filter(
-          (id) => !programByStudent.has(id)
-        );
-        if (studentsWithoutProgram.length > 0) {
-          const { data: programRows } = await supabase
-            .from("students")
-            .select("user_id, program:programs(id, name)")
-            .in("user_id", studentsWithoutProgram);
-          for (const row of programRows || []) {
-            if (row.user_id && (row.program as any)?.name) {
-              programByStudent.set(row.user_id, (row.program as any).name);
-            }
-          }
-        }
-
-        studentList = (profileRows || []).map((p: any) => ({
-          id: p.user_id,
-          name: p.full_name || `Student ${(p.user_id || "").slice(0, 6)}`,
-          email: p.email || "",
-          program: programByStudent.get(p.user_id) || "Unknown Program",
-        }));
-      }
-
-      // Deduplicate by student id (a student may have multiple internships)
-      const dedupedStudents = Array.from(
-        studentList.reduce((map, s) => {
-          if (!map.has(s.id)) map.set(s.id, s);
-          return map;
-        }, new Map<string, StudentOption>()).values()
-      );
-      setStudents(dedupedStudents);
-
-      // Fetch tasks via the API.
-      // Use `scope=assigned` (NOT the default `scope=mine`) — faculty
-      // supervisors should see tasks that SITE SUPERVISORS created for
-      // their students, NOT tasks they created themselves (faculty
-      // supervisors do not create internship tasks per the production
-      // brief). With `scope=mine`, the page shows 0 tasks even when the
-      // site supervisor has assigned real tasks to the faculty
-      // supervisor's students.
-      try {
-        const res = await fetch("/api/faculty-supervisor/tasks?scope=assigned", { cache: "no-store" });
-        const json = await res.json().catch(() => ({ success: false, data: [] }));
-        if (res.ok && json?.success && Array.isArray(json.data)) {
-          setTasks((json.data as any[]).map(mapApiTaskToUi));
-        } else {
-          console.error("Error fetching tasks:", json?.error || `HTTP ${res.status}`);
-          setTasks([]);
-        }
-      } catch (taskErr) {
-        console.error("Error fetching tasks:", taskErr);
+      const res = await fetch("/api/faculty-supervisor/tasks?scope=assigned", { cache: "no-store" });
+      const json = await res.json().catch(() => ({ success: false, data: [] }));
+      if (res.ok && json?.success && Array.isArray(json.data)) {
+        setTasks((json.data as any[]).map(mapApiTaskToUi));
+      } else {
+        console.error("Error fetching tasks:", json?.error || `HTTP ${res.status}`);
         setTasks([]);
       }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      // Keep empty state on error
+    } catch (taskErr) {
+      console.error("Error fetching tasks:", taskErr);
+      setTasks([]);
     } finally {
       setIsLoading(false);
     }
@@ -434,16 +176,6 @@ export default function FacultySupervisorTasksPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    priority: "medium" as TaskPriority,
-    dueDate: "",
-    assignedStudentIds: [] as string[],
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -485,7 +217,10 @@ export default function FacultySupervisorTasksPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    if (!dateString) return "—";
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -502,137 +237,9 @@ export default function FacultySupervisorTasksPage() {
     return new Date(dueDate) < new Date() && !["completed", "cancelled"].includes(status);
   };
 
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      description: "",
-      priority: "medium",
-      dueDate: "",
-      assignedStudentIds: [],
-    });
-  };
-
-  const handleCreateTask = async () => {
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/faculty-supervisor/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: formData.title,
-          description: formData.description || undefined,
-          priority: formData.priority,
-          due_date: formData.dueDate,
-          student_user_ids: formData.assignedStudentIds,
-          status: "draft",
-        }),
-      });
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast.error("Create Failed", { description: json?.error || `Failed to create task (HTTP ${res.status})` });
-        return;
-      }
-      setIsCreateDialogOpen(false);
-      resetForm();
-      await fetchData();
-    } catch (err) {
-      console.error("Error creating task:", err);
-      toast.error("Create Error", { description: err instanceof Error ? err.message : "Failed to create task" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleUpdateTask = async () => {
-    if (!selectedTask) return;
-
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/faculty-supervisor/tasks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task_id: selectedTask.id,
-          title: formData.title,
-          description: formData.description || null,
-          priority: formData.priority,
-          due_date: formData.dueDate,
-          student_user_ids: formData.assignedStudentIds,
-        }),
-      });
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast.error("Update Failed", { description: json?.error || `Failed to update task (HTTP ${res.status})` });
-        return;
-      }
-      setIsEditDialogOpen(false);
-      setSelectedTask(null);
-      resetForm();
-      await fetchData();
-    } catch (err) {
-      console.error("Error updating task:", err);
-      toast.error("Update Error", { description: err instanceof Error ? err.message : "Failed to update task" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    try {
-      const res = await fetch(
-        `/api/faculty-supervisor/tasks?task_id=${encodeURIComponent(taskId)}`,
-        { method: "DELETE" }
-      );
-      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
-      if (!res.ok || !json?.success) {
-        toast.error("Delete Failed", { description: json?.error || `Failed to delete task (HTTP ${res.status})` });
-        return;
-      }
-      await fetchData();
-    } catch (err) {
-      console.error("Error deleting task:", err);
-      toast.error("Delete Error", { description: err instanceof Error ? err.message : "Failed to delete task" });
-    }
-  };
-
-  const openEditDialog = (task: Task) => {
-    setSelectedTask(task);
-    setFormData({
-      title: task.title,
-      description: task.description || "",
-      priority: task.priority,
-      dueDate: task.dueDate,
-      assignedStudentIds: task.assignedStudents.map(s => s.id),
-    });
-    setIsEditDialogOpen(true);
-  };
-
   const openViewDialog = (task: Task) => {
     setSelectedTask(task);
     setIsViewDialogOpen(true);
-  };
-
-  const toggleStudentSelection = (studentId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      assignedStudentIds: prev.assignedStudentIds.includes(studentId)
-        ? prev.assignedStudentIds.filter(id => id !== studentId)
-        : [...prev.assignedStudentIds, studentId],
-    }));
-  };
-
-  const selectAllStudents = () => {
-    setFormData(prev => ({
-      ...prev,
-      assignedStudentIds: students.map(s => s.id),
-    }));
-  };
-
-  const deselectAllStudents = () => {
-    setFormData(prev => ({
-      ...prev,
-      assignedStudentIds: [],
-    }));
   };
 
   // Loading state
@@ -675,16 +282,16 @@ export default function FacultySupervisorTasksPage() {
         description="View tasks assigned to your students. Faculty supervisors evaluate tasks; they do not create them."
       />
 
-      {/* Info banner — faculty supervisors cannot create tasks */}
+      {/* Info banner — tasks come from the Site Supervisor */}
       <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30">
         <CardContent className="p-4 flex items-start gap-3">
           <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-medium text-sm">View-only access</p>
+            <p className="font-medium text-sm">Tasks from your Site Supervisor</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Tasks are created and assigned by site supervisors and program
-              coordinators. Your role is to evaluate student submissions — you
-              cannot create, edit, or delete tasks.
+              Tasks are created and assigned by the Site Supervisor. Review
+              them here, then evaluate your students&rsquo; work and
+              submissions from the Evaluations page.
             </p>
           </div>
         </CardContent>
@@ -803,31 +410,15 @@ export default function FacultySupervisorTasksPage() {
                     )}
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => openViewDialog(task)}
+                      title="View task"
+                    >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(task)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Task?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete &ldquo;{task.title}&rdquo;? This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteTask(task.id)}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
                 </div>
               </CardContent>
@@ -903,31 +494,15 @@ export default function FacultySupervisorTasksPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openViewDialog(task)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => openViewDialog(task)}
+                          title="View task"
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(task)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Task?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete &ldquo;{task.title}&rdquo;? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteTask(task.id)}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -944,44 +519,13 @@ export default function FacultySupervisorTasksPage() {
               <h3 className="text-lg font-medium mb-2">No tasks found</h3>
               <p className="text-muted-foreground mb-4">
                 Try adjusting your search or filter criteria. Tasks are
-                created by site supervisors and program coordinators.
+                created and assigned by the Site Supervisor for your
+                students.
               </p>
             </CardContent>
           </Card>
         )}
       </motion.div>
-
-      {/* Edit Task Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-            <DialogDescription>
-              Update the task details below.
-            </DialogDescription>
-          </DialogHeader>
-          <TaskForm 
-            formData={formData}
-            students={students}
-            onFormDataChange={setFormData}
-            onSelectAllStudents={selectAllStudents}
-            onDeselectAllStudents={deselectAllStudents}
-            onToggleStudentSelection={toggleStudentSelection}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleUpdateTask}
-              disabled={!formData.title || !formData.dueDate || formData.assignedStudentIds.length === 0 || isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Update Task
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* View Task Detail Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
@@ -1100,9 +644,8 @@ export default function FacultySupervisorTasksPage() {
                   </Card>
                 )}
 
-                {/* Actions — faculty supervisors cannot edit tasks; this
-                    section is intentionally empty. Tasks are managed by
-                    site supervisors and program coordinators. */}
+                {/* Faculty supervisors evaluate from the Evaluations page;
+                    task management stays with the Site Supervisor. */}
               </div>
             </>
           )}

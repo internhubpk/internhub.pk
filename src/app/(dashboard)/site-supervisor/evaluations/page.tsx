@@ -23,6 +23,8 @@ import {
   Minus,
   Eye,
   Edit3,
+  Edit2,
+  Trash2,
   Save,
   Send,
   BarChart3,
@@ -64,6 +66,7 @@ import { createClient } from "@/utils/supabase/client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { generatePdf, downloadCsv } from "@/lib/export-helpers";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "@/components/shared/toast";
 
 // Types
@@ -95,6 +98,7 @@ interface EvaluationRecord {
   professionalScore: number;
   workQualityScore: number;
   comments?: string | null;
+  rawScores: Record<string, any>;
 }
 
 interface EvaluationFormData {
@@ -166,6 +170,14 @@ export default function SiteSupervisorEvaluationsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [selectedEvaluation, setSelectedEvaluation] = useState<EvaluationRecord | null>(null);
+
+  // Edit mode — when set, the "New Evaluation" form edits this evaluation
+  // (PUT) instead of creating a new one (POST).
+  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
+
+  // Delete state
+  const [deleteEvalTarget, setDeleteEvalTarget] = useState<EvaluationRecord | null>(null);
+  const [isDeletingEval, setIsDeletingEval] = useState(false);
 
   useEffect(() => {
     fetchEvaluationData();
@@ -344,6 +356,7 @@ export default function SiteSupervisorEvaluationsPage() {
             num(scores.documentation_quality),
           ]),
           comments: e.comments ?? null,
+          rawScores: scores,
         };
       }));
 
@@ -392,6 +405,90 @@ export default function SiteSupervisorEvaluationsPage() {
 
   function handleScoreChange(field: keyof EvaluationFormData, value: number) {
     setFormData(prev => ({ ...prev, [field]: value }));
+  }
+
+  // ── Edit an existing evaluation ──────────────────────────
+  // Loads the record's stored scores + comment sections back into the
+  // form and switches to the "New Evaluation" tab in edit mode.
+  function handleEditEvaluation(record: EvaluationRecord) {
+    const s = record.rawScores || {};
+    const num10 = (v: any) => (typeof v === "number" ? v : 5);
+    const blob = record.comments || "";
+    const section = (label: string) => {
+      const m = blob.match(new RegExp(`${label}:\\n([\\s\\S]*?)(?:\\n\\n[A-Z][^:\\n]{3,40}:|$)`));
+      return m ? m[1].trim() : "";
+    };
+    const decisionMatch = blob.match(/Decision:\s*(satisfactory|needs_improvement|unsatisfactory)/);
+
+    // Evaluation period fallback. Evaluations created through the API (or
+    // older rows) have no period dates, but the form's date inputs are
+    // REQUIRED — an empty value would make HTML5 validation silently block
+    // the submit. Default to the 3-week window ending at the evaluation's
+    // submission date; the supervisor can adjust before saving.
+    const subDate = record.submittedAt ? new Date(record.submittedAt) : new Date();
+    if (isNaN(subDate.getTime())) subDate.setTime(Date.now());
+    const fallbackEnd = subDate.toISOString().split("T")[0];
+    const fallbackStart = new Date(subDate.getTime() - 21 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
+
+    setEditingEvaluationId(record.id);
+    setFormData({
+      studentId: record.studentId,
+      periodStart: record.periodStart || fallbackStart,
+      periodEnd: record.periodEnd || fallbackEnd,
+      technicalKnowledge: num10(s.technical_knowledge),
+      problemSolving: num10(s.problem_solving),
+      codeQuality: num10(s.code_quality),
+      learningAgility: num10(s.learning_agility),
+      communication: num10(s.communication),
+      teamwork: num10(s.teamwork),
+      punctuality: num10(s.punctuality),
+      initiative: num10(s.initiative),
+      adaptability: num10(s.adaptability),
+      taskCompletionRate: num10(s.task_completion_rate),
+      deliverableQuality: num10(s.deliverable_quality),
+      deadlineAdherence: num10(s.deadline_adherence),
+      documentationQuality: num10(s.documentation_quality),
+      strengths: section("Strengths & Achievements"),
+      areasForImprovement: section("Areas for Improvement"),
+      generalRemarks: section("General Remarks"),
+      recommendations: section("Recommendations"),
+      decision: (decisionMatch?.[1] as EvaluationFormData["decision"]) || "satisfactory",
+      signatureData: null,
+    });
+    setActiveTab("new");
+    // Scroll the form into view.
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // ── Delete one of the supervisor's OWN evaluations ─────
+  async function handleDeleteEvaluation() {
+    if (!deleteEvalTarget) return;
+    setIsDeletingEval(true);
+    try {
+      const res = await fetch(
+        `/api/site-supervisor/evaluations?id=${encodeURIComponent(deleteEvalTarget.id)}`,
+        { method: "DELETE" }
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || json?.error || `Request failed (${res.status})`);
+      }
+      toast.success("Evaluation deleted", {
+        description: `The evaluation for ${deleteEvalTarget.studentName} was removed.`,
+      });
+      setDeleteEvalTarget(null);
+      fetchEvaluationData();
+    } catch (err) {
+      toast.error("Failed to delete evaluation", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setIsDeletingEval(false);
+    }
   }
 
   function handleSelectStudent(studentId: string) {
@@ -465,26 +562,47 @@ export default function SiteSupervisorEvaluationsPage() {
       // so scale it down by 2.
       const rating = Math.max(0, Math.min(5, Math.round((calculatedScores.overallRating / 2) * 10) / 10));
 
+      // Edit mode → PUT (update the existing evaluation); otherwise POST.
+      const isEdit = Boolean(editingEvaluationId);
       const response = await fetch("/api/site-supervisor/evaluations", {
-        method: "POST",
+        method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          student_user_id: formData.studentId,
-          evaluator_id: user.id,
-          evaluator_role: "site_supervisor",
-          type: "supervisor_evaluation",
-          scores,
-          rating,
-          comments,
-          status: "submitted",
-          submitted_at: new Date().toISOString(),
-          internship_id: internshipId,
-        }),
+        body: JSON.stringify(
+          isEdit
+            ? {
+                evaluationId: editingEvaluationId,
+                scores,
+                rating,
+                comments,
+                status: "submitted",
+                submitted_at: new Date().toISOString(),
+              }
+            : {
+                student_user_id: formData.studentId,
+                evaluator_id: user.id,
+                evaluator_role: "site_supervisor",
+                type: "supervisor_evaluation",
+                scores,
+                rating,
+                comments,
+                status: "submitted",
+                submitted_at: new Date().toISOString(),
+                internship_id: internshipId,
+              }
+        ),
       });
 
       if (response.ok) {
-        toast.success("Evaluation Submitted", { description: "The evaluation has been submitted successfully." });
+        toast.success(
+          isEdit ? "Evaluation Updated" : "Evaluation Submitted",
+          {
+            description: isEdit
+              ? "Your changes to the evaluation were saved."
+              : "The evaluation has been submitted successfully.",
+          }
+        );
         setFormData(initialFormData);
+        setEditingEvaluationId(null);
         setActiveTab("history");
         fetchEvaluationData();
       } else {
@@ -818,6 +936,31 @@ export default function SiteSupervisorEvaluationsPage() {
         {/* New Evaluation Tab */}
         <TabsContent value="new" className="space-y-6 mt-6">
           <form onSubmit={(e) => { e.preventDefault(); setShowPreviewDialog(true); }}>
+            {/* Edit-mode banner */}
+            {editingEvaluationId && (
+              <div className="mb-4 p-4 rounded-lg border border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/30 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 text-sm">
+                  <Edit2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <p>
+                    <span className="font-medium">Editing an existing evaluation.</span>{" "}
+                    <span className="text-muted-foreground">
+                      Your changes will update the submitted evaluation. Sign again to confirm.
+                    </span>
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditingEvaluationId(null);
+                    setFormData(initialFormData);
+                  }}
+                >
+                  Cancel Edit — Start Fresh
+                </Button>
+              </div>
+            )}
             {/* Student Selection */}
             <Card>
               <CardHeader>
@@ -1222,7 +1365,14 @@ export default function SiteSupervisorEvaluationsPage() {
 
             {/* Submit Actions */}
             <div className="flex flex-col sm:flex-row gap-3 justify-end">
-              <Button type="button" variant="outline" onClick={() => setFormData(initialFormData)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setFormData(initialFormData);
+                  setEditingEvaluationId(null);
+                }}
+              >
                 Reset Form
               </Button>
               <Button
@@ -1232,7 +1382,7 @@ export default function SiteSupervisorEvaluationsPage() {
                 className="min-w-[160px]"
               >
                 <Send className="h-4 w-4 mr-2" />
-                Submit Evaluation
+                {editingEvaluationId ? "Save Changes" : "Submit Evaluation"}
               </Button>
             </div>
           </form>
@@ -1322,6 +1472,15 @@ export default function SiteSupervisorEvaluationsPage() {
                             </Button>
                             <Button
                               variant="outline"
+                              size="sm"
+                              onClick={() => handleEditEvaluation(evaluation)}
+                              title="Load this evaluation into the form for editing"
+                            >
+                              <Edit2 className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
                               size="icon"
                               onClick={() => window.print()}
                               title="Print"
@@ -1361,6 +1520,15 @@ export default function SiteSupervisorEvaluationsPage() {
                               title="Save as PDF"
                             >
                               <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setDeleteEvalTarget(evaluation)}
+                              title="Delete this evaluation"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -1453,7 +1621,13 @@ export default function SiteSupervisorEvaluationsPage() {
                 }}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Submitting..." : "Confirm & Submit"}
+                {isSubmitting
+                  ? editingEvaluationId
+                    ? "Saving..."
+                    : "Submitting..."
+                  : editingEvaluationId
+                  ? "Confirm & Save Changes"
+                  : "Confirm & Submit"}
               </Button>
             </div>
           </div>
@@ -1575,6 +1749,28 @@ export default function SiteSupervisorEvaluationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Evaluation Confirmation */}
+      <ConfirmDialog
+        open={!!deleteEvalTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteEvalTarget(null);
+        }}
+        title="Delete this evaluation?"
+        description={
+          <>
+            This permanently removes the evaluation for{" "}
+            <strong>{deleteEvalTarget?.studentName || "this student"}</strong>
+            {deleteEvalTarget?.submittedAt
+              ? ` (submitted ${new Date(deleteEvalTarget.submittedAt).toLocaleDateString()})`
+              : ""}
+            . The student will no longer see it.
+          </>
+        }
+        confirmLabel="Delete Evaluation"
+        loading={isDeletingEval}
+        onConfirm={handleDeleteEvaluation}
+      />
     </div>
   );
 }

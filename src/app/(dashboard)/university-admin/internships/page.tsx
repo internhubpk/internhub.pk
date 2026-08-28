@@ -198,7 +198,6 @@ export default function UniversityAdminInternshipsPage() {
       <PageHeader
         title="Internships"
         description={`Browse all internships available to students at ${university?.name || "your university"}. Internship creation is handled by Company HRs.`}
-        actions={<Badge variant="outline" className="text-xs">View only</Badge>}
       />
 
       {/* Filters */}
@@ -383,7 +382,7 @@ export default function UniversityAdminInternshipsPage() {
                 <DialogTitle className="text-xl">{detailInternship.title}</DialogTitle>
                 <DialogDescription className="flex items-center gap-1.5">
                   <Info className="h-3.5 w-3.5" />
-                  Internship details — read only.
+                  Internship details posted by the company.
                 </DialogDescription>
               </DialogHeader>
 

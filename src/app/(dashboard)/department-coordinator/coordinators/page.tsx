@@ -9,12 +9,19 @@ import {
   Mail,
   BookOpen,
   Calendar,
-  Info,
+  Edit2,
+  Trash2,
+  X,
+  Check,
+  MoreVertical,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -30,11 +37,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/components/providers/auth-provider";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "@/components/shared/toast";
 
@@ -42,6 +65,7 @@ interface ProgramCoordinator {
   user_id: string;
   first_name: string | null;
   last_name: string | null;
+  full_name?: string | null;
   email: string;
   avatar_url: string | null;
   phone: string | null;
@@ -59,6 +83,25 @@ export default function CoordinatorsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
+  // ── Edit dialog state ───────────────────────────────────────
+  const [editTarget, setEditTarget] = useState<ProgramCoordinator | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    password: "",
+  });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // ── Delete dialog state ─────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<ProgramCoordinator | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Toggle status busy state ────────────────────────────────
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
   const fetchCoordinators = useCallback(async () => {
     if (!profile?.department_id) {
       setIsLoading(false);
@@ -72,7 +115,7 @@ export default function CoordinatorsPage() {
       let query = supabase
         .from("profiles")
         .select(
-          `user_id, first_name, last_name, email, avatar_url, phone, is_active, department_id, program_id, created_at, programs:program_id(id, name, code)`
+          `user_id, first_name, last_name, full_name, email, avatar_url, phone, is_active, department_id, program_id, created_at, programs:program_id(id, name, code)`
         )
         .eq("role", "program_coordinator")
         .eq("department_id", profile.department_id);
@@ -98,6 +141,7 @@ export default function CoordinatorsPage() {
         user_id: row.user_id,
         first_name: row.first_name,
         last_name: row.last_name,
+        full_name: row.full_name,
         email: row.email,
         avatar_url: row.avatar_url,
         phone: row.phone,
@@ -114,6 +158,7 @@ export default function CoordinatorsPage() {
         results = results.filter(
           (pc) =>
             `${pc.first_name || ""} ${pc.last_name || ""}`.toLowerCase().includes(q) ||
+            (pc.full_name || "").toLowerCase().includes(q) ||
             pc.email.toLowerCase().includes(q) ||
             (pc.programs && pc.programs.name.toLowerCase().includes(q))
         );
@@ -140,7 +185,8 @@ export default function CoordinatorsPage() {
   };
 
   const getFullName = (pc: ProgramCoordinator) => {
-    const fullName = `${pc.first_name || ""} ${pc.last_name || ""}`.trim();
+    const fullName =
+      pc.full_name || `${pc.first_name || ""} ${pc.last_name || ""}`.trim();
     return fullName || "Unnamed Coordinator";
   };
 
@@ -152,6 +198,132 @@ export default function CoordinatorsPage() {
     });
   };
 
+  // ── Edit Program Coordinator ────────────────────────────────
+  const openEditDialog = (pc: ProgramCoordinator) => {
+    setEditTarget(pc);
+    setEditForm({
+      full_name: getFullName(pc) === "Unnamed Coordinator" ? "" : getFullName(pc),
+      email: pc.email || "",
+      phone: pc.phone || "",
+      password: "",
+    });
+    setShowEditPassword(false);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveCoordinator = async () => {
+    if (!editTarget) return;
+
+    if (!editForm.full_name.trim() || editForm.full_name.trim().length < 2) {
+      toast.error("Validation Error", { description: "Full name must be at least 2 characters" });
+      return;
+    }
+    if (!editForm.email.trim() || !editForm.email.includes("@")) {
+      toast.error("Validation Error", { description: "Please enter a valid email address" });
+      return;
+    }
+    if (editForm.password && editForm.password.length < 8) {
+      toast.error("Validation Error", {
+        description: "Password must be at least 8 characters (or leave it blank to keep the current one)",
+      });
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/coordinators/${editTarget.user_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: editForm.full_name.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+          password: editForm.password || undefined,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+
+      toast.success("Coordinator Updated", {
+        description: `${editForm.full_name.trim()}'s account has been updated.`,
+      });
+      setIsEditDialogOpen(false);
+      setEditTarget(null);
+      fetchCoordinators();
+    } catch (error) {
+      console.error("Error updating coordinator:", error);
+      toast.error("Failed to update coordinator", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ── Toggle active / deactivated ─────────────────────────────
+  const handleToggleStatus = async (pc: ProgramCoordinator) => {
+    const nextActive = !pc.is_active;
+    setTogglingId(pc.user_id);
+
+    try {
+      const res = await fetch(`/api/coordinators/${pc.user_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid JSON response" }));
+
+      if (!res.ok || !json?.success) {
+        toast.error("Status change failed", { description: json?.error || `Request failed (${res.status})` });
+        return;
+      }
+
+      toast.success("Status Updated", {
+        description: `${getFullName(pc)} has been ${nextActive ? "activated" : "deactivated"}`,
+      });
+      fetchCoordinators();
+    } catch (error) {
+      console.error("[dc-coordinators.handleToggleStatus] unhandled", error);
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update status" });
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // ── Delete Program Coordinator ──────────────────────────────
+  const handleDeleteCoordinator = async () => {
+    if (!deleteTarget) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/coordinators/${deleteTarget.user_id}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
+
+      toast.success("Coordinator Deleted", {
+        description: `${getFullName(deleteTarget)} and all their personal data were permanently deleted.`,
+      });
+      setDeleteTarget(null);
+      fetchCoordinators();
+    } catch (error) {
+      console.error("Error deleting coordinator:", error);
+      toast.error("Failed to delete coordinator", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const activeCount = coordinators.filter((pc) => pc.is_active).length;
   const inactiveCount = coordinators.length - activeCount;
 
@@ -160,31 +332,8 @@ export default function CoordinatorsPage() {
       {/* Header */}
       <PageHeader
         title="Program Coordinators"
-        description="Program coordinators in your department"
+        description="Manage the program coordinators in your department — created automatically when you add a program"
       />
-
-      {/* Permission notice — verified against the live backend:
-          PUT / PATCH / DELETE /api/coordinators/[id] accept
-          university_admin / super_admin only, and RLS blocks
-          department_coordinator profile updates (0 rows affected), so no
-          edit / deactivate / delete actions are offered on this page. */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3 rounded-lg border border-muted bg-muted/40 p-4 text-sm">
-            <Info className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Read-only for Department Coordinators</p>
-              <p className="text-muted-foreground mt-1">
-                Program Coordinator accounts are created automatically when a
-                program is added, and only a <strong>University Admin</strong>{" "}
-                can edit, deactivate or delete them. Contact your university&apos;s
-                administrator for account changes — you can still view the
-                coordinators, their programs and their status below.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -254,7 +403,7 @@ export default function CoordinatorsPage() {
               description={
                 searchQuery || filterStatus !== "all"
                   ? "Try adjusting your search or filter."
-                  : "Program Coordinators are automatically created when you create a Program. Go to Programs to create one. Only a University Admin can edit, deactivate, or delete coordinator accounts."
+                  : "Program Coordinator accounts are created automatically when you create a Program. Create a program to get started."
               }
               action={
                 !searchQuery && filterStatus === "all"
@@ -270,6 +419,7 @@ export default function CoordinatorsPage() {
                   <TableHead>Linked Program</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -327,6 +477,58 @@ export default function CoordinatorsPage() {
                           {formatDate(pc.created_at)}
                         </div>
                       </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            disabled={togglingId === pc.user_id}
+                            onClick={() => handleToggleStatus(pc)}
+                          >
+                            {togglingId === pc.user_id ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            {pc.is_active ? "Deactivate" : "Activate"}
+                          </Button>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="More actions">
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditDialog(pc)}>
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                Edit Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleStatus(pc)}>
+                                {pc.is_active ? (
+                                  <>
+                                    <X className="mr-2 h-4 w-4" />
+                                    Deactivate Account
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="mr-2 h-4 w-4" />
+                                    Activate Account
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(pc)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Coordinator
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
                     </motion.tr>
                   ))}
                 </AnimatePresence>
@@ -335,6 +537,117 @@ export default function CoordinatorsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Coordinator Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Program Coordinator</DialogTitle>
+            <DialogDescription>
+              Update {editTarget ? getFullName(editTarget) : "coordinator"}&apos;s account
+              details. Leave the password blank to keep the current one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="pc-full-name">Full Name</Label>
+              <Input
+                id="pc-full-name"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))}
+                placeholder="e.g. Ayesha Khan"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pc-email">Email</Label>
+              <Input
+                id="pc-email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="coordinator@university.edu"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pc-phone">Phone (optional)</Label>
+              <Input
+                id="pc-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+92 300 0000000"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="pc-password">Reset Password (optional)</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowEditPassword((v) => !v)}
+                >
+                  {showEditPassword ? "Hide" : "Show"}
+                </Button>
+              </div>
+              {showEditPassword || editForm.password ? (
+                <Input
+                  id="pc-password"
+                  type="text"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="New password (min. 8 characters)"
+                  autoComplete="new-password"
+                />
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setShowEditPassword(true)}
+                >
+                  Set a new password
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isSavingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCoordinator} disabled={isSavingEdit}>
+              {isSavingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Coordinator Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete Program Coordinator?"
+        description={
+          <>
+            This permanently deletes{" "}
+            <strong>{deleteTarget ? getFullName(deleteTarget) : "this coordinator"}</strong>&apos;s
+            account ({deleteTarget?.email}) and all their personal data. Their linked
+            program stays in place but will be left without a coordinator.
+          </>
+        }
+        confirmLabel="Delete Account"
+        loading={isDeleting}
+        onConfirm={handleDeleteCoordinator}
+      />
     </div>
   );
 }

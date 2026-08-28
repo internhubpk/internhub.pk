@@ -220,18 +220,36 @@ export async function PUT(
       );
     }
 
-    const updateData = validation.data;
+    // Only real `students` columns may be written. The zod schema also
+    // accepts identity fields (email / password / full_name / first_name /
+    // last_name / user_id) because it is shared with the CREATE route
+    // (where they build the auth user + profile). Writing them to the
+    // `students` table would fail with PGRST204 ("column not found"), so
+    // strip them here — identity edits belong to the profiles table.
+    const STUDENT_COLUMNS = new Set([
+      "university_id",
+      "department_id",
+      "program_id",
+      "enrollment_year",
+      "expected_graduation",
+      "cgpa",
+      "student_id_number",
+      "faculty_supervisor_id",
+      "semester",
+    ]);
+    const updateData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(
+      validation.data as Record<string, unknown>
+    )) {
+      if (STUDENT_COLUMNS.has(key)) updateData[key] = value;
+    }
 
     // Students can only update limited fields
     if (isOwnProfile && !isAdmin) {
-      const allowedFields = {} as typeof updateData;
       // Students can update very limited info - most fields require admin
-      if (updateData.cgpa !== undefined) allowedFields.cgpa = updateData.cgpa;
-      Object.keys(updateData).forEach((key) => {
-        if (!(key in allowedFields)) {
-          delete (updateData as Record<string, unknown>)[key];
-        }
-      });
+      for (const key of Object.keys(updateData)) {
+        if (key !== "cgpa") delete updateData[key];
+      }
     }
 
     // If student_id_number is being changed, check uniqueness
