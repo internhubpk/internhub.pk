@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -267,7 +268,10 @@ export default function SuperAdminIssuesPage() {
               Optionally let {rejectTarget?.name} know why this report is being rejected.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          {/* DialogBody adds the horizontal padding (px-8) so the reason
+              field aligns with the header/footer instead of touching the
+              dialog edges. */}
+          <DialogBody className="space-y-2">
             <Label htmlFor="reject-note">Reason (optional)</Label>
             <Textarea
               id="reject-note"
@@ -276,7 +280,7 @@ export default function SuperAdminIssuesPage() {
               placeholder="e.g. Not reproducible, working as intended, duplicate of another report..."
               rows={3}
             />
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectTarget(null)}>
               Cancel

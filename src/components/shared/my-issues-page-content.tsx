@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ReportIssueDialog } from "@/components/issues/report-issue-dialog";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface IssueReport {
   id: string;
@@ -67,11 +69,27 @@ const STATUS_CONFIG: Record<
  * reported issues — enforced both here (GET /api/issues filters by
  * reporter_user_id) and at the DB level (issue_reports_select RLS policy,
  * migration 0105).
+ *
+ * super_admin is redirected to /super-admin/issues: they are the support
+ * staff who triage everyone's reports and don't file or track personal
+ * reports themselves (sidebar hides the entry too — this is the
+ * belt-and-braces in-page guard for a direct URL visit).
  */
 export function MyIssuesPageContent() {
+  const { profile } = useAuth();
+  const router = useRouter();
   const [issues, setIssues] = useState<IssueReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const isSuperAdmin = profile?.role === "super_admin";
+
+  // Send super_admin straight to the platform-wide Issue Reports page.
+  useEffect(() => {
+    if (profile && isSuperAdmin) {
+      router.replace("/super-admin/issues");
+    }
+  }, [profile, isSuperAdmin, router]);
 
   const fetchIssues = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -91,6 +109,11 @@ export function MyIssuesPageContent() {
   useEffect(() => {
     fetchIssues();
   }, [fetchIssues]);
+
+  // Don't flash the "My Issues" UI for a super_admin that is being redirected.
+  if (isSuperAdmin) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -134,7 +157,18 @@ export function MyIssuesPageContent() {
             <p className="text-sm text-muted-foreground mb-4">
               You haven&apos;t reported any issues yet.
             </p>
-            <ReportIssueDialog onSubmitted={() => fetchIssues(true)} />
+            {/* Centered, auto-width trigger — the dialog's default ghost
+                trigger is w-full/justify-start (built for the sidebar) and
+                rendered stretched + left-aligned here. */}
+            <ReportIssueDialog
+              trigger={
+                <Button size="sm" className="mx-auto">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Report an Issue
+                </Button>
+              }
+              onSubmitted={() => fetchIssues(true)}
+            />
           </CardContent>
         </Card>
       ) : (

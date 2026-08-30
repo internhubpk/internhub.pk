@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -110,43 +111,52 @@ export function ReportIssueDialog({ trigger, onSubmitted }: ReportIssueDialogPro
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="issue-report-name">Your name</Label>
-            <Input
-              id="issue-report-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full name"
-              required
-            />
-          </div>
+        {/* DialogBody pins the horizontal padding (px-8) so the form fields
+            align with the header/footer instead of touching the dialog
+            edges, and gives the middle region its own scroll when the
+            keyboard opens on mobile. */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <DialogBody className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="issue-report-name">Your name</Label>
+              <Input
+                id="issue-report-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+                required
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="issue-report-email">Your email</Label>
-            <Input
-              id="issue-report-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="issue-report-email">Your email</Label>
+              <Input
+                id="issue-report-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="issue-report-issue">What went wrong?</Label>
-            <Textarea
-              id="issue-report-issue"
-              value={issue}
-              onChange={(e) => setIssue(e.target.value)}
-              placeholder="Describe the issue — what you expected, what happened instead, and any steps to reproduce it."
-              rows={5}
-              maxLength={5000}
-              required
-            />
-            <p className="text-xs text-muted-foreground text-right">{issue.length}/5000</p>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="issue-report-issue">What went wrong?</Label>
+              <Textarea
+                id="issue-report-issue"
+                value={issue}
+                onChange={(e) => setIssue(e.target.value)}
+                placeholder="Describe the issue — what you expected, what happened instead, and any steps to reproduce it."
+                rows={5}
+                maxLength={5000}
+                required
+              />
+              <p className="text-xs text-muted-foreground text-right">{issue.length}/5000</p>
+            </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>

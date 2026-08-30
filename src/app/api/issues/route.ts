@@ -51,6 +51,12 @@ export async function GET(request: Request) {
 // but are accepted as submitted text — reporter_user_id is what actually
 // ties the row to the account and is what RLS + this handler enforce, so a
 // user editing the autofilled name/email cannot impersonate anyone else.
+//
+// super_admin is blocked from reporting: they are the support staff who
+// triage incoming reports (/api/admin/issues) — letting them file reports
+// would mix support tickets into the queue they administer. Enforced here
+// (DB-verified role) AND at the RLS level (migration 0106 adds
+// `NOT internhub.is_super_admin()` to the insert policy).
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -61,6 +67,24 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // DB-verified role check (never trust JWT metadata alone for policy
+    // decisions). Blocked BEFORE parsing the body — a super_admin tampering
+    // with the client gets a clean 403 regardless of payload.
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+    if (callerProfile?.role === "super_admin") {
+      return NextResponse.json(
+        {
+          error:
+            "Super admins cannot submit issue reports. Use the Issue Reports page to manage reports from all users.",
+        },
+        { status: 403 }
+      );
     }
 
     const body = await request.json().catch(() => null);

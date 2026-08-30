@@ -850,53 +850,58 @@ function SidebarContent({
             site_supervisor, external_evaluator). The student role uses
             "Profile" as its settings-equivalent entry instead. */}
 
-        {/* My Issues + Report an Issue — available to every role. */}
-        {!collapsed || isMobile ? (
-          <>
-            <Link href="/dashboard/issues" onClick={onClose}>
-              <Button variant="ghost" className="w-full justify-start gap-3">
-                <Inbox className="h-5 w-5 shrink-0" />
-                <span>My Issues</span>
-              </Button>
-            </Link>
-            <ReportIssueDialog />
-          </>
-        ) : (
-          <TooltipProvider delayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link href="/dashboard/issues" onClick={onClose}>
-                  <Button variant="ghost" size="icon" className="w-full justify-center mb-1">
-                    <Inbox className="h-5 w-5 shrink-0" />
-                  </Button>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>My Issues</p>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <ReportIssueDialog
-                    trigger={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-full justify-center mb-1"
-                      >
-                        <AlertCircle className="h-5 w-5 shrink-0" />
-                      </Button>
-                    }
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>Report an Issue</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        {/* My Issues + Report an Issue — available to every role EXCEPT
+            super_admin. Super admins are the support staff: they review and
+            triage everyone's reports via the "Issue Reports" nav item
+            (/super-admin/issues), so they don't file reports themselves and
+            don't have a personal "My Issues" list. */}
+        {profile?.role !== "super_admin" &&
+          (!collapsed || isMobile ? (
+            <>
+              <Link href="/dashboard/issues" onClick={onClose}>
+                <Button variant="ghost" className="w-full justify-start gap-3">
+                  <Inbox className="h-5 w-5 shrink-0" />
+                  <span>My Issues</span>
+                </Button>
+              </Link>
+              <ReportIssueDialog />
+            </>
+          ) : (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/dashboard/issues" onClick={onClose}>
+                    <Button variant="ghost" size="icon" className="w-full justify-center mb-1">
+                      <Inbox className="h-5 w-5 shrink-0" />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>My Issues</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <ReportIssueDialog
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-full justify-center mb-1"
+                        >
+                          <AlertCircle className="h-5 w-5 shrink-0" />
+                        </Button>
+                      }
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Report an Issue</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
 
         {/* Sign Out button */}
         <Button
