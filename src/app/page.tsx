@@ -350,12 +350,20 @@ function TenantHero({ branding }: { branding: Branding }) {
                 responsive sizes + leading-tight keep lines from getting
                 too long on a 360px screen. */}
             <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight leading-[1.15] sm:leading-[1.1] mb-4 sm:mb-6">
-              <motion.span className="block" variants={heroLine} custom={0} initial="hidden" animate="show">Welcome to</motion.span>
+              {/* LCP FIX: initial={false} skips the opacity:0 "hidden" start
+                  state that Framer Motion otherwise gates behind JS hydration.
+                  The headline (this h1's content is almost always Chrome's
+                  reported LCP element on this page) now paints in the initial
+                  HTML/CSS pass instead of waiting for React + Framer Motion
+                  to load, hydrate, and run before becoming visible. Visual
+                  result is identical (final state === initial state here);
+                  only the "invisible until JS runs" delay is removed. */}
+              <motion.span className="block" variants={heroLine} custom={0} initial={false} animate="show">Welcome to</motion.span>
               <motion.span
                 className="block mt-1 sm:mt-2 bg-clip-text text-transparent"
                 variants={heroLine}
                 custom={1}
-                initial="hidden"
+                initial={false}
                 animate="show"
                 style={{
                   backgroundImage: `linear-gradient(to right, ${branding.primaryColor}, ${branding.secondaryColor})`
@@ -363,14 +371,14 @@ function TenantHero({ branding }: { branding: Branding }) {
               >
                 {branding.name}
               </motion.span>
-              <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial="hidden" animate="show">Internship Portal</motion.span>
+              <motion.span className="block mt-1 sm:mt-2" variants={heroLine} custom={2} initial={false} animate="show">Internship Portal</motion.span>
             </h1>
 
             {/* Subtitle — mobile-first smaller text, constrained width */}
             <motion.p
               variants={heroLine}
               custom={3}
-              initial="hidden"
+              initial={false}
               animate="show"
               className="text-sm sm:text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6 sm:mb-8 max-w-prose sm:max-w-lg mx-auto lg:mx-0"
             >

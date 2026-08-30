@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  AlertCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ import { useTenant } from "@/components/providers/tenant-provider";
 import { getNavigationForRole, roleLabels, type NavItem } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import { ThemeAwareLogo } from "./theme-aware-logo";
+import { ReportIssueDialog } from "@/components/issues/report-issue-dialog";
 
 // Context for sidebar state management
 interface SidebarContextType {
@@ -847,6 +849,54 @@ function SidebarContent({
             program_coordinator, faculty_supervisor, company_hr,
             site_supervisor, external_evaluator). The student role uses
             "Profile" as its settings-equivalent entry instead. */}
+
+        {/* My Issues + Report an Issue — available to every role. */}
+        {!collapsed || isMobile ? (
+          <>
+            <Link href="/dashboard/issues" onClick={onClose}>
+              <Button variant="ghost" className="w-full justify-start gap-3">
+                <Inbox className="h-5 w-5 shrink-0" />
+                <span>My Issues</span>
+              </Button>
+            </Link>
+            <ReportIssueDialog />
+          </>
+        ) : (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link href="/dashboard/issues" onClick={onClose}>
+                  <Button variant="ghost" size="icon" className="w-full justify-center mb-1">
+                    <Inbox className="h-5 w-5 shrink-0" />
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>My Issues</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <ReportIssueDialog
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-full justify-center mb-1"
+                      >
+                        <AlertCircle className="h-5 w-5 shrink-0" />
+                      </Button>
+                    }
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Report an Issue</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         {/* Sign Out button */}
         <Button

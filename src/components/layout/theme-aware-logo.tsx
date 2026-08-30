@@ -54,21 +54,22 @@ export function ThemeAwareLogo({
     ? resolvedTheme === 'dark' || (resolvedTheme === 'system' && systemTheme === 'dark')
     : false;
 
-  // Select appropriate logo source based on theme and mode
+  // Select appropriate logo source based on theme and mode.
+  // Icon-only mark is now SVG (square 550x550 source, vectorized from the
+  // original artwork) — fixes the stretching that happened when the square
+  // mark was force-fit into the old 191x200 PNG's aspect ratio.
   const logoSrc = iconOnly
-    ? isDark 
-      ? "/logo-icon-dark.png" 
-      : "/logo-icon-light.png"
-    : isDark 
-      ? "/logo-dark.png" 
+    ? isDark
+      ? "/logo-icon-dark.svg"
+      : "/logo-icon-light.svg"
+    : isDark
+      ? "/logo-dark.png"
       : "/logo-light.png";
 
-  // Calculate width from the ACTUAL intrinsic aspect ratios of the PNGs
-  // (public/logo-icon-*.png = 191×200, public/logo-*.png = 364×240).
-  // Using the true ratio keeps the width/height attributes consistent with
-  // the rendered box so Next.js never fires the "width or height modified,
-  // but not the other" warning and nothing is letterboxed by object-contain.
-  const width = iconOnly ? Math.round(height * (191 / 200)) : Math.round(height * (364 / 240));
+  // Icon mark is a square (1:1) SVG — width always equals height, so it can
+  // never stretch regardless of the box it's placed in. Full logo with name
+  // keeps its real intrinsic PNG ratio (364x240).
+  const width = iconOnly ? height : Math.round(height * (364 / 240));
 
   // Placeholder while determining theme or before hydration
   if (!mounted) {
